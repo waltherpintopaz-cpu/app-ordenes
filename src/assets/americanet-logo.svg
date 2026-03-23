@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 220" role="img" aria-label="Americanet logo">
+  <defs>
+    <linearGradient id="leftBar" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffad00" />
+      <stop offset="100%" stop-color="#ff7a00" />
+    </linearGradient>
+    <linearGradient id="rightBar" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd233" />
+      <stop offset="100%" stop-color="#ffad00" />
+    </linearGradient>
+    <linearGradient id="bottomBar" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff7a00" />
+      <stop offset="100%" stop-color="#e6491e" />
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(18 18)">
+    <path
+      d="M88 27c2-4 6-7 11-7h11c6 0 11 3 14 8l8 15-53 118c-3 6-9 10-16 10H42c-9 0-15-9-11-17z"
+      fill="url(#leftBar)"
+    />
+    <path
+      d="M155 43l8-15c2-5 8-8 14-8h11c5 0 9 3 11 7l57 127c4 8-2 17-11 17h-21c-7 0-13-4-16-10z"
+      fill="url(#rightBar)"
+    />
+    <path
+      d="M76 157l49-38c9-7 22-7 31 0l40 31c6 4 6 12 0 16l-14 10c-4 3-9 3-13 0l-25-19c-3-2-7-2-10 0l-23 19c-4 3-9 3-13 0l-15-11c-6-4-5-12 0-16z"
+      fill="url(#bottomBar)"
+    />
+  </g>
+
+  <text
+    x="285"
+    y="152"
+    fill="#1147A7"
+    font-family="Montserrat, Segoe UI, Arial, sans-serif"
+    font-size="112"
+    font-style="italic"
+    font-weight="900"
+    letter-spacing="2"
+  >
+    AMERICANET
+  </text>
+</svg>

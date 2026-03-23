@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Americanet App</string>
+    <string name="title_activity_main">Americanet App</string>
+    <string name="package_name">com.americanet.app</string>
+    <string name="custom_url_scheme">com.americanet.app</string>
+</resources>
