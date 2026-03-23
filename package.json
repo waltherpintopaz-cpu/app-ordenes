@@ -17,6 +17,7 @@
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
+    "@supabase/supabase-js": "^2.57.4",
     "@zxing/browser": "^0.1.5",
     "leaflet": "^1.9.4",
     "node-routeros": "^1.6.8",
