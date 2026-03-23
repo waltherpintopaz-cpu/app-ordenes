@@ -2539,7 +2539,9 @@ export default function App() {
       },
       body: payload,
     };
-    const urls = [DIAGNOSTICO_API_BASE, "/api/diagnostico-servicio", "http://127.0.0.1:8787/api/diagnostico-servicio"].filter(Boolean);
+    const urls = DIAGNOSTICO_API_BASE
+      ? [DIAGNOSTICO_API_BASE]
+      : ["/api/diagnostico-servicio", "http://127.0.0.1:8787/api/diagnostico-servicio"];
     let lastError = null;
     let json = {};
     let success = false;
@@ -2579,11 +2581,9 @@ export default function App() {
       },
       body: JSON.stringify(payload),
     };
-    const urls = [
-      DIAGNOSTICO_API_BASE ? `${DIAGNOSTICO_API_BASE}/${path}` : "",
-      `/api/diagnostico-servicio/${path}`,
-      `http://127.0.0.1:8787/api/diagnostico-servicio/${path}`,
-    ].filter(Boolean);
+    const urls = DIAGNOSTICO_API_BASE
+      ? [`${DIAGNOSTICO_API_BASE}/${path}`]
+      : [`/api/diagnostico-servicio/${path}`, `http://127.0.0.1:8787/api/diagnostico-servicio/${path}`];
     let lastError = null;
     let json = {};
     let success = false;
