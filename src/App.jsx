@@ -47,6 +47,7 @@ const HIST_SYNC_KEY_EXTRACTO = "historial-appsheet-extracto";
 const HIST_SYNC_KEY_MOVIMIENTOS = "historial-appsheet-movimientos";
 const HIST_SYNC_KEY_BASEDATA = "historial-appsheet-basedata";
 const APPSHEET_APP_NAME_PORTAL = String(import.meta.env.VITE_APPSHEET_APP_NAME || "Actuaciones02-637142196").trim();
+const DIAGNOSTICO_API_BASE = String(import.meta.env.VITE_DIAGNOSTICO_API_BASE || "").trim().replace(/\/+$/, "");
 const HIST_TECNICO_CODE_TO_NAME = {
   "AFS-LUI-01": "Luis Pacsi",
   "AFS-WIL-01": "Willans H.",
@@ -2538,7 +2539,7 @@ export default function App() {
       },
       body: payload,
     };
-    const urls = ["/api/diagnostico-servicio", "http://127.0.0.1:8787/api/diagnostico-servicio"];
+    const urls = [DIAGNOSTICO_API_BASE, "/api/diagnostico-servicio", "http://127.0.0.1:8787/api/diagnostico-servicio"].filter(Boolean);
     let lastError = null;
     let json = {};
     let success = false;
@@ -2578,7 +2579,11 @@ export default function App() {
       },
       body: JSON.stringify(payload),
     };
-    const urls = [`/api/diagnostico-servicio/${path}`, `http://127.0.0.1:8787/api/diagnostico-servicio/${path}`];
+    const urls = [
+      DIAGNOSTICO_API_BASE ? `${DIAGNOSTICO_API_BASE}/${path}` : "",
+      `/api/diagnostico-servicio/${path}`,
+      `http://127.0.0.1:8787/api/diagnostico-servicio/${path}`,
+    ].filter(Boolean);
     let lastError = null;
     let json = {};
     let success = false;
