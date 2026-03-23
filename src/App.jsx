@@ -7645,9 +7645,12 @@ export default function App() {
 
   const liquidacionesFiltradas = useMemo(() => {
     const q = busquedaHistorial.trim().toLowerCase();
-    if (!q) return liquidaciones;
+    const base = (Array.isArray(liquidaciones) ? liquidaciones : []).filter((item) =>
+      tieneAccesoNodoSesion(firstText(item?.nodo, item?.payload?.nodo, item?.payload?.Nodo))
+    );
+    if (!q) return base;
 
-    return liquidaciones.filter((item) => {
+    return base.filter((item) => {
       const equiposTexto = (item.liquidacion?.equipos || [])
         .map(
           (eq) =>
@@ -7680,7 +7683,7 @@ export default function App() {
         materialesTexto.includes(q)
       );
     });
-  }, [liquidaciones, busquedaHistorial]);
+  }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion]);
 
   const liquidacionesReporte = useMemo(() => {
     const q = reporteBusqueda.trim().toLowerCase();
@@ -8479,6 +8482,13 @@ export default function App() {
       <div style={pageStyle}>
         <div style={{ ...containerStyle, maxWidth: "460px", margin: "40px auto" }}>
           <div style={cardStyle}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+              <img
+                src="/americanet-logo-clean.png"
+                alt="Americanet"
+                style={{ width: "220px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
+              />
+            </div>
             <h1 style={{ ...titleStyle, marginBottom: "8px", fontSize: "30px" }}>Portal de ingreso</h1>
             <p style={{ ...subtitleStyle, marginBottom: "18px" }}>
               Ingresa con tu usuario y contrasena para continuar.
@@ -8544,9 +8554,12 @@ export default function App() {
     <div style={appShellStyle}>
       <aside style={sidebarStyle}>
         <div style={sidebarHeaderStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ color: "#f59e0b", fontWeight: 900, fontSize: "24px", lineHeight: 1 }}>A</span>
-            <div style={{ fontWeight: 900, color: "#274273", fontSize: "18px", letterSpacing: "0.3px", whiteSpace: "nowrap" }}>AMERICANET</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
+            <img
+              src="/americanet-logo-clean.png"
+              alt="Americanet"
+              style={{ width: "180px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
+            />
           </div>
         </div>
         <div style={userCardStyle}>
