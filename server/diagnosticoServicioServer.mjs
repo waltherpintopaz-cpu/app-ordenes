@@ -3,10 +3,22 @@ import { RouterOSAPI } from "node-routeros";
 
 const DEFAULT_SUPABASE_URL = "https://vgwbqbzpjlbkmxtfghdm.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_";
+const DEFAULT_MIKROWISP_API_BASE = "https://americanet.club/api/v1";
+const DEFAULT_MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+const DEFAULT_SMARTOLT_API_BASE = "https://americanet.smartolt.com/api";
+const DEFAULT_SMARTOLT_TOKEN = "0cb1ad391ea4458cab6efe97769c761d";
 const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const SERVER_PORT = Number(process.env.DIAGNOSTICO_SERVER_PORT || 8787) || 8787;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const MIKROWISP_API_BASE =
+  String(process.env.MIKROWISP_API_BASE || DEFAULT_MIKROWISP_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_MIKROWISP_API_BASE;
+const MIKROWISP_TOKEN = String(process.env.MIKROWISP_TOKEN || DEFAULT_MIKROWISP_TOKEN).trim();
+const SMARTOLT_API_BASE =
+  String(process.env.SMARTOLT_API_BASE || process.env.VITE_API_BASE_URL || DEFAULT_SMARTOLT_API_BASE)
+    .trim()
+    .replace(/\/+$/, "") || DEFAULT_SMARTOLT_API_BASE;
+const SMARTOLT_TOKEN = String(process.env.SMARTOLT_TOKEN || process.env.VITE_SMART_OLT_TOKEN || DEFAULT_SMARTOLT_TOKEN).trim();
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
@@ -73,19 +85,23 @@ const findRouterByNodo = (routers, nodo = "") => {
 };
 
 const readJsonBody = async (req) => {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
+  const raw = (await readRawBody(req)).toString("utf8");
   if (!raw.trim()) return {};
   return JSON.parse(raw);
+};
+
+const readRawBody = async (req) => {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks);
 };
 
 const writeJson = (res, status, data) => {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS,DELETE",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Token, token",
   });
   res.end(JSON.stringify(data));
 };
@@ -492,6 +508,65 @@ const activarRouter = async ({ nodo, userPppoe, ip = "" }) => {
   }
 };
 
+const buildAbsoluteApiUrl = (base, path = "") => {
+  const normalizedBase = String(base || "").trim().replace(/\/+$/, "");
+  const normalizedPath = String(path || "").trim();
+  if (!normalizedBase) return normalizedPath;
+  if (!normalizedPath) return normalizedBase;
+  return `${normalizedBase}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+};
+
+const readProxyJsonResponse = async (response, context = "API proxy") => {
+  const text = await response.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const preview = text.slice(0, 200).replace(/\s+/g, " ").trim();
+    throw new Error(`${context} devolvio respuesta no JSON (HTTP ${response.status}). ${preview || "<vacia>"}`);
+  }
+};
+
+const proxyMikrowispGetClientDetails = async (req) => {
+  const contentType = String(req.headers["content-type"] || "application/json").trim() || "application/json";
+  const rawBody = await readRawBody(req);
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": contentType,
+      token: MIKROWISP_TOKEN,
+    },
+    body: rawBody.length ? rawBody : undefined,
+  });
+  const json = await readProxyJsonResponse(response, "Mikrowisp GetClientsDetails");
+  return { status: response.status, json };
+};
+
+const proxySmartOltRequest = async (req) => {
+  const url = new URL(req.url || "", "http://localhost");
+  const targetPath = url.pathname.replace(/^\/api\/smartolt/, "");
+  const targetUrl = buildAbsoluteApiUrl(SMARTOLT_API_BASE, targetPath);
+  const rawBody = await readRawBody(req);
+  const incomingType = String(req.headers["content-type"] || "").trim();
+  const incomingToken = String(req.headers["x-token"] || req.headers.token || "").trim();
+
+  const headers = {
+    Accept: "application/json",
+    "X-Token": incomingToken || SMARTOLT_TOKEN,
+  };
+  if (incomingType) headers["Content-Type"] = incomingType;
+
+  const response = await fetch(targetUrl, {
+    method: req.method || "GET",
+    headers,
+    body: rawBody.length ? rawBody : undefined,
+  });
+  const json = await readProxyJsonResponse(response, `Smart OLT ${targetPath || "/"}`);
+  return { status: response.status, json };
+};
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "OPTIONS") {
@@ -507,6 +582,14 @@ const server = http.createServer(async (req, res) => {
         service: "diagnostico-servicio",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
+        mikrowisp: {
+          apiBase: MIKROWISP_API_BASE,
+          configured: Boolean(MIKROWISP_API_BASE && MIKROWISP_TOKEN),
+        },
+        smartolt: {
+          apiBase: SMARTOLT_API_BASE,
+          configured: Boolean(SMARTOLT_API_BASE && SMARTOLT_TOKEN),
+        },
         routers: Object.values(currentRouters).map((router) => ({
           id: router.id,
           nombre: router.nombre,
@@ -516,6 +599,18 @@ const server = http.createServer(async (req, res) => {
           configured: !buildRouterConfigError(router),
         })),
       });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mikrowisp/GetClientsDetails") {
+      const result = await proxyMikrowispGetClientDetails(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (String(req.url || "").startsWith("/api/smartolt/")) {
+      const result = await proxySmartOltRequest(req);
+      writeJson(res, result.status, result.json);
       return;
     }
 

@@ -1,5 +1,6 @@
 ﻿import { useMemo, useState } from "react";
 
+const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || "").trim();
 const MIKROWISP_PROXY_ENDPOINT = "/api/mikrowisp/GetClientsDetails";
 const MIKROWISP_DIRECT_ENDPOINT = "https://americanet.club/api/v1/GetClientsDetails";
 const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
@@ -164,6 +165,18 @@ const obtenerMapasCandidatos = (coords) => {
   return Array.from(new Set(candidatos));
 };
 
+const buildApiUrl = (path = "") => {
+  const p = String(path || "").trim();
+  if (!p) return "";
+  if (/^https?:\/\//i.test(p)) return p;
+  if (API_BASE_URL) {
+    const base = API_BASE_URL.endsWith("/") ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+    const suffix = p.startsWith("/") ? p : `/${p}`;
+    return `${base}${suffix}`;
+  }
+  return p;
+};
+
 function MapPreviewInner({ coords, className = "", onOpenMap, sources = [] }) {
   const [idxSource, setIdxSource] = useState(0);
   const [loadingMap, setLoadingMap] = useState(true);
@@ -214,8 +227,10 @@ export default function ConsultaApiPanel() {
   const [resultadoAppSheet, setResultadoAppSheet] = useState([]);
   const [fotoActiva, setFotoActiva] = useState(null);
   const mikrowispEndpoints = useMemo(() => {
-    if (import.meta.env.DEV) return [MIKROWISP_PROXY_ENDPOINT, MIKROWISP_DIRECT_ENDPOINT];
-    return [MIKROWISP_DIRECT_ENDPOINT, MIKROWISP_PROXY_ENDPOINT];
+    const proxyUrl = buildApiUrl(MIKROWISP_PROXY_ENDPOINT);
+    if (API_BASE_URL) return [proxyUrl];
+    if (import.meta.env.DEV) return [proxyUrl, MIKROWISP_DIRECT_ENDPOINT];
+    return [MIKROWISP_DIRECT_ENDPOINT, proxyUrl];
   }, []);
 
   const normalizarRespuestaHistoricoAppSheet = (body, dniParam) => {

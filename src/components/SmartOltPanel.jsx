@@ -7,12 +7,12 @@ const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "0cb1ad39
 const buildApiUrl = (path = "") => {
   const p = String(path || "");
   if (/^https?:\/\//i.test(p)) return p;
-  if (p.startsWith("/api/")) return p;
   if (API_BASE_URL) {
     const base = API_BASE_URL.endsWith("/") ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
     const suffix = p.startsWith("/") ? p : `/${p}`;
     return `${base}${suffix}`;
   }
+  if (p.startsWith("/api/")) return p;
   if (p.startsWith("/api/smartolt")) {
     return `https://americanet.smartolt.com${p.replace(/^\/api\/smartolt/, "/api")}`;
   }
