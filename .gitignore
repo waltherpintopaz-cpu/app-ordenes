@@ -26,3 +26,5 @@ dist-ssr
 .env.*
 backups
 android/app/build
+.mcp.json
+.claude/

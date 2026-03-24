@@ -8,7 +8,6 @@ const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const TRAIL_COLORS = ["#1E4F9C", "#F47A20", "#00C853", "#EC4899", "#0EA5E9", "#7C3AED"];
 const TRAIL_WINDOW_HOURS = 2;
 const TRAIL_MAX_POINTS = 240;
-const AUTO_REFRESH_MS = 60_000;
 const MAX_SEGMENT_SECONDS = 300;
 const STOP_SPEED_THRESHOLD_MPS = 0.8;
 const STOP_DISTANCE_THRESHOLD_M = 15;
@@ -211,6 +210,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   const [statsData, setStatsData] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState("");
+  const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
 
   const _esAdmin = rolSesion === "Administrador";
   const esTecnico = rolSesion === "Tecnico";
@@ -234,24 +234,6 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
     });
     markersRef.current = [];
     polylinesRef.current = [];
-  }, []);
-
-  const upsertCurrentLocal = useCallback((row) => {
-    const id = parseTecnicoId(row?.tecnico_id);
-    if (!id) return;
-    setCurrentRows((prev) => {
-      const idx = prev.findIndex((item) => parseTecnicoId(item?.tecnico_id) === id);
-      if (idx === -1) return [row, ...prev];
-      const next = [...prev];
-      next[idx] = { ...next[idx], ...row };
-      return next;
-    });
-  }, []);
-
-  const removeCurrentLocal = useCallback((techIdRaw) => {
-    const id = parseTecnicoId(techIdRaw);
-    if (!id) return;
-    setCurrentRows((prev) => prev.filter((item) => parseTecnicoId(item?.tecnico_id) !== id));
   }, []);
 
   const cargarUbicacionActual = useCallback(async () => {
@@ -430,6 +412,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
     try {
       await Promise.all([cargarConfigYTecnicos(), cargarUbicacionActual()]);
       if (showMovement) await cargarTrayectorias();
+      setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo cargar seguimiento tecnico."));
     } finally {
@@ -447,6 +430,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
         showMovement ? cargarTrayectorias() : Promise.resolve(),
         cargarEstadistica(statsTechId, statsDate),
       ]);
+      setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo actualizar seguimiento."));
     } finally {
@@ -457,26 +441,6 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   useEffect(() => {
     void cargarTodo();
   }, [cargarTodo]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) return undefined;
-    const channel = supabase
-      .channel("tracking-web-current-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tecnico_ubicacion_actual" }, (payload) => {
-        const eventType = payload?.eventType;
-        if (eventType === "DELETE") {
-          removeCurrentLocal(payload?.old?.tecnico_id);
-          return;
-        }
-        const row = payload?.new;
-        if (!row) return;
-        upsertCurrentLocal(row);
-      })
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [removeCurrentLocal, upsertCurrentLocal]);
 
   useEffect(() => {
     if (!showMovement) return;
@@ -499,16 +463,6 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   useEffect(() => {
     autoFitDoneRef.current = false;
   }, [filterKey]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) return undefined;
-    const timer = setInterval(() => {
-      void cargarUbicacionActual();
-      if (showMovement) void cargarTrayectorias();
-      if (statsTechId) void cargarEstadistica(statsTechId, statsDate);
-    }, AUTO_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [cargarUbicacionActual, cargarTrayectorias, showMovement, cargarEstadistica, statsTechId, statsDate]);
 
   const techById = useMemo(() => {
     const map = {};
@@ -787,8 +741,8 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
       </div>
 
       <p className="panel-meta">
-        Mapa GPS en tiempo real | Sesion: {esTecnico ? tecnicoNombreSesion : rolSesion || "-"} | Ultima sincronizacion:{" "}
-        {formatDateTime(new Date())}
+        Mapa GPS por carga manual | Sesion: {esTecnico ? tecnicoNombreSesion : rolSesion || "-"} | Ultima sincronizacion:{" "}
+        {formatDateTime(lastSyncAt)}
       </p>
 
       {error ? <p className="warn-text">{error}</p> : null}

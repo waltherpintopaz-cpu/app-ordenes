@@ -785,7 +785,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
         const txt = String(err?.message || err || "").toLowerCase();
         return txt.includes("failed to fetch") || txt.includes("networkerror") || txt.includes("load failed");
       };
-      let [eq, asig, mov, usu, liq, sol, art, alm] = await Promise.all([
+      let [eq, asig, mov, usu, liq, sol, art, alm, rel] = await Promise.all([
         safeQuery(supabase.from("equipos_catalogo").select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado,almacen_id,almacen_nombre").order("id", { ascending: false })),
         safeQuery(supabase.from("materiales_asignados_tecnicos").select("id,tecnico,material_id,material_nombre,cantidad_asignada,cantidad_disponible,unidad").order("id", { ascending: false })),
         safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,nodo,almacen_id,almacen_nombre").order("created_at", { ascending: false }).limit(1500)),
@@ -805,6 +805,12 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
             .order("id", { ascending: false })
         ),
         safeQuery(supabase.from("almacenes").select("id,nombre,codigo,direccion,ubicacion,activo").order("nombre", { ascending: true })),
+        safeQuery(
+          supabase
+            .from("onu_liquidacion_relacion")
+            .select("id_onu,liquidacion_codigo,regla_match,pendiente_revision")
+            .limit(5000)
+        ),
       ]);
       let almacenesColsOff = false;
       if (
@@ -845,6 +851,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       if (sol.error && !tableMissing(INVENTARIO_DEV_SOL_TABLE, sol.error) && !isFetchFailed(sol.error)) throw sol.error;
       if (art.error && !tableMissing(INVENTARIO_ARTICULOS_TABLE, art.error) && !isFetchFailed(art.error)) throw art.error;
       if (alm.error && !tableMissing("almacenes", alm.error) && !isFetchFailed(alm.error)) throw alm.error;
+      if (rel.error && !tableMissing("onu_liquidacion_relacion", rel.error) && !isFetchFailed(rel.error)) throw rel.error;
       const tecnicosActivos = (usu.data || [])
         .filter((u) => norm(u.rol) === "tecnico")
         .map((u) => ({
@@ -914,7 +921,32 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
         return String(fromLegacyByName || legacyName || rawNoPrefix || raw).trim();
       };
 
+      const relByOnu = new Map();
+      (rel.data || []).forEach((r) => {
+        const key = normRef(r?.id_onu || "");
+        if (!key) return;
+        if (!relByOnu.has(key)) relByOnu.set(key, r);
+      });
+
+      const estadoConciliacion = (r) => {
+        if (!r) return "sin_relacion";
+        const regla = norm(r?.regla_match || "");
+        if (regla === "no_aplica") return "no_aplica";
+        if (r?.pendiente_revision === false && toText(r?.liquidacion_codigo)) return "resuelto";
+        return "pendiente";
+      };
+
       const eqRows = (eq.data || []).map((r) => ({
+        ...(function () {
+          const relMatch =
+            relByOnu.get(normRef(r?.codigo_qr || "")) ||
+            relByOnu.get(normRef(r?.serial_mac || "")) ||
+            null;
+          return {
+            conciliacionEstado: estadoConciliacion(relMatch),
+            conciliacionCodigo: toText(relMatch?.liquidacion_codigo),
+          };
+        })(),
         id: String(r.id || ""),
         empresa: r.empresa || "Americanet",
         tipo: r.tipo || "",
@@ -1187,7 +1219,9 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   const catalogo = useMemo(
     () =>
       equipos.filter((e) => {
-        const okEstado = filtroEstadoCatalogo === "TODOS" || estadoGrupo(e.estado) === filtroEstadoCatalogo;
+        const okEstado =
+          filtroEstadoCatalogo === "TODOS" ||
+          (filtroEstadoCatalogo === "conciliado" ? e.conciliacionEstado === "resuelto" : estadoGrupo(e.estado) === filtroEstadoCatalogo);
         const okBusqueda =
           !busqueda ||
           `${e.empresa} ${e.tipo} ${e.marca} ${e.modelo} ${e.codigo} ${e.serial} ${e.tecnico} ${e.almacenNombre}`
@@ -1238,6 +1272,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       almacen: base.filter((e) => estadoGrupo(e.estado) === "almacen").length,
       asignado: base.filter((e) => estadoGrupo(e.estado) === "asignado").length,
       liquidado: base.filter((e) => estadoGrupo(e.estado) === "liquidado").length,
+      conciliado: base.filter((e) => e.conciliacionEstado === "resuelto").length,
     };
   }, [equipos, busqueda, tecnicoFiltro]);
   const equiposEnAlmacen = conteoCatalogo.almacen;
@@ -2875,7 +2910,13 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
               if (relAll.error) break;
               const eqRows = Array.isArray(relAll.data) ? relAll.data : [];
               if (eqRows.length === 0) break;
-              const relMatch = pickRelMatch(eqRows);
+              const relMatch = eqRows.find((row) => {
+                const rowId = Number(firstValue(row?.id_inventario, row?.equipo_id, row?.id_equipo, row?.inventario_id, row?.equipo_catalogo_id) || 0);
+                if (idInventario > 0 && rowId > 0 && rowId === idInventario) return true;
+                const qrRow = firstValue(row?.codigo, row?.codigo_qr, row?.qr, row?.idonu, row?.id_onu, row?.codigo_equipo, row?.codigo_etiqueta);
+                const snRow = firstValue(row?.serial, row?.serial_mac, row?.sn, row?.sn_onu, row?.snonu, row?.mac);
+                return Boolean((codigoRef && qrRow && refCoincide(qrRow, codigoRef)) || (serialRef && snRow && refCoincide(snRow, serialRef)));
+              }) || null;
               if (relMatch) {
                 relRows = [relMatch];
                 break;
@@ -3025,6 +3066,81 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
           }
         } catch {
           // Si falla Supabase en detalle, intentamos fallback AppSheet.
+        }
+        // Fallback: historial AppSheet (datos migrados desde Google Sheets)
+        try {
+          const codigoQr = String(equipo?.codigo || "").trim();
+          const serialMac = String(equipo?.serial || "").trim();
+          let onuRel = null;
+          if (codigoQr) {
+            const relRes = await supabase
+              .from("onu_liquidacion_relacion")
+              .select("*")
+              .ilike("id_onu", codigoQr)
+              .limit(1)
+              .maybeSingle();
+            if (!relRes.error) onuRel = relRes.data;
+          }
+          if (!onuRel && serialMac) {
+            const relRes = await supabase
+              .from("onu_liquidacion_relacion")
+              .select("*")
+              .ilike("id_onu", serialMac)
+              .limit(1)
+              .maybeSingle();
+            if (!relRes.error) onuRel = relRes.data;
+          }
+          if (onuRel?.liquidacion_codigo) {
+            const liqRes = await supabase
+              .from("historial_appsheet_liquidaciones")
+              .select("*")
+              .ilike("codigo", onuRel.liquidacion_codigo)
+              .limit(1)
+              .maybeSingle();
+            if (!liqRes.error && liqRes.data) {
+              const liqHist = liqRes.data;
+              const liquidacionFinal = {
+                codigo: firstValue(liqHist.codigo),
+                codigo_orden: firstValue(onuRel.orden_codigo, liqHist.orden_id, liqHist.codigo),
+                estado: firstValue(liqHist.estado, "Liquidada"),
+                tecnico_liquida: firstValue(liqHist.tecnico, liqHist.personal_tecnico),
+                tecnico: firstValue(liqHist.tecnico, liqHist.personal_tecnico),
+                fecha_liquidacion: firstValue(liqHist.fecha),
+                nombre: firstValue(liqHist.nombre, liqHist.cliente),
+                dni: firstValue(liqHist.dni),
+                direccion: firstValue(liqHist.direccion),
+                nodo: firstValue(liqHist.nodo),
+                sn_onu: firstValue(liqHist.sn_onu),
+                fuente: "Historial AppSheet",
+              };
+              const ordenFinal = {
+                codigo: firstValue(onuRel.orden_codigo, liqHist.orden_id, liqHist.codigo),
+                nombre: firstValue(liqHist.nombre, liqHist.cliente),
+                nodo: firstValue(liqHist.nodo),
+                tecnico: firstValue(liqHist.tecnico, liqHist.personal_tecnico),
+                tipo_actuacion: firstValue(liqHist.tipo_actuacion, liqHist.actuacion),
+                direccion: firstValue(liqHist.direccion),
+              };
+              const resumenHist = buildEquipoLiquidacionResumen({
+                equipo,
+                relacion: null,
+                liquidacion: liquidacionFinal,
+                orden: ordenFinal,
+              });
+              setCatalogoResumenMap((prev) => ({ ...prev, [String(equipo?.id || "")]: resumenHist || null }));
+              setCatalogoDetData({
+                equipo,
+                liquidacion: liquidacionFinal,
+                orden: ordenFinal,
+                equipoLiquidado: null,
+                fotos: uniquePhotoInputs([equipo?.foto]),
+                fuente: "Historial AppSheet",
+              });
+              return;
+            }
+          }
+        } catch {
+          // Si falla historial, continuamos al fallback AppSheet.
         }
       }
 
@@ -3825,6 +3941,13 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
               >
                 Liquidado ({conteoCatalogo.liquidado})
               </button>
+              <button
+                type="button"
+                className={filtroEstadoCatalogo === "conciliado" ? "inv-pill active" : "inv-pill"}
+                onClick={() => setFiltroEstadoCatalogo("conciliado")}
+              >
+                Conciliados ({conteoCatalogo.conciliado})
+              </button>
             </div>
             <button type="button" className="secondary-btn small" onClick={() => exportPdf()}>
               PDF filtrado ({catalogoOrdenado.length})
@@ -3863,6 +3986,9 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
                     <p className="inv-row-title">{equipoNombre(e)}</p>
                     <div className="inv-inline">
                       <span className={`inv-state ${estadoGrupo(e.estado)}`}>{estadoGrupo(e.estado)}</span>
+                      {e.conciliacionEstado === "resuelto" ? (
+                        <span className="inv-state almacen">Conciliado</span>
+                      ) : null}
 	                      <button
 	                        type="button"
 	                        className="secondary-btn small"

@@ -8,6 +8,7 @@ import PlantaExternaPanel from "./components/PlantaExternaPanel";
 import InventarioPanel from "./components/InventarioPanel";
 import MapaPanel from "./components/MapaPanel";
 import SmartOltPanel from "./components/SmartOltPanel";
+import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 
 const REPORTES_PAGE_SIZE = 25;
@@ -166,6 +167,7 @@ const HISTORIAL_APPSHEET_SUBMENU_ITEMS = [
   { key: "extracto", label: "Extracto", sideLabel: "Extracto", gestoraVisible: false },
   { key: "movimientos", label: "Movimientos", sideLabel: "Movimientos", gestoraVisible: false },
   { key: "ordenesBaseData", label: "Ordenes", sideLabel: "Ordenes BaseData", gestoraVisible: true },
+  { key: "conciliacionOnus", label: "Conciliación ONUs", sideLabel: "Conciliación ONUs", gestoraVisible: false },
 ];
 const HISTORIAL_APPSHEET_SUBMENU_ACCESS_PREFIX = "historialAppsheet:";
 const HISTORIAL_APPSHEET_SUBMENU_NONE_KEY = `${HISTORIAL_APPSHEET_SUBMENU_ACCESS_PREFIX}none`;
@@ -210,6 +212,7 @@ const HIST_APPSHEET_SUBMENU_ICON_PATHS = {
   extracto: "M5 4H19V20H5V4ZM9 9H15M9 13H15M9 17H12",
   movimientos: "M4 18L9 12L13 15L20 8",
   ordenesBaseData: "M5 4H19V20H5V4ZM8 8H16M8 12H16M8 16H14",
+  conciliacionOnus: "M4 7H20V17H4V7ZM8 11H16M8 15H13M14.5 4.5L16.5 6.5L12 11",
 };
 
 function escapeRegExp(value = "") {
@@ -1682,6 +1685,11 @@ export default function App() {
     const guardado = localStorage.getItem("usuarioSesionId");
     return guardado ? Number(guardado) : null;
   });
+  const [sessionIdleMinutes, setSessionIdleMinutes] = useState(() => {
+    const guardado = Number(localStorage.getItem("sessionIdleMinutes") || 30);
+    return Number.isFinite(guardado) ? guardado : 30;
+  });
+  const [mostrarMenuSesion, setMostrarMenuSesion] = useState(false);
 
   const [reporteDesde, setReporteDesde] = useState("");
   const [reporteHasta, setReporteHasta] = useState("");
@@ -1709,6 +1717,8 @@ export default function App() {
   const mapaMarkersRef = useRef([]);
   const usuarioFormRef = useRef(null);
   const contentWrapRef = useRef(null);
+  const sessionMenuRef = useRef(null);
+  const sessionIdleTimeoutRef = useRef(null);
 
   const mostrarMontoCobrar = orden.solicitarPago === "SI";
   const mostrarCamposPlan =
@@ -1817,6 +1827,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("usuarioSesionId", String(usuarioSesionId || ""));
   }, [usuarioSesionId]);
+
+  useEffect(() => {
+    localStorage.setItem("sessionIdleMinutes", String(sessionIdleMinutes));
+  }, [sessionIdleMinutes]);
 
   useEffect(() => {
     localStorage.setItem("clientes", JSON.stringify(clientes));
@@ -2024,6 +2038,17 @@ export default function App() {
       if (!existe) setUsuarioSesionId(null);
     }
   }, [usuarioSesionId, usuariosActivos]);
+
+  useEffect(() => {
+    if (!mostrarMenuSesion) return undefined;
+    const handleOutsideClick = (event) => {
+      if (!sessionMenuRef.current?.contains(event.target)) {
+        setMostrarMenuSesion(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [mostrarMenuSesion]);
 
   useEffect(() => {
     if (!puedeVerUsuarios && vistaActiva === "usuarios") setVistaActiva("crear");
@@ -3723,12 +3748,59 @@ export default function App() {
     setCredencialesLogin({ username: "", password: "" });
   };
 
-  const cerrarSesion = () => {
+  const cerrarSesion = ({ motivo = "" } = {}) => {
+    if (sessionIdleTimeoutRef.current) {
+      window.clearTimeout(sessionIdleTimeoutRef.current);
+      sessionIdleTimeoutRef.current = null;
+    }
     setUsuarioSesionId(null);
     setCredencialesLogin({ username: "", password: "" });
     setErrorLogin("");
     setVistaActiva("crear");
+    setMostrarMenuSesion(false);
+    if (motivo) {
+      window.alert(motivo);
+    }
   };
+
+  useEffect(() => {
+    if (!usuarioSesionId) {
+      if (sessionIdleTimeoutRef.current) {
+        window.clearTimeout(sessionIdleTimeoutRef.current);
+        sessionIdleTimeoutRef.current = null;
+      }
+      return undefined;
+    }
+    const minutos = Number(sessionIdleMinutes);
+    if (!Number.isFinite(minutos) || minutos <= 0) {
+      if (sessionIdleTimeoutRef.current) {
+        window.clearTimeout(sessionIdleTimeoutRef.current);
+        sessionIdleTimeoutRef.current = null;
+      }
+      return undefined;
+    }
+
+    const reiniciarTemporizador = () => {
+      if (sessionIdleTimeoutRef.current) {
+        window.clearTimeout(sessionIdleTimeoutRef.current);
+      }
+      sessionIdleTimeoutRef.current = window.setTimeout(() => {
+        cerrarSesion({ motivo: `Sesión cerrada por ${minutos} minuto(s) de inactividad.` });
+      }, minutos * 60 * 1000);
+    };
+
+    const eventos = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "focus"];
+    eventos.forEach((eventName) => window.addEventListener(eventName, reiniciarTemporizador, { passive: true }));
+    reiniciarTemporizador();
+
+    return () => {
+      eventos.forEach((eventName) => window.removeEventListener(eventName, reiniciarTemporizador));
+      if (sessionIdleTimeoutRef.current) {
+        window.clearTimeout(sessionIdleTimeoutRef.current);
+        sessionIdleTimeoutRef.current = null;
+      }
+    };
+  }, [usuarioSesionId, sessionIdleMinutes]);
 
   const cargarHistorialAppsheetEquipos = async () => {
     if (!isSupabaseConfigured) {
@@ -8320,6 +8392,29 @@ export default function App() {
     boxShadow: "0 8px 20px -22px rgba(43, 45, 80, 0.35)",
   };
 
+  const sessionMenuButtonStyle = {
+    ...secondaryButton,
+    padding: "10px 14px",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "8px",
+    fontWeight: 600,
+  };
+
+  const sessionDropdownStyle = {
+    position: "absolute",
+    top: "calc(100% + 10px)",
+    right: 0,
+    width: "260px",
+    background: "#ffffff",
+    border: "1px solid #eceef5",
+    borderRadius: "16px",
+    boxShadow: "0 18px 40px -28px rgba(31, 41, 55, 0.45)",
+    padding: "14px",
+    display: "grid",
+    gap: "12px",
+  };
+
   const sidebarStyle = {
     gridArea: "sidebar",
     background: "#ffffff",
@@ -8648,9 +8743,41 @@ export default function App() {
           {vistaActiva === "historialAppsheet" ? "Historial AppSheet" : "Gestión de Órdenes"}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button onClick={cerrarSesion} style={{ ...secondaryButton, padding: "10px 14px" }}>
-            Cerrar sesión
-          </button>
+          <div style={{ position: "relative" }} ref={sessionMenuRef}>
+            <button type="button" onClick={() => setMostrarMenuSesion((prev) => !prev)} style={sessionMenuButtonStyle}>
+              <span style={{ color: "#1d2e4f", fontWeight: 700 }}>{usuarioSesion?.nombre || "Sesión"}</span>
+              <span style={{ color: "#7c88a4", fontSize: "12px" }}>{mostrarMenuSesion ? "▲" : "▼"}</span>
+            </button>
+            {mostrarMenuSesion ? (
+              <div style={sessionDropdownStyle}>
+                <div style={{ display: "grid", gap: "2px" }}>
+                  <div style={{ color: "#1d2e4f", fontWeight: 700, fontSize: "14px" }}>Sesión</div>
+                  <div style={{ color: "#7c88a4", fontSize: "12px" }}>Configura el cierre automático por inactividad.</div>
+                </div>
+                <div style={{ display: "grid", gap: "6px" }}>
+                  <label style={{ ...labelStyle, margin: 0 }}>Minutos sin actividad</label>
+                  <select
+                    value={String(sessionIdleMinutes)}
+                    onChange={(e) => setSessionIdleMinutes(Number(e.target.value))}
+                    style={{ ...inputStyle, margin: 0 }}
+                  >
+                    {[5, 10, 15, 30, 45, 60, 90].map((minutes) => (
+                      <option key={`idle-${minutes}`} value={minutes}>
+                        {minutes} minutos
+                      </option>
+                    ))}
+                    <option value="0">Nunca cerrar</option>
+                  </select>
+                </div>
+                <div style={{ color: "#98a3b9", fontSize: "12px", lineHeight: 1.4 }}>
+                  Actual: {sessionIdleMinutes > 0 ? `${sessionIdleMinutes} min` : "Sin cierre automático"}.
+                </div>
+                <button type="button" onClick={() => cerrarSesion()} style={{ ...secondaryButton, width: "100%" }}>
+                  Cerrar sesión
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -10322,6 +10449,8 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {historialAppsheetSubmenu === "conciliacionOnus" && <ConciliacionOnusPanel isMobile={isMobile} />}
 
             {historialAppsheetSubmenu === "ordenesBaseData" && (
               <div style={{ ...cardStyle, padding: 0, overflow: "hidden", borderColor: "#d7e2ef" }}>
