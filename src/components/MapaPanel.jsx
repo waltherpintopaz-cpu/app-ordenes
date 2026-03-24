@@ -80,6 +80,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
+  const shouldAutoFrameRef = useRef(true);
 
   const limpiarMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
@@ -141,7 +142,16 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     }
   }, [sessionUser?.nombre, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos, ordenesFallback]);
 
-  useEffect(() => { void cargar(); }, [cargar]);
+  useEffect(() => {
+    void cargar();
+    // La vista mapa debe cargar una sola vez al abrirse; los refrescos posteriores
+    // quedan solo bajo el boton manual "Actualizar".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    shouldAutoFrameRef.current = true;
+  }, [filtroNodo, busqueda, showCajas]);
 
   const ordenesFiltradas = useMemo(() => {
     const q = String(busqueda || "").trim().toLowerCase();
@@ -165,6 +175,12 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       mapsRef.current = maps;
       if (!mapRef.current) {
         mapRef.current = new maps.Map(mapCanvasRef.current, { center: DEFAULT_CENTER, zoom: 13, mapTypeId: mapType, streetViewControl: false, mapTypeControl: false, fullscreenControl: true, gestureHandling: "greedy" });
+        mapRef.current.addListener("dragstart", () => {
+          shouldAutoFrameRef.current = false;
+        });
+        mapRef.current.addListener("zoom_changed", () => {
+          shouldAutoFrameRef.current = false;
+        });
         setTimeout(() => {
           try {
             maps.event.trigger(mapRef.current, "resize");
@@ -210,19 +226,23 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         points.push({ lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) });
       });
     }
-    if (points.length === 1) {
-      map.panTo(points[0]);
-      map.setZoom(16);
-    } else if (points.length > 1) {
-      const b = new maps.LatLngBounds();
-      points.slice(0, 220).forEach((p) => b.extend(p));
-      map.fitBounds(b);
+    if (shouldAutoFrameRef.current) {
+      if (points.length === 1) {
+        map.panTo(points[0]);
+        map.setZoom(16);
+      } else if (points.length > 1) {
+        const b = new maps.LatLngBounds();
+        points.slice(0, 220).forEach((p) => b.extend(p));
+        map.fitBounds(b);
+      }
+      shouldAutoFrameRef.current = false;
     }
     return () => limpiarMarkers();
   }, [limpiarMarkers, ordenesFiltradas, cajasFiltradas, showCajas]);
 
   const centrar = (item, tipo) => {
     if (!item?.coords || !mapRef.current) return;
+    shouldAutoFrameRef.current = false;
     setSelectedTipo(tipo);
     setSelectedId(String(tipo === "orden" ? item.id : item.uid));
     mapRef.current.panTo({ lat: Number(item.coords.lat), lng: Number(item.coords.lng) });
