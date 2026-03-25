@@ -560,7 +560,7 @@ function InventoryPhotoThumb(props) {
 export default function InventarioPanel({ initialTab = "catalogo", sessionUser = null }) {
   const esTecnico = initialTab === "stockTecnico" || norm(sessionUser?.rol) === "tecnico";
   const tabs = useMemo(() => {
-    return esTecnico ? ["stockTecnico", "movimientos"] : ["registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes"];
+    return esTecnico ? ["stockTecnico", "movimientos", "recogidos"] : ["registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes"];
   }, [esTecnico]);
   const [tab, setTab] = useState(() => {
     const base = String(initialTab || "").trim();
@@ -644,6 +644,8 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   const tecnicoSesion = String(sessionUser?.nombre || sessionUser?.username || "").trim();
   const tecnicoSel = esTecnico ? tecnicoSesion : tecnicoFiltro;
   const puedeAprobarDevoluciones = norm(sessionUser?.rol) !== "tecnico";
+  const [equiposRecogidos, setEquiposRecogidos] = useState([]);
+  const [cargandoRecogidos, setCargandoRecogidos] = useState(false);
   const esAdmin = norm(sessionUser?.rol) === "administrador";
   const almacenesActivos = useMemo(
     () => (almacenes || []).filter((a) => a?.activo),
@@ -1144,6 +1146,36 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   }, []);
 
   useEffect(() => { void cargar(); }, [cargar]);
+
+  const cargarEquiposRecogidos = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const nombre = String(sessionUser?.nombre || sessionUser?.username || "").trim();
+    if (!nombre) return;
+    setCargandoRecogidos(true);
+    try {
+      const { data } = await supabase
+        .from("stock_tecnico")
+        .select("*")
+        .eq("ingresado_almacen", false)
+        .order("created_at", { ascending: false });
+      // filtrar por nombre del técnico (case-insensitive en cliente)
+      const normNombre = nombre.toLowerCase();
+      const filtrados = (data || []).filter(
+        (r) => String(r.tecnico_recupera || "").toLowerCase() === normNombre
+      );
+      setEquiposRecogidos(filtrados);
+    } catch (_) {
+      // silencioso
+    } finally {
+      setCargandoRecogidos(false);
+    }
+  }, [sessionUser?.nombre, sessionUser?.username]);
+
+  useEffect(() => {
+    if (!esTecnico) return;
+    void cargarEquiposRecogidos();
+  }, [esTecnico, cargarEquiposRecogidos]);
+
   useEffect(() => {
     const raw = String(initialTab || "").trim();
     const objetivo = raw === "materiales" ? "articulos" : raw;
@@ -3419,6 +3451,13 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
 	          >
 	            Mi kardex
 	          </button>
+	          <button
+	            type="button"
+	            className={tab === "recogidos" ? "inv-pill active" : "inv-pill"}
+	            onClick={() => { setTab("recogidos"); void cargarEquiposRecogidos(); }}
+	          >
+	            Equipos recogidos {equiposRecogidos.length > 0 ? `(${equiposRecogidos.length})` : ""}
+	          </button>
 	        </div>
 	      ) : null}
       {tab === "almacenes" ? (
@@ -4233,6 +4272,85 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
               ))}
             </div>
           </article>
+        </div>
+      ) : null}
+
+      {tab === "recogidos" ? (
+        <div className="inv-card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <h3 style={{ margin: 0 }}>Equipos recogidos — pendientes de entrega a almacén</h3>
+            <button type="button" className="secondary-btn small" onClick={() => void cargarEquiposRecogidos()} disabled={cargandoRecogidos}>
+              {cargandoRecogidos ? "Cargando..." : "Actualizar"}
+            </button>
+          </div>
+          {cargandoRecogidos ? (
+            <p className="panel-meta">Cargando...</p>
+          ) : equiposRecogidos.length === 0 ? (
+            <p className="empty">Sin equipos recogidos pendientes.</p>
+          ) : (
+            <div className="inv-list">
+              {equiposRecogidos.map((item) => {
+                const yaSolicitado = Boolean(item.codigo_entrega);
+                const borderColor = yaSolicitado ? "#22c55e" : "#f59e0b";
+                return (
+                  <div key={item.id} className="inv-row inv-row-eq" style={{ borderLeft: `3px solid ${borderColor}` }}>
+                    <div className="inv-row-eq-info">
+                      <p className="inv-row-title" style={{ color: yaSolicitado ? "#166534" : "#92400e" }}>
+                        {item.tipo || "-"}
+                        {yaSolicitado && <span style={{ marginLeft: "8px", fontSize: "11px", background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "2px 8px", fontWeight: 700 }}>Entrega solicitada</span>}
+                      </p>
+                      <p className="inv-row-meta">Estado: <strong>{item.estado || "-"}</strong> | Cliente: {item.nombre_cliente || "-"} | Nodo: {item.nodo || "-"}</p>
+                      <p className="inv-row-meta">Orden: {item.orden_codigo || "-"} · Recogido: {item.created_at ? new Date(item.created_at).toLocaleDateString("es-PE") : "-"}</p>
+                      {yaSolicitado && (
+                        <p className="inv-row-meta" style={{ color: "#166534", fontWeight: 600 }}>
+                          Código: {item.codigo_entrega} · Solicitado: {item.fecha_solicitud_entrega ? new Date(item.fecha_solicitud_entrega).toLocaleString("es-PE") : "-"}
+                        </p>
+                      )}
+                      <div className="inv-actions">
+                        {esTecnico && !yaSolicitado && (
+                          <button
+                            type="button"
+                            className="primary-btn small"
+                            onClick={async () => {
+                              const año = new Date().getFullYear();
+                              const seq = String(item.id).padStart(4, "0");
+                              const codigo = `ENT-${seq}-${año}`;
+                              const ahora = new Date().toISOString();
+                              await supabase.from("stock_tecnico").update({
+                                codigo_entrega: codigo,
+                                fecha_solicitud_entrega: ahora,
+                                solicitado_por: String(sessionUser?.nombre || sessionUser?.username || ""),
+                                updated_at: ahora,
+                              }).eq("id", item.id);
+                              setEquiposRecogidos((prev) => prev.map((r) => r.id === item.id ? { ...r, codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: String(sessionUser?.nombre || "") } : r));
+                            }}
+                          >
+                            Solicitar entrega a almacén
+                          </button>
+                        )}
+                        {!esTecnico && (
+                          <button
+                            type="button"
+                            className="danger-btn small"
+                            onClick={async () => {
+                              if (!window.confirm("¿Eliminar este equipo recogido del stock?")) return;
+                              await supabase.from("stock_tecnico").delete().eq("id", item.id);
+                              setEquiposRecogidos((prev) => prev.filter((r) => r.id !== item.id));
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {Array.isArray(item.fotos) && item.fotos[0] ? (
+                      <img src={item.fotos[0]} alt="equipo" className="inv-thumb inv-thumb-eq" />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : null}
 

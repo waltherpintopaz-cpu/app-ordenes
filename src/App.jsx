@@ -129,9 +129,11 @@ const DEFAULT_MIKROTIK_NODO_ROUTER_WEB = [
   { nodo: "Nod_06", routerKey: "apipa", activo: true, observacion: "" },
 ];
 const MENU_VISTAS_WEB = [
+  { key: "dashboard", label: "Dashboard" },
   { key: "crear", label: "Crear orden" },
   { key: "pendientes", label: "Pendientes" },
   { key: "historial", label: "Historial" },
+  { key: "recuperaciones", label: "Recuperaciones" },
   { key: "historialAppsheet", label: "Historial AppSheet" },
   { key: "diagnosticoServicio", label: "Diagnóstico servicio" },
   { key: "reportes", label: "Reportes" },
@@ -148,9 +150,16 @@ const MENU_VISTAS_WEB = [
 
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["crear", "pendientes", "historial", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes"],
-  Tecnico: ["crear", "pendientes", "historial", "mapa", "consultaApi", "smartOlt", "inventario", "clientes"],
-  Almacen: ["historial", "reportes", "inventario", "smartOlt", "plantaExterna"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes"],
+  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "consultaApi", "smartOlt", "inventario", "clientes"],
+  Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna"],
+};
+
+// Items que siempre se garantizan por rol, independientemente de localStorage o versión guardada.
+// Agregar aquí cualquier nuevo item de menú que deba aparecer automáticamente en roles existentes.
+const MENU_ITEMS_GARANTIZADOS_POR_ROL = {
+  Administrador: MENU_VISTAS_WEB.map((item) => item.key),
+  Gestora: ["dashboard"],
 };
 
 const HISTORIAL_APPSHEET_SUBMENU_ITEMS = [
@@ -186,9 +195,11 @@ const DIAGNOSTICO_SERVICIO_PERMISOS_ACCESS_KEYS = DIAGNOSTICO_SERVICIO_PERMISOS_
 );
 
 const MENU_ICON_PATHS = {
+  dashboard: "M3 3H10V10H3V3ZM14 3H21V10H14V3ZM3 14H10V21H3V14ZM14 14H21V21H14V14Z",
   crear: "M12 5V19M5 12H19",
   pendientes: "M8 7H16M8 12H16M8 17H13M6 7H6.01M6 12H6.01M6 17H6.01",
   historial: "M12 8V12L15 14M21 12A9 9 0 1 1 3 12A9 9 0 0 1 21 12Z",
+  recuperaciones: "M4 12L8 8M4 12L8 16M4 12H14M20 6V18M14 6H20M14 18H20",
   historialAppsheet: "M5 4H19V20H5V4ZM9 9H15M9 13H15M9 17H13",
   diagnosticoServicio: "M3 12H6L8 17L12 7L15 14L17 12H21",
   reportes: "M5 19V12M12 19V8M19 19V5",
@@ -611,6 +622,14 @@ const initialLiquidacion = {
   codigoQRManual: "",
 };
 
+const initialLiquidacionRecojo = {
+  tecnicoEjecuta: "",
+  resultado: "Completada",
+  observacion: "",
+  equiposRecuperados: [],
+  fotos: [],
+};
+
 const initialUsuario = {
   nombre: "",
   username: "",
@@ -657,6 +676,15 @@ function clienteMergeKey(item = {}) {
     .toLowerCase();
   if (cod && cod !== "-") return `cod:${cod}`;
   return "";
+}
+
+function normalizarEstadoServicioCliente(raw) {
+  const txt = String(raw || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!txt) return "DESCONOCIDO";
+  if (txt.includes("activo") || txt.includes("online") || txt.includes("enabled") || txt === "up") return "ACTIVO";
+  if (txt.includes("suspend") || txt.includes("cortado") || txt.includes("bloque") || txt.includes("disabled") || txt.includes("moroso") || txt.includes("deuda")) return "SUSPENDIDO";
+  if (txt.includes("inactivo") || txt.includes("offline") || txt === "down") return "INACTIVO";
+  return "DESCONOCIDO";
 }
 
 function estadoAppsheetNormalizado(value = "") {
@@ -1463,6 +1491,7 @@ export default function App() {
   const [orden, setOrden] = useState(buildInitialOrder());
   const [ordenEditandoId, setOrdenEditandoId] = useState(null);
   const [buscandoDni, setBuscandoDni] = useState(false);
+  const [fotosClienteDni, setFotosClienteDni] = useState([]);
   const [vistaActiva, setVistaActiva] = useState("crear");
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
   const [historialAppsheetEquipos, setHistorialAppsheetEquipos] = useState([]);
@@ -1637,6 +1666,9 @@ export default function App() {
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
   const [busquedaClientes, setBusquedaClientes] = useState("");
   const [busquedaClientesDraft, setBusquedaClientesDraft] = useState("");
+  const [filtroEstadoCliente, setFiltroEstadoCliente] = useState("TODOS");
+  const [actualizarEstadoMasivoLoading, setActualizarEstadoMasivoLoading] = useState(false);
+  const [actualizarEstadoMasivoProgreso, setActualizarEstadoMasivoProgreso] = useState(null);
   const [clientesPagina, setClientesPagina] = useState(1);
   const [usuariosSupabaseReady, setUsuariosSupabaseReady] = useState(false);
   const [usuariosSupabaseSaving, setUsuariosSupabaseSaving] = useState(false);
@@ -1661,7 +1693,26 @@ export default function App() {
   const usuariosSyncTimerRef = useRef(null);
 
   const [ordenEnLiquidacion, setOrdenEnLiquidacion] = useState(null);
+  const [ordenDetalle, setOrdenDetalle] = useState(null);
+  const [fotosOrdenDetalle, setFotosOrdenDetalle] = useState([]);
   const [liquidacion, setLiquidacion] = useState(initialLiquidacion);
+  const [liquidacionRecojo, setLiquidacionRecojo] = useState(initialLiquidacionRecojo);
+  const [historialRecuperaciones, setHistorialRecuperaciones] = useState([]);
+  const [cargandoRecuperaciones, setCargandoRecuperaciones] = useState(false);
+  const [stockTecnico, setStockTecnico] = useState([]);
+  const [cargandoStockTecnico, setCargandoStockTecnico] = useState(false);
+  const [recuperacionesSubmenu, setRecuperacionesSubmenu] = useState("ejecuciones");
+  const [ingresandoStockId, setIngresandoStockId] = useState(null);
+  const [observacionIngreso, setObservacionIngreso] = useState("");
+  const [fotoRecepcion, setFotoRecepcion] = useState("");
+  const [scannerRecojoIdx, setScannerRecojoIdx] = useState(null);
+  const [liberandoCatalogoId, setLiberandoCatalogoId] = useState(null);
+  const [liberandoCatalogoEstado, setLiberandoCatalogoEstado] = useState("disponible");
+  const [vinculandoSerialId, setVinculandoSerialId] = useState(null);
+  const [vinculandoSerialValor, setVinculandoSerialValor] = useState("");
+  const [filtroHistorialBusqueda, setFiltroHistorialBusqueda] = useState("");
+  const [filtroHistorialNodo, setFiltroHistorialNodo] = useState("TODOS");
+  const [filtroHistorialCatalogado, setFiltroHistorialCatalogado] = useState("TODOS");
 
   const [liquidacionSeleccionada, setLiquidacionSeleccionada] = useState(null);
   const [liquidacionEditandoId, setLiquidacionEditandoId] = useState(null);
@@ -1680,6 +1731,9 @@ export default function App() {
 
   const [busquedaPendientes, setBusquedaPendientes] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("TODOS");
+  const [calendarioFecha, setCalendarioFecha] = useState(() => todayIsoLocal());
+  const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
+  const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
   const [usuarioSesionId, setUsuarioSesionId] = useState(() => {
     const guardado = localStorage.getItem("usuarioSesionId");
@@ -1690,6 +1744,8 @@ export default function App() {
     return Number.isFinite(guardado) ? guardado : 30;
   });
   const [mostrarMenuSesion, setMostrarMenuSesion] = useState(false);
+  const [cambiandoClave, setCambiandoClave] = useState(false);
+  const [cambioClaveForm, setCambioClaveForm] = useState({ actual: "", nueva: "", confirmar: "" });
 
   const [reporteDesde, setReporteDesde] = useState("");
   const [reporteHasta, setReporteHasta] = useState("");
@@ -1715,6 +1771,9 @@ export default function App() {
   const mapaRef = useRef(null);
   const mapaInstanciaRef = useRef(null);
   const mapaMarkersRef = useRef([]);
+  const mapaCrearRef = useRef(null);
+  const mapaCrearInstanceRef = useRef(null);
+  const mapaCrearMarkerRef = useRef(null);
   const usuarioFormRef = useRef(null);
   const contentWrapRef = useRef(null);
   const sessionMenuRef = useRef(null);
@@ -2044,6 +2103,8 @@ export default function App() {
     const handleOutsideClick = (event) => {
       if (!sessionMenuRef.current?.contains(event.target)) {
         setMostrarMenuSesion(false);
+        setCambiandoClave(false);
+        setCambioClaveForm({ actual: "", nueva: "", confirmar: "" });
       }
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -2079,6 +2140,20 @@ export default function App() {
     if (vistaActiva !== "historial") return;
     void cargarLiquidacionesDesdeSupabase({ silent: true });
   }, [vistaActiva]);
+
+  useEffect(() => {
+    if (vistaActiva !== "recuperaciones") return;
+    void cargarHistorialRecuperaciones();
+    void cargarStockTecnico();
+  }, [vistaActiva]);
+
+  // Pre-llenar autor de orden con el usuario actual al crear nueva orden
+  useEffect(() => {
+    if (vistaActiva !== "crear" || ordenEditandoId) return;
+    if (!usuarioSesion?.nombre) return;
+    setOrden((prev) => prev.autorOrden ? prev : { ...prev, autorOrden: usuarioSesion.nombre });
+  }, [vistaActiva, ordenEditandoId, usuarioSesion]);
+
 
   useEffect(() => {
     if (vistaActiva !== "historialAppsheet") return;
@@ -2233,16 +2308,18 @@ export default function App() {
 
   const clientesFiltrados = useMemo(() => {
     const q = busquedaClientes.trim().toLowerCase();
-    if (!q) return clientesPorNodo;
-
     return clientesPorNodo.filter((c) => {
+      if (filtroEstadoCliente !== "TODOS") {
+        const estadoNorm = c.estadoServicio || normalizarEstadoServicioCliente(c.estado || c.payload?.estado || c.payload?.Estado || "");
+        if (estadoNorm !== filtroEstadoCliente) return false;
+      }
+      if (!q) return true;
       const equiposTexto = Array.isArray(c.equiposHistorial)
         ? c.equiposHistorial
             .map((e) => `${e.tipo} ${e.codigo} ${e.serial} ${e.marca} ${e.modelo}`)
             .join(" ")
             .toLowerCase()
         : "";
-
       return (
         safeIncludes(c.codigoCliente, q) ||
         safeIncludes(c.dni, q) ||
@@ -2258,7 +2335,18 @@ export default function App() {
         equiposTexto.includes(q)
       );
     });
-  }, [clientesPorNodo, busquedaClientes]);
+  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente]);
+
+  const conteosEstadoCliente = useMemo(() => {
+    const counts = { TODOS: clientesPorNodo.length, ACTIVO: 0, SUSPENDIDO: 0, INACTIVO: 0, DESCONOCIDO: 0 };
+    clientesPorNodo.forEach((c) => {
+      const e = c.estadoServicio || normalizarEstadoServicioCliente(c.estado || c.payload?.estado || c.payload?.Estado || "");
+      if (counts[e] !== undefined) counts[e]++;
+      else counts.DESCONOCIDO++;
+    });
+    return counts;
+  }, [clientesPorNodo]);
+
   const diagnosticoServicioCliente = useMemo(() => {
     if (diagnosticoServicioModo !== "dni") return null;
     const dni = String(diagnosticoServicioConsulta || "").replace(/\D/g, "");
@@ -2317,9 +2405,19 @@ export default function App() {
     return clientesFiltrados.slice(start, start + CLIENTES_PAGE_SIZE);
   }, [clientesFiltrados, clientesPagina]);
 
+  // Mapa DNI -> cantidad de servicios (para badge "múltiples servicios")
+  const dniServiciosCount = useMemo(() => {
+    const map = {};
+    (Array.isArray(clientes) ? clientes : []).forEach((c) => {
+      const d = String(c.dni || "").trim();
+      if (d) map[d] = (map[d] || 0) + 1;
+    });
+    return map;
+  }, [clientes]);
+
   useEffect(() => {
     setClientesPagina(1);
-  }, [busquedaClientes]);
+  }, [busquedaClientes, filtroEstadoCliente]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -2356,6 +2454,90 @@ export default function App() {
       return;
     }
     window.alert("Clientes locales eliminados.");
+  };
+
+  const actualizarEstadoMasivoMikrowisp = async () => {
+    const clientesConDni = clientesPorNodo.filter((c) => {
+      const dni = String(c?.dni || "").replace(/\D/g, "").trim();
+      return dni.length >= 6;
+    });
+    if (!clientesConDni.length) {
+      window.alert("No hay clientes con DNI para consultar.");
+      return;
+    }
+    const ok = window.confirm(`Se consultará Mikrowisp para ${clientesConDni.length} clientes. Puede tardar varios minutos. ¿Continuar?`);
+    if (!ok) return;
+
+    const MIKROWISP_TOKEN_LOCAL = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+    const endpoints = import.meta.env.DEV
+      ? ["/api/mikrowisp/GetClientsDetails", "https://americanet.club/api/v1/GetClientsDetails"]
+      : ["https://americanet.club/api/v1/GetClientsDetails", "/api/mikrowisp/GetClientsDetails"];
+
+    const consultarDni = async (dniLimpio) => {
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", token: MIKROWISP_TOKEN_LOCAL },
+            body: JSON.stringify({ token: MIKROWISP_TOKEN_LOCAL, cedula: dniLimpio }),
+          });
+          const body = await res.json();
+          if (res.ok && body && body.success !== false) {
+            const dataBase = body?.data || body?.datos || body?.client || body?.cliente || body || {};
+            const data = Array.isArray(dataBase) && dataBase.length > 0 ? dataBase[0] : dataBase;
+            const estadoRaw = data?.estado || data?.status || data?.service_status || data?.state || "";
+            return normalizarEstadoServicioCliente(estadoRaw);
+          }
+        } catch {
+          // try next endpoint
+        }
+      }
+      return null;
+    };
+
+    setActualizarEstadoMasivoLoading(true);
+    setActualizarEstadoMasivoProgreso({ actual: 0, total: clientesConDni.length, actualizados: 0 });
+
+    const actualizados = [];
+    const CONCURRENCIA = 3;
+    for (let i = 0; i < clientesConDni.length; i += CONCURRENCIA) {
+      const lote = clientesConDni.slice(i, i + CONCURRENCIA);
+      const resultados = await Promise.all(
+        lote.map(async (c) => {
+          const dni = String(c?.dni || "").replace(/\D/g, "").trim();
+          const estadoNuevo = await consultarDni(dni);
+          return { c, estadoNuevo };
+        })
+      );
+      for (const { c, estadoNuevo } of resultados) {
+        if (estadoNuevo && estadoNuevo !== (c.estadoServicio || "DESCONOCIDO")) {
+          actualizados.push({ ...c, estadoServicio: estadoNuevo });
+        }
+      }
+      setActualizarEstadoMasivoProgreso({ actual: Math.min(i + CONCURRENCIA, clientesConDni.length), total: clientesConDni.length, actualizados: actualizados.length });
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    if (actualizados.length > 0) {
+      const clientesActualizadosMap = new Map(actualizados.map((c) => [String(c.id || c.dni || ""), c]));
+      const nuevosClientes = clientes.map((c) => {
+        const key = String(c.id || c.dni || "");
+        return clientesActualizadosMap.get(key) || c;
+      });
+      setClientes(nuevosClientes);
+      if (isSupabaseConfigured) {
+        try {
+          const rows = actualizados.map((c) => serializarClienteParaSupabase(c));
+          await supabase.from(CLIENTES_TABLE).upsert(rows, { onConflict: "dni" });
+        } catch {
+          // noop — estado queda en memoria
+        }
+      }
+    }
+
+    setActualizarEstadoMasivoLoading(false);
+    setActualizarEstadoMasivoProgreso(null);
+    window.alert(`Actualización completada. ${actualizados.length} clientes con estado actualizado.`);
   };
 
   const obtenerFotosLiquidacionClienteSupabase = async (cliente = {}) => {
@@ -3053,6 +3235,7 @@ export default function App() {
     return {
       id: idBase || String(Date.now()),
       codigo_cliente: nullIfEmpty(cliente.codigoCliente),
+      codigo_abonado: nullIfEmpty(cliente.codigoAbonado),
       dni: nullIfEmpty(cliente.dni),
       nombre: nullIfEmpty(cliente.nombre),
       direccion: nullIfEmpty(cliente.direccion),
@@ -3076,6 +3259,7 @@ export default function App() {
       fotos_liquidacion: Array.isArray(cliente.fotosLiquidacion) ? cliente.fotosLiquidacion : [],
       historial_instalaciones: Array.isArray(cliente.historialInstalaciones) ? cliente.historialInstalaciones : [],
       equipos_historial: Array.isArray(cliente.equiposHistorial) ? cliente.equiposHistorial : [],
+      estado_servicio: cliente.estadoServicio || "DESCONOCIDO",
       payload: cliente,
       updated_at: new Date().toISOString(),
     };
@@ -3087,10 +3271,14 @@ export default function App() {
       return {
         ...p,
         id: p.id || row.id,
+        codigoAbonado: row.codigo_abonado || p.codigoAbonado || "",
+      estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
       };
     }
     return {
       id: row.id || row.dni || row.codigo_cliente || String(Date.now()),
+      codigoAbonado: row.codigo_abonado || "",
+      estadoServicio: row.estado_servicio || "DESCONOCIDO",
       codigoCliente: row.codigo_cliente || "-",
       dni: row.dni || "-",
       nombre: row.nombre || "-",
@@ -3276,7 +3464,7 @@ export default function App() {
       };
 
       let { data, error } = await fetchAll(
-        "id,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,payload,updated_at");
@@ -3405,11 +3593,15 @@ export default function App() {
 
       const keyOf = (item = {}) => clienteMergeKey(item);
 
-      const prevByKey = new Map(
-        clientes
-          .map((c) => [keyOf(c), c])
-          .filter(([k]) => Boolean(k))
-      );
+      const prevByKey = new Map();
+      clientes.forEach((c) => {
+        const k = keyOf(c);
+        if (k) prevByKey.set(k, c);
+        const cod = String(c?.codigoCliente || "").trim().toLowerCase();
+        if (cod && cod !== "-") prevByKey.set(`cod:${cod}`, c);
+        const dniNorm = String(c?.dni || "").replace(/\D/g, "").trim();
+        if (dniNorm && dniNorm.length >= 6) prevByKey.set(`dni:${dniNorm}`, c);
+      });
 
       const parseRows = rows
         .map((r, i) => {
@@ -3488,7 +3680,9 @@ export default function App() {
 
       const imported = parseRows.map((row) => {
         const key = keyOf(row);
-        const prev = prevByKey.get(key);
+        const dniNormRow = String(row?.dni || "").replace(/\D/g, "").trim();
+        const prev = prevByKey.get(key)
+          || (dniNormRow.length >= 6 ? prevByKey.get(`dni:${dniNormRow}`) : undefined);
         return {
           ...prev,
           ...row,
@@ -6341,10 +6535,33 @@ export default function App() {
     }));
   };
 
+  const generarCodigoUnico = useCallback(() => {
+    const year = new Date().getFullYear();
+    const prefix = "ORD-";
+    const suffix = `-${year}`;
+    let max = 0;
+    ordenes.forEach((o) => {
+      const code = String(o.codigo || "");
+      if (code.startsWith(prefix) && code.endsWith(suffix)) {
+        const mid = code.slice(prefix.length, code.length - suffix.length);
+        const num = parseInt(mid, 10);
+        if (!isNaN(num) && num > max) max = num;
+      }
+    });
+    return `ORD-${String(max + 1).padStart(4, "0")}-${year}`;
+  }, [ordenes]);
+
   const generarCodigo = () => {
-    const random = Math.floor(1000 + Math.random() * 9000);
-    handleChange("codigo", `ORD-${random}-${new Date().getFullYear()}`);
+    handleChange("codigo", generarCodigoUnico());
   };
+
+  // Auto-generar código único al abrir formulario de nueva orden
+  // (debe estar aquí, después de generarCodigoUnico para evitar ReferenceError)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (vistaActiva !== "crear" || ordenEditandoId) return;
+    setOrden((prev) => prev.codigo ? prev : { ...prev, codigo: generarCodigoUnico() });
+  }, [vistaActiva, ordenEditandoId, generarCodigoUnico]);
 
   const llamarCliente = (telefono) => {
     if (!telefono) {
@@ -6425,7 +6642,50 @@ export default function App() {
 
       const result = await response.json();
 
-      if (result.success && result.data) {
+      // Buscar en clientes internos primero
+      let clienteInterno = null;
+      if (isSupabaseConfigured) {
+        const { data: cli } = await supabase
+          .from("clientes")
+          .select("nombre,direccion,celular,email,contacto,nodo,usuario_nodo,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion")
+          .eq("dni", dni)
+          .order("id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        clienteInterno = cli;
+      }
+
+      if (clienteInterno) {
+        // Verificar si hay múltiples servicios para este DNI
+        const { data: todosServicios } = await supabase
+          .from("clientes")
+          .select("codigo_cliente, nodo, velocidad, usuario_nodo")
+          .eq("dni", dni)
+          .order("id", { ascending: false });
+        if (todosServicios && todosServicios.length > 1) {
+          const resumen = todosServicios.map((s) => `• ${s.codigo_cliente || "Sin código"} — ${s.nodo || "Sin nodo"} ${s.velocidad ? `(${s.velocidad})` : ""}`).join("\n");
+          alert(`⚠️ Este DNI ya tiene ${todosServicios.length} servicio(s) activos:\n${resumen}\n\nSi es un nuevo servicio, se creará un código de abonado nuevo al liquidar.`);
+        }
+        setOrden((prev) => ({
+          ...prev,
+          nombre: clienteInterno.nombre || prev.nombre,
+          direccion: clienteInterno.direccion || prev.direccion,
+          celular: clienteInterno.celular || prev.celular,
+          email: clienteInterno.email || prev.email,
+          contacto: clienteInterno.contacto || prev.contacto,
+          nodo: clienteInterno.nodo || prev.nodo,
+          usuarioNodo: clienteInterno.usuario_nodo || prev.usuarioNodo,
+          velocidad: clienteInterno.velocidad || prev.velocidad,
+          precioPlan: clienteInterno.precio_plan || prev.precioPlan,
+          ubicacion: clienteInterno.ubicacion || prev.ubicacion,
+          tecnico: clienteInterno.tecnico || prev.tecnico,
+          fotoFachada: clienteInterno.foto_fachada || prev.fotoFachada,
+        }));
+        // Cargar todas las fotos del cliente
+        const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
+        const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
+        setFotosClienteDni(todasFotos);
+      } else if (result.success && result.data) {
         setOrden((prev) => ({
           ...prev,
           nombre: result.data.full_name || "",
@@ -6540,8 +6800,25 @@ export default function App() {
       setOrdenes((prev) => [ordenLocal, ...prev]);
     }
 
+    // Notificación push al técnico asignado (solo en órdenes nuevas con técnico)
+    if (!ordenEditandoId && isSupabaseConfigured && ordenLocal.tecnico) {
+      void supabase.functions.invoke("send-push-notification", {
+        body: {
+          tecnico_nombre: ordenLocal.tecnico,
+          title: "Nueva orden asignada",
+          body: `${ordenLocal.codigo} — ${ordenLocal.nombre || "Cliente"}`,
+          data: {
+            tipo: "nueva_orden",
+            orden_codigo: String(ordenLocal.codigo || ""),
+            orden_id: String(ordenLocal.id || ""),
+          },
+        },
+      });
+    }
+
     setOrdenEditandoId(null);
     setOrden(buildInitialOrder());
+    setFotosClienteDni([]);
     setVistaActiva("pendientes");
   };
 
@@ -6629,6 +6906,10 @@ export default function App() {
       tecnicoLiquida: ordenItem.tecnico || "",
       cobroRealizado: ordenItem.solicitarPago === "SI" ? "SI" : "NO",
       montoCobrado: ordenItem.solicitarPago === "SI" ? ordenItem.montoCobrar || "" : "",
+    });
+    setLiquidacionRecojo({
+      ...initialLiquidacionRecojo,
+      tecnicoEjecuta: usuarioSesion?.nombre || "",
     });
     setMostrarScannerLiquidacion(false);
     setVistaActiva("liquidar");
@@ -6862,12 +7143,21 @@ export default function App() {
     }
   };
 
-  const guardarClienteDesdeLiquidacion = (registroLiquidado) => {
+  const guardarClienteDesdeLiquidacion = async (registroLiquidado) => {
     if (!registroLiquidado) return;
     if (!esActuacionInstalacion(registroLiquidado.tipoActuacion)) return;
 
     const dni = String(registroLiquidado.dni || "").trim();
     if (!dni) return;
+
+    const nodo = String(registroLiquidado.nodo || "").trim();
+
+    // Generar código abonado N0X-XXXX desde función SQL
+    let codigoAbonado = "";
+    if (isSupabaseConfigured && nodo) {
+      const { data: codData } = await supabase.rpc("generar_codigo_abonado", { p_nodo: nodo });
+      codigoAbonado = codData || "";
+    }
 
     const historialItem = {
       id: registroLiquidado.id,
@@ -6897,6 +7187,7 @@ export default function App() {
 
     const nuevoCliente = {
       id: Date.now(),
+      codigoAbonado: codigoAbonado,
       codigoCliente: dni,
       dni,
       nombre: registroLiquidado.nombre || "",
@@ -6923,67 +7214,38 @@ export default function App() {
       equiposHistorial: equiposHistorialActuales,
     };
 
+    // Cada instalación = nuevo servicio independiente (no fusionar por DNI)
+    // Solo actualizar si ya existe un registro con el mismo codigo de orden (re-liquidación)
     let clienteResultado = null;
     setClientes((prev) => {
-      const existente = prev.find((c) => String(c.dni) === dni);
-
-      if (!existente) {
-        clienteResultado = nuevoCliente;
-        return [nuevoCliente, ...prev];
-      }
-
-      const historialActual = Array.isArray(existente.historialInstalaciones)
-        ? existente.historialInstalaciones
-        : [];
-
-      const historialSinDuplicado = historialActual.filter((h) => h.id !== historialItem.id);
-
-      const equiposHistorialPrevios = Array.isArray(existente.equiposHistorial)
-        ? existente.equiposHistorial
-        : [];
-
-      const nuevosEquiposFiltrados = equiposHistorialActuales.filter(
-        (nuevo) =>
-          !equiposHistorialPrevios.some(
-            (existenteEq) =>
-              String(existenteEq.codigo || "") === String(nuevo.codigo || "") &&
-              String(existenteEq.fecha || "") === String(nuevo.fecha || "")
-          )
+      const existenteMismaOrden = prev.find((c) =>
+        Array.isArray(c.historialInstalaciones) &&
+        c.historialInstalaciones.some((h) => h.id === historialItem.id)
       );
 
-      const actualizado = {
-        ...existente,
-        codigoCliente: dni,
-        dni,
-        nombre: registroLiquidado.nombre || existente.nombre || "",
-        direccion: registroLiquidado.direccion || existente.direccion || "",
-        celular: registroLiquidado.celular || existente.celular || "",
-        email: registroLiquidado.email || existente.email || "",
-        contacto: registroLiquidado.contacto || existente.contacto || "",
-        empresa: registroLiquidado.empresa || existente.empresa || "",
-        velocidad: registroLiquidado.velocidad || existente.velocidad || "",
-        precioPlan: registroLiquidado.precioPlan || existente.precioPlan || "",
-        nodo: registroLiquidado.nodo || existente.nodo || "",
-        usuarioNodo: registroLiquidado.usuarioNodo || existente.usuarioNodo || "",
-        passwordUsuario: registroLiquidado.passwordUsuario || existente.passwordUsuario || "",
-        ubicacion: registroLiquidado.ubicacion || existente.ubicacion || "",
-        descripcion: registroLiquidado.descripcion || existente.descripcion || "",
-        fotoFachada: registroLiquidado.fotoFachada || existente.fotoFachada || "",
-        fotosLiquidacion:
-          registroLiquidado.liquidacion?.fotos?.length > 0
-            ? registroLiquidado.liquidacion.fotos
-            : existente.fotosLiquidacion || [],
-        codigoEtiqueta:
-          registroLiquidado.liquidacion?.codigoEtiqueta || existente.codigoEtiqueta || "",
-        tecnico: registroLiquidado.tecnico || existente.tecnico || "",
-        autorOrden: registroLiquidado.autorOrden || existente.autorOrden || "",
-        ultimaActualizacion: new Date().toLocaleString(),
-        historialInstalaciones: [historialItem, ...historialSinDuplicado],
-        equiposHistorial: [...nuevosEquiposFiltrados, ...equiposHistorialPrevios],
-      };
-      clienteResultado = actualizado;
+      if (existenteMismaOrden) {
+        // Re-liquidación de la misma orden → actualizar registro existente
+        const actualizado = {
+          ...existenteMismaOrden,
+          nombre: registroLiquidado.nombre || existenteMismaOrden.nombre || "",
+          direccion: registroLiquidado.direccion || existenteMismaOrden.direccion || "",
+          celular: registroLiquidado.celular || existenteMismaOrden.celular || "",
+          velocidad: registroLiquidado.velocidad || existenteMismaOrden.velocidad || "",
+          precioPlan: registroLiquidado.precioPlan || existenteMismaOrden.precioPlan || "",
+          nodo: registroLiquidado.nodo || existenteMismaOrden.nodo || "",
+          usuarioNodo: registroLiquidado.usuarioNodo || existenteMismaOrden.usuarioNodo || "",
+          passwordUsuario: registroLiquidado.passwordUsuario || existenteMismaOrden.passwordUsuario || "",
+          fotoFachada: registroLiquidado.fotoFachada || existenteMismaOrden.fotoFachada || "",
+          codigoEtiqueta: registroLiquidado.liquidacion?.codigoEtiqueta || existenteMismaOrden.codigoEtiqueta || "",
+          ultimaActualizacion: new Date().toLocaleString(),
+        };
+        clienteResultado = actualizado;
+        return prev.map((c) => c.id === existenteMismaOrden.id ? actualizado : c);
+      }
 
-      return prev.map((c) => (String(c.dni) === dni ? actualizado : c));
+      // Nueva instalación → nuevo registro con código N0X-XXXX
+      clienteResultado = nuevoCliente;
+      return [nuevoCliente, ...prev];
     });
 
     const fotosCliente = Array.from(
@@ -7048,7 +7310,7 @@ export default function App() {
     }
 
     aplicarEstadoEquiposDesdeLiquidacion(registro);
-    guardarClienteDesdeLiquidacion(registro);
+    void guardarClienteDesdeLiquidacion(registro);
 
     setOrdenEnLiquidacion(null);
     setLiquidacion(initialLiquidacion);
@@ -7057,9 +7319,187 @@ export default function App() {
     setVistaActiva("historial");
     if (equiposRecuperadosCount > 0) {
       alert(
-        `${equiposRecuperadosCount} equipo(s) quedaron en stock técnico pendiente de entrega a almacén. No se sumaron automáticamente a almacén.`
+        `${equiposRecuperadosCount} equipo(s) quedaron en Custodia Técnica pendiente de entrega a almacén. No se sumaron automáticamente a almacén.`
       );
     }
+  };
+
+  const guardarLiquidacionRecojo = async () => {
+    if (!ordenEnLiquidacion) return;
+    if (!liquidacionRecojo.tecnicoEjecuta) {
+      alert("Indica el técnico que ejecutó el recojo.");
+      return;
+    }
+    const equiposSinFoto = liquidacionRecojo.equiposRecuperados.filter(
+      (eq) => !eq.fotos || eq.fotos.length === 0
+    );
+    if (equiposSinFoto.length > 0) {
+      alert("Cada equipo recuperado debe tener al menos una foto antes de guardar.");
+      return;
+    }
+
+    const payload = {
+      orden_id: Number.isFinite(Number(ordenEnLiquidacion.id)) ? Number(ordenEnLiquidacion.id) : null,
+      orden_codigo: ordenEnLiquidacion.codigo || "",
+      tecnico_ejecuta: liquidacionRecojo.tecnicoEjecuta,
+      resultado: liquidacionRecojo.resultado,
+      observacion: liquidacionRecojo.observacion,
+      equipos_recuperados: liquidacionRecojo.equiposRecuperados,
+      fotos: liquidacionRecojo.fotos,
+      dni: ordenEnLiquidacion.dni || "",
+      nombre_cliente: ordenEnLiquidacion.nombre || "",
+      direccion: ordenEnLiquidacion.direccion || "",
+      nodo: ordenEnLiquidacion.nodo || "",
+      creado_por: usuarioSesion?.nombre || "",
+      fecha_ejecucion: new Date().toISOString(),
+    };
+
+    if (isSupabaseConfigured) {
+      const { data: recData, error } = await supabase
+        .from("ordenes_recuperacion_ejecucion")
+        .insert([payload])
+        .select("id")
+        .single();
+      if (error) {
+        alert("Error al guardar: " + (error.message || "Error desconocido"));
+        return;
+      }
+      // Marcar orden como Liquidada
+      if (Number.isFinite(payload.orden_id)) {
+        await supabase
+          .from(ORDENES_TABLE)
+          .update({ estado: "Liquidada" })
+          .eq("id", payload.orden_id);
+      }
+      // Insertar cada equipo en stock_tecnico
+      if (liquidacionRecojo.equiposRecuperados.length > 0) {
+        const stockRows = liquidacionRecojo.equiposRecuperados.map((eq) => ({
+          recuperacion_id: recData?.id || null,
+          orden_codigo: payload.orden_codigo,
+          tecnico_recupera: payload.tecnico_ejecuta,
+          tipo: eq.tipo,
+          marca: eq.marca || null,
+          estado: eq.estado,
+          serial: eq.serial || null,
+          fotos: eq.fotos || [],
+          dni_cliente: payload.dni,
+          nombre_cliente: payload.nombre_cliente,
+          nodo: payload.nodo,
+          ingresado_almacen: false,
+        }));
+        await supabase.from("stock_tecnico").insert(stockRows);
+      }
+    }
+
+    // Actualizar estado local de órdenes
+    setOrdenes((prev) =>
+      prev.map((item) =>
+        item.id === ordenEnLiquidacion.id ? { ...item, estado: "Liquidada" } : item
+      )
+    );
+
+    // Agregar al historial local
+    setHistorialRecuperaciones((prev) => [{ ...payload, id: Date.now() }, ...prev]);
+
+    setOrdenEnLiquidacion(null);
+    setLiquidacionRecojo(initialLiquidacionRecojo);
+    setVistaActiva("recuperaciones");
+  };
+
+  const cargarHistorialRecuperaciones = async () => {
+    if (!isSupabaseConfigured) return;
+    setCargandoRecuperaciones(true);
+    try {
+      const { data, error } = await supabase
+        .from("ordenes_recuperacion_ejecucion")
+        .select("*")
+        .order("fecha_ejecucion", { ascending: false })
+        .limit(200);
+      if (!error && data) setHistorialRecuperaciones(data);
+    } catch (_) {
+      // silencioso
+    } finally {
+      setCargandoRecuperaciones(false);
+    }
+  };
+
+  const cargarStockTecnico = async () => {
+    if (!isSupabaseConfigured) return;
+    setCargandoStockTecnico(true);
+    try {
+      const { data, error } = await supabase
+        .from("stock_tecnico")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (!error && data) {
+        // Auto-detectar cuáles seriales ya existen en equipos_catalogo con estado != liquidado
+        const seriales = data.filter((s) => s.serial && !s.catalogado).map((s) => s.serial.trim());
+        // mapa serial -> estado del catálogo
+        const serialEstadoMap = new Map();
+        if (seriales.length > 0) {
+          const { data: enCatalogo } = await supabase
+            .from("equipos_catalogo")
+            .select("codigo_qr, serial_mac, estado")
+            .or(seriales.map((s) => `codigo_qr.eq.${s},serial_mac.eq.${s}`).join(","))
+            .neq("estado", "liquidado");
+          if (enCatalogo) {
+            enCatalogo.forEach((eq) => {
+              if (eq.codigo_qr) serialEstadoMap.set(eq.codigo_qr.trim(), eq.estado);
+              if (eq.serial_mac) serialEstadoMap.set(eq.serial_mac.trim(), eq.estado);
+            });
+          }
+        }
+        // Marcar catalogado en BD con estado y fecha, así queda histórico aunque después se reasigne
+        const ahora = new Date().toISOString();
+        const actualizados = data.map((s) => {
+          if (!s.catalogado && s.serial && serialEstadoMap.has(s.serial.trim())) {
+            const estadoCatalogo = serialEstadoMap.get(s.serial.trim());
+            void supabase.from("stock_tecnico").update({ catalogado: true, estado_catalogado: estadoCatalogo, fecha_catalogado: ahora }).eq("id", s.id);
+            return { ...s, catalogado: true, estado_catalogado: estadoCatalogo, fecha_catalogado: ahora };
+          }
+          return s;
+        });
+        setStockTecnico(actualizados);
+      }
+    } catch (_) {
+      // silencioso
+    } finally {
+      setCargandoStockTecnico(false);
+    }
+  };
+
+  const ingresarEquipoAlmacen = async (item) => {
+    if (!isSupabaseConfigured) return;
+    const obs = observacionIngreso.trim();
+    const foto = fotoRecepcion.trim();
+    const ahora = new Date().toISOString();
+    const { error } = await supabase
+      .from("stock_tecnico")
+      .update({
+        ingresado_almacen: true,
+        ingresado_por: usuarioSesion?.nombre || "",
+        fecha_ingreso: ahora,
+        observacion_ingreso: obs,
+        foto_recepcion: foto || null,
+        updated_at: ahora,
+      })
+      .eq("id", item.id);
+    if (error) {
+      alert("Error al ingresar: " + (error.message || "Error desconocido"));
+      return;
+    }
+
+    setStockTecnico((prev) =>
+      prev.map((s) =>
+        s.id === item.id
+          ? { ...s, ingresado_almacen: true, ingresado_por: usuarioSesion?.nombre || "", fecha_ingreso: ahora, observacion_ingreso: obs, foto_recepcion: foto || null }
+          : s
+      )
+    );
+    setIngresandoStockId(null);
+    setObservacionIngreso("");
+    setFotoRecepcion("");
   };
 
   const agregarEquipo = () => {
@@ -7222,34 +7662,32 @@ export default function App() {
       return;
     }
 
+    const usuarioActualizado = {
+      ...normalizarUsuarioConPermisos(usuarioForm),
+      username: usernameLimpio,
+      password: passLimpio,
+      rol: rolNorm,
+      accesosMenu,
+      nodosAcceso: rolNorm === "Gestora" ? nodosAcceso : [],
+    };
+
     if (usuarioEditandoId) {
       setUsuarios((prev) =>
         prev.map((u) =>
           u.id === usuarioEditandoId
-            ? {
-                ...u,
-                ...normalizarUsuarioConPermisos(usuarioForm),
-                username: usernameLimpio,
-                password: passLimpio,
-                rol: rolNorm,
-                accesosMenu,
-                nodosAcceso: rolNorm === "Gestora" ? nodosAcceso : [],
-              }
+            ? { ...u, ...usuarioActualizado }
             : u
         )
       );
     } else {
-      const nuevoUsuario = {
-        ...normalizarUsuarioConPermisos(usuarioForm),
-        username: usernameLimpio,
-        password: passLimpio,
-        rol: rolNorm,
-        accesosMenu,
-        nodosAcceso: rolNorm === "Gestora" ? nodosAcceso : [],
-        id: Date.now(),
-        fechaCreacion: new Date().toLocaleString(),
-      };
+      const nuevoUsuario = { ...usuarioActualizado, id: Date.now(), fechaCreacion: new Date().toLocaleString() };
       setUsuarios((prev) => [nuevoUsuario, ...prev]);
+    }
+
+    // Guardar inmediatamente en Supabase sin esperar el debounce
+    if (isSupabaseConfigured) {
+      const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
+      void supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" });
     }
 
     setUsuarioForm(normalizarUsuarioConPermisos(initialUsuario));
@@ -8047,6 +8485,94 @@ export default function App() {
       }));
   }, [ordenes, fechaMapaDesde, fechaMapaHasta]);
 
+  // Mapa interactivo en formulario Crear orden
+  useEffect(() => {
+    if (vistaActiva !== "crear") {
+      // Destruir mapa al salir de la vista para evitar conflictos
+      if (mapaCrearInstanceRef.current) {
+        mapaCrearInstanceRef.current.remove();
+        mapaCrearInstanceRef.current = null;
+        mapaCrearMarkerRef.current = null;
+      }
+      return;
+    }
+    if (!mapaCrearRef.current) return;
+
+    const DEFAULT_COORDS = [-16.43849, -71.598208];
+    const coords = parseCoords(orden.ubicacion) ?? DEFAULT_COORDS;
+
+    if (!mapaCrearInstanceRef.current) {
+      const map = L.map(mapaCrearRef.current, { zoomControl: true }).setView(coords, 16);
+
+      const tileNormal = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
+        subdomains: "abcd",
+        maxZoom: 20,
+      });
+      const tileSatelite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        attribution: "Tiles &copy; Esri",
+        maxZoom: 19,
+      });
+
+      tileNormal.addTo(map);
+
+      // Botón toggle satélite
+      let sateliteActivo = false;
+      const toggleBtn = L.control({ position: "topright" });
+      toggleBtn.onAdd = () => {
+        const btn = L.DomUtil.create("button", "");
+        btn.title = "Cambiar vista";
+        btn.style.cssText = "background:#fff;border:2px solid rgba(0,0,0,0.2);border-radius:8px;padding:5px 8px;cursor:pointer;font-size:16px;box-shadow:0 2px 6px rgba(0,0,0,0.2);line-height:1;";
+        btn.innerHTML = "🛰️";
+        L.DomEvent.on(btn, "click", (e) => {
+          L.DomEvent.stopPropagation(e);
+          sateliteActivo = !sateliteActivo;
+          if (sateliteActivo) {
+            map.removeLayer(tileNormal);
+            tileSatelite.addTo(map);
+            btn.innerHTML = "🗺️";
+            btn.title = "Vista normal";
+          } else {
+            map.removeLayer(tileSatelite);
+            tileNormal.addTo(map);
+            btn.innerHTML = "🛰️";
+            btn.title = "Vista satelital";
+          }
+        });
+        return btn;
+      };
+      toggleBtn.addTo(map);
+
+      const marker = L.marker(coords, { icon: markerIcon, draggable: true }).addTo(map);
+      marker.on("dragend", (e) => {
+        const { lat, lng } = e.target.getLatLng();
+        handleChange("ubicacion", `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+      });
+
+      map.on("click", (e) => {
+        const { lat, lng } = e.latlng;
+        const newCoords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        handleChange("ubicacion", newCoords);
+        marker.setLatLng([lat, lng]);
+      });
+
+      mapaCrearInstanceRef.current = map;
+      mapaCrearMarkerRef.current = marker;
+    } else {
+      mapaCrearInstanceRef.current.setView(coords, 16);
+      mapaCrearMarkerRef.current?.setLatLng(coords);
+    }
+  }, [vistaActiva]);
+
+  // Sincronizar marcador cuando cambia ubicacion desde input o GPS
+  useEffect(() => {
+    if (!mapaCrearInstanceRef.current || !mapaCrearMarkerRef.current) return;
+    const coords = parseCoords(orden.ubicacion);
+    if (!coords) return;
+    mapaCrearMarkerRef.current.setLatLng(coords);
+    mapaCrearInstanceRef.current.setView(coords, 16);
+  }, [orden.ubicacion]);
+
   useEffect(() => {
     if (vistaActiva !== "mapa") return;
     if (!mapaRef.current) return;
@@ -8772,6 +9298,74 @@ export default function App() {
                 <div style={{ color: "#98a3b9", fontSize: "12px", lineHeight: 1.4 }}>
                   Actual: {sessionIdleMinutes > 0 ? `${sessionIdleMinutes} min` : "Sin cierre automático"}.
                 </div>
+                {cambiandoClave ? (
+                  <div style={{ display: "grid", gap: "6px" }}>
+                    <div style={{ color: "#1d2e4f", fontWeight: 600, fontSize: "13px" }}>Cambiar contraseña</div>
+                    <input
+                      type="password"
+                      placeholder="Contraseña actual"
+                      style={{ ...inputStyle, margin: 0, fontSize: "12px" }}
+                      value={cambioClaveForm.actual}
+                      onChange={(e) => setCambioClaveForm((p) => ({ ...p, actual: e.target.value }))}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Nueva contraseña"
+                      style={{ ...inputStyle, margin: 0, fontSize: "12px" }}
+                      value={cambioClaveForm.nueva}
+                      onChange={(e) => setCambioClaveForm((p) => ({ ...p, nueva: e.target.value }))}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirmar nueva"
+                      style={{ ...inputStyle, margin: 0, fontSize: "12px" }}
+                      value={cambioClaveForm.confirmar}
+                      onChange={(e) => setCambioClaveForm((p) => ({ ...p, confirmar: e.target.value }))}
+                    />
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        type="button"
+                        style={{ ...primaryButton, flex: 1, fontSize: "12px", padding: "5px" }}
+                        onClick={async () => {
+                          if (!cambioClaveForm.actual || !cambioClaveForm.nueva || !cambioClaveForm.confirmar) {
+                            alert("Completa todos los campos."); return;
+                          }
+                          if (cambioClaveForm.nueva !== cambioClaveForm.confirmar) {
+                            alert("La nueva contraseña no coincide."); return;
+                          }
+                          if (cambioClaveForm.nueva.length < 4) {
+                            alert("La contraseña debe tener al menos 4 caracteres."); return;
+                          }
+                          if (usuarioSesion?.password !== cambioClaveForm.actual) {
+                            alert("La contraseña actual es incorrecta."); return;
+                          }
+                          const nuevaPass = cambioClaveForm.nueva.trim();
+                          const usernameActual = String(usuarioSesion.username || "").trim().toLowerCase();
+                          const nuevosUsuarios = usuarios.map((u) => String(u.username || "").trim().toLowerCase() === usernameActual ? { ...u, password: nuevaPass } : u);
+                          const usuarioActualizado = nuevosUsuarios.find((u) => String(u.username || "").trim().toLowerCase() === usernameActual);
+                          if (isSupabaseConfigured && usuarioActualizado) {
+                            const serializado = serializarUsuarioParaSupabase({ ...usuarioActualizado, password: nuevaPass });
+                            const { error: errUpdate } = await supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" });
+                            if (errUpdate) { alert("Error al guardar: " + errUpdate.message); return; }
+                          }
+                          setUsuarios(nuevosUsuarios);
+                          setCambioClaveForm({ actual: "", nueva: "", confirmar: "" });
+                          setCambiandoClave(false);
+                          alert("Contraseña actualizada correctamente.");
+                        }}
+                      >
+                        Guardar
+                      </button>
+                      <button type="button" style={{ ...secondaryButton, fontSize: "12px", padding: "5px" }} onClick={() => { setCambiandoClave(false); setCambioClaveForm({ actual: "", nueva: "", confirmar: "" }); }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" style={{ ...secondaryButton, width: "100%", fontSize: "12px" }} onClick={() => setCambiandoClave(true)}>
+                    Cambiar contraseña
+                  </button>
+                )}
                 <button type="button" onClick={() => cerrarSesion()} style={{ ...secondaryButton, width: "100%" }}>
                   Cerrar sesión
                 </button>
@@ -8795,6 +9389,241 @@ export default function App() {
           </div>
         ) : null}
         <div style={contentSurfaceStyle}>
+
+        {vistaActiva === "dashboard" && (() => {
+          const today = todayIsoLocal();
+          // Filtrar por nodo según permisos (igual que el resto de vistas)
+          const ordenesPorNodo = ordenes.filter((o) => tieneAccesoNodoSesion(o.nodo));
+          const liqPorNodo = liquidaciones.filter((l) => tieneAccesoNodoSesion(firstText(l.nodo, l.payload?.nodo, l.payload?.Nodo)));
+
+          const pendientesTotal = ordenesPorNodo.filter((o) => String(o.estado || "").toLowerCase().includes("pendient"));
+          const enProcesoTotal = ordenesPorNodo.filter((o) => String(o.estado || "").toLowerCase().includes("proceso"));
+          const urgentes = ordenesPorNodo.filter((o) => esEstadoOperativoOrden(o.estado) && String(o.prioridad || "").toLowerCase().includes("urgent"));
+          const liquidadasHoy = liqPorNodo.filter((l) => {
+            const f = String(l.fecha || l.fechaLiquidacion || l.created_at || "").slice(0, 10);
+            return f === today;
+          });
+
+          // Por tipo (pendientes+en proceso)
+          const operativas = [...pendientesTotal, ...enProcesoTotal];
+          const tiposCount = {};
+          operativas.forEach((o) => {
+            const t = o.tipoActuacion || "Sin tipo";
+            tiposCount[t] = (tiposCount[t] || 0) + 1;
+          });
+          const tiposOrdenados = Object.entries(tiposCount).sort((a, b) => b[1] - a[1]);
+          const maxTipo = tiposOrdenados[0]?.[1] || 1;
+
+          // Por nodo
+          const nodosCount = {};
+          operativas.forEach((o) => {
+            const n = o.nodo || "Sin nodo";
+            nodosCount[n] = (nodosCount[n] || 0) + 1;
+          });
+
+          // Por técnico
+          const tecnicosCount = {};
+          operativas.forEach((o) => {
+            const t = o.tecnico || "Sin asignar";
+            tecnicosCount[t] = (tecnicosCount[t] || 0) + 1;
+          });
+          const tecnicosOrdenados = Object.entries(tecnicosCount).sort((a, b) => b[1] - a[1]);
+
+          // Últimas órdenes (operativas más recientes primeras)
+          const ultimasOrdenes = [...operativas]
+            .sort((a, b) => new Date(b.fechaActuacion || 0) - new Date(a.fechaActuacion || 0))
+            .slice(0, 10);
+
+          const TIPO_COLORS = {
+            "Instalacion Internet": "#2b5fb8",
+            "Instalacion Internet y Cable": "#1e40af",
+            "Instalacion TV": "#7c3aed",
+            "Incidencia Internet": "#dc2626",
+            "Mantenimiento": "#d97706",
+            "Recojo de equipo": "#059669",
+          };
+          const NODO_COLORS = {
+            Nod_01: "#2b5fb8", Nod_02: "#7c3aed", Nod_03: "#059669",
+            Nod_04: "#d97706", Nod_05: "#dc2626", Nod_06: "#0891b2",
+          };
+
+          const kpiCard = (label, value, color, sub) => (
+            <div key={label} style={{
+              background: "#fff", borderRadius: "14px", padding: "18px 20px",
+              border: "1px solid #e4eaf4", boxShadow: "0 1px 4px rgba(43,95,184,0.07)",
+            }}>
+              <div style={{ fontSize: "13px", color: "#6b7280", fontWeight: 500, marginBottom: "6px" }}>{label}</div>
+              <div style={{ fontSize: "32px", fontWeight: "800", color, lineHeight: 1 }}>{value}</div>
+              {sub && <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "6px" }}>{sub}</div>}
+            </div>
+          );
+
+          return (
+            <div style={{ display: "grid", gap: "20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Dashboard</h2>
+                <span style={{ fontSize: "13px", color: "#6b7280", background: "#f3f6fb", padding: "4px 12px", borderRadius: "20px" }}>
+                  {new Date().toLocaleDateString("es-PE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                </span>
+              </div>
+
+              {/* KPI Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "14px" }}>
+                {kpiCard("Pendientes", pendientesTotal.length, "#2b5fb8", "sin ejecutar")}
+                {kpiCard("En proceso", enProcesoTotal.length, "#d97706", "en ejecución")}
+                {kpiCard("Urgentes", urgentes.length, "#dc2626", "prioridad alta")}
+                {kpiCard("Liquidadas hoy", liquidadasHoy.length, "#059669", "completadas hoy")}
+                {kpiCard("Total clientes", clientesPorNodo.length, "#7c3aed", "registrados")}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                {/* Por tipo */}
+                <div style={cardStyle}>
+                  <h3 style={{ ...sectionTitleStyle, fontSize: "15px", marginBottom: "14px" }}>Por tipo de actuación</h3>
+                  {tiposOrdenados.length === 0 ? (
+                    <p style={{ color: "#9ca3af", margin: 0, fontSize: "13px" }}>Sin órdenes activas</p>
+                  ) : (
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      {tiposOrdenados.map(([tipo, cnt]) => (
+                        <div key={tipo}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                            <span style={{ fontSize: "13px", color: "#374151" }}>{tipo}</span>
+                            <span style={{ fontSize: "13px", fontWeight: "700", color: TIPO_COLORS[tipo] || "#6b7280" }}>{cnt}</span>
+                          </div>
+                          <div style={{ height: "6px", background: "#f0f4fb", borderRadius: "3px", overflow: "hidden" }}>
+                            <div style={{
+                              height: "100%", borderRadius: "3px",
+                              width: `${Math.round((cnt / maxTipo) * 100)}%`,
+                              background: TIPO_COLORS[tipo] || "#6b7280",
+                              transition: "width 0.4s ease",
+                            }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Por nodo */}
+                <div style={cardStyle}>
+                  <h3 style={{ ...sectionTitleStyle, fontSize: "15px", marginBottom: "14px" }}>Pendientes por nodo</h3>
+                  {Object.keys(nodosCount).length === 0 ? (
+                    <p style={{ color: "#9ca3af", margin: 0, fontSize: "13px" }}>Sin órdenes activas</p>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "10px" }}>
+                      {Object.entries(nodosCount).sort((a, b) => b[1] - a[1]).map(([nodo, cnt]) => (
+                        <div key={nodo} style={{
+                          background: "#f3f6fb", borderRadius: "10px", padding: "12px 14px",
+                          borderLeft: `4px solid ${NODO_COLORS[nodo] || "#6b7280"}`,
+                        }}>
+                          <div style={{ fontSize: "12px", color: "#6b7280", fontWeight: 500 }}>{nodo}</div>
+                          <div style={{ fontSize: "24px", fontWeight: "800", color: NODO_COLORS[nodo] || "#374151" }}>{cnt}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Por técnico */}
+              <div style={cardStyle}>
+                <h3 style={{ ...sectionTitleStyle, fontSize: "15px", marginBottom: "14px" }}>Carga por técnico</h3>
+                {tecnicosOrdenados.length === 0 ? (
+                  <p style={{ color: "#9ca3af", margin: 0, fontSize: "13px" }}>Sin órdenes activas</p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "8px" }}>
+                    {tecnicosOrdenados.map(([tec, cnt]) => {
+                      const maxTec = tecnicosOrdenados[0][1];
+                      return (
+                        <div key={tec} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <div style={{
+                            width: "32px", height: "32px", borderRadius: "50%",
+                            background: "#e8eef8", display: "flex", alignItems: "center",
+                            justifyContent: "center", fontSize: "13px", fontWeight: "700",
+                            color: "#2b5fb8", flexShrink: 0,
+                          }}>
+                            {String(tec).slice(0, 1).toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: "13px", color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tec}</span>
+                              <span style={{ fontSize: "13px", fontWeight: "700", color: "#2b5fb8", flexShrink: 0 }}>{cnt}</span>
+                            </div>
+                            <div style={{ height: "4px", background: "#f0f4fb", borderRadius: "2px", marginTop: "4px", overflow: "hidden" }}>
+                              <div style={{
+                                height: "100%", borderRadius: "2px",
+                                width: `${Math.round((cnt / maxTec) * 100)}%`,
+                                background: "#2b5fb8",
+                              }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Últimas órdenes */}
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                  <h3 style={{ ...sectionTitleStyle, fontSize: "15px", margin: 0 }}>Órdenes activas recientes</h3>
+                  <button
+                    style={{ ...secondaryButton, fontSize: "12px", padding: "4px 12px" }}
+                    onClick={() => setVistaActiva("pendientes")}
+                  >
+                    Ver todas
+                  </button>
+                </div>
+                {ultimasOrdenes.length === 0 ? (
+                  <p style={{ color: "#9ca3af", margin: 0, fontSize: "13px" }}>Sin órdenes activas</p>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "2px solid #e4eaf4" }}>
+                          {["Código", "Tipo", "Cliente", "Técnico", "Nodo", "Fecha", "Estado"].map((h) => (
+                            <th key={h} style={{ textAlign: "left", padding: "6px 10px", color: "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ultimasOrdenes.map((o, i) => (
+                          <tr key={o.id || i} style={{ borderBottom: "1px solid #f0f4fb" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = "#f8faff"}
+                            onMouseLeave={(e) => e.currentTarget.style.background = ""}
+                          >
+                            <td style={{ padding: "7px 10px", fontWeight: 600, color: "#2b5fb8", whiteSpace: "nowrap" }}>{o.codigo || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: "#374151" }}>{o.tipoActuacion || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: "#374151", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.nombre || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: "#374151" }}>{o.tecnico || <span style={{ color: "#f59e0b" }}>Sin asignar</span>}</td>
+                            <td style={{ padding: "7px 10px" }}>
+                              {o.nodo ? (
+                                <span style={{ background: NODO_COLORS[o.nodo] ? `${NODO_COLORS[o.nodo]}18` : "#f3f6fb", color: NODO_COLORS[o.nodo] || "#6b7280", borderRadius: "6px", padding: "2px 8px", fontWeight: 600, fontSize: "12px" }}>
+                                  {o.nodo}
+                                </span>
+                              ) : "-"}
+                            </td>
+                            <td style={{ padding: "7px 10px", color: "#6b7280", whiteSpace: "nowrap" }}>{o.fechaActuacion || "-"}</td>
+                            <td style={{ padding: "7px 10px" }}>
+                              <span style={{
+                                background: String(o.estado || "").toLowerCase().includes("proceso") ? "#fef3c7" : "#e0e7ff",
+                                color: String(o.estado || "").toLowerCase().includes("proceso") ? "#92400e" : "#3730a3",
+                                borderRadius: "6px", padding: "2px 8px", fontSize: "12px", fontWeight: 600,
+                              }}>
+                                {o.estado || "-"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {vistaActiva === "crear" && (
           <div style={{ display: "grid", gap: "16px" }}>
@@ -8861,10 +9690,22 @@ export default function App() {
 
                   <div>
                     <label style={labelStyle}>Orden</label>
-                    <select style={inputStyle} value={orden.orden} onChange={(e) => handleChange("orden", e.target.value)}>
+                    <select style={inputStyle} value={orden.orden} onChange={(e) => {
+                      handleChange("orden", e.target.value);
+                      if (e.target.value === "RECUPERACION DE EQUIPO") {
+                        setOrden((prev) => ({
+                          ...prev,
+                          orden: e.target.value,
+                          tipoActuacion: "Recojo de equipo",
+                          solicitarPago: "NO",
+                          autorOrden: usuarioSesion?.nombre || prev.autorOrden,
+                        }));
+                      }
+                    }}>
                       <option>ORDEN DE SERVICIO</option>
                       <option>INCIDENCIA</option>
                       <option>MANTENIMIENTO</option>
+                      <option>RECUPERACION DE EQUIPO</option>
                     </select>
                   </div>
 
@@ -8876,6 +9717,7 @@ export default function App() {
                       <option>Incidencia Internet</option>
                       <option>Instalacion TV</option>
                       <option>Mantenimiento</option>
+                      <option>Recojo de equipo</option>
                     </select>
                   </div>
 
@@ -9042,17 +9884,13 @@ export default function App() {
                     <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "12px", marginBottom: "12px" }}>
                       <button onClick={usarMiUbicacion} style={secondaryButton}>Usar mi ubicación</button>
                     </div>
-                    <div style={{ border: "1px solid #dbe2ea", borderRadius: "16px", overflow: "hidden", background: "#f8fafc" }}>
-                      <iframe
-                        title="Mapa de ubicación"
-                        src={googleMapUrl}
-                        width="100%"
-                        height="360"
-                        style={{ border: "0", display: "block" }}
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                      />
+                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                      Haz clic en el mapa para fijar la ubicación, o arrastra el marcador.
                     </div>
+                    <div
+                      ref={mapaCrearRef}
+                      style={{ border: "1px solid #dbe2ea", borderRadius: "16px", overflow: "hidden", height: "360px", background: "#f8fafc" }}
+                    />
                   </div>
 
                   <div style={fullWidth}>
@@ -9069,6 +9907,22 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                  {fotosClienteDni.length > 0 && (
+                    <div style={fullWidth}>
+                      <label style={labelStyle}>Fotos del cliente ({fotosClienteDni.length})</label>
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "8px" }}>
+                        {fotosClienteDni.map((url, i) => (
+                          <img
+                            key={i}
+                            src={url}
+                            alt={`foto cliente ${i + 1}`}
+                            style={{ width: "120px", height: "120px", objectFit: "cover", borderRadius: "10px", border: "1px solid #e2e8f0", cursor: "pointer" }}
+                            onClick={() => abrirFotoZoom(url, `Foto cliente ${i + 1}`)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -9092,14 +9946,7 @@ export default function App() {
 
                   <div>
                     <label style={labelStyle}>Autor de la orden</label>
-                    <select style={inputStyle} value={orden.autorOrden} onChange={(e) => handleChange("autorOrden", e.target.value)}>
-                      <option value="">Seleccionar autor</option>
-                      {autoresOrdenActivos.map((autor) => (
-                        <option key={autor.id} value={autor.nombre}>
-                          {autor.nombre} - {autor.empresa}
-                        </option>
-                      ))}
-                    </select>
+                    <input style={{ ...inputStyle, background: "#f1f5f9", color: "#64748b", cursor: "not-allowed" }} value={orden.autorOrden || usuarioSesion?.nombre || ""} readOnly />
                   </div>
 
                   <div>
@@ -9183,38 +10030,126 @@ export default function App() {
           </div>
         )}
 
-        {vistaActiva === "pendientes" && (
+        {vistaActiva === "pendientes" && (() => {
+          const today = todayIsoLocal();
+          const ordenesPorDia = {};
+          ordenesPendientesFiltradas.forEach((o) => {
+            const d = String(o.fechaActuacion || "").slice(0, 10);
+            if (d) ordenesPorDia[d] = (ordenesPorDia[d] || 0) + 1;
+          });
+          const vencidasCount = Object.entries(ordenesPorDia).filter(([d]) => d < today).reduce((s, [, n]) => s + n, 0);
+
+          const ordenesDiaSeleccionado = calendarioFecha
+            ? ordenesPendientesFiltradas.filter((o) => String(o.fechaActuacion || "").slice(0, 10) === calendarioFecha)
+            : ordenesPendientesFiltradas;
+
+          const [mesYear, mesMes] = calendarioMes.split("-").map(Number);
+          const primerDia = new Date(mesYear, mesMes - 1, 1);
+          const diasEnMes = new Date(mesYear, mesMes, 0).getDate();
+          const inicioSemana = primerDia.getDay();
+          const totalCeldas = Math.ceil((inicioSemana + diasEnMes) / 7) * 7;
+          const diasSemana = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+          const irMesAnterior = () => { const d = new Date(mesYear, mesMes - 2, 1); setCalendarioMes(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+          const irMesSiguiente = () => { const d = new Date(mesYear, mesMes, 1); setCalendarioMes(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); };
+          const nombreMes = new Date(mesYear, mesMes - 1, 1).toLocaleDateString("es-PE", { month: "long", year: "numeric" });
+
+          const labelFecha = calendarioFecha
+            ? new Date(calendarioFecha + "T00:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })
+            : "Calendario";
+
+          return (
           <div style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "18px" }}>
-              <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Órdenes pendientes</h2>
+              <h2 style={{ ...sectionTitleStyle, margin: 0 }}>
+                {calendarioFecha
+                  ? `Órdenes — ${new Date(calendarioFecha + "T00:00:00").toLocaleDateString("es-PE", { weekday: "long", day: "numeric", month: "long" })}`
+                  : "Órdenes pendientes"}
+                {" "}<span style={{ fontWeight: "400", color: "#6b7280", fontSize: "14px" }}>({ordenesDiaSeleccionado.length})</span>
+              </h2>
 
-              <select
-                style={{ ...inputStyle, maxWidth: "220px" }}
-                value={filtroTecnico}
-                onChange={(e) => setFiltroTecnico(e.target.value)}
-              >
-                <option value="TODOS">Todos</option>
-                <option value="SIN">Sin técnico</option>
-                {tecnicosActivos.map((tec) => (
-                  <option key={tec.id} value={tec.nombre}>
-                    {tec.nombre}
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                {/* Botón calendario con badge vencidas */}
+                <div style={{ position: "relative" }}>
+                  <button
+                    onClick={() => setCalendarioAbierto((v) => !v)}
+                    style={{ ...secondaryButton, display: "flex", alignItems: "center", gap: "6px", background: calendarioAbierto ? "#e8eef8" : "#fff" }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    {labelFecha}
+                    {vencidasCount > 0 && (
+                      <span style={{ background: "#dc2626", color: "#fff", borderRadius: "999px", fontSize: "11px", fontWeight: "700", minWidth: "18px", height: "18px", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+                        {vencidasCount}
+                      </span>
+                    )}
+                  </button>
 
-              <input
-                style={{ ...inputStyle, maxWidth: "520px" }}
-                value={busquedaPendientes}
-                onChange={(e) => setBusquedaPendientes(e.target.value)}
-                placeholder="Buscar por código, DNI, cliente, celular, usuario, nodo, técnico."
-              />
+                  {/* Popover calendario */}
+                  {calendarioAbierto && (
+                    <div style={{
+                      position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 100,
+                      background: "#fff", borderRadius: "16px", border: "1px solid #e4eaf4",
+                      boxShadow: "0 8px 32px rgba(43,95,184,0.15)", padding: "16px", width: "300px",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                        <button onClick={irMesAnterior} style={{ ...secondaryButton, padding: "3px 10px", fontSize: "16px" }}>‹</button>
+                        <span style={{ fontWeight: "700", fontSize: "14px", textTransform: "capitalize" }}>{nombreMes}</span>
+                        <div style={{ display: "flex", gap: "4px" }}>
+                          <button onClick={() => { setCalendarioFecha(today); setCalendarioMes(today.slice(0, 7)); setCalendarioAbierto(false); }} style={{ ...secondaryButton, padding: "3px 8px", fontSize: "11px" }}>Hoy</button>
+                          <button onClick={irMesSiguiente} style={{ ...secondaryButton, padding: "3px 10px", fontSize: "16px" }}>›</button>
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px", marginBottom: "4px" }}>
+                        {diasSemana.map((d) => <div key={d} style={{ textAlign: "center", fontSize: "10px", fontWeight: "600", color: "#9ca3af", padding: "3px 0" }}>{d}</div>)}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "2px" }}>
+                        {Array.from({ length: totalCeldas }).map((_, i) => {
+                          const dia = i - inicioSemana + 1;
+                          if (dia < 1 || dia > diasEnMes) return <div key={i} />;
+                          const fechaDia = `${mesYear}-${String(mesMes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+                          const cnt = ordenesPorDia[fechaDia] || 0;
+                          const esHoy = fechaDia === today;
+                          const esPasado = fechaDia < today;
+                          const esSeleccionado = fechaDia === calendarioFecha;
+                          return (
+                            <div key={i} onClick={() => { setCalendarioFecha(esSeleccionado ? null : fechaDia); setCalendarioAbierto(false); }}
+                              style={{ position: "relative", textAlign: "center", padding: "5px 2px", borderRadius: "8px", cursor: "pointer",
+                                background: esSeleccionado ? "#2b5fb8" : esHoy ? "#e8eef8" : "transparent",
+                                border: esHoy && !esSeleccionado ? "1px solid #2b5fb8" : "1px solid transparent" }}>
+                              <span style={{ fontSize: "12px", fontWeight: esHoy || esSeleccionado ? "700" : "400", color: esSeleccionado ? "#fff" : esHoy ? "#2b5fb8" : "#374151" }}>{dia}</span>
+                              {cnt > 0 && (
+                                <div style={{ position: "absolute", top: "1px", right: "2px", background: esSeleccionado ? "#fff" : esPasado ? "#dc2626" : "#2b5fb8",
+                                  color: esSeleccionado ? "#2b5fb8" : "#fff", borderRadius: "999px", fontSize: "8px", fontWeight: "700",
+                                  minWidth: "13px", height: "13px", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 2px", lineHeight: 1 }}>
+                                  {cnt}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display: "flex", gap: "12px", marginTop: "10px", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "#6b7280" }}><div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#dc2626" }} />Vencidas</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "#6b7280" }}><div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#2b5fb8" }} />Pendientes</div>
+                        {calendarioFecha && <button onClick={() => { setCalendarioFecha(null); setCalendarioAbierto(false); }} style={{ ...secondaryButton, fontSize: "10px", padding: "2px 8px", marginLeft: "auto" }}>Ver todas</button>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <select style={{ ...inputStyle, maxWidth: "200px" }} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)}>
+                  <option value="TODOS">Todos los técnicos</option>
+                  <option value="SIN">Sin técnico</option>
+                  {tecnicosActivos.map((tec) => <option key={tec.id} value={tec.nombre}>{tec.nombre}</option>)}
+                </select>
+                <input style={{ ...inputStyle, maxWidth: "400px" }} value={busquedaPendientes} onChange={(e) => setBusquedaPendientes(e.target.value)} placeholder="Buscar por código, DNI, cliente..." />
+              </div>
             </div>
 
-            {ordenesPendientesFiltradas.length === 0 ? (
-              <p style={{ color: "#6b7280", margin: 0 }}>No hay órdenes pendientes.</p>
+            {ordenesDiaSeleccionado.length === 0 ? (
+              <p style={{ color: "#6b7280", margin: 0 }}>No hay órdenes {calendarioFecha ? "para este día" : "pendientes"}.</p>
             ) : (
               <div style={{ display: "grid", gap: "14px" }}>
-                {ordenesPendientesFiltradas.map((item) => (
+                {ordenesDiaSeleccionado.map((item) => (
                   <div
                     key={item.id}
                     style={{
@@ -9307,6 +10242,27 @@ export default function App() {
 
                       <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", flexWrap: "wrap" }}>
                         <button
+                          onClick={async () => {
+                            setOrdenDetalle(item);
+                            setFotosOrdenDetalle([]);
+                            if (item.dni) {
+                              try {
+                                const { data: cli } = await supabase
+                                  .from("clientes")
+                                  .select("foto_fachada,fotos_liquidacion")
+                                  .eq("dni", item.dni)
+                                  .maybeSingle();
+                                const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
+                                const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
+                                setFotosOrdenDetalle(todas);
+                              } catch (_) {}
+                            }
+                          }}
+                          style={secondaryButton}
+                        >
+                          Ver detalle
+                        </button>
+                        <button
                           onClick={() => editarOrden(item)}
                           style={warningButton}
                         >
@@ -9344,7 +10300,8 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {vistaActiva === "historial" && (
           <div style={cardStyle}>
@@ -12380,6 +13337,43 @@ export default function App() {
                   <p style={{ ...subtitleStyle, margin: 0 }}>Consulta histórica importada desde Sheet1/Supabase.</p>
                 </div>
                 <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                    {[
+                      { key: "TODOS", label: "Todos", bg: "#eff6ff", color: "#1d4ed8", border: "#93c5fd" },
+                      { key: "ACTIVO", label: "Activo", bg: "#f0fdf4", color: "#15803d", border: "#86efac" },
+                      { key: "SUSPENDIDO", label: "Suspendido", bg: "#fef2f2", color: "#b91c1c", border: "#fca5a5" },
+                      { key: "INACTIVO", label: "Inactivo", bg: "#fafafa", color: "#6b7280", border: "#d1d5db" },
+                      { key: "DESCONOCIDO", label: "Desc.", bg: "#fffbeb", color: "#92400e", border: "#fcd34d" },
+                    ].map(({ key, label, bg, color, border }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setFiltroEstadoCliente(key)}
+                        style={{
+                          ...secondaryButton,
+                          padding: "5px 10px",
+                          fontSize: "12px",
+                          background: filtroEstadoCliente === key ? bg : undefined,
+                          color: filtroEstadoCliente === key ? color : undefined,
+                          borderColor: filtroEstadoCliente === key ? border : undefined,
+                          fontWeight: filtroEstadoCliente === key ? 600 : undefined,
+                        }}
+                      >
+                        {label} ({conteosEstadoCliente[key] ?? 0})
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={actualizarEstadoMasivoMikrowisp}
+                    disabled={actualizarEstadoMasivoLoading}
+                    style={{ ...secondaryButton, fontSize: "12px", padding: "5px 10px" }}
+                    title="Consulta Mikrowisp por DNI para actualizar el estado de todos los clientes"
+                  >
+                    {actualizarEstadoMasivoLoading
+                      ? `Consultando... ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}`
+                      : "Actualizar estado masivo (Mikrowisp DNI)"}
+                  </button>
                   <input
                     style={{ ...inputStyle, width: "420px", maxWidth: "100%" }}
                     value={busquedaClientesDraft}
@@ -12476,11 +13470,18 @@ export default function App() {
                         {clientesPaginados.map((cliente, idx) => (
                           <tr key={cliente.id || idx} style={{ borderTop: "1px solid #e5e7eb", background: idx % 2 === 0 ? "#ffffff" : "#fbfdff" }}>
                             <td style={{ padding: "10px" }}>
-                              <div style={{ fontWeight: 700 }}>{cliente.nombre || "-"}</div>
-                              <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>{cliente.direccion || "-"}</div>
-                              <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
-                                {cliente.empresa || "-"} · {cliente.estado || "-"}
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 700, fontSize: "13px", background: "#e0f2fe", color: "#0369a1", borderRadius: "6px", padding: "2px 8px" }}>
+                                  {cliente.codigoAbonado || cliente.codigoCliente || "-"}
+                                </span>
+                                {dniServiciosCount[String(cliente.dni || "").trim()] > 1 && (
+                                  <span style={{ fontSize: "10px", background: "#fef3c7", color: "#92400e", borderRadius: "999px", padding: "1px 7px", fontWeight: 600 }}>
+                                    {dniServiciosCount[String(cliente.dni || "").trim()]} servicios
+                                  </span>
+                                )}
                               </div>
+                              <div style={{ fontWeight: 600, marginTop: "3px" }}>{cliente.nombre || "-"}</div>
+                              <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>{cliente.direccion || "-"}</div>
                             </td>
                             <td style={{ padding: "10px" }}>{cliente.dni || "-"}</td>
                             <td style={{ padding: "10px" }}>{cliente.celular || "-"}</td>
@@ -13134,7 +14135,192 @@ export default function App() {
           </div>
         ) : null}
 
-        {vistaActiva === "liquidar" && ordenEnLiquidacion && (
+        {vistaActiva === "liquidar" && ordenEnLiquidacion && ordenEnLiquidacion.orden === "RECUPERACION DE EQUIPO" && (
+          <div style={{ display: "grid", gap: "24px" }}>
+            <div style={cardStyle}>
+              <h2 style={sectionTitleStyle}>Recojo de equipo</h2>
+              <div style={{ display: "grid", gap: "8px", marginBottom: "20px", padding: "12px", background: "#f0f9ff", borderRadius: "10px", border: "1px solid #bae6fd" }}>
+                <div><strong>Orden:</strong> {ordenEnLiquidacion.codigo}</div>
+                <div><strong>Cliente:</strong> {ordenEnLiquidacion.nombre}</div>
+                <div><strong>Dirección:</strong> {ordenEnLiquidacion.direccion}</div>
+                <div><strong>Nodo:</strong> {ordenEnLiquidacion.nodo}</div>
+                {ordenEnLiquidacion.descripcion && <div><strong>Descripción:</strong> {ordenEnLiquidacion.descripcion}</div>}
+              </div>
+              <div style={formGridStyle}>
+                <div>
+                  <label style={labelStyle}>Técnico que ejecuta</label>
+                  <select style={inputStyle} value={liquidacionRecojo.tecnicoEjecuta} onChange={(e) => setLiquidacionRecojo((p) => ({ ...p, tecnicoEjecuta: e.target.value }))}>
+                    <option value="">Seleccionar técnico</option>
+                    {tecnicosActivos.map((tec) => (
+                      <option key={tec.id} value={tec.nombre}>{tec.nombre} - {tec.empresa}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Resultado</label>
+                  <select style={inputStyle} value={liquidacionRecojo.resultado} onChange={(e) => setLiquidacionRecojo((p) => ({ ...p, resultado: e.target.value }))}>
+                    <option>Completada</option>
+                    <option>Reprogramada</option>
+                    <option>No se encontró al cliente</option>
+                    <option>No viable</option>
+                  </select>
+                </div>
+                <div style={fullWidth}>
+                  <label style={labelStyle}>Observaciones</label>
+                  <textarea style={textareaStyle} value={liquidacionRecojo.observacion} onChange={(e) => setLiquidacionRecojo((p) => ({ ...p, observacion: e.target.value }))} placeholder="Detalle del recojo, condición del equipo, etc." />
+                </div>
+              </div>
+            </div>
+
+            <div style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Equipos recuperados</h2>
+                <button style={secondaryButton} onClick={() => setLiquidacionRecojo((p) => ({ ...p, equiposRecuperados: [...p.equiposRecuperados, { tipo: "ONU", estado: "Bueno", serial: "", fotos: [] }] }))}>
+                  + Agregar equipo
+                </button>
+              </div>
+              {liquidacionRecojo.equiposRecuperados.length === 0 ? (
+                <div style={{ border: "1px dashed #cbd5e1", borderRadius: "14px", padding: "18px", color: "#6b7280", background: "#f8fafc" }}>
+                  Agrega los equipos que se recuperaron del cliente.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "14px" }}>
+                  {liquidacionRecojo.equiposRecuperados.map((eq, idx) => (
+                    <div key={idx} style={{ border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px" }}>
+                      <div style={formGridStyle}>
+                        <div>
+                          <label style={labelStyle}>Tipo</label>
+                          <select style={inputStyle} value={eq.tipo} onChange={(e) => setLiquidacionRecojo((p) => { const arr = [...p.equiposRecuperados]; arr[idx] = { ...arr[idx], tipo: e.target.value }; return { ...p, equiposRecuperados: arr }; })}>
+                            <option>ONU</option>
+                            <option>Router</option>
+                            <option>Repetidor</option>
+                            <option>Switch</option>
+                            <option>Decodificador</option>
+                            <option>Otro</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Estado del equipo</label>
+                          <select style={inputStyle} value={eq.estado} onChange={(e) => setLiquidacionRecojo((p) => { const arr = [...p.equiposRecuperados]; arr[idx] = { ...arr[idx], estado: e.target.value }; return { ...p, equiposRecuperados: arr }; })}>
+                            <option>Bueno</option>
+                            <option>Dañado</option>
+                            <option>Incompleto</option>
+                            <option>Obsoleto</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <label style={labelStyle}>Marca</label>
+                        <select style={inputStyle} value={eq.marca || ""} onChange={(e) => setLiquidacionRecojo((p) => { const arr = [...p.equiposRecuperados]; arr[idx] = { ...arr[idx], marca: e.target.value }; return { ...p, equiposRecuperados: arr }; })}>
+                          <option value="">— Seleccionar —</option>
+                          <option>ZTE</option>
+                          <option>Huawei</option>
+                          <option>VSOL</option>
+                          <option>Optictimes</option>
+                          <option>Otras</option>
+                        </select>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <label style={labelStyle}>Serial / Código QR</label>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <input
+                            style={{ ...inputStyle, flex: 1 }}
+                            placeholder="Escanear o ingresar manual"
+                            value={eq.serial || ""}
+                            onChange={(e) => setLiquidacionRecojo((p) => { const arr = [...p.equiposRecuperados]; arr[idx] = { ...arr[idx], serial: e.target.value }; return { ...p, equiposRecuperados: arr }; })}
+                          />
+                          <button
+                            type="button"
+                            style={{ ...secondaryButton, whiteSpace: "nowrap" }}
+                            onClick={() => setScannerRecojoIdx(idx)}
+                            title="Escanear código QR"
+                          >
+                            📷 Escanear QR
+                          </button>
+                        </div>
+                        {scannerRecojoIdx === idx && (
+                          <QRScanner
+                            onDetected={(codigo) => {
+                              setLiquidacionRecojo((p) => { const arr = [...p.equiposRecuperados]; arr[idx] = { ...arr[idx], serial: codigo }; return { ...p, equiposRecuperados: arr }; });
+                              setScannerRecojoIdx(null);
+                            }}
+                            onClose={() => setScannerRecojoIdx(null)}
+                          />
+                        )}
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <label style={labelStyle}>Fotos etiqueta/seriales (obligatoria al menos 1)</label>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
+                          <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                            + Agregar fotos
+                            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              files.forEach((file) => {
+                                const reader = new FileReader();
+                                reader.onload = (ev) => setLiquidacionRecojo((p) => {
+                                  const arr = [...p.equiposRecuperados];
+                                  arr[idx] = { ...arr[idx], fotos: [...(arr[idx].fotos || []), ev.target.result] };
+                                  return { ...p, equiposRecuperados: arr };
+                                });
+                                reader.readAsDataURL(file);
+                              });
+                            }} />
+                          </label>
+                          {(!eq.fotos || eq.fotos.length === 0) && (
+                            <span style={{ fontSize: "12px", color: "#b45309", fontWeight: 700 }}>Falta foto</span>
+                          )}
+                        </div>
+                        {eq.fotos && eq.fotos.length > 0 && (
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                            {eq.fotos.map((f, fi) => (
+                              <div key={fi} style={{ position: "relative" }}>
+                                <img src={f} alt={`eq-${idx}-${fi}`} style={{ width: "100px", height: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `Equipo ${eq.tipo} foto ${fi + 1}`)} />
+                                <button type="button" onClick={() => setLiquidacionRecojo((p) => { const arr = [...p.equiposRecuperados]; arr[idx] = { ...arr[idx], fotos: arr[idx].fotos.filter((_, fi2) => fi2 !== fi) }; return { ...p, equiposRecuperados: arr }; })} style={{ position: "absolute", top: "4px", right: "4px", background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: "999px", width: "22px", height: "22px", cursor: "pointer", fontSize: "12px", lineHeight: 1 }}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ marginTop: "10px" }}>
+                        <button style={dangerButton} onClick={() => setLiquidacionRecojo((p) => ({ ...p, equiposRecuperados: p.equiposRecuperados.filter((_, i) => i !== idx) }))}>Eliminar</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={cardStyle}>
+              <h2 style={sectionTitleStyle}>Fotos adicionales</h2>
+              <input type="file" accept="image/*" multiple disabled={liquidacionRecojo.fotos.length >= 5} onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                files.forEach((file) => {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => setLiquidacionRecojo((p) => p.fotos.length < 5 ? { ...p, fotos: [...p.fotos, ev.target.result] } : p);
+                  reader.readAsDataURL(file);
+                });
+              }} />
+              <div style={{ marginTop: "10px", fontSize: "13px", color: "#6b7280" }}>Fotos: {liquidacionRecojo.fotos.length}/5</div>
+              {liquidacionRecojo.fotos.length > 0 && (
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "16px" }}>
+                  {liquidacionRecojo.fotos.map((foto, i) => (
+                    <div key={i} style={{ position: "relative" }}>
+                      <img src={foto} alt={`foto-${i}`} style={{ width: "150px", maxWidth: "100%", borderRadius: "12px", border: "1px solid #e5e7eb" }} />
+                      <button onClick={() => setLiquidacionRecojo((p) => ({ ...p, fotos: p.fotos.filter((_, fi) => fi !== i) }))} style={{ position: "absolute", top: "6px", right: "6px", background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: "999px", width: "26px", height: "26px", cursor: "pointer" }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <button onClick={guardarLiquidacionRecojo} style={primaryButton}>Guardar recojo</button>
+              <button onClick={() => setVistaActiva("pendientes")} style={secondaryButton}>Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {vistaActiva === "liquidar" && ordenEnLiquidacion && ordenEnLiquidacion.orden !== "RECUPERACION DE EQUIPO" && (
           <div style={{ display: "grid", gap: "24px" }}>
             <div style={cardStyle}>
               <h2 style={sectionTitleStyle}>
@@ -13606,6 +14792,530 @@ export default function App() {
                 Cancelar
               </button>
             </div>
+          </div>
+        )}
+
+        {vistaActiva === "recuperaciones" && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Submenú */}
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {[
+                { key: "ejecuciones", label: "Ejecuciones" },
+                { key: "stock", label: `Custodia Técnica (${stockTecnico.filter((s) => !s.ingresado_almacen).length} pendientes)` },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setRecuperacionesSubmenu(tab.key)}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: "999px",
+                    border: "1px solid",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: recuperacionesSubmenu === tab.key ? "#1e40af" : "#f8fafc",
+                    color: recuperacionesSubmenu === tab.key ? "#fff" : "#374151",
+                    borderColor: recuperacionesSubmenu === tab.key ? "#1e40af" : "#e5e7eb",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* EJECUCIONES */}
+            {recuperacionesSubmenu === "ejecuciones" && (
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+                  <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Historial de recuperaciones</h2>
+                  <button style={secondaryButton} onClick={cargarHistorialRecuperaciones} disabled={cargandoRecuperaciones}>
+                    {cargandoRecuperaciones ? "Cargando..." : "Actualizar"}
+                  </button>
+                </div>
+                {cargandoRecuperaciones ? (
+                  <div style={{ color: "#6b7280", padding: "16px" }}>Cargando...</div>
+                ) : historialRecuperaciones.length === 0 ? (
+                  <div style={{ border: "1px dashed #cbd5e1", borderRadius: "14px", padding: "24px", color: "#6b7280", background: "#f8fafc", textAlign: "center" }}>
+                    No hay recuperaciones registradas aún.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {historialRecuperaciones.map((rec, idx) => {
+                      const equipos = Array.isArray(rec.equipos_recuperados) ? rec.equipos_recuperados : [];
+                      const fotos = Array.isArray(rec.fotos) ? rec.fotos : [];
+                      const fecha = rec.fecha_ejecucion ? new Date(rec.fecha_ejecucion).toLocaleString("es-PE") : "";
+                      const resultadoColor = rec.resultado === "Completada" ? "#166534" : rec.resultado === "Reprogramada" ? "#92400e" : "#991b1b";
+                      const resultadoBg = rec.resultado === "Completada" ? "#dcfce7" : rec.resultado === "Reprogramada" ? "#fef3c7" : "#fee2e2";
+                      return (
+                        <div key={rec.id || idx} style={{ border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px", background: "#fff" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: "15px" }}>{rec.nombre_cliente || "-"}</div>
+                              <div style={{ fontSize: "13px", color: "#6b7280" }}>{rec.direccion} {rec.nodo ? `· ${rec.nodo}` : ""}</div>
+                              <div style={{ fontSize: "12px", color: "#94a3b8" }}>{rec.orden_codigo} · {fecha}</div>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                              <span style={{ background: resultadoBg, color: resultadoColor, borderRadius: "999px", padding: "3px 10px", fontSize: "12px", fontWeight: 700 }}>{rec.resultado}</span>
+                              <span style={{ fontSize: "12px", color: "#64748b" }}>{rec.tecnico_ejecuta}</span>
+                            </div>
+                          </div>
+                          {equipos.length > 0 && (
+                            <div style={{ marginBottom: "10px" }}>
+                              <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>Equipos recuperados ({equipos.length})</div>
+                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                                {equipos.map((eq, ei) => (
+                                  <div key={ei} style={{ background: "#f1f5f9", borderRadius: "8px", padding: "6px 10px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                                    <span style={{ fontWeight: 700 }}>{eq.tipo}</span>
+                                    <span style={{ color: eq.estado === "Bueno" ? "#166534" : eq.estado === "Dañado" ? "#991b1b" : "#92400e", fontWeight: 600 }}>{eq.estado}</span>
+                                    {eq.serial && <span style={{ fontSize: "11px", color: "#0369a1", fontFamily: "monospace" }}>S/N: {eq.serial}</span>}
+                                    {eq.fotos && eq.fotos.length > 0 && (
+                                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "4px" }}>
+                                        {eq.fotos.map((f, fi) => (
+                                          <img key={fi} src={f} alt="equipo" style={{ width: "70px", height: "55px", objectFit: "cover", borderRadius: "6px", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${eq.tipo} foto ${fi + 1}`)} />
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {rec.observacion && <div style={{ fontSize: "13px", color: "#374151", marginBottom: "8px" }}><strong>Obs:</strong> {rec.observacion}</div>}
+                          {fotos.length > 0 && (
+                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
+                              {fotos.map((f, fi) => (
+                                <img key={fi} src={f} alt={`foto-${fi}`} style={{ width: "90px", height: "70px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `Foto ${fi + 1}`)} />
+                              ))}
+                            </div>
+                          )}
+                          <button
+                            style={dangerButton}
+                            onClick={async () => {
+                              if (!window.confirm("¿Eliminar esta ejecución de recuperación?")) return;
+                              if (isSupabaseConfigured && rec.id) {
+                                await supabase.from("ordenes_recuperacion_ejecucion").delete().eq("id", rec.id);
+                              }
+                              setHistorialRecuperaciones((prev) => prev.filter((r) => r.id !== rec.id));
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STOCK TÉCNICO */}
+            {recuperacionesSubmenu === "stock" && (
+              <div style={{ display: "grid", gap: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <span style={{ padding: "4px 12px", borderRadius: "999px", background: "#fef3c7", color: "#92400e", fontSize: "13px", fontWeight: 700 }}>
+                      Pendientes: {stockTecnico.filter((s) => !s.ingresado_almacen).length}
+                    </span>
+                    <span style={{ padding: "4px 12px", borderRadius: "999px", background: "#dcfce7", color: "#166534", fontSize: "13px", fontWeight: 700 }}>
+                      Ingresados: {stockTecnico.filter((s) => s.ingresado_almacen).length}
+                    </span>
+                  </div>
+                  <button style={secondaryButton} onClick={cargarStockTecnico} disabled={cargandoStockTecnico}>
+                    {cargandoStockTecnico ? "Cargando..." : "Actualizar"}
+                  </button>
+                </div>
+
+                {/* Pendientes */}
+                {stockTecnico.filter((s) => !s.ingresado_almacen).length === 0 ? (
+                  <div style={{ border: "1px dashed #cbd5e1", borderRadius: "14px", padding: "24px", color: "#6b7280", background: "#f8fafc", textAlign: "center" }}>
+                    No hay equipos pendientes de ingreso a almacén.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {/* Separar: con solicitud vs sin solicitud */}
+                    {(() => {
+                      const conSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega);
+                      const sinSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && !s.codigo_entrega);
+                      return (
+                        <>
+                          {conSolicitud.length > 0 && (
+                            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "8px 14px", fontSize: "13px", fontWeight: 700, color: "#166534" }}>
+                              Entregas solicitadas por técnico ({conSolicitud.length}) — listas para confirmar
+                            </div>
+                          )}
+                          {sinSolicitud.length > 0 && (
+                            <div style={{ fontSize: "13px", fontWeight: 700, color: "#92400e" }}>Sin solicitud aún ({sinSolicitud.length})</div>
+                          )}
+                          {stockTecnico.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true)).map((item) => {
+                            const solicitado = Boolean(item.codigo_entrega);
+                            return (
+                              <div key={item.id} style={{ border: `2px solid ${solicitado ? "#22c55e" : "#fcd34d"}`, borderRadius: "14px", padding: "16px", background: solicitado ? "#f0fdf4" : "#fffbeb" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                                  <div style={{ display: "grid", gap: "3px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                      <span style={{ fontWeight: 700, fontSize: "15px" }}>{item.tipo}</span>
+                                      <span style={{ color: item.estado === "Bueno" ? "#166534" : item.estado === "Dañado" ? "#991b1b" : "#92400e", fontSize: "12px", fontWeight: 600, background: item.estado === "Bueno" ? "#dcfce7" : item.estado === "Dañado" ? "#fee2e2" : "#fef3c7", borderRadius: "999px", padding: "2px 8px" }}>{item.estado}</span>
+                                      {solicitado && <span style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "2px 8px", fontWeight: 700 }}>{item.codigo_entrega}</span>}
+                                    </div>
+                                    {item.serial && <div style={{ fontSize: "12px", color: "#0369a1", fontFamily: "monospace" }}>S/N: {item.serial}</div>}
+                                    <div style={{ fontSize: "13px", color: "#374151", fontWeight: 600 }}>Cliente: {item.nombre_cliente || "-"} &nbsp;·&nbsp; Nodo: {item.nodo || "-"}</div>
+                                    <div style={{ fontSize: "12px", color: "#6b7280" }}>Orden: {item.orden_codigo || "-"} &nbsp;·&nbsp; Técnico: {item.tecnico_recupera || "-"}</div>
+                                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>Recogido: {item.created_at ? new Date(item.created_at).toLocaleString("es-PE") : "-"}</div>
+                                    {solicitado && <div style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>Entrega solicitada: {item.fecha_solicitud_entrega ? new Date(item.fecha_solicitud_entrega).toLocaleString("es-PE") : "-"} por {item.solicitado_por || "-"}</div>}
+                                  </div>
+                                  <div>
+                                    {rolSesion === "Tecnico" ? (
+                                      // Técnico: solo puede solicitar entrega
+                                      solicitado ? (
+                                        <span style={{ background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>Entrega solicitada</span>
+                                      ) : (
+                                        <button
+                                          style={{ ...primaryButton, background: "#f59e0b", borderColor: "#f59e0b" }}
+                                          onClick={async () => {
+                                            const año = new Date().getFullYear();
+                                            const seq = String(item.id).padStart(4, "0");
+                                            const codigo = `ENT-${seq}-${año}`;
+                                            const ahora = new Date().toISOString();
+                                            await supabase.from("stock_tecnico").update({ codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: usuarioSesion?.nombre || "" }).eq("id", item.id);
+                                            setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: usuarioSesion?.nombre || "" } : s));
+                                          }}
+                                        >
+                                          Solicitar entrega
+                                        </button>
+                                      )
+                                    ) : (
+                                      // Almacén / Admin: confirmar ingreso
+                                      ingresandoStockId === item.id ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: "200px" }}>
+                                          <textarea style={{ ...textareaStyle, minHeight: "60px", fontSize: "12px" }} placeholder="Observación de ingreso (opcional)" value={observacionIngreso} onChange={(e) => setObservacionIngreso(e.target.value)} />
+                                          <div>
+                                            <div style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Foto de recepción</div>
+                                            <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                                              📷 {fotoRecepcion ? "Cambiar foto" : "Subir foto"}
+                                              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => setFotoRecepcion(ev.target.result);
+                                                reader.readAsDataURL(file);
+                                              }} />
+                                            </label>
+                                            {fotoRecepcion && <img src={fotoRecepcion} style={{ display: "block", marginTop: "6px", width: "100px", height: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid #d1d5db" }} />}
+                                          </div>
+                                          <div style={{ display: "flex", gap: "6px" }}>
+                                            <button style={primaryButton} onClick={() => ingresarEquipoAlmacen(item)}>Confirmar ingreso</button>
+                                            <button style={secondaryButton} onClick={() => { setIngresandoStockId(null); setObservacionIngreso(""); setFotoRecepcion(""); }}>Cancelar</button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <button style={{ ...primaryButton, background: "#059669", borderColor: "#059669" }} onClick={() => setIngresandoStockId(item.id)}>
+                                          {solicitado ? "Confirmar recepción" : "Ingresar a almacén"}
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                                {Array.isArray(item.fotos) && item.fotos.length > 0 && (
+                                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                                    {item.fotos.map((f, fi) => (
+                                      <img key={fi} src={f} alt="foto" style={{ width: "80px", height: "65px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${item.tipo} foto ${fi + 1}`)} />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Ya ingresados */}
+                <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }} />
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534", whiteSpace: "nowrap" }}>
+                      Historial de ingresados a almacén ({stockTecnico.filter((s) => s.ingresado_almacen).length})
+                    </span>
+                    <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }} />
+                  </div>
+                  {stockTecnico.filter((s) => s.ingresado_almacen).length === 0 ? (
+                    <div style={{ border: "1px dashed #bbf7d0", borderRadius: "12px", padding: "16px", color: "#6b7280", textAlign: "center", fontSize: "13px" }}>
+                      Aún no hay equipos confirmados como ingresados.
+                    </div>
+                  ) : (
+                  <div style={{ display: "grid", gap: "10px" }}>
+                    {/* Filtros + PDF */}
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", padding: "10px 14px", background: "#f8fafc", borderRadius: "10px", border: "1px solid #e5e7eb" }}>
+                      <input
+                        style={{ ...inputStyle, flex: "1 1 160px", fontSize: "12px", padding: "5px 10px" }}
+                        placeholder="Buscar cliente, tipo, serial, orden..."
+                        value={filtroHistorialBusqueda}
+                        onChange={(e) => setFiltroHistorialBusqueda(e.target.value)}
+                      />
+                      <select style={{ ...inputStyle, fontSize: "12px", padding: "5px 8px", flex: "0 1 130px" }} value={filtroHistorialNodo} onChange={(e) => setFiltroHistorialNodo(e.target.value)}>
+                        <option value="TODOS">Todos los nodos</option>
+                        {[...new Set(stockTecnico.filter((s) => s.ingresado_almacen && s.nodo).map((s) => s.nodo))].sort().map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                      <select style={{ ...inputStyle, fontSize: "12px", padding: "5px 8px", flex: "0 1 150px" }} value={filtroHistorialCatalogado} onChange={(e) => setFiltroHistorialCatalogado(e.target.value)}>
+                        <option value="TODOS">Todos</option>
+                        <option value="SI">Registrado en catálogo</option>
+                        <option value="NO">Pendiente catálogo</option>
+                      </select>
+                      <button
+                        style={{ ...secondaryButton, fontSize: "12px", padding: "5px 12px", whiteSpace: "nowrap" }}
+                        onClick={() => { setFiltroHistorialBusqueda(""); setFiltroHistorialNodo("TODOS"); setFiltroHistorialCatalogado("TODOS"); }}
+                      >
+                        Limpiar
+                      </button>
+                      <button
+                        style={{ ...primaryButton, fontSize: "12px", padding: "5px 12px", whiteSpace: "nowrap", background: "#dc2626", borderColor: "#dc2626" }}
+                        onClick={() => {
+                          const ingresados = stockTecnico.filter((s) => {
+                            if (!s.ingresado_almacen) return false;
+                            if (filtroHistorialNodo !== "TODOS" && s.nodo !== filtroHistorialNodo) return false;
+                            if (filtroHistorialCatalogado === "SI" && !s.catalogado) return false;
+                            if (filtroHistorialCatalogado === "NO" && s.catalogado) return false;
+                            if (filtroHistorialBusqueda) {
+                              const q = filtroHistorialBusqueda.toLowerCase();
+                              if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
+                            }
+                            return true;
+                          });
+                          const filas = ingresados.map((s) => `
+                            <tr>
+                              <td>${s.tipo || "-"}</td>
+                              <td>${s.estado || "-"}</td>
+                              <td>${s.serial || "-"}</td>
+                              <td>${s.nombre_cliente || "-"}</td>
+                              <td>${s.nodo || "-"}</td>
+                              <td>${s.orden_codigo || "-"}</td>
+                              <td>${s.tecnico_recupera || "-"}</td>
+                              <td>${s.codigo_entrega || "-"}</td>
+                              <td>${s.ingresado_por || "-"}</td>
+                              <td>${s.fecha_ingreso ? new Date(s.fecha_ingreso).toLocaleDateString("es-PE") : "-"}</td>
+                              <td>${s.catalogado ? "Sí" : "No"}</td>
+                            </tr>`).join("");
+                          const html = `<html><head><meta charset="utf-8"><title>Custodia Técnica - Ingresados</title>
+                          <style>body{font-family:Arial,sans-serif;font-size:11px;padding:20px}h2{color:#166534;margin-bottom:4px}p{color:#6b7280;margin:0 0 12px}table{width:100%;border-collapse:collapse}th{background:#f0fdf4;color:#166534;padding:6px 8px;text-align:left;border:1px solid #bbf7d0;font-size:11px}td{padding:5px 8px;border:1px solid #e5e7eb;font-size:10px}tr:nth-child(even){background:#f9fafb}</style>
+                          </head><body>
+                          <h2>Custodia Técnica — Historial de ingresados</h2>
+                          <p>Generado: ${new Date().toLocaleString("es-PE")} · Total: ${ingresados.length} registros</p>
+                          <table><thead><tr><th>Tipo</th><th>Estado</th><th>Serial</th><th>Cliente</th><th>Nodo</th><th>Orden</th><th>Técnico</th><th>Cód. Entrega</th><th>Ingresado por</th><th>Fecha ingreso</th><th>En catálogo</th></tr></thead><tbody>${filas}</tbody></table>
+                          </body></html>`;
+                          imprimirHtmlMismaPestana(html);
+                        }}
+                      >
+                        📄 PDF
+                      </button>
+                    </div>
+                    {stockTecnico.filter((s) => {
+                      if (!s.ingresado_almacen) return false;
+                      if (filtroHistorialNodo !== "TODOS" && s.nodo !== filtroHistorialNodo) return false;
+                      if (filtroHistorialCatalogado === "SI" && !s.catalogado) return false;
+                      if (filtroHistorialCatalogado === "NO" && s.catalogado) return false;
+                      if (filtroHistorialBusqueda) {
+                        const q = filtroHistorialBusqueda.toLowerCase();
+                        if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
+                      }
+                      return true;
+                    }).length === 0 && (
+                      <div style={{ color: "#6b7280", textAlign: "center", fontSize: "13px", padding: "16px" }}>No hay resultados para los filtros aplicados.</div>
+                    )}
+                    {stockTecnico.filter((s) => {
+                      if (!s.ingresado_almacen) return false;
+                      if (filtroHistorialNodo !== "TODOS" && s.nodo !== filtroHistorialNodo) return false;
+                      if (filtroHistorialCatalogado === "SI" && !s.catalogado) return false;
+                      if (filtroHistorialCatalogado === "NO" && s.catalogado) return false;
+                      if (filtroHistorialBusqueda) {
+                        const q = filtroHistorialBusqueda.toLowerCase();
+                        if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
+                      }
+                      return true;
+                    }).map((item) => (
+                      <div key={item.id} style={{ border: "1px solid #bbf7d0", borderRadius: "12px", padding: "12px 16px", background: "#f0fdf4" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", alignItems: "flex-start" }}>
+                          <div style={{ display: "grid", gap: "2px" }}>
+                            <div style={{ fontWeight: 700 }}>{item.tipo} <span style={{ color: "#6b7280", fontSize: "12px", fontWeight: 400 }}>{item.estado}</span> {item.codigo_entrega && <span style={{ fontSize: "11px", background: "#e0f2fe", color: "#0369a1", borderRadius: "999px", padding: "1px 7px", marginLeft: "6px" }}>{item.codigo_entrega}</span>}</div>
+                            {item.serial && <div style={{ fontSize: "12px", color: "#0369a1", fontFamily: "monospace" }}>S/N: {item.serial}</div>}
+                            <div style={{ fontSize: "12px", color: "#374151", fontWeight: 600 }}>Cliente: {item.nombre_cliente || "-"} &nbsp;·&nbsp; Nodo: {item.nodo || "-"}</div>
+                            <div style={{ fontSize: "11px", color: "#6b7280" }}>Orden: {item.orden_codigo || "-"} &nbsp;·&nbsp; Técnico: {item.tecnico_recupera || "-"}</div>
+                            <div style={{ fontSize: "11px", color: "#6b7280" }}>Recogido: {item.created_at ? new Date(item.created_at).toLocaleDateString("es-PE") : "-"}</div>
+                            {item.solicitado_por && <div style={{ fontSize: "11px", color: "#0369a1" }}>Solicitó entrega: {item.solicitado_por} · {item.fecha_solicitud_entrega ? new Date(item.fecha_solicitud_entrega).toLocaleDateString("es-PE") : "-"}</div>}
+                            <div style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>Ingresado por: {item.ingresado_por || "-"} · {item.fecha_ingreso ? new Date(item.fecha_ingreso).toLocaleString("es-PE") : "-"}</div>
+                            {item.observacion_ingreso && <div style={{ fontSize: "11px", color: "#64748b" }}>Obs: {item.observacion_ingreso}</div>}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+                            <span style={{ background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "3px 10px", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap" }}>Ingresado</span>
+                            {item.catalogado && (
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px" }}>
+                                <span style={{ background: "#e0f2fe", color: "#0369a1", borderRadius: "999px", padding: "3px 10px", fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap" }}>En catálogo ✓</span>
+                                {item.estado_catalogado && <span style={{ fontSize: "10px", color: "#0369a1" }}>como: {item.estado_catalogado}</span>}
+                                {item.fecha_catalogado && <span style={{ fontSize: "10px", color: "#94a3b8" }}>{new Date(item.fecha_catalogado).toLocaleDateString("es-PE")}</span>}
+                              </div>
+                            )}
+                            {item.foto_recepcion && (
+                              <img src={item.foto_recepcion} alt="Foto recepción" style={{ width: "80px", height: "65px", objectFit: "cover", borderRadius: "8px", border: "2px solid #86efac", cursor: "pointer" }} onClick={() => abrirFotoZoom(item.foto_recepcion, "Foto de recepción")} title="Foto de recepción" />
+                            )}
+                            {item.serial && rolSesion !== "Tecnico" && (
+                              liberandoCatalogoId === item.id ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "170px" }}>
+                                  <select
+                                    style={{ ...inputStyle, fontSize: "12px", padding: "4px 8px" }}
+                                    value={liberandoCatalogoEstado}
+                                    onChange={(e) => setLiberandoCatalogoEstado(e.target.value)}
+                                  >
+                                    <option value="disponible">Disponible</option>
+                                    <option value="averiado">Averiado</option>
+                                    <option value="obsoleto">Obsoleto</option>
+                                    <option value="baja">Baja</option>
+                                  </select>
+                                  <div style={{ display: "flex", gap: "4px" }}>
+                                    <button
+                                      style={{ ...primaryButton, fontSize: "11px", padding: "3px 10px", background: "#6366f1", borderColor: "#6366f1", flex: 1 }}
+                                      onClick={async () => {
+                                        const serial = item.serial.trim();
+                                        const { data: encontrados } = await supabase
+                                          .from("equipos_catalogo")
+                                          .select("id, estado")
+                                          .or(`codigo_qr.eq.${serial},serial_mac.eq.${serial}`)
+                                          .limit(1);
+                                        if (!encontrados || encontrados.length === 0) {
+                                          alert(`No se encontró el equipo S/N "${serial}" en el catálogo.`);
+                                          setLiberandoCatalogoId(null);
+                                          return;
+                                        }
+                                        const { error } = await supabase
+                                          .from("equipos_catalogo")
+                                          .update({
+                                            estado: liberandoCatalogoEstado,
+                                            tecnico_asignado: null,
+                                            cliente_dni: null,
+                                            cliente_nombre: null,
+                                          })
+                                          .eq("id", encontrados[0].id);
+                                        if (error) { alert("Error: " + error.message); return; }
+                                        const ahora = new Date().toISOString();
+                                        await supabase.from("stock_tecnico").update({ catalogado: true, estado_catalogado: liberandoCatalogoEstado, fecha_catalogado: ahora }).eq("id", item.id);
+                                        setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, catalogado: true, estado_catalogado: liberandoCatalogoEstado, fecha_catalogado: ahora } : s));
+                                        alert(`✓ Equipo "${serial}" actualizado a "${liberandoCatalogoEstado}" en el catálogo.`);
+                                        setLiberandoCatalogoId(null);
+                                        setLiberandoCatalogoEstado("disponible");
+                                      }}
+                                    >
+                                      Confirmar
+                                    </button>
+                                    <button style={{ ...secondaryButton, fontSize: "11px", padding: "3px 8px" }} onClick={() => { setLiberandoCatalogoId(null); setLiberandoCatalogoEstado("disponible"); }}>✕</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  style={{ ...secondaryButton, fontSize: "11px", padding: "4px 10px", borderColor: "#6366f1", color: "#6366f1" }}
+                                  onClick={() => { setLiberandoCatalogoId(item.id); setLiberandoCatalogoEstado("disponible"); }}
+                                >
+                                  Actualizar catálogo
+                                </button>
+                              )
+                            )}
+                            {!item.serial && rolSesion !== "Tecnico" && (
+                              vinculandoSerialId === item.id ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "180px" }}>
+                                  <div style={{ fontSize: "11px", color: "#374151" }}>
+                                    Ingresa o escanea el serial/QR asignado en Inventario:
+                                  </div>
+                                  <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
+                                    <input
+                                      style={{ ...inputStyle, fontSize: "12px", padding: "4px 8px", flex: 1 }}
+                                      placeholder="Serial o Código QR"
+                                      value={vinculandoSerialValor}
+                                      onChange={(e) => setVinculandoSerialValor(e.target.value)}
+                                      autoFocus
+                                    />
+                                    <button
+                                      style={{ ...secondaryButton, fontSize: "11px", padding: "4px 8px", borderColor: "#6366f1", color: "#6366f1" }}
+                                      title="Escanear QR"
+                                      onClick={() => setScannerRecojoIdx("vincular_" + item.id)}
+                                    >📷</button>
+                                  </div>
+                                  {scannerRecojoIdx === "vincular_" + item.id && (
+                                    <div style={{ marginTop: "4px" }}>
+                                      <QRScanner
+                                        onResult={(code) => { setVinculandoSerialValor(code); setScannerRecojoIdx(null); }}
+                                        onClose={() => setScannerRecojoIdx(null)}
+                                      />
+                                    </div>
+                                  )}
+                                  <div style={{ display: "flex", gap: "4px" }}>
+                                    <button
+                                      style={{ ...primaryButton, fontSize: "11px", padding: "3px 10px", background: "#0891b2", borderColor: "#0891b2", flex: 1 }}
+                                      onClick={async () => {
+                                        const val = vinculandoSerialValor.trim();
+                                        if (!val) return;
+                                        // Buscar en catálogo para marcar catalogado en el mismo paso
+                                        const { data: enCatalogo } = await supabase
+                                          .from("equipos_catalogo")
+                                          .select("estado")
+                                          .or(`codigo_qr.eq.${val},serial_mac.eq.${val}`)
+                                          .neq("estado", "liquidado")
+                                          .maybeSingle();
+                                        const ahora = new Date().toISOString();
+                                        const updateData = enCatalogo
+                                          ? { serial: val, catalogado: true, estado_catalogado: enCatalogo.estado, fecha_catalogado: ahora }
+                                          : { serial: val };
+                                        const { error } = await supabase.from("stock_tecnico").update(updateData).eq("id", item.id);
+                                        if (error) { alert("Error: " + error.message); return; }
+                                        setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, ...updateData } : s));
+                                        setVinculandoSerialId(null);
+                                        setVinculandoSerialValor("");
+                                        if (enCatalogo) alert(`✓ Serial vinculado y marcado en catálogo como "${enCatalogo.estado}".`);
+                                      }}
+                                    >
+                                      Vincular
+                                    </button>
+                                    <button style={{ ...secondaryButton, fontSize: "11px", padding: "3px 8px" }} onClick={() => { setVinculandoSerialId(null); setVinculandoSerialValor(""); setScannerRecojoIdx(null); }}>✕</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <button
+                                    style={{ ...secondaryButton, fontSize: "11px", padding: "4px 10px", borderColor: "#0891b2", color: "#0891b2" }}
+                                    onClick={() => setVistaActiva("inventario")}
+                                  >
+                                    Ir a Inventario →
+                                  </button>
+                                  <button
+                                    style={{ ...secondaryButton, fontSize: "11px", padding: "4px 10px", borderColor: "#6b7280", color: "#6b7280" }}
+                                    onClick={() => { setVinculandoSerialId(item.id); setVinculandoSerialValor(""); }}
+                                  >
+                                    Vincular serial registrado
+                                  </button>
+                                </div>
+                              )
+                            )}
+                            {rolSesion === "Administrador" && (
+                              <button
+                                style={{ ...dangerButton, fontSize: "11px", padding: "3px 10px" }}
+                                onClick={async () => {
+                                  if (!window.confirm("¿Eliminar este registro del historial?")) return;
+                                  await supabase.from("stock_tecnico").delete().eq("id", item.id);
+                                  setStockTecnico((prev) => prev.filter((s) => s.id !== item.id));
+                                }}
+                              >
+                                Eliminar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -14260,6 +15970,73 @@ export default function App() {
           </div>
         ) : null}
 
+        {ordenDetalle && (
+          <div
+            onClick={() => { setOrdenDetalle(null); setFotosOrdenDetalle([]); }}
+            style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.7)", zIndex: 9990, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: "18px", padding: "28px", maxWidth: "600px", width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <h2 style={{ fontSize: "18px", fontWeight: 700, color: "#1e3a5f", margin: 0 }}>Detalle de orden</h2>
+                <button onClick={() => { setOrdenDetalle(null); setFotosOrdenDetalle([]); }} style={{ background: "none", border: "none", fontSize: "22px", cursor: "pointer", color: "#6b7280" }}>×</button>
+              </div>
+              <div style={{ display: "grid", gap: "10px", fontSize: "14px" }}>
+                {[
+                  ["Código", ordenDetalle.codigo],
+                  ["Tipo de orden", ordenDetalle.orden],
+                  ["Tipo de actuación", ordenDetalle.tipoActuacion],
+                  ["Estado", ordenDetalle.estado],
+                  ["Prioridad", ordenDetalle.prioridad],
+                  ["DNI", ordenDetalle.dni],
+                  ["Nombre", ordenDetalle.nombre],
+                  ["Dirección", ordenDetalle.direccion],
+                  ["Celular", ordenDetalle.celular],
+                  ["Email", ordenDetalle.email],
+                  ["Nodo", ordenDetalle.nodo],
+                  ["Técnico", ordenDetalle.tecnico],
+                  ["Velocidad / Plan", `${ordenDetalle.velocidad || "-"} / S/ ${ordenDetalle.precioPlan || "-"}`],
+                  ["Usuario nodo", ordenDetalle.usuarioNodo],
+                  ["SN ONU", ordenDetalle.snOnu],
+                  ["Autor de la orden", ordenDetalle.autorOrden],
+                  ["Solicitar pago", ordenDetalle.solicitarPago],
+                  ["Monto a cobrar", ordenDetalle.montoCobrar],
+                  ["Descripción", ordenDetalle.descripcion],
+                  ["Fecha creación", ordenDetalle.fechaCreacion],
+                ].map(([label, val]) =>
+                  val ? (
+                    <div key={label} style={{ display: "flex", gap: "8px", borderBottom: "1px solid #f1f5f9", paddingBottom: "6px" }}>
+                      <span style={{ fontWeight: 600, color: "#374151", minWidth: "150px" }}>{label}:</span>
+                      <span style={{ color: "#1e293b" }}>{val}</span>
+                    </div>
+                  ) : null
+                )}
+              </div>
+              {fotosOrdenDetalle.length > 0 && (
+                <div style={{ marginTop: "16px" }}>
+                  <p style={{ fontWeight: 600, color: "#374151", marginBottom: "8px", fontSize: "14px" }}>Fotos del cliente ({fotosOrdenDetalle.length})</p>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {fotosOrdenDetalle.map((url, i) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt={`foto-${i}`}
+                        style={{ width: "120px", height: "100px", objectFit: "cover", borderRadius: "10px", border: "1px solid #e2e8f0", cursor: "pointer" }}
+                        onClick={() => abrirFotoZoom(url, `Foto cliente ${i + 1}`)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: "20px" }}>
+                <button onClick={() => { setOrdenDetalle(null); setFotosOrdenDetalle([]); }} style={secondaryButton}>Cerrar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {fotoZoomSrc ? (
           <div
             onClick={cerrarFotoZoom}
@@ -14353,12 +16130,14 @@ function normalizarAccesosMenuWeb(rawAccesos, rol) {
   const rolNorm = normalizarRolSimple(rol);
   const defaults = PERMISOS_MENU_POR_ROL_WEB[rolNorm] || PERMISOS_MENU_POR_ROL_WEB.Tecnico;
   const validKeys = new Set(MENU_VISTAS_WEB.map((x) => x.key));
+  const garantizados = new Set((MENU_ITEMS_GARANTIZADOS_POR_ROL[rolNorm] || []).filter((k) => validKeys.has(k)));
   const parsed = parseJsonArrayFlexible(rawAccesos)
     .map((x) => String(x || "").trim())
     .filter((x) => validKeys.has(x));
   if (!parsed.length) return [...defaults];
-  const setParsed = new Set(parsed);
-  return MENU_VISTAS_WEB.map((item) => item.key).filter((k) => setParsed.has(k));
+  // parsed contiene lo que el admin configuró; garantizados son items que nunca pueden faltar
+  const merged = new Set([...parsed, ...garantizados]);
+  return MENU_VISTAS_WEB.map((item) => item.key).filter((k) => merged.has(k));
 }
 
 function getAccesosHistorialAppsheetPorRolWeb(rol) {
