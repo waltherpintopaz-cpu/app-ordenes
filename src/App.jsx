@@ -1937,23 +1937,23 @@ export default function App() {
   const porcentajeChecklistCrear = Math.round((completadosChecklistCrear / totalChecklistCrear) * 100);
 
   useEffect(() => {
-    localStorage.setItem("ordenes", JSON.stringify(ordenes));
+    try { localStorage.setItem("ordenes", JSON.stringify(ordenes)); } catch (e) { console.warn("localStorage quota: ordenes", e); }
   }, [ordenes]);
 
   useEffect(() => {
-    localStorage.setItem("usuariosNodoBloqueados", JSON.stringify(usuariosNodoBloqueados));
+    try { localStorage.setItem("usuariosNodoBloqueados", JSON.stringify(usuariosNodoBloqueados)); } catch (e) { console.warn("localStorage quota: usuariosNodoBloqueados", e); }
   }, [usuariosNodoBloqueados]);
 
   useEffect(() => {
-    localStorage.setItem("usuariosNodoHabilitadosManual", JSON.stringify(usuariosNodoHabilitadosManual));
+    try { localStorage.setItem("usuariosNodoHabilitadosManual", JSON.stringify(usuariosNodoHabilitadosManual)); } catch (e) { console.warn("localStorage quota: usuariosNodoHabilitadosManual", e); }
   }, [usuariosNodoHabilitadosManual]);
 
   useEffect(() => {
-    localStorage.setItem("liquidaciones", JSON.stringify(liquidaciones));
+    try { localStorage.setItem("liquidaciones", JSON.stringify(liquidaciones)); } catch (e) { console.warn("localStorage quota: liquidaciones", e); }
   }, [liquidaciones]);
 
   useEffect(() => {
-    localStorage.setItem("usuarios", JSON.stringify(usuarios));
+    try { localStorage.setItem("usuarios", JSON.stringify(usuarios)); } catch (e) { console.warn("localStorage quota: usuarios", e); }
   }, [usuarios]);
 
   useEffect(() => {
@@ -2001,7 +2001,7 @@ export default function App() {
   }, [sessionIdleMinutes]);
 
   useEffect(() => {
-    localStorage.setItem("clientes", JSON.stringify(clientes));
+    try { localStorage.setItem("clientes", JSON.stringify(clientes)); } catch (e) { console.warn("localStorage quota: clientes", e); }
   }, [clientes]);
 
   useEffect(() => {
@@ -2025,7 +2025,12 @@ export default function App() {
   }, [clientes, clientesSupabaseReady, clientesSupabaseSaving]);
 
   useEffect(() => {
-    localStorage.setItem("equiposCatalogo", JSON.stringify(equiposCatalogo));
+    try {
+      localStorage.setItem("equiposCatalogo", JSON.stringify(equiposCatalogo));
+    } catch (e) {
+      // QuotaExceededError: el catalogo es demasiado grande para localStorage, ignorar
+      console.warn("localStorage quota exceeded para equiposCatalogo, se omite cache local.", e);
+    }
   }, [equiposCatalogo]);
 
   useEffect(() => {
