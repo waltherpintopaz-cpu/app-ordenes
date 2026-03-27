@@ -6961,11 +6961,21 @@ export default function App() {
         if (!waCfg.habilitado) return;
         if (!waCfg.base_url || !waCfg.api_key || !waCfg.instance_name) return;
 
-        const tipoOrden = String(ordenData.tipoOrden || ordenData.tipo_orden || "INSTALACIÓN").toUpperCase();
+        const tipoOrdenRaw = String(
+          ordenData.tipoActuacion ||
+          ordenData.tipo_actuacion ||
+          ordenData.actuacion ||
+          ordenData.orden_tipo ||
+          ordenData.orden ||
+          ordenData.tipoOrden ||
+          ordenData.tipo_orden ||
+          ""
+        ).toUpperCase();
+        const tipoOrden = tipoOrdenRaw || "INSTALACIÓN";
         let tpl = waCfg.template_instalacion || "";
         if (tipo === "liquidacion") tpl = waCfg.template_liquidacion || "";
         else if (tipoOrden.includes("INCIDEN")) tpl = waCfg.template_incidencia || "";
-        else if (tipoOrden.includes("RECUP")) tpl = waCfg.template_recuperacion || "";
+        else if (tipoOrden.includes("RECUP") || tipoOrden.includes("RECOJ")) tpl = waCfg.template_recuperacion || "";
         if (!tpl.trim()) return;
 
         const message = tpl
