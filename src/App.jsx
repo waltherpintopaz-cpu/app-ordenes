@@ -11034,169 +11034,77 @@ export default function App() {
             })()}
 
             {ordenesDiaSeleccionado.length === 0 ? (
-              <p style={{ color: "#6b7280", margin: 0 }}>No hay órdenes {calendarioFecha ? "para este día" : "pendientes"}.</p>
+              <div style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
+                <div style={{ fontWeight: 600 }}>No hay órdenes {calendarioFecha ? "para este día" : "pendientes"}</div>
+              </div>
             ) : (
-              <div style={{ display: "grid", gap: "14px" }}>
-                {ordenesDiaSeleccionado.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderLeft: `4px solid ${getOrdenTipoBorderColor(item.orden)}`,
-                      borderRadius: "16px",
-                      padding: "18px",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
-                      <div>
-                        <div style={{ fontWeight: "700", fontSize: "18px" }}>
-                          {item.codigo}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {ordenesDiaSeleccionado.map((item) => {
+                  const tipoBadge = getOrdenTipoBadge(item.orden);
+                  const accentColor = getOrdenTipoBorderColor(item.orden);
+                  const horaTexto = String(item.hora || "").trim();
+                  const fechaTexto = String(item.fechaActuacion || "").slice(0, 10);
+                  const esPasada = fechaTexto && fechaTexto < today;
+                  return (
+                    <div key={item.id} style={{ background: "#fff", border: "1px solid #e8edf5", borderLeft: `4px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(15,23,42,0.04)" }}>
+
+                      {/* ── Fila superior: código + hora + badges + acciones ── */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
+                          {/* HORA — destacada */}
+                          {horaTexto ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: esPasada ? "#fef2f2" : "#fff7ed", color: esPasada ? "#dc2626" : "#c2410c", border: `1px solid ${esPasada ? "#fca5a5" : "#fed7aa"}` }}>
+                              🕐 {horaTexto}
+                            </span>
+                          ) : (
+                            <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "#f1f5f9", color: "#94a3b8", border: "1px solid #e2e8f0" }}>Sin hora</span>
+                          )}
+                          <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: tipoBadge.bg, color: tipoBadge.color, border: `1px solid ${tipoBadge.border}` }}>{tipoBadge.label}</span>
+                          <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad || "Normal"}</span>
+                          <span style={getEstadoOperativoBadgeStyle(item.estado)}>{item.estado || "Pendiente"}</span>
+                          {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>Vencida</span>}
                         </div>
-
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-                          {(() => { const t = getOrdenTipoBadge(item.orden); return (
-                            <div style={{ display: "inline-block", padding: "4px 10px", borderRadius: "999px", fontSize: "11px", fontWeight: "700", background: t.bg, color: t.color, border: `1px solid ${t.border}` }}>
-                              {t.label}
-                            </div>
-                          ); })()}
-                          <div
-                            style={{
-                              display: "inline-block",
-                              padding: "6px 10px",
-                              borderRadius: "999px",
-                              fontSize: "12px",
-                              fontWeight: "600",
-                              ...prioridadColor(item.prioridad),
-                            }}
-                          >
-                            {item.prioridad || "Normal"}
-                          </div>
-                          <div style={getEstadoOperativoBadgeStyle(item.estado)}>{item.estado || "Pendiente"}</div>
-                        </div>
-
-                        <div style={{ fontWeight: "600", marginTop: "8px" }}>
-                          {item.nombre}
-                        </div>
-
-                        <div style={{ color: "#4b5563", fontSize: "14px" }}>
-                          {item.tipoActuacion}
-                        </div>
-
-                        <div style={{ marginTop: "6px", fontSize: "14px" }}>
-                          DNI: {item.dni} · Cel: {item.celular || "-"}
-                        </div>
-
-                        <div style={{ fontSize: "14px" }}>
-                          Usuario: {item.usuarioNodo || "-"} · Nodo: {item.nodo || "-"}
-                        </div>
-
-                        <div style={{ fontSize: "14px" }}>
-                          Técnico: {item.tecnico || "-"}
-                        </div>
-
-                        {(esAdminSesion || esGestorSesion) && (
-                          <div style={{ fontSize: "14px" }}>
-                            Hora: {item.hora || "-"}
-                          </div>
-                        )}
-
-                        <div style={{ fontSize: "14px" }}>
-                          Autor: {item.autorOrden || "-"}
-                        </div>
-
-                        <div style={{ fontSize: "14px", marginTop: "6px", color: "#374151" }}>
-                          Dirección: {item.direccion || "-"}
-                        </div>
-
-                        <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
-                          <button
-                            onClick={() => llamarCliente(item.celular)}
-                            style={infoButton}
-                          >
-                            Llamar
-                          </button>
-
-                          <button
-                            onClick={() => abrirWhatsApp(item.celular)}
-                            style={whatsappButton}
-                          >
-                            WhatsApp
-                          </button>
-
-                          <button
-                            onClick={() => abrirMapa(item.ubicacion, item.direccion)}
-                            style={secondaryButton}
-                          >
-                            Abrir mapa
-                          </button>
-
-                          <button
-                            onClick={() => navegarRuta(item.ubicacion, item.direccion)}
-                            style={primaryButton}
-                          >
-                            Navegar
-                          </button>
+                        {/* Acciones principales */}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <button onClick={async () => { setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Ver</button>
+                          <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>
+                          {puedeLiquidarOrden && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
+                          {puedeCancelarOrden && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
+                          {puedeEliminarOrden && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", flexWrap: "wrap" }}>
-                        <button
-                          onClick={async () => {
-                            setOrdenDetalle(item);
-                            setFotosOrdenDetalle([]);
-                            if (item.dni) {
-                              try {
-                                const { data: cli } = await supabase
-                                  .from("clientes")
-                                  .select("foto_fachada,fotos_liquidacion")
-                                  .eq("dni", item.dni)
-                                  .maybeSingle();
-                                const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
-                                const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
-                                setFotosOrdenDetalle(todas);
-                              } catch (_) {}
-                            }
-                          }}
-                          style={secondaryButton}
-                        >
-                          Ver detalle
-                        </button>
-                        <button
-                          onClick={() => editarOrden(item)}
-                          style={warningButton}
-                        >
-                          Editar
-                        </button>
-                        {puedeCancelarOrden ? (
-                          <button
-                            onClick={() => cancelarOrden(item.id)}
-                            style={secondaryButton}
-                          >
-                            Cancelar
-                          </button>
-                        ) : null}
-                        {puedeLiquidarOrden ? (
-                          <button
-                            onClick={() => abrirLiquidacion(item)}
-                            style={successButton}
-                          >
-                            Liquidar
-                          </button>
-                        ) : null}
-
-                        {puedeEliminarOrden ? (
-                          <button
-                            onClick={() => eliminarOrden(item.id)}
-                            style={dangerButton}
-                          >
-                            Eliminar
-                          </button>
-                        ) : null}
+                      {/* ── Fila inferior: info + contacto ── */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "10px 14px", alignItems: "center" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 20px", alignItems: "flex-start" }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{item.nombre || "-"}</div>
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>{item.tipoActuacion || item.orden || "-"}</div>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
+                            <span>📍 {item.direccion || "-"}</span>
+                            <span>DNI {item.dni || "-"} · {item.celular || "sin cel."}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
+                            <span>👷 {item.tecnico || "Sin técnico"}</span>
+                            <span>🌐 {item.nodo || "-"} · {item.usuarioNodo || "-"}</span>
+                          </div>
+                          {(esAdminSesion || esGestorSesion) && item.autorOrden && (
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Autor: {item.autorOrden}</div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                          <button onClick={() => llamarCliente(item.celular)} title="Llamar" style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>📞</button>
+                          <button onClick={() => abrirWhatsApp(item.celular)} title="WhatsApp" style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#16a34a", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>💬</button>
+                          <button onClick={() => navegarRuta(item.ubicacion, item.direccion)} title="Navegar" style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗺️</button>
+                        </div>
                       </div>
+
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
