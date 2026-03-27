@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 
 const EMPRESAS = ["Americanet", "DIM"];
@@ -6,17 +6,17 @@ const LS_KEY = "whatsapp_config_local";
 
 const VARIABLES = [
   { key: "{nombre}", desc: "Nombre del cliente" },
-  { key: "{codigo}", desc: "Código de orden" },
+  { key: "{codigo}", desc: "CÃ³digo de orden" },
   { key: "{empresa}", desc: "Nombre empresa" },
-  { key: "{tecnico}", desc: "Técnico asignado" },
-  { key: "{fecha}", desc: "Fecha de actuación" },
-  { key: "{direccion}", desc: "Dirección" },
+  { key: "{tecnico}", desc: "TÃ©cnico asignado" },
+  { key: "{fecha}", desc: "Fecha de actuaciÃ³n" },
+  { key: "{direccion}", desc: "DirecciÃ³n" },
 ];
 
 const TIPOS = [
-  { key: "template_instalacion", label: "Instalación", color: "#2563eb", bg: "#eff6ff", dot: "#93c5fd" },
+  { key: "template_instalacion", label: "InstalaciÃ³n", color: "#2563eb", bg: "#eff6ff", dot: "#93c5fd" },
   { key: "template_incidencia", label: "Incidencia", color: "#d97706", bg: "#fffbeb", dot: "#fcd34d" },
-  { key: "template_recuperacion", label: "Recuperación", color: "#7c3aed", bg: "#f5f3ff", dot: "#c4b5fd" },
+  { key: "template_recuperacion", label: "RecuperaciÃ³n", color: "#7c3aed", bg: "#f5f3ff", dot: "#c4b5fd" },
   { key: "template_liquidacion", label: "Al liquidar", color: "#059669", bg: "#f0fdf4", dot: "#86efac" },
 ];
 
@@ -26,10 +26,10 @@ const defaultConfig = (emp) => ({
   base_url: "",
   api_key: "",
   instance_name: "",
-  template_instalacion: "Estimado/a {nombre}, su orden de INSTALACIÓN #{codigo} ha sido generada. El técnico {tecnico} coordinará la visita. — {empresa}",
-  template_incidencia: "Estimado/a {nombre}, su reporte #{codigo} fue registrado. Pronto un técnico lo atenderá. — {empresa}",
-  template_recuperacion: "Estimado/a {nombre}, se generó la orden de recuperación #{codigo}. Coordinaremos con usted. — {empresa}",
-  template_liquidacion: "Estimado/a {nombre}, su orden #{codigo} fue completada. ¡Gracias por preferir {empresa}!",
+  template_instalacion: "Estimado/a {nombre}, su orden de INSTALACIÃ“N #{codigo} ha sido generada. El tÃ©cnico {tecnico} coordinarÃ¡ la visita. â€” {empresa}",
+  template_incidencia: "Estimado/a {nombre}, su reporte #{codigo} fue registrado. Pronto un tÃ©cnico lo atenderÃ¡. â€” {empresa}",
+  template_recuperacion: "Estimado/a {nombre}, se generÃ³ la orden de recuperaciÃ³n #{codigo}. Coordinaremos con usted. â€” {empresa}",
+  template_liquidacion: "Estimado/a {nombre}, su orden #{codigo} fue completada. Â¡Gracias por preferir {empresa}!",
 });
 
 function loadFromLS() {
@@ -51,10 +51,10 @@ export function getWhatsAppConfig(empresa) {
 
 function previewMsg(tpl, empresa) {
   return (tpl || "")
-    .replace(/{nombre}/g, "Juan Pérez")
+    .replace(/{nombre}/g, "Juan PÃ©rez")
     .replace(/{codigo}/g, "ORD-001")
     .replace(/{empresa}/g, empresa || "Americanet")
-    .replace(/{tecnico}/g, "Carlos López")
+    .replace(/{tecnico}/g, "Carlos LÃ³pez")
     .replace(/{fecha}/g, new Date().toLocaleDateString("es-PE"))
     .replace(/{direccion}/g, "Av. Principal 123");
 }
@@ -63,6 +63,7 @@ export default function WhatsAppConfigPanel() {
   const [empresa, setEmpresa] = useState("Americanet");
   const [configs, setConfigs] = useState({});
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [testPhone, setTestPhone] = useState("");
   const [testResult, setTestResult] = useState(null);
   const [activeTpl, setActiveTpl] = useState("template_instalacion");
@@ -74,14 +75,39 @@ export default function WhatsAppConfigPanel() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Cargar desde localStorage al montar
+  // Cargar desde localStorage y luego Supabase (si hay datos)
   useEffect(() => {
-    const saved = loadFromLS();
-    const map = {};
-    EMPRESAS.forEach((e) => {
-      map[e] = saved?.[e] ? { ...defaultConfig(e), ...saved[e] } : defaultConfig(e);
-    });
-    setConfigs(map);
+    let alive = true;
+    const load = async () => {
+      const saved = loadFromLS();
+      const localMap = {};
+      EMPRESAS.forEach((e) => {
+        localMap[e] = saved?.[e] ? { ...defaultConfig(e), ...saved[e] } : defaultConfig(e);
+      });
+      if (alive) setConfigs(localMap);
+
+      const { data, error } = await supabase
+        .from("whatsapp_config")
+        .select("*")
+        .in("empresa", EMPRESAS);
+
+      if (!alive) return;
+      if (error) {
+        showToast("No se pudo cargar Supabase: " + error.message, false);
+        return;
+      }
+      if (data && data.length) {
+        const dbMap = {};
+        EMPRESAS.forEach((e) => { dbMap[e] = defaultConfig(e); });
+        data.forEach((row) => {
+          if (row?.empresa) dbMap[row.empresa] = { ...defaultConfig(row.empresa), ...row };
+        });
+        setConfigs(dbMap);
+        saveToLS(dbMap);
+      }
+    };
+    load();
+    return () => { alive = false; };
   }, []);
 
   const cfg = configs[empresa] || defaultConfig(empresa);
@@ -89,11 +115,21 @@ export default function WhatsAppConfigPanel() {
     setConfigs((prev) => ({ ...prev, [empresa]: { ...(prev[empresa] || defaultConfig(empresa)), [field]: val } }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const updated = { ...configs, [empresa]: { ...cfg, empresa } };
     saveToLS(updated);
     setConfigs(updated);
-    showToast("✓ Configuración guardada");
+    setSaving(true);
+    const payload = { ...cfg, empresa, updated_at: new Date().toISOString() };
+    const { error } = await supabase
+      .from("whatsapp_config")
+      .upsert(payload, { onConflict: "empresa" });
+    setSaving(false);
+    if (error) {
+      showToast("No se pudo guardar en Supabase: " + error.message, false);
+      return;
+    }
+    showToast("Configuracion guardada");
   };
 
   const insertVar = (v) => {
@@ -106,23 +142,23 @@ export default function WhatsAppConfigPanel() {
   };
 
   const handleTest = async () => {
-    if (!testPhone.trim()) { showToast("Ingresa un número de prueba", false); return; }
+    if (!testPhone.trim()) { showToast("Ingresa un nÃºmero de prueba", false); return; }
     if (!cfg.base_url || !cfg.api_key || !cfg.instance_name) {
       showToast("Completa URL, API Key e Instancia antes de probar", false); return;
     }
     setTesting(true); setTestResult(null);
     try {
-      // Normalizar teléfono
+      // Normalizar telÃ©fono
       let phone = testPhone.trim().replace(/[\s\-\(\)]/g, "");
       if (phone.startsWith("+")) phone = phone.slice(1);
       if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
 
-      const tpl = cfg.template_instalacion || "Estimado/a {nombre}, esta es una prueba de conexión desde {empresa}.";
+      const tpl = cfg.template_instalacion || "Estimado/a {nombre}, esta es una prueba de conexiÃ³n desde {empresa}.";
       const message = tpl
         .replace(/{nombre}/g, "Cliente Prueba")
         .replace(/{codigo}/g, "TEST-001")
         .replace(/{empresa}/g, empresa)
-        .replace(/{tecnico}/g, "Técnico Demo")
+        .replace(/{tecnico}/g, "TÃ©cnico Demo")
         .replace(/{fecha}/g, new Date().toLocaleDateString("es-PE"))
         .replace(/{direccion}/g, "Av. Principal 123");
 
@@ -138,7 +174,7 @@ export default function WhatsAppConfigPanel() {
       try { json = JSON.parse(body); } catch { json = { raw: body }; }
 
       if (res.ok) {
-        setTestResult({ ok: true, msg: "✓ Mensaje enviado a " + phone });
+        setTestResult({ ok: true, msg: "âœ“ Mensaje enviado a " + phone });
       } else {
         setTestResult({ ok: false, msg: `Error ${res.status}: ${body.slice(0, 200)}` });
       }
@@ -161,7 +197,7 @@ export default function WhatsAppConfigPanel() {
         </div>
         <div>
           <h2 style={s.pageTitle}>Notificaciones WhatsApp</h2>
-          <p style={s.pageSub}>Mensajes automáticos al cliente al crear o completar una orden</p>
+          <p style={s.pageSub}>Mensajes automÃ¡ticos al cliente al crear o completar una orden</p>
         </div>
       </div>
 
@@ -182,7 +218,7 @@ export default function WhatsAppConfigPanel() {
             <div style={s.toggleRow}>
               <div>
                 <div style={s.cardLabel}>Activar para {empresa}</div>
-                <div style={s.cardSub}>{cfg.habilitado ? "Activo — se enviará mensaje al crear y liquidar órdenes" : "Inactivo — no se enviará ningún mensaje"}</div>
+                <div style={s.cardSub}>{cfg.habilitado ? "Activo â€” se enviarÃ¡ mensaje al crear y liquidar Ã³rdenes" : "Inactivo â€” no se enviarÃ¡ ningÃºn mensaje"}</div>
               </div>
               <button onClick={() => set("habilitado", !cfg.habilitado)} style={{ ...s.toggle, background: cfg.habilitado ? "#2563eb" : "#e2e8f0" }}>
                 <div style={{ ...s.knob, transform: cfg.habilitado ? "translateX(20px)" : "translateX(2px)" }} />
@@ -202,8 +238,8 @@ export default function WhatsAppConfigPanel() {
               <div style={s.fieldGroup}>
                 <label style={s.label}>API Key</label>
                 <div style={{ position: "relative" }}>
-                  <input style={{ ...s.input, paddingRight: 36 }} type={showApiKey ? "text" : "password"} placeholder="••••••••" value={cfg.api_key || ""} onChange={(e) => set("api_key", e.target.value)} />
-                  <button onClick={() => setShowApiKey(!showApiKey)} style={s.eyeBtn}>{showApiKey ? "🙈" : "👁"}</button>
+                  <input style={{ ...s.input, paddingRight: 36 }} type={showApiKey ? "text" : "password"} placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" value={cfg.api_key || ""} onChange={(e) => set("api_key", e.target.value)} />
+                  <button onClick={() => setShowApiKey(!showApiKey)} style={s.eyeBtn}>{showApiKey ? "ðŸ™ˆ" : "ðŸ‘"}</button>
                 </div>
               </div>
               <div style={s.fieldGroup}>
@@ -221,11 +257,11 @@ export default function WhatsAppConfigPanel() {
 
           {/* Test */}
           <div style={s.card}>
-            <div style={s.cardTitle}>Probar conexión</div>
-            <div style={s.cardSub}>Envía un mensaje de prueba a un número real</div>
+            <div style={s.cardTitle}>Probar conexiÃ³n</div>
+            <div style={s.cardSub}>EnvÃ­a un mensaje de prueba a un nÃºmero real</div>
             <div style={s.testRow}>
               <input style={{ ...s.input, flex: 1 }} placeholder="51987654321" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleTest()} />
-              <button onClick={handleTest} disabled={testing} style={s.testBtn}>{testing ? "Enviando…" : "Enviar prueba"}</button>
+              <button onClick={handleTest} disabled={testing} style={s.testBtn}>{testing ? "Enviandoâ€¦" : "Enviar prueba"}</button>
             </div>
             {testResult && (
               <div style={{ ...s.testResult, background: testResult.ok ? "#f0fdf4" : "#fef2f2", color: testResult.ok ? "#166534" : "#991b1b", borderColor: testResult.ok ? "#bbf7d0" : "#fecaca" }}>
@@ -233,9 +269,8 @@ export default function WhatsAppConfigPanel() {
               </div>
             )}
           </div>
-
-          <button onClick={handleSave} style={s.saveBtn}>
-            💾 Guardar configuración — {empresa}
+          <button onClick={handleSave} style={s.saveBtn} disabled={saving}>
+            {saving ? "Guardando..." : "Guardar configuracion - " + empresa}
           </button>
         </div>
 
@@ -261,7 +296,7 @@ export default function WhatsAppConfigPanel() {
                 <div style={s.tplTypeLabel}>
                   <span style={{ ...s.tplDot, background: activeType.color }} />{activeType.label}
                 </div>
-                <textarea id="tpl-area" style={s.textarea} rows={4} value={cfg[activeTpl] || ""} onChange={(e) => set(activeTpl, e.target.value)} onFocus={() => setActiveTpl(activeTpl)} placeholder={`Mensaje para ${activeType.label}…`} />
+                <textarea id="tpl-area" style={s.textarea} rows={4} value={cfg[activeTpl] || ""} onChange={(e) => set(activeTpl, e.target.value)} onFocus={() => setActiveTpl(activeTpl)} placeholder={`Mensaje para ${activeType.label}â€¦`} />
                 {cfg[activeTpl] && (
                   <div style={s.previewBox}>
                     <span style={s.previewLabel}>Vista previa</span>
@@ -275,7 +310,7 @@ export default function WhatsAppConfigPanel() {
                 <div key={t.key} onClick={() => setActiveTpl(t.key)} style={s.miniItem}>
                   <span style={{ ...s.miniDot, background: t.color }} />
                   <span style={s.miniLabel}>{t.label}</span>
-                  <span style={s.miniPreview}>{previewMsg(cfg[t.key], empresa).slice(0, 60)}…</span>
+                  <span style={s.miniPreview}>{previewMsg(cfg[t.key], empresa).slice(0, 60)}â€¦</span>
                 </div>
               ))}
             </div>
@@ -336,3 +371,11 @@ const s = {
   miniLabel: { fontSize: 12, fontWeight: 700, color: "#374151", whiteSpace: "nowrap", minWidth: 80 },
   miniPreview: { fontSize: 11, color: "#9ca3af", lineHeight: 1.4 },
 };
+
+
+
+
+
+
+
+
