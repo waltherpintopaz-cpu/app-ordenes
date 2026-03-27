@@ -1878,6 +1878,7 @@ export default function App() {
   const mapaCrearMarkerRef = useRef(null);
   const napMarkersCrearRef = useRef([]);
   const napRouteLayersRef = useRef([]);
+  const cajaNapDesdClienteRef = useRef(false); // true cuando cajaNap fue cargada del cliente — evita auto-asignar la más cercana
   const usuarioFormRef = useRef(null);
   const contentWrapRef = useRef(null);
   const sessionMenuRef = useRef(null);
@@ -6787,7 +6788,10 @@ export default function App() {
   useEffect(() => {
     if (vistaActiva !== "crear" || ordenEditandoId) return;
     setOrden((prev) => prev.codigo ? prev : { ...prev, codigo: generarCodigoUnico() });
-  }, [vistaActiva, ordenEditandoId, generarCodigoUnico]);
+    // Resetear ref solo cuando se abre un formulario totalmente nuevo (sin cliente precargado)
+    if (!orden.cajaNap) cajaNapDesdClienteRef.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vistaActiva, ordenEditandoId]);
 
   const llamarCliente = (telefono) => {
     if (!telefono) {
@@ -6873,7 +6877,7 @@ export default function App() {
       if (isSupabaseConfigured) {
         const { data: cli } = await supabase
           .from("clientes")
-          .select("nombre,direccion,celular,email,contacto,nodo,usuario_nodo,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion")
+          .select("nombre,direccion,celular,email,contacto,nodo,usuario_nodo,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu")
           .eq("dni", dni)
           .order("id", { ascending: false })
           .limit(1)
@@ -6906,7 +6910,11 @@ export default function App() {
           ubicacion: clienteInterno.ubicacion || prev.ubicacion,
           tecnico: clienteInterno.tecnico || prev.tecnico,
           fotoFachada: clienteInterno.foto_fachada || prev.fotoFachada,
+          cajaNap: clienteInterno.caja_nap || prev.cajaNap,
+          puertoNap: clienteInterno.puerto_nap || prev.puertoNap,
+          snOnu: clienteInterno.sn_onu || prev.snOnu,
         }));
+        if (clienteInterno.caja_nap) cajaNapDesdClienteRef.current = true;
         // Cargar todas las fotos del cliente
         const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
         const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
@@ -8347,13 +8355,17 @@ export default function App() {
       usuarioNodo: firstText(cliente.usuarioNodo),
       passwordUsuario: firstText(cliente.passwordUsuario),
       codigoEtiqueta: firstText(cliente.codigoEtiqueta),
+      snOnu: firstText(cliente.snOnu),
       ubicacion: firstText(cliente.ubicacion, base.ubicacion),
       descripcion: firstText(cliente.descripcion),
       tecnico: firstText(cliente.tecnico),
       autorOrden: firstText(cliente.autorOrden),
+      cajaNap: firstText(cliente.cajaNap),
+      puertoNap: firstText(cliente.puertoNap),
       solicitarPago: "NO",
       montoCobrar: "",
     });
+    if (firstText(cliente.cajaNap)) cajaNapDesdClienteRef.current = true;
     setVistaActiva("crear");
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -9228,7 +9240,7 @@ export default function App() {
       .sort((a, b) => a.dist - b.dist);
     setNapCajasTop20(sorted.slice(0, 20));
     setNapCajasNearby(sorted.slice(0, 5));
-    if (!ordenEditandoId && !orden.cajaNap && sorted.length) {
+    if (!ordenEditandoId && !orden.cajaNap && !cajaNapDesdClienteRef.current && sorted.length) {
       handleChange("cajaNap", sorted[0].codigo);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
