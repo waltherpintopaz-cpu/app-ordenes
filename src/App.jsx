@@ -6966,11 +6966,24 @@ export default function App() {
         const numero = String(ordenData.celular || ordenData.telefono || "").trim();
         if (!numero) return;
         const empresa = String(ordenData.empresa || "Americanet").trim();
+        // Leer config desde Supabase (fuente de verdad), fallback a localStorage
         let waCfg = {};
         try {
+          const { data: waCfgRow } = await supabase
+            .from("whatsapp_config")
+            .select("*")
+            .eq("empresa", empresa)
+            .maybeSingle();
+          if (waCfgRow) {
+            waCfg = waCfgRow;
+          } else {
+            const raw = localStorage.getItem("whatsapp_config_local");
+            if (raw) waCfg = JSON.parse(raw)?.[empresa] || {};
+          }
+        } catch {
           const raw = localStorage.getItem("whatsapp_config_local");
-          if (raw) waCfg = JSON.parse(raw)?.[empresa] || {};
-        } catch { return; }
+          try { if (raw) waCfg = JSON.parse(raw)?.[empresa] || {}; } catch { return; }
+        }
         if (!waCfg.habilitado) return;
         if (!waCfg.base_url || !waCfg.api_key || !waCfg.instance_name) return;
 
