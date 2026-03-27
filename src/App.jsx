@@ -10418,6 +10418,13 @@ export default function App() {
                           solicitarPago: "NO",
                           autorOrden: usuarioSesion?.nombre || prev.autorOrden,
                         }));
+                      } else if (e.target.value === "INCIDENCIA") {
+                        setOrden((prev) => ({
+                          ...prev,
+                          orden: e.target.value,
+                          tipoActuacion: "Incidencia Internet",
+                          autorOrden: usuarioSesion?.nombre || prev.autorOrden,
+                        }));
                       }
                     }}>
                       <option>ORDEN DE SERVICIO</option>
@@ -11087,6 +11094,12 @@ export default function App() {
                         <div style={{ fontSize: "14px" }}>
                           Técnico: {item.tecnico || "-"}
                         </div>
+
+                        {(esAdminSesion || esGestorSesion) && (
+                          <div style={{ fontSize: "14px" }}>
+                            Hora: {item.hora || "-"}
+                          </div>
+                        )}
 
                         <div style={{ fontSize: "14px" }}>
                           Autor: {item.autorOrden || "-"}
