@@ -9,10 +9,20 @@ import InventarioPanel from "./components/InventarioPanel";
 import MapaPanel from "./components/MapaPanel";
 import SmartOltPanel from "./components/SmartOltPanel";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
+import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
+import NapPanel from "./components/NapPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
+const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "0cb1ad391ea4458cab6efe97769c761d").trim();
+const SMART_OLT_API = (path) => {
+  const p = String(path || "");
+  const base = String(import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+  if (base) return `${base}${p.startsWith("/") ? p : `/${p}`}`;
+  if (p.startsWith("/api/")) return p;
+  return p;
+};
 const CLIENTES_SHEET_ID = "1PQWuZFUsGPneoHVGj4tq9iSiX0suqp5iRJDwBONleR8";
 const CLIENTES_SHEET_TAB = "Sheet1";
 const CLIENTES_SHEET_GID = "1134373291";
@@ -146,13 +156,15 @@ const MENU_VISTAS_WEB = [
   { key: "almacenes", label: "Almacenes" },
   { key: "usuarios", label: "Usuarios" },
   { key: "clientes", label: "Clientes" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "nap", label: "Cajas NAP" },
 ];
 
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "whatsapp"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "consultaApi", "smartOlt", "inventario", "clientes"],
-  Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna"],
+  Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap"],
 };
 
 // Items que siempre se garantizan por rol, independientemente de localStorage o versión guardada.
@@ -212,6 +224,8 @@ const MENU_ICON_PATHS = {
   almacenes: "M12 3L3 8L12 13L21 8L12 3ZM3 16L12 21L21 16",
   usuarios: "M16 10A4 4 0 1 1 8 10A4 4 0 0 1 16 10ZM4 20C5.6 16.9 8.4 15.3 12 15.3C15.6 15.3 18.4 16.9 20 20",
   clientes: "M4 6H20V18H4V6ZM8 10H16M8 14H13",
+  whatsapp: "M21 11.5C21 16.747 16.747 21 11.5 21C9.83 21 8.255 20.578 6.888 19.835L3 21L4.165 17.112C3.422 15.745 3 14.17 3 12.5C3 7.253 7.253 3 12.5 3C16.747 3 20.322 5.526 21 11.5ZM9 10H8V14H9V10ZM13 10H12C11.448 10 11 10.448 11 11V13C11 13.552 11.448 14 12 14H13C13.552 14 14 13.552 14 13V11C14 10.448 13.552 10 13 10ZM17 10H15V14H16V12.5H17V10Z",
+  nap: "M12 2L4 6V12C4 15.31 7.58 19.2 12 21C16.42 19.2 20 15.31 20 12V6L12 2ZM10 17L6 13L7.41 11.59L10 14.17L16.59 7.58L18 9L10 17Z",
 };
 
 const HIST_APPSHEET_SUBMENU_ICON_PATHS = {
@@ -308,6 +322,40 @@ function sugerirUsuarioPorNodo(nodo = "", usados = [], habilitadosManual = []) {
   const next = Math.max(base - 1, ...nums) + 1;
   const numText = pad > 0 ? String(next).padStart(pad, "0") : String(next);
   return `${prefix}${numText}${suffix}`;
+}
+
+function listarUsuariosDisponiblesParaNodo(nodo = "", usados = [], habilitadosManual = [], cantidad = 10) {
+  const key = normalizeNodoKey(nodo);
+  const rule = NODO_USUARIO_RULES[key];
+  if (!rule) return [];
+  const prefix = String(rule.prefix || "");
+  const suffix = String(rule.suffix || "");
+  const base = Number.isFinite(Number(rule.start)) ? Number(rule.start) : 1;
+  const pad = Number.isFinite(Number(rule.pad)) ? Number(rule.pad) : 0;
+  const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`, "i");
+  const usadosNorm = new Set((Array.isArray(usados) ? usados : []).map((v) => String(v || "").trim().toLowerCase()).filter(Boolean));
+
+  // Primero los habilitados manualmente que estén libres
+  const manualLibres = (Array.isArray(habilitadosManual) ? habilitadosManual : [])
+    .map((v) => String(v || "").trim())
+    .filter((v) => v && !usadosNorm.has(v.toLowerCase()))
+    .filter((v) => pattern.test(v));
+
+  const nums = (Array.isArray(usados) ? usados : [])
+    .map((v) => { const m = String(v || "").trim().match(pattern); return m ? Number(m[1]) : NaN; })
+    .filter((n) => Number.isFinite(n));
+  const maxUsado = nums.length > 0 ? Math.max(...nums) : base - 1;
+
+  const resultado = [...manualLibres];
+  let n = Math.max(base, maxUsado + 1);
+  while (resultado.length < cantidad) {
+    const numText = pad > 0 ? String(n).padStart(pad, "0") : String(n);
+    const candidate = `${prefix}${numText}${suffix}`;
+    if (!usadosNorm.has(candidate.toLowerCase())) resultado.push(candidate);
+    n++;
+    if (n > base + 9999) break;
+  }
+  return resultado;
 }
 
 function usuarioNodoCoincideRegla(usuario = "", nodo = "") {
@@ -436,8 +484,10 @@ const buildInitialOrder = () => ({
   nodo: "",
   usuarioNodo: "",
   passwordUsuario: "",
+  snOnu: "",
 
   ubicacion: "-16.438490, -71.598208",
+  cajaNap: "",
   descripcion: "",
   fotoFachada: "",
 
@@ -474,7 +524,9 @@ function serializeOrderToSupabase(orderItem = {}, opts = {}) {
     nodo: String(orderItem.nodo || "").trim(),
     usuario_nodo: String(orderItem.usuarioNodo || "").trim(),
     password_usuario: String(orderItem.passwordUsuario || "").trim(),
+    sn_onu: String(orderItem.snOnu || "").trim(),
     ubicacion: String(orderItem.ubicacion || "").trim(),
+    caja_nap: String(orderItem.cajaNap || "").trim(),
     descripcion: String(orderItem.descripcion || "").trim(),
     foto_fachada: String(orderItem.fotoFachada || "").trim(),
     solicitar_pago: String(orderItem.solicitarPago || "SI").trim(),
@@ -508,7 +560,9 @@ function sanitizeOrderPayloadForSupabase(rawPayload = {}) {
     "nodo",
     "usuario_nodo",
     "password_usuario",
+    "sn_onu",
     "ubicacion",
+    "caja_nap",
     "descripcion",
     "foto_fachada",
     "solicitar_pago",
@@ -549,7 +603,9 @@ function deserializeOrderFromSupabase(row = {}) {
     nodo: String(row.nodo || "").trim(),
     usuarioNodo: String(row.usuario_nodo || "").trim(),
     passwordUsuario: String(row.password_usuario || "").trim(),
+    snOnu: String(row.sn_onu || "").trim(),
     ubicacion: String(row.ubicacion || "").trim(),
+    cajaNap: String(row.caja_nap || "").trim(),
     descripcion: String(row.descripcion || "").trim(),
     fotoFachada: String(row.foto_fachada || "").trim(),
     solicitarPago: String(row.solicitar_pago || "SI").trim(),
@@ -616,7 +672,13 @@ const initialLiquidacion = {
   montoCobrado: "",
   medioPago: "",
   codigoEtiqueta: "",
+  snOnu: "",
+  parametro: "",
+  actualizarUbicacion: "NO",
+  nuevaUbicacion: "",
+  cajaNap: "",
   equipos: [],
+  equiposRecuperados: [],
   materiales: [],
   fotos: [],
   codigoQRManual: "",
@@ -1157,6 +1219,14 @@ async function fetchSupabaseRowsPaged({
   return all;
 }
 
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 function parseCoords(value) {
   const text = String(value || "").trim();
   if (!text.includes(",")) return null;
@@ -1269,12 +1339,27 @@ function imprimirHtmlMismaPestana(html = "") {
   }
 }
 
-const markerIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+const markerIcon = L.divIcon({
+  html: `<svg width="36" height="48" viewBox="0 0 36 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="mg" cx="40%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#3b82f6"/>
+        <stop offset="100%" stop-color="#1d4ed8"/>
+      </radialGradient>
+      <filter id="ms">
+        <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(29,78,216,0.45)"/>
+      </filter>
+    </defs>
+    <path d="M18 2C9.716 2 3 8.716 3 17c0 11.25 15 29 15 29S33 28.25 33 17C33 8.716 26.284 2 18 2Z" fill="url(#mg)" filter="url(#ms)"/>
+    <circle cx="18" cy="17" r="8" fill="rgba(255,255,255,0.2)"/>
+    <circle cx="18" cy="15" r="4" fill="white" opacity="0.9"/>
+    <rect x="13" y="19" width="10" height="7" rx="1.5" fill="white" opacity="0.85"/>
+    <rect x="16" y="23" width="4" height="3" rx="1" fill="url(#mg)"/>
+  </svg>`,
+  className: "",
+  iconSize: [36, 48],
+  iconAnchor: [18, 48],
+  popupAnchor: [0, -48],
 });
 
 function QRScanner({ onDetected, onClose }) {
@@ -1492,6 +1577,7 @@ export default function App() {
   const [ordenEditandoId, setOrdenEditandoId] = useState(null);
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
+  const [enviarWhatsappOrden, setEnviarWhatsappOrden] = useState(true);
   const [vistaActiva, setVistaActiva] = useState("crear");
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
   const [historialAppsheetEquipos, setHistorialAppsheetEquipos] = useState([]);
@@ -1686,6 +1772,7 @@ export default function App() {
   const [ordenesSupabaseReady, setOrdenesSupabaseReady] = useState(false);
   const [ordenesSyncError, setOrdenesSyncError] = useState("");
   const [usuarioNodoAccionMsg, setUsuarioNodoAccionMsg] = useState("");
+  const [showUsuarioDropdown, setShowUsuarioDropdown] = useState(false);
   const clientesHydratingRef = useRef(false);
   const clientesSyncTimerRef = useRef(null);
   const clientesSavePromiseRef = useRef(null);
@@ -1696,6 +1783,8 @@ export default function App() {
   const [ordenDetalle, setOrdenDetalle] = useState(null);
   const [fotosOrdenDetalle, setFotosOrdenDetalle] = useState([]);
   const [liquidacion, setLiquidacion] = useState(initialLiquidacion);
+  const [liquidacionGuardando, setLiquidacionGuardando] = useState(false);
+  const [busquedaEqInv, setBusquedaEqInv] = useState("");
   const [liquidacionRecojo, setLiquidacionRecojo] = useState(initialLiquidacionRecojo);
   const [historialRecuperaciones, setHistorialRecuperaciones] = useState([]);
   const [cargandoRecuperaciones, setCargandoRecuperaciones] = useState(false);
@@ -1706,6 +1795,7 @@ export default function App() {
   const [observacionIngreso, setObservacionIngreso] = useState("");
   const [fotoRecepcion, setFotoRecepcion] = useState("");
   const [scannerRecojoIdx, setScannerRecojoIdx] = useState(null);
+  const [scannerLiqRecIdx, setScannerLiqRecIdx] = useState(null);
   const [liberandoCatalogoId, setLiberandoCatalogoId] = useState(null);
   const [liberandoCatalogoEstado, setLiberandoCatalogoEstado] = useState("disponible");
   const [vinculandoSerialId, setVinculandoSerialId] = useState(null);
@@ -1725,12 +1815,19 @@ export default function App() {
   const [clienteDiagnosticoRapidoResultado, setClienteDiagnosticoRapidoResultado] = useState(null);
   const [clienteMikrotikAccionLoading, setClienteMikrotikAccionLoading] = useState("");
   const [clienteMikrotikAccionInfo, setClienteMikrotikAccionInfo] = useState("");
+  const [clienteSenal, setClienteSenal] = useState(null);      // { rxOnuDbm, oltRxOntDbm, estado, fecha }
+  const [clienteSenalLoading, setClienteSenalLoading] = useState(false);
+  const [clienteSenalError, setClienteSenalError] = useState("");
+  const [modalEditarCliente, setModalEditarCliente] = useState(false);
+  const [formEditarCliente, setFormEditarCliente] = useState({});
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [fotoZoomSrc, setFotoZoomSrc] = useState("");
   const [fotoZoomTitulo, setFotoZoomTitulo] = useState("");
   const [fotoZoomEscala, setFotoZoomEscala] = useState(1);
 
   const [busquedaPendientes, setBusquedaPendientes] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("TODOS");
+  const [filtroTipoOrden, setFiltroTipoOrden] = useState("TODOS");
   const [calendarioFecha, setCalendarioFecha] = useState(() => todayIsoLocal());
   const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
@@ -1768,12 +1865,19 @@ export default function App() {
   const [mostrarScannerLiquidacion, setMostrarScannerLiquidacion] = useState(false);
   const [mostrarScannerInventario, setMostrarScannerInventario] = useState(false);
 
+  const [napCajasMapData, setNapCajasMapData] = useState([]);
+  const [napCajasNearby, setNapCajasNearby] = useState([]);
+  const [napCajasTop20, setNapCajasTop20] = useState([]);
+  const [napRoutes, setNapRoutes] = useState({});
+
   const mapaRef = useRef(null);
   const mapaInstanciaRef = useRef(null);
   const mapaMarkersRef = useRef([]);
   const mapaCrearRef = useRef(null);
   const mapaCrearInstanceRef = useRef(null);
   const mapaCrearMarkerRef = useRef(null);
+  const napMarkersCrearRef = useRef([]);
+  const napRouteLayersRef = useRef([]);
   const usuarioFormRef = useRef(null);
   const contentWrapRef = useRef(null);
   const sessionMenuRef = useRef(null);
@@ -1861,6 +1965,10 @@ export default function App() {
 
   useEffect(() => {
     void cargarOrdenesDesdeSupabase({ silent: true });
+  }, []);
+
+  useEffect(() => {
+    void cargarEquiposCatalogoDesdeSupabase();
   }, []);
 
   useEffect(() => {
@@ -2090,6 +2198,30 @@ export default function App() {
     const fromBloqueados = (Array.isArray(usuariosNodoBloqueados) ? usuariosNodoBloqueados : []).map((x) => String(x || "").trim());
     return Array.from(new Set([...fromOrdenes, ...fromClientes, ...fromBloqueados].filter(Boolean)));
   }, [ordenes, clientes, usuariosNodoBloqueados]);
+
+  const usuariosDisponiblesNodo = useMemo(
+    () => listarUsuariosDisponiblesParaNodo(orden.nodo, usuariosNodoUsados, usuariosNodoHabilitadosManual, 10),
+    [orden.nodo, usuariosNodoUsados, usuariosNodoHabilitadosManual]
+  );
+
+  const usuarioNodoOcupado = useMemo(() => {
+    const u = String(orden.usuarioNodo || "").trim().toLowerCase();
+    if (!u) return null;
+    // Buscar en clientes
+    const cliente = (Array.isArray(clientes) ? clientes : []).find(
+      (c) => String(c?.usuarioNodo || c?.usuario_nodo || "").trim().toLowerCase() === u
+    );
+    if (cliente) return { tipo: "cliente", nombre: String(cliente.nombre || cliente.razonSocial || "-"), dni: String(cliente.dni || "-") };
+    // Buscar en órdenes activas (no canceladas)
+    const orden_ = (Array.isArray(ordenes) ? ordenes : []).find((o) => {
+      const est = String(o?.estado || "").toLowerCase();
+      const lib = o?.usuarioNodoLiberado === true || String(o?.usuarioNodoLiberado || "").toLowerCase() === "true";
+      if (est.includes("cancel") && lib) return false;
+      return String(o?.usuarioNodo || "").trim().toLowerCase() === u && o?.id !== ordenEditandoId;
+    });
+    if (orden_) return { tipo: "orden", nombre: String(orden_.nombre || "-"), codigo: String(orden_.codigo || "-") };
+    return null;
+  }, [orden.usuarioNodo, clientes, ordenes, ordenEditandoId]);
 
   useEffect(() => {
     if (usuarioSesionId) {
@@ -2625,29 +2757,45 @@ export default function App() {
     const key = clienteMergeKey(cliente);
     setClienteSeleccionado(cliente);
     setVistaActiva("detalleCliente");
+    setClienteSenal(null);
+    setClienteSenalError("");
     if (!isSupabaseConfigured) return;
 
     try {
+      // Fetch fresco: caja_nap y puerto_nap pueden haber cambiado desde el mapa
+      const dniCliente = String(cliente.dni || "").trim();
+      if (dniCliente) {
+        const { data: fresh } = await supabase
+          .from("clientes")
+          .select("caja_nap,puerto_nap")
+          .eq("dni", dniCliente)
+          .maybeSingle();
+        if (fresh) {
+          const patch = {
+            cajaNap: String(fresh.caja_nap || "").trim(),
+            puertoNap: String(fresh.puerto_nap || "").trim(),
+          };
+          setClienteSeleccionado(prev => prev ? { ...prev, ...patch } : prev);
+          setClientes(prev => (Array.isArray(prev) ? prev : []).map(item =>
+            clienteMergeKey(item) === key ? { ...item, ...patch } : item
+          ));
+        }
+      }
+
       const fotosHydrated = await obtenerFotosLiquidacionClienteSupabase(cliente);
       if (!Array.isArray(fotosHydrated) || !fotosHydrated.length) return;
 
       setClientes((prev) =>
         (Array.isArray(prev) ? prev : []).map((item) =>
           clienteMergeKey(item) === key
-            ? {
-                ...item,
-                fotosLiquidacion: fotosHydrated,
-              }
+            ? { ...item, fotosLiquidacion: fotosHydrated }
             : item
         )
       );
 
       setClienteSeleccionado((prev) => {
         if (!prev || clienteMergeKey(prev) !== key) return prev;
-        return {
-          ...prev,
-          fotosLiquidacion: fotosHydrated,
-        };
+        return { ...prev, fotosLiquidacion: fotosHydrated };
       });
     } catch {
       // noop
@@ -2885,6 +3033,41 @@ export default function App() {
       userPppoe,
       clienteNombre,
     };
+  };
+
+  const consultarSenalCliente = async (sn) => {
+    const snLimpio = String(sn || "").trim();
+    if (!snLimpio) return;
+    setClienteSenalLoading(true);
+    setClienteSenalError("");
+    setClienteSenal(null);
+    try {
+      const url = SMART_OLT_API(`/api/smartolt/onu/get_onu_full_status_info/${encodeURIComponent(snLimpio)}`);
+      const res = await fetch(url, { headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
+      const json = await res.json().catch(() => ({}));
+      if (!(res.status >= 200 && res.status < 300) || json?.status !== true) {
+        throw new Error(json?.message || "No se pudo consultar la señal.");
+      }
+      const base =
+        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+        (json?.response?.full_status_json && typeof json.response.full_status_json === "object" ? json.response.full_status_json : null) ||
+        (Array.isArray(json?.response) ? json.response[0] : null) ||
+        (json?.response && typeof json.response === "object" ? json.response : null) ||
+        json;
+      if (!base || typeof base !== "object") throw new Error("Respuesta sin datos para la ONU.");
+      const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
+      const oltRx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
+      setClienteSenal({
+        rxOnuDbm: String(rx),
+        oltRxOntDbm: String(oltRx),
+        estado: String(json?.response_code || base?.status || base?.onu_status || "-"),
+        fecha: new Date().toLocaleTimeString(),
+      });
+    } catch (e) {
+      setClienteSenalError(String(e?.message || "Error al consultar señal."));
+    } finally {
+      setClienteSenalLoading(false);
+    }
   };
 
   const clienteEstaSuspendidoMikrotik = (cliente = null) => {
@@ -3260,6 +3443,8 @@ export default function App() {
       historial_instalaciones: Array.isArray(cliente.historialInstalaciones) ? cliente.historialInstalaciones : [],
       equipos_historial: Array.isArray(cliente.equiposHistorial) ? cliente.equiposHistorial : [],
       estado_servicio: cliente.estadoServicio || "DESCONOCIDO",
+      caja_nap: nullIfEmpty(cliente.cajaNap),
+      puerto_nap: nullIfEmpty(cliente.puertoNap),
       payload: cliente,
       updated_at: new Date().toISOString(),
     };
@@ -3492,6 +3677,47 @@ export default function App() {
     } finally {
       setClientesSupabaseReady(true);
       if (!silent) setClientesSyncLoading(false);
+    }
+  };
+
+  const cargarEquiposCatalogoDesdeSupabase = async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const pageSize = 1000;
+      let offset = 0;
+      const all = [];
+      while (true) {
+        const { data, error } = await supabase
+          .from("equipos_catalogo")
+          .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado,almacen_id,almacen_nombre")
+          .order("id", { ascending: false })
+          .range(offset, offset + pageSize - 1);
+        if (error) break;
+        const chunk = Array.isArray(data) ? data : [];
+        all.push(...chunk);
+        if (chunk.length < pageSize) break;
+        offset += pageSize;
+      }
+      if (all.length > 0) {
+        const mapped = all.map((r) => ({
+          id: r.id,
+          empresa: r.empresa || "Americanet",
+          tipo: r.tipo || "ONU",
+          marca: r.marca || "",
+          modelo: r.modelo || "",
+          codigoQR: r.codigo_qr || "",
+          serialMac: r.serial_mac || "",
+          fotoReferencia: r.foto_referencia || "",
+          estado: r.estado || "almacen",
+          tecnicoAsignado: r.tecnico_asignado || "",
+          almacenId: r.almacen_id || "",
+          almacenNombre: r.almacen_nombre || "",
+          precioUnitario: r.precio_unitario || 0,
+        }));
+        setEquiposCatalogo(mapped);
+      }
+    } catch (_) {
+      // silencioso — datos de localStorage como fallback
     }
   };
 
@@ -6721,6 +6947,50 @@ export default function App() {
     );
   };
 
+  const sendWhatsAppNotification = useCallback(
+    async (ordenData = {}, tipo = "nueva_orden") => {
+      try {
+        const numero = String(ordenData.celular || ordenData.telefono || "").trim();
+        if (!numero) return;
+        const empresa = String(ordenData.empresa || "Americanet").trim();
+        let waCfg = {};
+        try {
+          const raw = localStorage.getItem("whatsapp_config_local");
+          if (raw) waCfg = JSON.parse(raw)?.[empresa] || {};
+        } catch { return; }
+        if (!waCfg.habilitado) return;
+        if (!waCfg.base_url || !waCfg.api_key || !waCfg.instance_name) return;
+
+        const tipoOrden = String(ordenData.tipoOrden || ordenData.tipo_orden || "INSTALACIÓN").toUpperCase();
+        let tpl = waCfg.template_instalacion || "";
+        if (tipo === "liquidacion") tpl = waCfg.template_liquidacion || "";
+        else if (tipoOrden.includes("INCIDEN")) tpl = waCfg.template_incidencia || "";
+        else if (tipoOrden.includes("RECUP")) tpl = waCfg.template_recuperacion || "";
+        if (!tpl.trim()) return;
+
+        const message = tpl
+          .replace(/{nombre}/g, ordenData.nombre || "")
+          .replace(/{codigo}/g, ordenData.codigo || "")
+          .replace(/{empresa}/g, empresa)
+          .replace(/{tecnico}/g, ordenData.tecnico || "")
+          .replace(/{fecha}/g, ordenData.fechaActuacion || ordenData.fecha_actuacion || "")
+          .replace(/{direccion}/g, ordenData.direccion || "");
+
+        let phone = numero.replace(/[\s\-\(\)]/g, "");
+        if (phone.startsWith("+")) phone = phone.slice(1);
+        if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+
+        const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
+        await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: waCfg.api_key },
+          body: JSON.stringify({ number: phone, text: message }),
+        });
+      } catch { /* silencioso — no interrumpir el flujo de la orden */ }
+    },
+    []
+  );
+
   const guardarOrden = async () => {
     if (
       !orden.codigo.trim() ||
@@ -6729,7 +6999,11 @@ export default function App() {
       !orden.nombre.trim() ||
       !orden.direccion.trim()
     ) {
-      alert("Completa los campos obligatorios");
+      alert("Completa los campos obligatorios: codigo, fecha, DNI, nombre y direccion.");
+      return;
+    }
+    if (!orden.tecnico.trim()) {
+      alert("Debes asignar un tecnico a la orden.");
       return;
     }
     if (mostrarCamposUsuario && usuarioNodoEstaBloqueado) {
@@ -6816,9 +7090,15 @@ export default function App() {
       });
     }
 
+    // WhatsApp al cliente (solo órdenes nuevas y si está activado)
+    if (!ordenEditandoId && enviarWhatsappOrden) {
+      void sendWhatsAppNotification(ordenLocal, "nueva_orden");
+    }
+
     setOrdenEditandoId(null);
     setOrden(buildInitialOrder());
     setFotosClienteDni([]);
+    setEnviarWhatsappOrden(true);
     setVistaActiva("pendientes");
   };
 
@@ -6876,6 +7156,20 @@ export default function App() {
         if (upd.error) throw upd.error;
         const merged = deserializeOrderFromSupabase(upd.data || {});
         setOrdenes((prev) => prev.map((item) => (String(item?.id) === String(id) ? { ...item, ...merged } : item)));
+        // Si la orden estaba Liquidada y tenía caja NAP asignada, decrementar puertos_ocupados
+        if (String(target?.estado || "") === "Liquidada") {
+          const cajaCodigo = String(target?.cajaNap || target?.caja_nap || "").trim();
+          if (cajaCodigo) {
+            const cajaData = napCajasMapData.find(c => c.codigo === cajaCodigo);
+            if (cajaData && (cajaData.puertos_ocupados || 0) > 0) {
+              const nuevosOcupados = (cajaData.puertos_ocupados || 0) - 1;
+              const { error: napErr } = await supabase.from("nap_cajas").update({ puertos_ocupados: nuevosOcupados }).eq("id", cajaData.id);
+              if (!napErr) {
+                setNapCajasMapData(prev => prev.map(c => c.id === cajaData.id ? { ...c, puertos_ocupados: nuevosOcupados } : c));
+              }
+            }
+          }
+        }
         return;
       } catch (e) {
         alert(String(e?.message || "No se pudo cancelar la orden."));
@@ -6906,6 +7200,7 @@ export default function App() {
       tecnicoLiquida: ordenItem.tecnico || "",
       cobroRealizado: ordenItem.solicitarPago === "SI" ? "SI" : "NO",
       montoCobrado: ordenItem.solicitarPago === "SI" ? ordenItem.montoCobrar || "" : "",
+      cajaNap: ordenItem.cajaNap || "",
     });
     setLiquidacionRecojo({
       ...initialLiquidacionRecojo,
@@ -6929,7 +7224,13 @@ export default function App() {
       montoCobrado: liquidacionItem.liquidacion?.montoCobrado || "",
       medioPago: liquidacionItem.liquidacion?.medioPago || "",
       codigoEtiqueta: liquidacionItem.liquidacion?.codigoEtiqueta || "",
+      snOnu: liquidacionItem.sn_onu || liquidacionItem.snOnu || liquidacionItem.liquidacion?.snOnu || "",
+      parametro: liquidacionItem.parametro || liquidacionItem.liquidacion?.parametro || "",
+      actualizarUbicacion: "NO",
+      nuevaUbicacion: "",
+      cajaNap: liquidacionItem.cajaNap || liquidacionItem.caja_nap || "",
       equipos: liquidacionItem.liquidacion?.equipos || [],
+      equiposRecuperados: liquidacionItem.liquidacion?.equiposRecuperados || [],
       materiales: liquidacionItem.liquidacion?.materiales || [],
       fotos: liquidacionItem.liquidacion?.fotos || [],
       codigoQRManual: "",
@@ -7208,6 +7509,7 @@ export default function App() {
       codigoEtiqueta: registroLiquidado.liquidacion?.codigoEtiqueta || "",
       tecnico: registroLiquidado.tecnico || "",
       autorOrden: registroLiquidado.autorOrden || "",
+      cajaNap: registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "",
       fechaRegistro: new Date().toLocaleString(),
       ultimaActualizacion: new Date().toLocaleString(),
       historialInstalaciones: [historialItem],
@@ -7237,6 +7539,7 @@ export default function App() {
           passwordUsuario: registroLiquidado.passwordUsuario || existenteMismaOrden.passwordUsuario || "",
           fotoFachada: registroLiquidado.fotoFachada || existenteMismaOrden.fotoFachada || "",
           codigoEtiqueta: registroLiquidado.liquidacion?.codigoEtiqueta || existenteMismaOrden.codigoEtiqueta || "",
+          cajaNap: registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || existenteMismaOrden.cajaNap || "",
           ultimaActualizacion: new Date().toLocaleString(),
         };
         clienteResultado = actualizado;
@@ -7262,65 +7565,221 @@ export default function App() {
     return clienteResultado;
   };
 
-  const guardarLiquidacion = () => {
+  // Helpers para guardar liquidación con fallback de columnas (igual que mobile)
+  const _getMissingCol = (error) => {
+    const msg = String(error?.message || "");
+    const m = msg.match(/column "([^"]+)"/);
+    return m?.[1] || null;
+  };
+  const _upsertLiquidacion = async (payload, codigoOrden) => {
+    let existenteId = null;
+    for (const key of ["codigo", "codigo_orden"]) {
+      const { data, error } = await supabase.from("liquidaciones").select("id").eq(key, codigoOrden).order("id", { ascending: false }).limit(1).maybeSingle();
+      if (!error) { if (data?.id) { existenteId = data.id; break; } continue; }
+      if (!String(error.message || "").toLowerCase().includes(key)) throw error;
+    }
+    let dp = { ...payload };
+    for (let i = 0; i < 8; i++) {
+      if (existenteId) {
+        const { error } = await supabase.from("liquidaciones").update(dp).eq("id", existenteId);
+        if (!error) return existenteId;
+        const col = _getMissingCol(error); if (!col || !(col in dp)) throw error; delete dp[col];
+      } else {
+        const { data, error } = await supabase.from("liquidaciones").insert([dp]).select("id").single();
+        if (!error) return data.id;
+        const col = _getMissingCol(error); if (!col || !(col in dp)) throw error; delete dp[col];
+      }
+    }
+    throw new Error("No se pudo guardar la liquidación (columnas).");
+  };
+  const _insertRows = async (table, rowsOrig) => {
+    let rows = (rowsOrig || []).map(r => ({ ...r }));
+    for (let i = 0; i < 10; i++) {
+      if (!rows.length) return;
+      const { error } = await supabase.from(table).insert(rows);
+      if (!error) return;
+      const col = _getMissingCol(error); if (!col) throw error;
+      let existia = false;
+      rows = rows.map(r => { if (col in r) existia = true; const n = { ...r }; delete n[col]; return n; });
+      if (!existia) throw error;
+    }
+  };
+
+  const guardarLiquidacion = async () => {
     if (!ordenEnLiquidacion) return;
-    const equiposSinFoto = (Array.isArray(liquidacion?.equipos) ? liquidacion.equipos : []).filter(
-      (eq) => !String(eq?.fotoReferencia || "").trim()
-    );
-    if (equiposSinFoto.length > 0) {
-      alert("Cada equipo debe tener la foto serial/equipo antes de guardar la liquidación.");
+
+    // Validaciones
+    const equiposSinFoto = (liquidacion?.equipos || []).filter(eq => !String(eq?.fotoReferencia || "").trim());
+    if (equiposSinFoto.length > 0) { alert("Cada equipo debe tener foto serial/equipo antes de guardar."); return; }
+    const eqsRecuperados = liquidacion?.equiposRecuperados || [];
+    const eqsRecSinFoto = eqsRecuperados.filter(eq => !eq.fotos || eq.fotos.length === 0);
+    if (eqsRecSinFoto.length > 0) { alert("Cada equipo recuperado del cliente debe tener al menos una foto."); return; }
+    if ((liquidacion.fotos || []).length < 3) {
+      alert(`Se requieren mínimo 3 fotos de evidencia.\nActualmente tienes ${(liquidacion.fotos || []).length}.`);
       return;
     }
 
-    const registro = {
-      id: liquidacionEditandoId || Date.now(),
-      fechaLiquidacion: liquidacionEditandoId
-        ? liquidaciones.find((x) => x.id === liquidacionEditandoId)?.fechaLiquidacion ||
-          new Date().toLocaleString()
-        : new Date().toLocaleString(),
-      ordenOriginalId: ordenEnLiquidacion.id,
-      ...ordenEnLiquidacion,
-      liquidacion: {
-        ...liquidacion,
-      },
-      estado: "Liquidada",
-    };
-    const equiposRecuperadosCount = (Array.isArray(registro?.liquidacion?.equipos) ? registro.liquidacion.equipos : []).filter((eq) => {
-      const accion = String(eq?.accion || "").toLowerCase();
-      return accion === "retirado" || accion === "devuelto";
-    }).length;
+    setLiquidacionGuardando(true);
+    const avisos = [];
+    try {
+      const codigoOrden = String(ordenEnLiquidacion.codigo || "").trim();
+      const payload = {
+        orden_original_id: ordenEnLiquidacion.id,
+        codigo: codigoOrden,
+        codigo_orden: codigoOrden,
+        dni: String(ordenEnLiquidacion.dni || ""),
+        nombre: String(ordenEnLiquidacion.nombre || ""),
+        direccion: String(ordenEnLiquidacion.direccion || ""),
+        celular: String(ordenEnLiquidacion.celular || ""),
+        tipo_actuacion: String(ordenEnLiquidacion.tipoActuacion || ""),
+        tecnico: String(ordenEnLiquidacion.tecnico || ""),
+        tecnico_liquida: String(liquidacion.tecnicoLiquida || ""),
+        resultado_final: String(liquidacion.resultadoFinal || "Completada"),
+        observacion_final: String(liquidacion.observacionFinal || ""),
+        cobro_realizado: String(liquidacion.cobroRealizado || "NO"),
+        monto_cobrado: Number.isFinite(Number(liquidacion.montoCobrado)) ? Number(liquidacion.montoCobrado) : 0,
+        medio_pago: String(liquidacion.medioPago || ""),
+        codigo_etiqueta: String(liquidacion.codigoEtiqueta || ""),
+        sn_onu: String(liquidacion.snOnu || ""),
+        sn_onu_liquidacion: String(liquidacion.snOnu || ""),
+        parametro: String(liquidacion.parametro || ""),
+        estado: "Liquidada",
+        fecha_liquidacion: new Date().toISOString(),
+      };
 
-    if (liquidacionEditandoId) {
-      setLiquidaciones((prev) =>
-        prev.map((item) => (item.id === liquidacionEditandoId ? registro : item))
-      );
-    } else {
-      setLiquidaciones((prev) => [registro, ...prev]);
-      setOrdenes((prev) =>
-        prev.map((item) =>
-          item.id === ordenEnLiquidacion.id ? { ...item, estado: "Liquidada" } : item
-        )
-      );
-      if (isSupabaseConfigured && Number.isFinite(Number(ordenEnLiquidacion.id))) {
-        void supabase
-          .from(ORDENES_TABLE)
-          .update({ estado: "Liquidada" })
-          .eq("id", Number(ordenEnLiquidacion.id));
+      const liquidacionId = await _upsertLiquidacion(payload, codigoOrden);
+
+      // Leer materiales previos para devolver stock
+      const { data: prevMats } = await supabase.from("liquidacion_materiales").select("material,cantidad,unidad").eq("liquidacion_id", liquidacionId);
+
+      // Borrar detalles anteriores
+      await supabase.from("liquidacion_equipos").delete().eq("liquidacion_id", liquidacionId);
+      await supabase.from("liquidacion_materiales").delete().eq("liquidacion_id", liquidacionId);
+      await supabase.from("liquidacion_fotos").delete().eq("liquidacion_id", liquidacionId);
+
+      // Equipos
+      const equiposPayload = (liquidacion.equipos || []).map(eq => ({
+        liquidacion_id: liquidacionId,
+        tipo: String(eq?.tipo || ""),
+        codigo: String(eq?.codigo || ""),
+        serial: String(eq?.serial || ""),
+        accion: String(eq?.accion || "Instalado"),
+        marca: String(eq?.marca || ""),
+        modelo: String(eq?.modelo || ""),
+        foto_referencia: String(eq?.fotoReferencia || ""),
+      }));
+      if (equiposPayload.length > 0) await _insertRows("liquidacion_equipos", equiposPayload);
+
+      // Materiales
+      const materialesPayload = (liquidacion.materiales || []).map(m => ({
+        liquidacion_id: liquidacionId,
+        material: String(m?.material || ""),
+        cantidad: Number.isFinite(Number(m?.cantidad)) ? Number(m.cantidad) : 0,
+        unidad: String(m?.unidad || "unidad"),
+      }));
+      if (materialesPayload.length > 0) await _insertRows("liquidacion_materiales", materialesPayload);
+
+      // Stock de materiales del técnico
+      const tecnicoLiq = String(liquidacion.tecnicoLiquida || "").trim();
+      if (tecnicoLiq) {
+        const { data: asigRows, error: asigErr } = await supabase.from("materiales_asignados_tecnicos").select("id,material_nombre,cantidad_disponible,unidad").eq("tecnico", tecnicoLiq);
+        if (!asigErr && (asigRows || []).length > 0) {
+          const stockMap = new Map();
+          asigRows.forEach(row => {
+            const key = `${String(row.material_nombre || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
+            stockMap.set(key, { id: row.id, disponible: Number(row.cantidad_disponible || 0) });
+          });
+          (prevMats || []).forEach(row => {
+            const key = `${String(row.material || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
+            const slot = stockMap.get(key); if (slot) slot.disponible += Number(row.cantidad || 0);
+          });
+          (liquidacion.materiales || []).forEach(row => {
+            const key = `${String(row.material || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
+            const slot = stockMap.get(key);
+            if (slot) slot.disponible = Math.max(0, slot.disponible - Number(row.cantidad || 0));
+            else avisos.push(`Material "${row.material}" no asignado al técnico`);
+          });
+          for (const slot of stockMap.values()) {
+            await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: slot.disponible }).eq("id", slot.id);
+          }
+        }
       }
-    }
 
-    aplicarEstadoEquiposDesdeLiquidacion(registro);
-    void guardarClienteDesdeLiquidacion(registro);
+      // Fotos de evidencia
+      const fotosPayload = (liquidacion.fotos || []).map(url => ({ liquidacion_id: liquidacionId, foto_url: String(url) }));
+      if (fotosPayload.length > 0) {
+        const { error: fErr } = await supabase.from("liquidacion_fotos").insert(fotosPayload);
+        if (fErr) avisos.push(`fotos: ${fErr.message}`);
+      }
 
-    setOrdenEnLiquidacion(null);
-    setLiquidacion(initialLiquidacion);
-    setLiquidacionEditandoId(null);
-    setMostrarScannerLiquidacion(false);
-    setVistaActiva("historial");
-    if (equiposRecuperadosCount > 0) {
-      alert(
-        `${equiposRecuperadosCount} equipo(s) quedaron en Custodia Técnica pendiente de entrega a almacén. No se sumaron automáticamente a almacén.`
-      );
+      // Equipos recuperados del cliente → custodia técnica
+      if (eqsRecuperados.length > 0) {
+        const stockRows = eqsRecuperados.map(eq => ({
+          orden_codigo: String(ordenEnLiquidacion.codigo || ""),
+          tecnico_recupera: String(liquidacion.tecnicoLiquida || ordenEnLiquidacion.tecnico || ""),
+          tipo: String(eq.tipo || ""), marca: eq.marca || null,
+          estado: String(eq.estado || ""), serial: eq.serial || null,
+          fotos: eq.fotos || [],
+          dni_cliente: String(ordenEnLiquidacion.dni || ""),
+          nombre_cliente: String(ordenEnLiquidacion.nombre || ""),
+          nodo: String(ordenEnLiquidacion.nodo || ""),
+          ingresado_almacen: false,
+        }));
+        const { error: sErr } = await supabase.from("stock_tecnico").insert(stockRows);
+        if (sErr) avisos.push(`custodia: ${sErr.message}`);
+      }
+
+      // Actualizar orden
+      const ordenUpdate = { estado: "Liquidada", sn_onu: String(liquidacion.snOnu || "") };
+      if (liquidacion.actualizarUbicacion === "SI" && String(liquidacion.nuevaUbicacion || "").trim()) {
+        ordenUpdate.ubicacion = String(liquidacion.nuevaUbicacion).trim();
+      }
+      if (String(liquidacion.cajaNap || "").trim()) {
+        ordenUpdate.caja_nap = String(liquidacion.cajaNap).trim();
+      }
+      await supabase.from(ORDENES_TABLE).update(ordenUpdate).eq("id", Number(ordenEnLiquidacion.id));
+
+      // Actualizar puertos_ocupados en la caja NAP si la orden se completó
+      const cajaNapCodigo = String(liquidacion.cajaNap || "").trim();
+      if (cajaNapCodigo && liquidacion.resultadoFinal === "Completada" && !liquidacionEditandoId) {
+        const cajaData = napCajasMapData.find(c => c.codigo === cajaNapCodigo);
+        if (cajaData) {
+          const nuevosOcupados = Math.min((cajaData.puertos_ocupados || 0) + 1, cajaData.capacidad || 8);
+          const { error: napErr } = await supabase
+            .from("nap_cajas")
+            .update({ puertos_ocupados: nuevosOcupados })
+            .eq("id", cajaData.id);
+          if (!napErr) {
+            setNapCajasMapData(prev => prev.map(c => c.id === cajaData.id ? { ...c, puertos_ocupados: nuevosOcupados } : c));
+          } else {
+            avisos.push(`No se pudo actualizar puertos de ${cajaNapCodigo}`);
+          }
+        }
+      }
+
+      // Estado inventario equipos
+      const registro = { ...ordenEnLiquidacion, liquidacion, estado: "Liquidada" };
+      aplicarEstadoEquiposDesdeLiquidacion(registro);
+      void guardarClienteDesdeLiquidacion(registro);
+
+      // WhatsApp
+      if (!liquidacionEditandoId) void sendWhatsAppNotification(ordenEnLiquidacion, "liquidacion");
+
+      // Reset UI
+      setOrdenEnLiquidacion(null);
+      setLiquidacion(initialLiquidacion);
+      setLiquidacionEditandoId(null);
+      setMostrarScannerLiquidacion(false);
+      setVistaActiva("historial");
+
+      const custodiaMsg = eqsRecuperados.length > 0 ? `\n\n${eqsRecuperados.length} equipo(s) en custodia técnica.` : "";
+      if (avisos.length > 0) alert(`Liquidación guardada con avisos:\n• ${avisos.join("\n• ")}${custodiaMsg}`);
+      else alert(`Liquidación guardada correctamente.${custodiaMsg}`);
+
+    } catch (e) {
+      alert("Error al guardar: " + (e?.message || String(e)));
+    } finally {
+      setLiquidacionGuardando(false);
     }
   };
 
@@ -7337,6 +7796,16 @@ export default function App() {
       alert("Cada equipo recuperado debe tener al menos una foto antes de guardar.");
       return;
     }
+
+    // Confirmación antes de guardar
+    const resumen = [
+      `Técnico: ${liquidacionRecojo.tecnicoEjecuta}`,
+      `Resultado: ${liquidacionRecojo.resultado}`,
+      liquidacionRecojo.equiposRecuperados.length > 0
+        ? `Equipos: ${liquidacionRecojo.equiposRecuperados.map((e) => `${e.tipo}${e.serial ? ` (${e.serial})` : ""}`).join(", ")}`
+        : "Sin equipos registrados",
+    ].join("\n");
+    if (!window.confirm(`¿Confirmar recojo?\n\n${resumen}`)) return;
 
     const payload = {
       orden_id: Number.isFinite(Number(ordenEnLiquidacion.id)) ? Number(ordenEnLiquidacion.id) : null,
@@ -7364,14 +7833,7 @@ export default function App() {
         alert("Error al guardar: " + (error.message || "Error desconocido"));
         return;
       }
-      // Marcar orden como Liquidada
-      if (Number.isFinite(payload.orden_id)) {
-        await supabase
-          .from(ORDENES_TABLE)
-          .update({ estado: "Liquidada" })
-          .eq("id", payload.orden_id);
-      }
-      // Insertar cada equipo en stock_tecnico
+      // Insertar equipos en stock_tecnico ANTES de marcar orden como Liquidada
       if (liquidacionRecojo.equiposRecuperados.length > 0) {
         const stockRows = liquidacionRecojo.equiposRecuperados.map((eq) => ({
           recuperacion_id: recData?.id || null,
@@ -7381,13 +7843,24 @@ export default function App() {
           marca: eq.marca || null,
           estado: eq.estado,
           serial: eq.serial || null,
-          fotos: eq.fotos || [],
+          fotos: [...(eq.fotos || []), ...(liquidacionRecojo.fotos || [])],
           dni_cliente: payload.dni,
           nombre_cliente: payload.nombre_cliente,
           nodo: payload.nodo,
           ingresado_almacen: false,
         }));
-        await supabase.from("stock_tecnico").insert(stockRows);
+        const { error: stockError } = await supabase.from("stock_tecnico").insert(stockRows);
+        if (stockError) {
+          alert("Error al guardar equipos en custodia: " + stockError.message);
+          return;
+        }
+      }
+      // Solo marcar Liquidada si el stock se guardó correctamente
+      if (Number.isFinite(payload.orden_id)) {
+        await supabase
+          .from(ORDENES_TABLE)
+          .update({ estado: "Liquidada" })
+          .eq("id", payload.orden_id);
       }
     }
 
@@ -7400,6 +7873,9 @@ export default function App() {
 
     // Agregar al historial local
     setHistorialRecuperaciones((prev) => [{ ...payload, id: Date.now() }, ...prev]);
+
+    // WhatsApp al cliente al liquidar recuperación
+    void sendWhatsAppNotification(ordenEnLiquidacion, "liquidacion");
 
     setOrdenEnLiquidacion(null);
     setLiquidacionRecojo(initialLiquidacionRecojo);
@@ -7561,62 +8037,79 @@ export default function App() {
     }));
   };
 
-  const cargarImagenOrden = (e) => {
+  const cargarImagenOrden = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      handleChange("fotoFachada", reader.result);
-    };
-    reader.readAsDataURL(file);
+    const valor = await uploadFotoOrBase64(file, "fachada");
+    handleChange("fotoFachada", valor);
   };
 
-  const cargarFotoEquipoCatalogo = (e) => {
+  const cargarFotoEquipoCatalogo = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      handleEquipoCatalogoChange("fotoReferencia", reader.result);
-    };
-    reader.readAsDataURL(file);
+    const valor = await uploadFotoOrBase64(file, "catalogo");
+    handleEquipoCatalogoChange("fotoReferencia", valor);
   };
 
-  const cargarFotosLiquidacion = (e) => {
+  const uploadFotoOrBase64 = async (file, subfolder = "general") => {
+    if (!isSupabaseConfigured || !(file instanceof File)) {
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+    }
+    try {
+      const ext = (file.name || "foto.jpg").split(".").pop().toLowerCase() || "jpg";
+      const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const path = `liquidaciones/${subfolder}/${ymd}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage.from("liquidaciones").upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        upsert: false,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from("liquidaciones").getPublicUrl(path);
+      const url = String(data?.publicUrl || "").trim();
+      if (url) return url;
+      throw new Error("URL vacía");
+    } catch {
+      // Fallback a base64
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const cargarFotosLiquidacion = async (e) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = "";
     if (files.length === 0) return;
 
     const fotosActuales = liquidacion.fotos.length;
-    const espaciosDisponibles = 5 - fotosActuales;
+    const espaciosDisponibles = 10 - fotosActuales;
 
     if (espaciosDisponibles <= 0) {
-      alert("Solo puedes subir hasta 5 fotos.");
-      e.target.value = "";
+      alert("Solo puedes subir hasta 10 fotos.");
       return;
     }
 
     const archivosPermitidos = files.slice(0, espaciosDisponibles);
 
     if (files.length > espaciosDisponibles) {
-      alert(`Solo puedes subir hasta 5 fotos. Se agregarán ${espaciosDisponibles} foto(s).`);
+      alert(`Solo puedes subir hasta 10 fotos. Se agregarán ${espaciosDisponibles} foto(s).`);
     }
 
-    archivosPermitidos.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
+    for (const file of archivosPermitidos) {
+      const valor = await uploadFotoOrBase64(file, "fotos");
+      if (valor) {
         setLiquidacion((prev) => {
           if (prev.fotos.length >= 5) return prev;
-          return {
-            ...prev,
-            fotos: [...prev.fotos, reader.result].slice(0, 5),
-          };
+          return { ...prev, fotos: [...prev.fotos, valor].slice(0, 5) };
         });
-      };
-      reader.readAsDataURL(file);
-    });
-
-    e.target.value = "";
+      }
+    }
   };
 
   const quitarFotoLiquidacion = (index) => {
@@ -7743,15 +8236,12 @@ export default function App() {
     setUsuarioEditandoId(null);
   };
 
-  const cargarFotoEquipoLiquidacion = (index, e) => {
+  const cargarFotoEquipoLiquidacion = async (index, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      actualizarEquipo(index, "fotoReferencia", reader.result);
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    const valor = await uploadFotoOrBase64(file, "equipos");
+    if (valor) actualizarEquipo(index, "fotoReferencia", valor);
   };
 
   const handleMikrotikRouterChange = (routerKey, field, value) => {
@@ -7858,6 +8348,73 @@ export default function App() {
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     }, 0);
+  };
+
+  const abrirEditarCliente = (cli) => {
+    setFormEditarCliente({
+      nombre: cli.nombre || "",
+      dni: cli.dni || "",
+      direccion: cli.direccion || "",
+      celular: cli.celular || "",
+      email: cli.email || "",
+      empresa: cli.empresa || "",
+      contacto: cli.contacto || "",
+      velocidad: cli.velocidad || "",
+      precioPlan: cli.precioPlan || "",
+      nodo: cli.nodo || "",
+      usuarioNodo: cli.usuarioNodo || "",
+      passwordUsuario: cli.passwordUsuario || "",
+      snOnu: cli.snOnu || "",
+      codigoEtiqueta: cli.codigoEtiqueta || "",
+      codigoCliente: cli.codigoCliente || cli.codigoAbonado || "",
+      estadoServicio: cli.estadoServicio || "ACTIVO",
+      cajaNap: cli.cajaNap || "",
+      puertoNap: cli.puertoNap || "",
+      descripcion: cli.descripcion || "",
+    });
+    setModalEditarCliente(true);
+  };
+
+  const guardarEdicionCliente = async () => {
+    if (!clienteSeleccionado) return;
+    setGuardandoCliente(true);
+    try {
+      const f = formEditarCliente;
+      const updated = {
+        ...clienteSeleccionado,
+        nombre: f.nombre.trim(),
+        dni: f.dni.trim(),
+        direccion: f.direccion.trim(),
+        celular: f.celular.trim(),
+        email: f.email.trim(),
+        empresa: f.empresa.trim(),
+        contacto: f.contacto.trim(),
+        velocidad: f.velocidad.trim(),
+        precioPlan: f.precioPlan.trim(),
+        nodo: f.nodo.trim(),
+        usuarioNodo: f.usuarioNodo.trim(),
+        passwordUsuario: f.passwordUsuario.trim(),
+        snOnu: f.snOnu.trim(),
+        codigoEtiqueta: f.codigoEtiqueta.trim(),
+        codigoCliente: f.codigoCliente.trim(),
+        estadoServicio: f.estadoServicio,
+        cajaNap: f.cajaNap.trim(),
+        puertoNap: f.puertoNap.trim(),
+        descripcion: f.descripcion.trim(),
+        ultimaActualizacion: new Date().toISOString(),
+      };
+      const row = serializarClienteParaSupabase(updated);
+      const { id: _drop, ...rowSinId } = row;
+      const { error } = await supabase.from(CLIENTES_TABLE).update(rowSinId).eq("dni", updated.dni);
+      if (error) throw error;
+      setClienteSeleccionado(updated);
+      setClientes(prev => prev.map(c => (c.id === updated.id || c.dni === updated.dni) ? { ...c, ...updated } : c));
+      setModalEditarCliente(false);
+    } catch (e) {
+      alert("Error al guardar: " + (e?.message || "desconocido"));
+    } finally {
+      setGuardandoCliente(false);
+    }
   };
 
   const eliminarCliente = async (cliente = {}) => {
@@ -8131,6 +8688,18 @@ export default function App() {
       lista = lista.filter((o) => o.tecnico === filtroTecnico);
     }
 
+    if (filtroTipoOrden === "PENDIENTE") {
+      lista = lista.filter((o) => String(o.estado || "").toLowerCase() === "pendiente");
+    } else if (filtroTipoOrden === "PROCESO") {
+      lista = lista.filter((o) => String(o.estado || "").toLowerCase().includes("proceso"));
+    } else if (filtroTipoOrden === "INCIDENCIA") {
+      lista = lista.filter((o) => String(o.orden || "").toUpperCase().includes("INCIDENCIA"));
+    } else if (filtroTipoOrden === "ORDEN_SERVICIO") {
+      lista = lista.filter((o) => String(o.orden || "").toUpperCase().includes("ORDEN DE SERVICIO"));
+    } else if (filtroTipoOrden === "RECUPERACION") {
+      lista = lista.filter((o) => String(o.orden || "").toUpperCase().includes("RECUPERACION"));
+    }
+
     lista = lista.sort((a, b) =>
       String(a.tecnico || "").localeCompare(String(b.tecnico || ""))
     );
@@ -8151,7 +8720,7 @@ export default function App() {
         safeIncludes(item.tipoActuacion, q)
       );
     });
-  }, [ordenes, busquedaPendientes, filtroTecnico]);
+  }, [ordenes, busquedaPendientes, filtroTecnico, filtroTipoOrden]);
 
   const liquidacionesFiltradas = useMemo(() => {
     const q = busquedaHistorial.trim().toLowerCase();
@@ -8573,6 +9142,129 @@ export default function App() {
     mapaCrearInstanceRef.current.setView(coords, 16);
   }, [orden.ubicacion]);
 
+  // Cargar cajas NAP para el mapa de crear orden
+  useEffect(() => {
+    if (napCajasMapData.length) return;
+    supabase.from("nap_cajas")
+      .select("id,codigo,sector,nodo,lat,lng,capacidad,puertos_ocupados,estado,empresa")
+      .not("lat", "is", null).not("lng", "is", null)
+      .then(({ data }) => { if (data?.length) setNapCajasMapData(data); });
+  }, [napCajasMapData.length]);
+
+  // Pintar marcadores NAP en el mapa de crear orden (solo las 20 más cercanas)
+  useEffect(() => {
+    if (!mapaCrearInstanceRef.current || !napCajasTop20.length) return;
+    napMarkersCrearRef.current.forEach(m => m.remove());
+    napMarkersCrearRef.current = [];
+    napCajasTop20.forEach(caja => {
+      const p = caja.capacidad ? Math.round((caja.puertos_ocupados || 0) / caja.capacidad * 100) : 0;
+      const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#0284c7";
+      const sel = orden.cajaNap === caja.codigo;
+      const uid = caja.codigo.replace(/[^a-z0-9]/gi, "");
+      // Compact dark NAP box icon (portrait, like real enclosure)
+      const sw = sel ? 28 : 22, sh = sel ? 40 : 32;
+      const icon = L.divIcon({
+        html: `<svg width="${sw}" height="${sh}" viewBox="0 0 22 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="ns${uid}" x="-25%" y="-15%" width="150%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.5)"/>
+    </filter>
+  </defs>
+  <!-- Anchor triangle -->
+  <path d="M9 27 L11 31 L13 27Z" fill="#64748b"/>
+  <!-- Box body -->
+  <rect x="1" y="1" width="20" height="26" rx="2.5" fill="#cfd8dc" filter="url(#ns${uid})"/>
+  <!-- Side bracket clips left -->
+  <rect x="0" y="6"  width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <rect x="0" y="16" width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <!-- Side bracket clips right -->
+  <rect x="20" y="6"  width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <rect x="20" y="16" width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <!-- Center panel ribs -->
+  <rect x="4" y="5"  width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="8"  width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="11" width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="14" width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="17" width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <!-- Port row at bottom -->
+  <circle cx="3.5"  cy="23" r="1.2" fill="${color}"/>
+  <circle cx="6.5"  cy="23" r="1.2" fill="${color}"/>
+  <circle cx="9.5"  cy="23" r="1.2" fill="${color}"/>
+  <circle cx="12.5" cy="23" r="1.2" fill="${color}"/>
+  <circle cx="15.5" cy="23" r="1.2" fill="#64748b"/>
+  <circle cx="18.5" cy="23" r="1.2" fill="#64748b"/>
+  <!-- Selected ring -->
+  ${sel ? `<rect x="1" y="1" width="20" height="26" rx="2.5" fill="none" stroke="${color}" stroke-width="2"/>` : `<rect x="1" y="1" width="20" height="26" rx="2.5" fill="none" stroke="#64748b" stroke-width="0.8"/>`}
+</svg>`,
+        className: "", iconSize: [sw, sh], iconAnchor: [sw / 2, sh],
+      });
+      const m = L.marker([caja.lat, caja.lng], { icon })
+        .addTo(mapaCrearInstanceRef.current)
+        .bindPopup(`<b>${caja.codigo}</b><br>${caja.sector} · ${caja.nodo}<br>${caja.puertos_ocupados||0}/${caja.capacidad||8} puertos (${p}%)<br><small>Clic para seleccionar</small>`);
+      m.on("click", () => { handleChange("cajaNap", caja.codigo); m.openPopup(); });
+      napMarkersCrearRef.current.push(m);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [napCajasTop20, orden.cajaNap, mapaCrearInstanceRef.current]);
+
+  // Calcular cajas NAP más cercanas al cliente
+  useEffect(() => {
+    if (!napCajasMapData.length) return;
+    const coords = parseCoords(orden.ubicacion);
+    if (!coords) { setNapCajasNearby([]); setNapCajasTop20([]); return; }
+    const [lat, lng] = coords;
+    const sorted = napCajasMapData
+      .map(c => ({ ...c, dist: haversineM(lat, lng, c.lat, c.lng) }))
+      .sort((a, b) => a.dist - b.dist);
+    setNapCajasTop20(sorted.slice(0, 20));
+    setNapCajasNearby(sorted.slice(0, 5));
+    if (!ordenEditandoId && !orden.cajaNap && sorted.length) {
+      handleChange("cajaNap", sorted[0].codigo);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orden.ubicacion, napCajasMapData]);
+
+  // Dibujar líneas rectas cliente → cajas NAP cercanas
+  useEffect(() => {
+    napRouteLayersRef.current.forEach(l => l.remove());
+    napRouteLayersRef.current = [];
+    if (!napCajasNearby.length || !mapaCrearInstanceRef.current) return;
+    const clientCoords = parseCoords(orden.ubicacion);
+    if (!clientCoords) return;
+    const [clat, clng] = clientCoords;
+
+    const results = {};
+    napCajasNearby.forEach(caja => {
+      const dist = haversineM(clat, clng, caja.lat, caja.lng);
+      results[caja.codigo] = { dist };
+      const p = caja.capacidad ? Math.round((caja.puertos_ocupados || 0) / caja.capacidad * 100) : 0;
+      const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#0284c7";
+      const isSel = orden.cajaNap === caja.codigo;
+      const line = L.polyline([[clat, clng], [caja.lat, caja.lng]], {
+        color,
+        weight: isSel ? 3 : 1.5,
+        opacity: isSel ? 0.9 : 0.35,
+        dashArray: isSel ? "8,4" : "4,6",
+      }).addTo(mapaCrearInstanceRef.current);
+      napRouteLayersRef.current.push(line);
+    });
+    setNapRoutes(results);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [napCajasNearby]);
+
+  // Redibujar opacidad/grosor de rutas al cambiar selección
+  useEffect(() => {
+    if (!napRouteLayersRef.current.length || !napCajasNearby.length) return;
+    napRouteLayersRef.current.forEach((line, i) => {
+      const caja = napCajasNearby[i];
+      if (!caja) return;
+      const isSel = orden.cajaNap === caja.codigo;
+      line.setStyle({ weight: isSel ? 4 : 2, opacity: isSel ? 0.85 : 0.3, dashArray: isSel ? null : "7,5" });
+      if (isSel) line.bringToFront();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orden.cajaNap]);
+
   useEffect(() => {
     if (vistaActiva !== "mapa") return;
     if (!mapaRef.current) return;
@@ -8847,6 +9539,22 @@ export default function App() {
     color: "#166534",
     fontSize: "12px",
     fontWeight: "600",
+  };
+
+  const getOrdenTipoBadge = (ordenTipo = "") => {
+    const t = String(ordenTipo).toUpperCase();
+    if (t.includes("INCIDENCIA"))    return { bg: "#fef2f2", color: "#dc2626", border: "#fecaca", label: "INCIDENCIA" };
+    if (t.includes("RECUPERACION"))  return { bg: "#f0fdf4", color: "#16a34a", border: "#86efac", label: "RECUPERACIÓN" };
+    if (t.includes("MANTENIMIENTO")) return { bg: "#fffbeb", color: "#d97706", border: "#fcd34d", label: "MANTENIMIENTO" };
+    return { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe", label: "ORDEN SERVICIO" };
+  };
+
+  const getOrdenTipoBorderColor = (ordenTipo = "") => {
+    const t = String(ordenTipo).toUpperCase();
+    if (t.includes("INCIDENCIA"))    return "#dc2626";
+    if (t.includes("RECUPERACION"))  return "#16a34a";
+    if (t.includes("MANTENIMIENTO")) return "#d97706";
+    return "#1d4ed8";
   };
 
   const badgeDanger = {
@@ -9839,9 +10547,38 @@ export default function App() {
                         </select>
                       </div>
 
-                      <div>
+                      <div style={{ position: "relative" }}>
                         <label style={labelStyle}>Usuario</label>
-                        <input style={inputStyle} value={orden.usuarioNodo} onChange={(e) => handleChange("usuarioNodo", e.target.value)} placeholder="user730@americanet" />
+                        <input
+                          style={inputStyle}
+                          value={orden.usuarioNodo}
+                          onChange={(e) => handleChange("usuarioNodo", e.target.value)}
+                          placeholder="user730@americanet"
+                          onFocus={() => setShowUsuarioDropdown(true)}
+                          onBlur={() => setTimeout(() => setShowUsuarioDropdown(false), 150)}
+                        />
+                        {showUsuarioDropdown && usuariosDisponiblesNodo.length > 0 && (
+                          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #d1d5db", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", zIndex: 999, maxHeight: "220px", overflowY: "auto" }}>
+                            {usuariosDisponiblesNodo.map((u, i) => {
+                              const uLow = u.toLowerCase();
+                              const ocup = (Array.isArray(clientes) ? clientes : []).some((c) => String(c?.usuarioNodo || "").toLowerCase() === uLow) ||
+                                (Array.isArray(ordenes) ? ordenes : []).some((o) => {
+                                  const lib = o?.usuarioNodoLiberado === true || String(o?.usuarioNodoLiberado || "").toLowerCase() === "true";
+                                  return !(String(o?.estado || "").toLowerCase().includes("cancel") && lib) && String(o?.usuarioNodo || "").toLowerCase() === uLow;
+                                });
+                              return (
+                                <div
+                                  key={u}
+                                  onMouseDown={() => { handleChange("usuarioNodo", u); setShowUsuarioDropdown(false); }}
+                                  style={{ padding: "9px 14px", cursor: "pointer", fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", color: ocup ? "#dc2626" : i === 0 ? "#1e40af" : "#374151", fontWeight: i === 0 ? 700 : 400, background: i === 0 ? "#eff6ff" : "transparent", borderBottom: i < usuariosDisponiblesNodo.length - 1 ? "1px solid #f3f4f6" : "none" }}
+                                >
+                                  <span>{u}{i === 0 ? " ✓" : ""}</span>
+                                  {ocup && <span style={{ fontSize: "11px", background: "#fef2f2", color: "#dc2626", borderRadius: "4px", padding: "1px 6px", fontWeight: 700 }}>Ocupado</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                         <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                           <span style={usuarioNodoEstaBloqueado ? badgeDanger : badgeSuccess}>
                             {usuarioNodoEstaBloqueado ? "Deshabilitado" : "Habilitado"}
@@ -9864,6 +10601,16 @@ export default function App() {
                         {usuarioNodoAccionMsg ? (
                           <div style={{ marginTop: "6px", color: "#1e40af", fontSize: "12px", fontWeight: 600 }}>{usuarioNodoAccionMsg}</div>
                         ) : null}
+                        {usuarioNodoOcupado ? (
+                          <div style={{ marginTop: "6px", padding: "7px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", fontSize: "12px", color: "#dc2626", fontWeight: 600 }}>
+                            ⚠ Usuario ocupado —{" "}
+                            {usuarioNodoOcupado.tipo === "cliente"
+                              ? `Cliente: ${usuarioNodoOcupado.nombre} (DNI: ${usuarioNodoOcupado.dni})`
+                              : `Orden ${usuarioNodoOcupado.codigo}: ${usuarioNodoOcupado.nombre}`}
+                          </div>
+                        ) : orden.usuarioNodo ? (
+                          <div style={{ marginTop: "6px", fontSize: "12px", color: "#16a34a", fontWeight: 600 }}>✓ Usuario disponible</div>
+                        ) : null}
                       </div>
 
                       <div>
@@ -9872,6 +10619,10 @@ export default function App() {
                       </div>
                     </>
                   )}
+                  <div>
+                    <label style={labelStyle}>SN ONU</label>
+                    <input style={inputStyle} value={orden.snOnu} onChange={(e) => handleChange("snOnu", e.target.value)} placeholder="Serial ONU" />
+                  </div>
                 </div>
               </div>
 
@@ -9891,6 +10642,78 @@ export default function App() {
                       ref={mapaCrearRef}
                       style={{ border: "1px solid #dbe2ea", borderRadius: "16px", overflow: "hidden", height: "360px", background: "#f8fafc" }}
                     />
+                  </div>
+
+                  {/* Cajas NAP cercanas */}
+                  <div style={fullWidth}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, flexWrap:"wrap", marginBottom:6 }}>
+                      <label style={labelStyle}>Caja NAP asignada</label>
+                      {orden.cajaNap && (
+                        <span style={{ background:"#0ea5e9", color:"#fff", borderRadius:8, padding:"2px 10px", fontSize:12, fontWeight:700 }}>
+                          {orden.cajaNap}
+                        </span>
+                      )}
+                    </div>
+                    {napCajasNearby.length > 0 ? (
+                      <>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {napCajasNearby.map(c => {
+                            const p = c.capacidad ? Math.round((c.puertos_ocupados||0)/c.capacidad*100) : 0;
+                            const color = p>=90?"#dc2626":p>=70?"#ea580c":"#0284c7";
+                            const sel = orden.cajaNap === c.codigo;
+                            const ruta = napRoutes[c.codigo];
+                            const d = ruta ? ruta.dist : c.dist;
+                            const distLabel = d < 1000 ? Math.round(d)+"m" : (d/1000).toFixed(1)+"km";
+                            return (
+                              <div
+                                key={c.codigo}
+                                onClick={() => handleChange("cajaNap", c.codigo)}
+                                style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:8, cursor:"pointer", border: sel?`2px solid ${color}`:"1.5px solid #e4eaf4", background: sel?"#f0f9ff":"#f8fafc", transition:"all .15s" }}
+                              >
+                                <div style={{ width:10, height:10, borderRadius:"50%", background:color, flexShrink:0 }} />
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <span style={{ fontWeight:700, fontSize:13, color:"#111827" }}>{c.codigo}</span>
+                                  <span style={{ fontSize:12, color:"#6b7280", marginLeft:8 }}>{c.sector} · {c.nodo}</span>
+                                </div>
+                                <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                  <div style={{ width:50, height:5, background:"#e2e8f0", borderRadius:3, overflow:"hidden" }}>
+                                    <div style={{ width:p+"%", height:"100%", background:color, borderRadius:3 }} />
+                                  </div>
+                                  <span style={{ fontSize:11, fontWeight:700, color, minWidth:32 }}>{c.puertos_ocupados||0}/{c.capacidad||8}</span>
+                                </div>
+                                <div style={{ textAlign:"right", minWidth:52 }}>
+                                  <div style={{ fontSize:11, fontWeight:700, color:"#111827" }}>{distLabel}</div>
+                                </div>
+                                {sel && <span style={{ fontSize:13, color, fontWeight:800 }}>✓</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ fontSize:11, color:"#94a3b8", marginTop:4 }}>Distancia en línea recta · Las líneas en el mapa conectan al cliente con cada caja</div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize:12, color:"#6b7280", marginBottom:6 }}>
+                        {napCajasMapData.length === 0 ? "Cargando cajas…" : "Ingresa la ubicación del cliente para ver cajas cercanas."}
+                      </div>
+                    )}
+                    {/* Selector manual — siempre disponible como alternativa */}
+                    <div style={{ marginTop:8 }}>
+                      <select
+                        style={{ ...inputStyle, fontSize:12 }}
+                        value={orden.cajaNap}
+                        onChange={e => handleChange("cajaNap", e.target.value)}
+                      >
+                        <option value="">— Buscar caja manualmente —</option>
+                        {napCajasMapData
+                          .filter(c => !orden.nodo || c.nodo === orden.nodo)
+                          .sort((a,b) => String(a.codigo).localeCompare(String(b.codigo)))
+                          .map(c => (
+                            <option key={c.id} value={c.codigo}>
+                              {c.codigo} — {c.sector || ""} · {c.nodo} ({c.puertos_ocupados||0}/{c.capacidad||8} puertos)
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div style={fullWidth}>
@@ -9964,9 +10787,23 @@ export default function App() {
               </div>
 
               <div style={{ ...cardStyle, borderRadius: "14px", padding: "16px", background: "#f8fbff" }}>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                  <button onClick={generarCodigo} style={secondaryButton}>Generar código</button>
-                  <button onClick={guardarOrden} style={primaryButton}>{ordenEditandoId ? "Actualizar orden" : "Guardar orden"}</button>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button onClick={generarCodigo} style={secondaryButton}>Generar código</button>
+                    <button onClick={guardarOrden} style={primaryButton}>{ordenEditandoId ? "Actualizar orden" : "Guardar orden"}</button>
+                  </div>
+                  <div
+                    onClick={() => setEnviarWhatsappOrden((v) => !v)}
+                    title={enviarWhatsappOrden ? "WhatsApp activado — haz clic para desactivar" : "WhatsApp desactivado — haz clic para activar"}
+                    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "6px 12px", borderRadius: "8px", border: "1.5px solid", borderColor: enviarWhatsappOrden ? "#86efac" : "#e2e8f0", background: enviarWhatsappOrden ? "#f0fdf4" : "#f8fafc", userSelect: "none" }}
+                  >
+                    <div style={{ width: "36px", height: "20px", borderRadius: "10px", background: enviarWhatsappOrden ? "#22c55e" : "#cbd5e1", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                      <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: enviarWhatsappOrden ? 19 : 3, transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                    </div>
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: enviarWhatsappOrden ? "#166534" : "#6b7280" }}>
+                      {enviarWhatsappOrden ? "📱 Notif. WhatsApp" : "🔕 Sin WhatsApp"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -10145,6 +10982,40 @@ export default function App() {
               </div>
             </div>
 
+            {/* Filtros por tipo */}
+            {(() => {
+              const base = ordenesPendientesFiltradas;
+              const counts = {
+                TODOS:         base.length,
+                PENDIENTE:     base.filter(o => String(o.estado||"").toLowerCase() === "pendiente").length,
+                PROCESO:       base.filter(o => String(o.estado||"").toLowerCase().includes("proceso")).length,
+                INCIDENCIA:    base.filter(o => String(o.orden||"").toUpperCase().includes("INCIDENCIA")).length,
+                ORDEN_SERVICIO:base.filter(o => String(o.orden||"").toUpperCase().includes("ORDEN DE SERVICIO")).length,
+                RECUPERACION:  base.filter(o => String(o.orden||"").toUpperCase().includes("RECUPERACION")).length,
+              };
+              const tabs = [
+                { key: "TODOS",          label: "Total",          color: "#374151", bg: "#f3f4f6", activeBg: "#1e40af", activeColor: "#fff" },
+                { key: "PENDIENTE",      label: "Pendientes",     color: "#374151", bg: "#f3f4f6", activeBg: "#f59e0b", activeColor: "#fff" },
+                { key: "PROCESO",        label: "En proceso",     color: "#374151", bg: "#f3f4f6", activeBg: "#7c3aed", activeColor: "#fff" },
+                { key: "INCIDENCIA",     label: "Incidencias",    color: "#374151", bg: "#f3f4f6", activeBg: "#dc2626", activeColor: "#fff" },
+                { key: "ORDEN_SERVICIO", label: "Orden Servicio", color: "#374151", bg: "#f3f4f6", activeBg: "#1d4ed8", activeColor: "#fff" },
+                { key: "RECUPERACION",   label: "Recuperación",   color: "#374151", bg: "#f3f4f6", activeBg: "#16a34a", activeColor: "#fff" },
+              ];
+              return (
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+                  {tabs.map(({ key, label, activeBg, activeColor, bg, color }) => (
+                    <button
+                      key={key}
+                      onClick={() => setFiltroTipoOrden(key)}
+                      style={{ padding: "7px 14px", borderRadius: "999px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: "600", background: filtroTipoOrden === key ? activeBg : bg, color: filtroTipoOrden === key ? activeColor : color, transition: "all 0.15s" }}
+                    >
+                      {label} <span style={{ opacity: 0.8, fontWeight: "400" }}>({counts[key]})</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
             {ordenesDiaSeleccionado.length === 0 ? (
               <p style={{ color: "#6b7280", margin: 0 }}>No hay órdenes {calendarioFecha ? "para este día" : "pendientes"}.</p>
             ) : (
@@ -10154,6 +11025,7 @@ export default function App() {
                     key={item.id}
                     style={{
                       border: "1px solid #e5e7eb",
+                      borderLeft: `4px solid ${getOrdenTipoBorderColor(item.orden)}`,
                       borderRadius: "16px",
                       padding: "18px",
                       background: "#fafafa",
@@ -10166,6 +11038,11 @@ export default function App() {
                         </div>
 
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                          {(() => { const t = getOrdenTipoBadge(item.orden); return (
+                            <div style={{ display: "inline-block", padding: "4px 10px", borderRadius: "999px", fontSize: "11px", fontWeight: "700", background: t.bg, color: t.color, border: `1px solid ${t.border}` }}>
+                              {t.label}
+                            </div>
+                          ); })()}
                           <div
                             style={{
                               display: "inline-block",
@@ -13329,506 +14206,508 @@ export default function App() {
         )}
 
         {vistaActiva === "clientes" && (
-          <div style={{ display: "grid", gap: "24px" }}>
-            <div style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "18px" }}>
-                <div style={{ display: "grid", gap: "4px" }}>
-                  <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Base de abonados</h2>
-                  <p style={{ ...subtitleStyle, margin: 0 }}>Consulta histórica importada desde Sheet1/Supabase.</p>
+          <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #e8edf5", boxShadow: "0 2px 16px rgba(15,23,42,0.06)", padding: "22px 26px" }}>
+
+              {/* ── Header ── */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.4px" }}>Abonados</h2>
+                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
                 </div>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                    {[
-                      { key: "TODOS", label: "Todos", bg: "#eff6ff", color: "#1d4ed8", border: "#93c5fd" },
-                      { key: "ACTIVO", label: "Activo", bg: "#f0fdf4", color: "#15803d", border: "#86efac" },
-                      { key: "SUSPENDIDO", label: "Suspendido", bg: "#fef2f2", color: "#b91c1c", border: "#fca5a5" },
-                      { key: "INACTIVO", label: "Inactivo", bg: "#fafafa", color: "#6b7280", border: "#d1d5db" },
-                      { key: "DESCONOCIDO", label: "Desc.", bg: "#fffbeb", color: "#92400e", border: "#fcd34d" },
-                    ].map(({ key, label, bg, color, border }) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setFiltroEstadoCliente(key)}
-                        style={{
-                          ...secondaryButton,
-                          padding: "5px 10px",
-                          fontSize: "12px",
-                          background: filtroEstadoCliente === key ? bg : undefined,
-                          color: filtroEstadoCliente === key ? color : undefined,
-                          borderColor: filtroEstadoCliente === key ? border : undefined,
-                          fontWeight: filtroEstadoCliente === key ? 600 : undefined,
-                        }}
-                      >
-                        {label} ({conteosEstadoCliente[key] ?? 0})
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={actualizarEstadoMasivoMikrowisp}
-                    disabled={actualizarEstadoMasivoLoading}
-                    style={{ ...secondaryButton, fontSize: "12px", padding: "5px 10px" }}
-                    title="Consulta Mikrowisp por DNI para actualizar el estado de todos los clientes"
-                  >
-                    {actualizarEstadoMasivoLoading
-                      ? `Consultando... ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}`
-                      : "Actualizar estado masivo (Mikrowisp DNI)"}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={syncClientesDesdeSheet} disabled={clientesSyncLoading} style={{ padding: "8px 16px", background: "#163f86", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    {clientesSyncLoading ? "Actualizando..." : "↻ Sync"}
                   </button>
-                  <input
-                    style={{ ...inputStyle, width: "420px", maxWidth: "100%" }}
-                    value={busquedaClientesDraft}
-                    onChange={(e) => setBusquedaClientesDraft(e.target.value)}
-                    placeholder="Buscar por DNI, nombre, celular, dirección, usuario, nodo, equipo..."
-                  />
-                  <button onClick={syncClientesDesdeSheet} style={primaryButton} disabled={clientesSyncLoading}>
-                    {clientesSyncLoading ? "Actualizando..." : clientesSupabaseSaving ? "Guardando..." : "Actualizar"}
+                  <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    Recargar
                   </button>
-                  <button
-                    onClick={() => cargarClientesDesdeSupabase({ silent: false })}
-                    style={secondaryButton}
-                    disabled={clientesSyncLoading || !isSupabaseConfigured}
-                    title={isSupabaseConfigured ? "Recargar desde Supabase" : "Configura Supabase"}
-                  >
-                    {clientesSupabaseSaving ? "Guardando..." : "Recargar"}
+                  <button onClick={actualizarEstadoMasivoMikrowisp} disabled={actualizarEstadoMasivoLoading} title="Consulta Mikrowisp por DNI para actualizar estado" style={{ padding: "8px 14px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    {actualizarEstadoMasivoLoading ? `MK ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}` : "Sync MikroTik"}
                   </button>
-                  <span style={{ ...badgeStyle, background: "#eef2ff", color: "#1e3a8a" }}>Registros: {clientes.length}</span>
-                  {esAdminSesion ? (
-                    <button onClick={limpiarClientesLocales} style={dangerButton}>
-                      Vaciar locales
+                  {esAdminSesion && (
+                    <button onClick={limpiarClientesLocales} style={{ padding: "8px 14px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      Vaciar
                     </button>
-                  ) : null}
+                  )}
                 </div>
               </div>
 
-              {clientesSyncInfo ? (
-                <div style={{ marginBottom: "10px", fontSize: "13px", color: "#065f46" }}>{clientesSyncInfo}</div>
-              ) : null}
-              {clientesSyncError ? (
-                <div style={{ marginBottom: "10px", fontSize: "13px", color: "#b91c1c" }}>{clientesSyncError}</div>
-              ) : null}
-
-              <div style={{ marginBottom: "16px", color: "#4b5563", fontSize: "14px" }}>
-                Total abonados: <strong>{clientes.length}</strong>
-                {" · "}
-                Mostrando:{" "}
-                <strong>
-                  {clientesFiltrados.length === 0 ? 0 : (clientesPagina - 1) * CLIENTES_PAGE_SIZE + 1}
-                  -
-                  {Math.min(clientesPagina * CLIENTES_PAGE_SIZE, clientesFiltrados.length)}
-                </strong>
-                {" de "}
-                <strong>{clientesFiltrados.length}</strong>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: "10px",
-                  marginBottom: "14px",
-                }}
-              >
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "10px 12px", background: "#f8fafc" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>Abonados visibles</div>
-                  <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a" }}>{clientesResumen.total}</div>
+              {/* ── Búsqueda + filtros estado ── */}
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
+                <div style={{ position: "relative", flex: "1 1 260px", maxWidth: 440 }}>
+                  <svg style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  <input
+                    style={{ width: "100%", padding: "9px 12px 9px 33px", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: 13, outline: "none", background: "#f8fafc", boxSizing: "border-box", color: "#0f172a" }}
+                    value={busquedaClientesDraft}
+                    onChange={e => setBusquedaClientesDraft(e.target.value)}
+                    placeholder="Buscar nombre, DNI, celular, nodo..."
+                  />
                 </div>
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "10px 12px", background: "#f8fafc" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>Con celular</div>
-                  <div style={{ fontSize: "24px", fontWeight: 800, color: "#0369a1" }}>{clientesResumen.conCelular}</div>
-                </div>
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "10px 12px", background: "#f8fafc" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>Con nodo</div>
-                  <div style={{ fontSize: "24px", fontWeight: 800, color: "#0f766e" }}>{clientesResumen.conNodo}</div>
-                </div>
-                <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "10px 12px", background: "#f8fafc" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>Con etiqueta</div>
-                  <div style={{ fontSize: "24px", fontWeight: 800, color: "#b45309" }}>{clientesResumen.conEtiqueta}</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {[
+                    { key: "TODOS", label: "Todos" },
+                    { key: "ACTIVO", label: "Activo", dot: "#16a34a" },
+                    { key: "SUSPENDIDO", label: "Suspendido", dot: "#dc2626" },
+                    { key: "INACTIVO", label: "Inactivo", dot: "#6b7280" },
+                    { key: "DESCONOCIDO", label: "Desc.", dot: "#d97706" },
+                  ].map(({ key, label, dot }) => {
+                    const active = filtroEstadoCliente === key;
+                    return (
+                      <button key={key} type="button" onClick={() => setFiltroEstadoCliente(key)} style={{ padding: "7px 12px", border: "1.5px solid", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: active ? "#0f172a" : "#f8fafc", borderColor: active ? "#0f172a" : "#e2e8f0", color: active ? "#fff" : "#475569" }}>
+                        {dot && <span style={{ width: 6, height: 6, borderRadius: "50%", background: active ? "#fff" : dot, flexShrink: 0 }} />}
+                        {label}
+                        <span style={{ opacity: 0.65, fontSize: 10 }}>{conteosEstadoCliente[key] ?? 0}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
+              {/* ── Stats strip ── */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 18 }}>
+                {[
+                  { label: "Visibles", value: clientesResumen.total, color: "#163f86" },
+                  { label: "Con celular", value: clientesResumen.conCelular, color: "#0369a1" },
+                  { label: "Con nodo", value: clientesResumen.conNodo, color: "#0f766e" },
+                  { label: "Con etiqueta", value: clientesResumen.conEtiqueta, color: "#b45309" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 12, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color, marginTop: 2, lineHeight: 1 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {clientesSyncInfo && <div style={{ marginBottom: 12, fontSize: 12, color: "#065f46", background: "#f0fdf4", padding: "8px 14px", borderRadius: 9, border: "1px solid #86efac" }}>{clientesSyncInfo}</div>}
+              {clientesSyncError && <div style={{ marginBottom: 12, fontSize: 12, color: "#b91c1c", background: "#fef2f2", padding: "8px 14px", borderRadius: 9, border: "1px solid #fecaca" }}>{clientesSyncError}</div>}
+
+              {/* ── Tabla ── */}
               {clientesFiltrados.length === 0 ? (
-                <p style={{ color: "#6b7280", margin: 0 }}>
-                  No hay clientes registrados aún. Se crearán automáticamente al liquidar instalaciones.
-                </p>
+                <div style={{ textAlign: "center", padding: "48px 0", color: "#cbd5e1" }}>
+                  <div style={{ fontSize: 36, marginBottom: 10 }}>👤</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Sin clientes registrados</div>
+                </div>
               ) : (
-                <div style={{ display: "grid", gap: "10px" }}>
-                  <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "12px" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "940px", fontSize: "13px" }}>
+                <>
+                  <div style={{ border: "1px solid #f1f5f9", borderRadius: 14, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
                       <thead>
-                        <tr style={{ background: "#f1f5f9", color: "#0f172a" }}>
-                          <th style={{ textAlign: "left", padding: "10px" }}>Abonado</th>
-                          <th style={{ textAlign: "left", padding: "10px" }}>DNI</th>
-                          <th style={{ textAlign: "left", padding: "10px" }}>Celular</th>
-                          <th style={{ textAlign: "left", padding: "10px" }}>Nodo</th>
-                          <th style={{ textAlign: "left", padding: "10px" }}>Usuario PPPoE</th>
-                          <th style={{ textAlign: "left", padding: "10px" }}>Plan</th>
-                          <th style={{ textAlign: "left", padding: "10px" }}>Etiqueta</th>
-                          <th style={{ textAlign: "center", padding: "10px" }}>Acción</th>
+                        <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #f1f5f9" }}>
+                          {["Cliente", "DNI", "Contacto", "Nodo · Plan", "Estado", "Acciones"].map((h, i) => (
+                            <th key={h} style={{ textAlign: i === 5 ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {clientesPaginados.map((cliente, idx) => (
-                          <tr key={cliente.id || idx} style={{ borderTop: "1px solid #e5e7eb", background: idx % 2 === 0 ? "#ffffff" : "#fbfdff" }}>
-                            <td style={{ padding: "10px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 700, fontSize: "13px", background: "#e0f2fe", color: "#0369a1", borderRadius: "6px", padding: "2px 8px" }}>
-                                  {cliente.codigoAbonado || cliente.codigoCliente || "-"}
-                                </span>
-                                {dniServiciosCount[String(cliente.dni || "").trim()] > 1 && (
-                                  <span style={{ fontSize: "10px", background: "#fef3c7", color: "#92400e", borderRadius: "999px", padding: "1px 7px", fontWeight: 600 }}>
-                                    {dniServiciosCount[String(cliente.dni || "").trim()]} servicios
-                                  </span>
-                                )}
-                              </div>
-                              <div style={{ fontWeight: 600, marginTop: "3px" }}>{cliente.nombre || "-"}</div>
-                              <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>{cliente.direccion || "-"}</div>
-                            </td>
-                            <td style={{ padding: "10px" }}>{cliente.dni || "-"}</td>
-                            <td style={{ padding: "10px" }}>{cliente.celular || "-"}</td>
-                            <td style={{ padding: "10px" }}>{cliente.nodo || "-"}</td>
-                            <td style={{ padding: "10px" }}>{cliente.usuarioNodo || "-"}</td>
-                            <td style={{ padding: "10px" }}>{cliente.velocidad || "-"}</td>
-                            <td style={{ padding: "10px" }}>{cliente.codigoEtiqueta || "-"}</td>
-                            <td style={{ padding: "10px", textAlign: "center" }}>
-                              <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
-                                <button
-                                  onClick={() => void abrirDetalleCliente(cliente)}
-                                  style={{ ...infoButton, padding: "8px 12px", borderRadius: "10px" }}
-                                >
-                                  Ver detalle
-                                </button>
-                                <button
-                                  onClick={() => void abrirDiagnosticoRapidoCliente(cliente)}
-                                  style={{
-                                    ...secondaryButton,
-                                    padding: "8px 12px",
-                                    borderRadius: "10px",
-                                    borderColor: "#86efac",
-                                    color: "#166534",
-                                    background: "#f0fdf4",
-                                  }}
-                                >
-                                  MikroTik
-                                </button>
-                                {puedeGestionarSuspensionClientes ? (
-                                  <>
-                                    {!clienteEstaSuspendidoMikrotik(cliente) ? (
-                                      <button
-                                        onClick={() => void ejecutarAccionMikrotikCliente(cliente, "suspender")}
-                                        style={{
-                                          ...warningButton,
-                                          padding: "8px 11px",
-                                          borderRadius: "10px",
-                                          display: "inline-flex",
-                                          alignItems: "center",
-                                          gap: "6px",
-                                        }}
-                                        disabled={clienteMikrotikAccionLoading === "suspender"}
-                                        title="Suspender servicio (address-list moroso_)"
-                                      >
-                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                          <rect x="5" y="4" width="5" height="16" rx="1.5" fill="currentColor" />
-                                          <rect x="14" y="4" width="5" height="16" rx="1.5" fill="currentColor" />
-                                        </svg>
-                                        {clienteMikrotikAccionLoading === "suspender" ? "Suspendiendo..." : "Suspender"}
-                                      </button>
-                                    ) : null}
-                                    {clienteEstaSuspendidoMikrotik(cliente) ? (
-                                      <button
-                                        onClick={() => void ejecutarAccionMikrotikCliente(cliente, "activar")}
-                                        style={{
-                                          ...secondaryButton,
-                                          padding: "8px 11px",
-                                          borderRadius: "10px",
-                                          display: "inline-flex",
-                                          alignItems: "center",
-                                          gap: "6px",
-                                        }}
-                                        disabled={clienteMikrotikAccionLoading === "activar"}
-                                        title="Activar servicio (quitar de address-list moroso_)"
-                                      >
-                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                          <path d="M6 4.8C6 3.62 7.29 2.9 8.29 3.53L19.04 10.73C19.95 11.32 19.95 12.68 19.04 13.27L8.29 20.47C7.29 21.1 6 20.38 6 19.2V4.8Z" fill="currentColor" />
-                                        </svg>
-                                        {clienteMikrotikAccionLoading === "activar" ? "Activando..." : "Activar"}
-                                      </button>
-                                    ) : null}
-                                  </>
-                                ) : null}
-                                <button
-                                  onClick={() => crearOrdenDesdeCliente(cliente)}
-                                  style={{ ...primaryButton, padding: "8px 12px", borderRadius: "10px" }}
-                                >
-                                  Crear orden
-                                </button>
-                                {esAdminSesion ? (
-                                  <button
-                                    onClick={() => void eliminarCliente(cliente)}
-                                    style={{ ...dangerButton, padding: "8px 12px", borderRadius: "10px" }}
-                                  >
-                                    Eliminar
-                                  </button>
-                                ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                        {clientesPaginados.map((cliente, idx) => {
+                          const est = String(cliente.estadoServicio || "DESCONOCIDO").toUpperCase();
+                          const estCfg = { ACTIVO: { c: "#16a34a", bg: "#dcfce7", l: "Activo" }, SUSPENDIDO: { c: "#dc2626", bg: "#fee2e2", l: "Suspendido" }, INACTIVO: { c: "#6b7280", bg: "#f3f4f6", l: "Inactivo" }, DESCONOCIDO: { c: "#d97706", bg: "#fef3c7", l: "Desc." } }[est] || { c: "#6b7280", bg: "#f3f4f6", l: est };
+                          return (
+                            <tr key={cliente.id || idx} style={{ borderTop: "1px solid #f8fafc", cursor: "default" }}
+                              onMouseEnter={e => e.currentTarget.style.background = "#fafbff"}
+                              onMouseLeave={e => e.currentTarget.style.background = ""}>
+                              <td style={{ padding: "11px 14px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#eff6ff", color: "#163f86", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+                                    {String(cliente.nombre || "?").charAt(0).toUpperCase()}
+                                  </div>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.nombre || "-"}</div>
+                                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, display: "flex", gap: 5, alignItems: "center" }}>
+                                      <span>{cliente.codigoAbonado || cliente.codigoCliente || ""}</span>
+                                      {dniServiciosCount[String(cliente.dni || "").trim()] > 1 && (
+                                        <span style={{ background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "1px 6px", fontSize: 9, fontWeight: 800 }}>
+                                          {dniServiciosCount[String(cliente.dni || "").trim()]} serv.
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.direccion || ""}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
+                              <td style={{ padding: "11px 14px", color: "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
+                              <td style={{ padding: "11px 14px" }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{cliente.nodo || "-"}</div>
+                                <div style={{ fontSize: 11, color: "#94a3b8" }}>{cliente.velocidad || "-"}</div>
+                              </td>
+                              <td style={{ padding: "11px 14px" }}>
+                                <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: estCfg.bg, color: estCfg.c, whiteSpace: "nowrap" }}>{estCfg.l}</span>
+                              </td>
+                              <td style={{ padding: "11px 14px" }}>
+                                <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
+                                  <button onClick={() => void abrirDetalleCliente(cliente)} style={{ padding: "6px 12px", background: "#eff6ff", color: "#163f86", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Ver</button>
+                                  <button onClick={() => void abrirDiagnosticoRapidoCliente(cliente)} title="Diagnóstico MikroTik" style={{ padding: "6px 10px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>MK</button>
+                                  {puedeGestionarSuspensionClientes && !clienteEstaSuspendidoMikrotik(cliente) && (
+                                    <button onClick={() => void ejecutarAccionMikrotikCliente(cliente, "suspender")} disabled={clienteMikrotikAccionLoading === "suspender"} title="Suspender" style={{ padding: "6px 9px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>⏸</button>
+                                  )}
+                                  {puedeGestionarSuspensionClientes && clienteEstaSuspendidoMikrotik(cliente) && (
+                                    <button onClick={() => void ejecutarAccionMikrotikCliente(cliente, "activar")} disabled={clienteMikrotikAccionLoading === "activar"} title="Activar" style={{ padding: "6px 9px", background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>▶</button>
+                                  )}
+                                  <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 11px", background: "#163f86", color: "#fff", border: "none", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
+                                  {esAdminSesion && (
+                                    <button onClick={() => void eliminarCliente(cliente)} title="Eliminar" style={{ padding: "6px 8px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, fontSize: 11, cursor: "pointer" }}>✕</button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                    <div style={{ fontSize: "12px", color: "#64748b" }}>
-                      Página {clientesPagina} de {totalPaginasClientes}
+
+                  {/* Paginación */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                      {clientesFiltrados.length === 0 ? 0 : (clientesPagina - 1) * CLIENTES_PAGE_SIZE + 1}–{Math.min(clientesPagina * CLIENTES_PAGE_SIZE, clientesFiltrados.length)} de <strong style={{ color: "#475569" }}>{clientesFiltrados.length}</strong>
                     </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        type="button"
-                        style={secondaryButton}
-                        onClick={() => setClientesPagina((p) => Math.max(1, p - 1))}
-                        disabled={clientesPagina <= 1}
-                      >
-                        Anterior
-                      </button>
-                      <button
-                        type="button"
-                        style={secondaryButton}
-                        onClick={() => setClientesPagina((p) => Math.min(totalPaginasClientes, p + 1))}
-                        disabled={clientesPagina >= totalPaginasClientes}
-                      >
-                        Siguiente
-                      </button>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <button type="button" onClick={() => setClientesPagina(p => Math.max(1, p - 1))} disabled={clientesPagina <= 1} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>← Ant.</button>
+                      <span style={{ fontSize: 12, color: "#64748b", padding: "0 8px" }}>Pág. {clientesPagina} / {totalPaginasClientes}</span>
+                      <button type="button" onClick={() => setClientesPagina(p => Math.min(totalPaginasClientes, p + 1))} disabled={clientesPagina >= totalPaginasClientes} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>Sig. →</button>
                     </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>
         )}
 
-        {vistaActiva === "detalleCliente" && clienteSeleccionado && (
-          <div style={{ display: "grid", gap: "24px" }}>
-            <div style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
-                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Detalle del cliente</h2>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <button
-                    onClick={() => void abrirDiagnosticoRapidoCliente(clienteSeleccionado)}
-                    style={{
-                      ...secondaryButton,
-                      borderColor: "#86efac",
-                      color: "#166534",
-                      background: "#f0fdf4",
-                    }}
-                  >
-                    Diagnóstico MikroTik
-                  </button>
-                  {puedeGestionarSuspensionClientes ? (
-                    <>
-                      {!clienteEstaSuspendidoMikrotik(clienteSeleccionado) ? (
-                        <button
-                          onClick={() => void ejecutarAccionMikrotikCliente(clienteSeleccionado, "suspender")}
-                          style={warningButton}
-                          disabled={clienteMikrotikAccionLoading === "suspender"}
-                        >
-                          {clienteMikrotikAccionLoading === "suspender" ? "Suspendiendo..." : "Suspender"}
-                        </button>
-                      ) : null}
-                      {clienteEstaSuspendidoMikrotik(clienteSeleccionado) ? (
-                        <button
-                          onClick={() => void ejecutarAccionMikrotikCliente(clienteSeleccionado, "activar")}
-                          style={secondaryButton}
-                          disabled={clienteMikrotikAccionLoading === "activar"}
-                        >
-                          {clienteMikrotikAccionLoading === "activar" ? "Activando..." : "Activar"}
-                        </button>
-                      ) : null}
-                    </>
-                  ) : null}
-                  <button onClick={() => crearOrdenDesdeCliente(clienteSeleccionado)} style={primaryButton}>
-                    Crear orden (Incidencia)
-                  </button>
-                  {esAdminSesion ? (
-                    <button onClick={() => void eliminarCliente(clienteSeleccionado)} style={dangerButton}>
-                      Eliminar cliente
-                    </button>
-                  ) : null}
-                  <button onClick={() => setVistaActiva("clientes")} style={secondaryButton}>
-                    Volver
-                  </button>
-                </div>
-              </div>
+        {vistaActiva === "whatsapp" && (
+          <WhatsAppConfigPanel />
+        )}
 
-              {clienteMikrotikAccionInfo ? (
-                <div
-                  style={{
-                    marginTop: "12px",
-                    border: "1px solid #dbe6f5",
-                    borderRadius: "12px",
-                    padding: "10px 12px",
-                    background: "#f8fbff",
-                    color: "#1e3a8a",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                  }}
-                >
-                  {clienteMikrotikAccionInfo}
-                </div>
-              ) : null}
+        {vistaActiva === "nap" && (
+          <NapPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
+        )}
 
-              <div style={{ display: "grid", gap: "8px", marginTop: "18px" }}>
-                <div><strong>Código cliente:</strong> {clienteSeleccionado.codigoCliente || "-"}</div>
-                <div><strong>DNI:</strong> {clienteSeleccionado.dni || "-"}</div>
-                <div><strong>Nombre:</strong> {clienteSeleccionado.nombre || "-"}</div>
-                <div><strong>Dirección:</strong> {clienteSeleccionado.direccion || "-"}</div>
-                <div><strong>Celular:</strong> {clienteSeleccionado.celular || "-"}</div>
-                <div><strong>Email:</strong> {clienteSeleccionado.email || "-"}</div>
-                <div><strong>Contacto:</strong> {clienteSeleccionado.contacto || "-"}</div>
-                <div><strong>Empresa:</strong> {clienteSeleccionado.empresa || "-"}</div>
-                <div><strong>Plan:</strong> {clienteSeleccionado.velocidad || "-"}</div>
-                <div><strong>Precio:</strong> {clienteSeleccionado.precioPlan || "-"}</div>
-                <div><strong>Nodo:</strong> {clienteSeleccionado.nodo || "-"}</div>
-                <div><strong>Usuario:</strong> {clienteSeleccionado.usuarioNodo || "-"}</div>
-                <div><strong>Contraseña:</strong> {clienteSeleccionado.passwordUsuario || "-"}</div>
-                <div><strong>Código etiqueta:</strong> {clienteSeleccionado.codigoEtiqueta || "-"}</div>
-                <div><strong>Ubicación:</strong> {clienteSeleccionado.ubicacion || "-"}</div>
-                <div><strong>Técnico:</strong> {clienteSeleccionado.tecnico || "-"}</div>
-                <div><strong>Autor:</strong> {clienteSeleccionado.autorOrden || "-"}</div>
-                <div><strong>Descripción:</strong> {clienteSeleccionado.descripcion || "-"}</div>
-                <div><strong>Registrado:</strong> {clienteSeleccionado.fechaRegistro || "-"}</div>
-                <div><strong>Última actualización:</strong> {clienteSeleccionado.ultimaActualizacion || "-"}</div>
-              </div>
+        {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
+          const cli = clienteSeleccionado;
+          const est = String(cli.estadoServicio || "DESCONOCIDO").toUpperCase();
+          const estCfg = { ACTIVO: { c: "#16a34a", bg: "#dcfce7", l: "Activo" }, SUSPENDIDO: { c: "#dc2626", bg: "#fee2e2", l: "Suspendido" }, INACTIVO: { c: "#6b7280", bg: "#f3f4f6", l: "Inactivo" }, DESCONOCIDO: { c: "#d97706", bg: "#fef3c7", l: "Desc." } }[est] || { c: "#6b7280", bg: "#f3f4f6", l: est };
+          const initials = String(cli.nombre || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
+          const infoRow = (label, value, mono) => value ? (
+            <div style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid #f8fafc", alignItems: "flex-start" }}>
+              <span style={{ fontSize: 11, color: "#94a3b8", minWidth: 136, fontWeight: 600, flexShrink: 0, paddingTop: 1 }}>{label}</span>
+              <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500, fontFamily: mono ? "monospace" : undefined, wordBreak: "break-all" }}>{value}</span>
             </div>
+          ) : null;
+          const cardDet = { background: "#fff", borderRadius: 16, border: "1px solid #e8edf5", boxShadow: "0 2px 12px rgba(15,23,42,0.04)", padding: "20px 24px" };
+          const secLabel = { fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 14, display: "block" };
+          return (
+            <div style={{ display: "grid", gap: 18 }}>
 
-            <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>Fotos del cliente</h2>
-
-              <div style={{ marginBottom: "18px" }}>
-                <div style={{ fontWeight: "700", marginBottom: "10px" }}>Foto de fachada</div>
-                {clienteSeleccionado.fotoFachada ? (
-                  <button
-                    onClick={() => abrirFotoZoom(clienteSeleccionado.fotoFachada, "Foto de fachada")}
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      cursor: "zoom-in",
-                    }}
-                    title="Ver grande"
-                  >
-                    <img
-                      src={clienteSeleccionado.fotoFachada}
-                      alt="Fachada cliente"
-                      style={{
-                        width: "120px",
-                        height: "90px",
-                        objectFit: "cover",
-                        borderRadius: "10px",
-                        border: "1px solid #e5e7eb",
-                      }}
-                    />
-                  </button>
-                ) : (
-                  <p style={{ margin: 0, color: "#6b7280" }}>No hay foto de fachada registrada.</p>
-                )}
+              {/* ── Hero ── */}
+              <div style={{ background: "linear-gradient(135deg,#eff6ff 0%,#dbeafe 60%,#e0f2fe 100%)", borderRadius: 20, border: "1px solid #bfdbfe", boxShadow: "0 2px 20px rgba(59,130,246,0.08)", padding: "24px 28px", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                  <div style={{ width: 60, height: 60, borderRadius: "50%", background: "linear-gradient(135deg,#2563eb,#0ea5e9)", border: "3px solid #fff", boxShadow: "0 4px 14px rgba(37,99,235,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials}</div>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#1e3a8a", letterSpacing: "-0.3px", lineHeight: 1.2 }}>{cli.nombre || "-"}</div>
+                    <div style={{ fontSize: 12, color: "#3b82f6", marginTop: 3, fontWeight: 500 }}>DNI: {cli.dni || "-"} · {cli.codigoCliente || cli.codigoAbonado || "-"}</div>
+                    <div style={{ marginTop: 9, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ padding: "3px 11px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: estCfg.bg, color: estCfg.c }}>{estCfg.l}</span>
+                      {cli.nodo && <span style={{ padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,0.7)", color: "#1d4ed8", border: "1px solid #93c5fd" }}>{cli.nodo}</span>}
+                      {cli.cajaNap && <span style={{ padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fff7ed", color: "#c2410c", border: "1px solid #fed7aa" }}>📦 {cli.cajaNap}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
+                  <button onClick={() => void abrirDiagnosticoRapidoCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>MikroTik</button>
+                  {puedeGestionarSuspensionClientes && !clienteEstaSuspendidoMikrotik(cli) && (
+                    <button onClick={() => void ejecutarAccionMikrotikCliente(cli, "suspender")} disabled={clienteMikrotikAccionLoading === "suspender"} style={{ padding: "8px 15px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      {clienteMikrotikAccionLoading === "suspender" ? "Suspendiendo..." : "⏸ Suspender"}
+                    </button>
+                  )}
+                  {puedeGestionarSuspensionClientes && clienteEstaSuspendidoMikrotik(cli) && (
+                    <button onClick={() => void ejecutarAccionMikrotikCliente(cli, "activar")} disabled={clienteMikrotikAccionLoading === "activar"} style={{ padding: "8px 15px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, color: "#16a34a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      {clienteMikrotikAccionLoading === "activar" ? "Activando..." : "▶ Activar"}
+                    </button>
+                  )}
+                  {cli.snOnu && (
+                    <button onClick={() => void consultarSenalCliente(cli.snOnu)} disabled={clienteSenalLoading} style={{ padding: "8px 15px", background: clienteSenalLoading ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: clienteSenalLoading ? "wait" : "pointer" }}>
+                      {clienteSenalLoading ? "Consultando..." : "📶 Ver señal"}
+                    </button>
+                  )}
+                  <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
+                  {esAdminSesion && <button onClick={() => abrirEditarCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>}
+                  {esAdminSesion && <button onClick={() => void eliminarCliente(cli)} style={{ padding: "8px 13px", background: "#dc2626", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Eliminar</button>}
+                  <button onClick={() => setVistaActiva("clientes")} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
+                </div>
               </div>
 
-              <div>
-                <div style={{ fontWeight: "700", marginBottom: "10px" }}>Fotos de liquidación</div>
-                {(clienteSeleccionado.fotosLiquidacion || []).length === 0 ? (
-                  <p style={{ margin: 0, color: "#6b7280" }}>No hay fotos de liquidación registradas.</p>
-                ) : (
-                  <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                    {clienteSeleccionado.fotosLiquidacion.map((foto, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => abrirFotoZoom(foto, `Foto liquidación ${idx + 1}`)}
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          padding: 0,
-                          cursor: "zoom-in",
-                        }}
-                        title="Ver grande"
-                      >
-                        <img
-                          src={foto}
-                          alt={`cliente-foto-${idx}`}
-                          style={{
-                            width: "100px",
-                            height: "100px",
-                            objectFit: "cover",
-                            borderRadius: "10px",
-                            border: "1px solid #e5e7eb",
-                          }}
-                        />
+              {clienteMikrotikAccionInfo && (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
+              )}
+
+              {/* ── Señal ONU ── */}
+              {clienteSenalError && (
+                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 14, padding: "14px 20px", color: "#dc2626", fontSize: 13, fontWeight: 600, display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 18 }}>⚠️</span> {clienteSenalError}
+                </div>
+              )}
+              {clienteSenal && (
+                <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.08em" }}>📶 Señal ONU — {cli.snOnu}</span>
+                    <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>Actualizado {clienteSenal.fecha}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+                    {[
+                      { label: "Rx ONU (dBm)", value: clienteSenal.rxOnuDbm, good: v => { const n = parseFloat(v); return !isNaN(n) && n >= -27 && n <= -8; } },
+                      { label: "OLT → ONU (dBm)", value: clienteSenal.oltRxOntDbm, good: v => { const n = parseFloat(v); return !isNaN(n) && n >= -27 && n <= -8; } },
+                      { label: "Estado", value: clienteSenal.estado, good: () => true },
+                    ].map(({ label, value, good }) => {
+                      const ok = good(value);
+                      const isNum = !isNaN(parseFloat(value));
+                      const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
+                      return (
+                        <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
+                          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{value}</div>
+                          {isNum && <div style={{ fontSize: 10, marginTop: 2, fontWeight: 700, color: ok ? "#16a34a" : "#dc2626" }}>{ok ? "✓ Óptima" : "✗ Baja"}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Info grid ── */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16 }}>
+
+                {/* Datos personales */}
+                <div style={cardDet}>
+                  <span style={secLabel}>Datos personales</span>
+                  {infoRow("Nombre", cli.nombre)}
+                  {infoRow("DNI", cli.dni, true)}
+                  {infoRow("Dirección", cli.direccion)}
+                  {infoRow("Celular", cli.celular)}
+                  {infoRow("Email", cli.email)}
+                  {infoRow("Contacto", cli.contacto)}
+                  {infoRow("Empresa", cli.empresa)}
+                </div>
+
+                {/* Servicio */}
+                <div style={cardDet}>
+                  <span style={secLabel}>Servicio</span>
+                  {infoRow("Código abonado", cli.codigoCliente || cli.codigoAbonado, true)}
+                  {infoRow("Plan", cli.velocidad)}
+                  {infoRow("Precio", cli.precioPlan)}
+                  {infoRow("Nodo", cli.nodo)}
+                  {infoRow("Usuario PPPoE", cli.usuarioNodo, true)}
+                  {infoRow("Contraseña", cli.passwordUsuario, true)}
+                  {infoRow("Cód. etiqueta", cli.codigoEtiqueta)}
+                  {infoRow("SN ONU", cli.snOnu, true)}
+                </div>
+
+                {/* NAP */}
+                {(cli.cajaNap || cli.puertoNap) && (
+                  <div style={{ ...cardDet, background: "linear-gradient(135deg,#fff7ed,#ffedd5)", border: "1.5px solid #fed7aa" }}>
+                    <span style={{ ...secLabel, color: "#c2410c" }}>Infraestructura NAP</span>
+                    {cli.cajaNap && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                        <span style={{ fontSize: 32 }}>📦</span>
+                        <div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: "#9a3412" }}>{cli.cajaNap}</div>
+                          <div style={{ fontSize: 11, color: "#c2410c", marginTop: 2 }}>Caja NAP asignada</div>
+                        </div>
+                      </div>
+                    )}
+                    {infoRow("Puerto NAP", cli.puertoNap, true)}
+                  </div>
+                )}
+
+                {/* Registro */}
+                <div style={cardDet}>
+                  <span style={secLabel}>Registro</span>
+                  {infoRow("Técnico", cli.tecnico)}
+                  {infoRow("Autor", cli.autorOrden)}
+                  {infoRow("Descripción", cli.descripcion)}
+                  {infoRow("Registrado", cli.fechaRegistro)}
+                  {infoRow("Últ. actualización", cli.ultimaActualizacion)}
+                </div>
+
+                {/* Ubicación — mapa */}
+                {(() => {
+                  const coords = String(cli.ubicacion || "").trim();
+                  const parts = coords.split(",").map(s => parseFloat(s.trim()));
+                  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+                  const lat = parts[0], lng = parts[1];
+                  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.002},${lat - 0.002},${lng + 0.002},${lat + 0.002}&layer=mapnik&marker=${lat},${lng}`;
+                  const gmUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+                  return (
+                    <div style={{ ...cardDet, gridColumn: "1 / -1", padding: 0, overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #e8edf5" }}>
+                        <span style={secLabel}>Ubicación</span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>{lat.toFixed(6)}, {lng.toFixed(6)}</span>
+                          <a href={gmUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 7, padding: "3px 10px", textDecoration: "none" }}>Ver en Google Maps</a>
+                        </div>
+                      </div>
+                      <iframe
+                        title="ubicacion-cliente"
+                        src={mapUrl}
+                        style={{ width: "100%", height: 220, border: "none", display: "block" }}
+                        loading="lazy"
+                      />
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* ── Fotos ── */}
+              <div style={cardDet}>
+                <span style={secLabel}>Fotos</span>
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  {cli.fotoFachada ? (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                      <button onClick={() => abrirFotoZoom(cli.fotoFachada, "Foto de fachada")} style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in" }}>
+                        <img src={cli.fotoFachada} alt="Fachada" style={{ width: 110, height: 85, objectFit: "cover", borderRadius: 12, border: "1px solid #e5e7eb", display: "block" }} />
                       </button>
+                      <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>Fachada</span>
+                    </div>
+                  ) : (
+                    <div style={{ width: 110, height: 85, borderRadius: 12, border: "2px dashed #e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#cbd5e1", fontSize: 11 }}>Sin foto</div>
+                  )}
+                  {(cli.fotosLiquidacion || []).map((foto, idx) => (
+                    <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                      <button onClick={() => abrirFotoZoom(foto, `Foto ${idx + 1}`)} style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in" }}>
+                        <img src={foto} alt={`foto-${idx}`} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 12, border: "1px solid #e5e7eb", display: "block" }} />
+                      </button>
+                      <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>Liq. {idx + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Historial ── */}
+              {(cli.historialInstalaciones || []).length > 0 && (
+                <div style={cardDet}>
+                  <span style={secLabel}>Historial de instalaciones</span>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {cli.historialInstalaciones.map((hist) => (
+                      <div key={hist.id} style={{ background: "#f8fafc", borderRadius: 12, padding: "12px 16px", border: "1px solid #f1f5f9", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+                        <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Orden</div><div style={{ fontSize: 13, fontWeight: 800, color: "#163f86" }}>{hist.codigoOrden || "-"}</div></div>
+                        <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Fecha</div><div style={{ fontSize: 12, color: "#0f172a" }}>{hist.fechaLiquidacion || "-"}</div></div>
+                        <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Tipo</div><div style={{ fontSize: 12, color: "#0f172a" }}>{hist.tipoActuacion || "-"}</div></div>
+                        <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Resultado</div><div style={{ fontSize: 12, fontWeight: 700, color: hist.resultadoFinal === "Completada" ? "#16a34a" : "#0f172a" }}>{hist.resultadoFinal || "-"}</div></div>
+                        <div><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Técnico</div><div style={{ fontSize: 12, color: "#0f172a" }}>{hist.tecnico || "-"}</div></div>
+                        {hist.observacionFinal && <div style={{ gridColumn: "1/-1" }}><div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Obs.</div><div style={{ fontSize: 12, color: "#475569" }}>{hist.observacionFinal}</div></div>}
+                      </div>
                     ))}
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* ── Equipos ── */}
+              {(cli.equiposHistorial || []).length > 0 && (
+                <div style={cardDet}>
+                  <span style={secLabel}>Equipos instalados</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 10 }}>
+                    {cli.equiposHistorial.map((eq, idx) => (
+                      <div key={eq.id || idx} style={{ background: "#f8fafc", borderRadius: 12, padding: "13px 15px", border: "1px solid #f1f5f9" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, background: "#eff6ff", color: "#163f86", padding: "2px 8px", borderRadius: 6 }}>{eq.tipo || "Equipo"}</span>
+                          {eq.accion && <span style={{ fontSize: 10, color: "#94a3b8" }}>{eq.accion}</span>}
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{[eq.marca, eq.modelo].filter(Boolean).join(" ") || "-"}</div>
+                        {eq.serial && <div style={{ fontSize: 11, fontFamily: "monospace", color: "#475569", marginTop: 3 }}>{eq.serial}</div>}
+                        {eq.codigo && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>QR: {eq.codigo}</div>}
+                        {eq.fecha && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 5 }}>{eq.fecha}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ── Modal editar cliente (admin) ── */}
+        {modalEditarCliente && esAdminSesion && (() => {
+          const f = formEditarCliente;
+          const set = (k, v) => setFormEditarCliente(prev => ({ ...prev, [k]: v }));
+          const inp = { width: "100%", padding: "8px 11px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, outline: "none", background: "#f8fafc", boxSizing: "border-box" };
+          const lbl = { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 };
+          const grp = (label, key, opts = {}) => (
+            <div>
+              <label style={lbl}>{label}</label>
+              {opts.select
+                ? <select value={f[key] || ""} onChange={e => set(key, e.target.value)} style={inp}>
+                    {opts.options.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                : <input value={f[key] || ""} onChange={e => set(key, e.target.value)} style={inp} placeholder={label} />
+              }
+            </div>
+          );
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+              <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 700, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.25)" }}>
+                {/* Header */}
+                <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>Editar cliente</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>{f.nombre || f.dni}</div>
+                  </div>
+                  <button onClick={() => setModalEditarCliente(false)} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer" }}>✕</button>
+                </div>
+                {/* Body */}
+                <div style={{ padding: "20px 24px", display: "grid", gap: 20 }}>
+                  {/* Bloque datos personales */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Datos personales</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                      {grp("Nombre", "nombre")}
+                      {grp("DNI", "dni")}
+                      {grp("Dirección", "direccion")}
+                      {grp("Celular", "celular")}
+                      {grp("Email", "email")}
+                      {grp("Empresa", "empresa")}
+                      {grp("Contacto", "contacto")}
+                    </div>
+                  </div>
+                  {/* Bloque servicio */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Servicio</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                      {grp("Código abonado", "codigoCliente")}
+                      {grp("Plan / velocidad", "velocidad")}
+                      {grp("Precio plan", "precioPlan")}
+                      {grp("Nodo", "nodo")}
+                      {grp("Usuario PPPoE", "usuarioNodo")}
+                      {grp("Contraseña PPPoE", "passwordUsuario")}
+                      {grp("Código etiqueta", "codigoEtiqueta")}
+                      {grp("SN ONU", "snOnu")}
+                      {grp("Estado servicio", "estadoServicio", { select: true, options: ["ACTIVO", "SUSPENDIDO", "INACTIVO", "DESCONOCIDO"] })}
+                    </div>
+                  </div>
+                  {/* Bloque NAP */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#c2410c", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>NAP</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                      {grp("Caja NAP", "cajaNap")}
+                      {grp("Puerto NAP", "puertoNap")}
+                    </div>
+                  </div>
+                  {/* Descripción */}
+                  <div>
+                    <label style={lbl}>Descripción / Observación</label>
+                    <textarea value={f.descripcion || ""} onChange={e => set("descripcion", e.target.value)} rows={3} style={{ ...inp, resize: "vertical" }} />
+                  </div>
+                </div>
+                {/* Footer */}
+                <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setModalEditarCliente(false)} style={{ padding: "9px 20px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>Cancelar</button>
+                  <button onClick={() => void guardarEdicionCliente()} disabled={guardandoCliente} style={{ padding: "9px 22px", background: guardandoCliente ? "#93c5fd" : "#2563eb", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", cursor: guardandoCliente ? "wait" : "pointer" }}>
+                    {guardandoCliente ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>Historial de instalaciones</h2>
-
-              {(clienteSeleccionado.historialInstalaciones || []).length === 0 ? (
-                <p style={{ margin: 0, color: "#6b7280" }}>Sin historial registrado.</p>
-              ) : (
-                <div style={{ display: "grid", gap: "12px" }}>
-                  {clienteSeleccionado.historialInstalaciones.map((hist) => (
-                    <div
-                      key={hist.id}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "12px",
-                        padding: "12px",
-                        background: "#fafafa",
-                      }}
-                    >
-                      <div><strong>Orden:</strong> {hist.codigoOrden || "-"}</div>
-                      <div><strong>Fecha:</strong> {hist.fechaLiquidacion || "-"}</div>
-                      <div><strong>Tipo:</strong> {hist.tipoActuacion || "-"}</div>
-                      <div><strong>Resultado:</strong> {hist.resultadoFinal || "-"}</div>
-                      <div><strong>Técnico:</strong> {hist.tecnico || "-"}</div>
-                      <div><strong>Código etiqueta:</strong> {hist.codigoEtiqueta || "-"}</div>
-                      <div><strong>Observación:</strong> {hist.observacionFinal || "-"}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>Equipos instalados / historial de equipos</h2>
-
-              {(clienteSeleccionado.equiposHistorial || []).length === 0 ? (
-                <p style={{ margin: 0, color: "#6b7280" }}>No hay equipos asociados a este cliente.</p>
-              ) : (
-                <div style={{ display: "grid", gap: "12px" }}>
-                  {clienteSeleccionado.equiposHistorial.map((eq, idx) => (
-                    <div
-                      key={eq.id || idx}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "12px",
-                        padding: "12px",
-                        background: "#fafafa",
-                      }}
-                    >
-                      <div><strong>Tipo:</strong> {eq.tipo || "-"}</div>
-                      <div><strong>Marca / Modelo:</strong> {eq.marca || "-"} {eq.modelo || ""}</div>
-                      <div><strong>Código QR:</strong> {eq.codigo || "-"}</div>
-                      <div><strong>Serial / MAC:</strong> {eq.serial || "-"}</div>
-                      <div><strong>Acción:</strong> {eq.accion || "-"}</div>
-                      <div><strong>Fecha:</strong> {eq.fecha || "-"}</div>
-                      <div><strong>Orden:</strong> {eq.codigoOrden || "-"}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {clienteDiagnosticoRapido ? (
           <div
@@ -14135,7 +15014,11 @@ export default function App() {
           </div>
         ) : null}
 
-        {vistaActiva === "liquidar" && ordenEnLiquidacion && ordenEnLiquidacion.orden === "RECUPERACION DE EQUIPO" && (
+        {vistaActiva === "liquidar" && ordenEnLiquidacion && (() => {
+          const _t = String(ordenEnLiquidacion.tipoActuacion || "").toUpperCase();
+          const _o = String(ordenEnLiquidacion.orden || "").toUpperCase();
+          return _t.includes("RECUPERACION") || _t.includes("RECOJO") || _o === "RECUPERACION DE EQUIPO";
+        })() && (
           <div style={{ display: "grid", gap: "24px" }}>
             <div style={cardStyle}>
               <h2 style={sectionTitleStyle}>Recojo de equipo</h2>
@@ -14253,17 +15136,17 @@ export default function App() {
                         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
                           <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
                             + Agregar fotos
-                            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => {
+                            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={async (e) => {
                               const files = Array.from(e.target.files || []);
-                              files.forEach((file) => {
-                                const reader = new FileReader();
-                                reader.onload = (ev) => setLiquidacionRecojo((p) => {
+                              e.target.value = "";
+                              for (const file of files) {
+                                const valor = await uploadFotoOrBase64(file, "recuperados");
+                                if (valor) setLiquidacionRecojo((p) => {
                                   const arr = [...p.equiposRecuperados];
-                                  arr[idx] = { ...arr[idx], fotos: [...(arr[idx].fotos || []), ev.target.result] };
+                                  arr[idx] = { ...arr[idx], fotos: [...(arr[idx].fotos || []), valor] };
                                   return { ...p, equiposRecuperados: arr };
                                 });
-                                reader.readAsDataURL(file);
-                              });
+                              }
                             }} />
                           </label>
                           {(!eq.fotos || eq.fotos.length === 0) && (
@@ -14292,13 +15175,13 @@ export default function App() {
 
             <div style={cardStyle}>
               <h2 style={sectionTitleStyle}>Fotos adicionales</h2>
-              <input type="file" accept="image/*" multiple disabled={liquidacionRecojo.fotos.length >= 5} onChange={(e) => {
+              <input type="file" accept="image/*" multiple disabled={liquidacionRecojo.fotos.length >= 5} onChange={async (e) => {
                 const files = Array.from(e.target.files || []);
-                files.forEach((file) => {
-                  const reader = new FileReader();
-                  reader.onload = (ev) => setLiquidacionRecojo((p) => p.fotos.length < 5 ? { ...p, fotos: [...p.fotos, ev.target.result] } : p);
-                  reader.readAsDataURL(file);
-                });
+                e.target.value = "";
+                for (const file of files) {
+                  const valor = await uploadFotoOrBase64(file, "recuperados");
+                  if (valor) setLiquidacionRecojo((p) => p.fotos.length < 5 ? { ...p, fotos: [...p.fotos, valor] } : p);
+                }
               }} />
               <div style={{ marginTop: "10px", fontSize: "13px", color: "#6b7280" }}>Fotos: {liquidacionRecojo.fotos.length}/5</div>
               {liquidacionRecojo.fotos.length > 0 && (
@@ -14320,20 +15203,94 @@ export default function App() {
           </div>
         )}
 
-        {vistaActiva === "liquidar" && ordenEnLiquidacion && ordenEnLiquidacion.orden !== "RECUPERACION DE EQUIPO" && (
-          <div style={{ display: "grid", gap: "24px" }}>
-            <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>
+        {vistaActiva === "liquidar" && ordenEnLiquidacion && (() => {
+          const _t = String(ordenEnLiquidacion.tipoActuacion || "").toUpperCase();
+          const _o = String(ordenEnLiquidacion.orden || "").toUpperCase();
+          return !_t.includes("RECUPERACION") && !_t.includes("RECOJO") && _o !== "RECUPERACION DE EQUIPO";
+        })() && (
+          <div style={{ display: "grid", gap: "20px" }}>
+            {/* Encabezado orden */}
+            <div style={{ ...cardStyle, background: "#f0f9ff", border: "1px solid #bae6fd" }}>
+              <h2 style={{ ...sectionTitleStyle, marginBottom: "12px" }}>
                 {liquidacionEditandoId ? "Editar liquidación" : "Liquidar orden"}
               </h2>
-
-              <div style={{ display: "grid", gap: "8px", marginBottom: "20px" }}>
-                <div><strong>Código:</strong> {ordenEnLiquidacion.codigo}</div>
-                <div><strong>Cliente:</strong> {ordenEnLiquidacion.nombre}</div>
-                <div><strong>Dirección:</strong> {ordenEnLiquidacion.direccion}</div>
-                <div><strong>Tipo:</strong> {ordenEnLiquidacion.tipoActuacion}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "8px", fontSize: "14px" }}>
+                <div><span style={{ fontWeight: 700, color: "#64748b" }}>Código</span><div style={{ color: "#0f172a", fontWeight: 700, fontSize: "15px" }}>{ordenEnLiquidacion.codigo}</div></div>
+                <div><span style={{ fontWeight: 700, color: "#64748b" }}>Cliente</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.nombre}</div></div>
+                <div><span style={{ fontWeight: 700, color: "#64748b" }}>Dirección</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.direccion}</div></div>
+                <div><span style={{ fontWeight: 700, color: "#64748b" }}>Técnico</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.tecnico || "—"}</div></div>
               </div>
 
+              {/* Caja NAP */}
+              <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid #bae6fd" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, color: "#0369a1", fontSize: "13px" }}>Caja NAP:</span>
+                  {liquidacion.cajaNap ? (
+                    <span style={{ background: "#0ea5e9", color: "#fff", borderRadius: "8px", padding: "3px 12px", fontWeight: 700, fontSize: "13px" }}>
+                      {liquidacion.cajaNap}
+                    </span>
+                  ) : (
+                    <span style={{ color: "#dc2626", fontSize: "13px", fontWeight: 600 }}>Sin caja asignada</span>
+                  )}
+                  <button
+                    type="button"
+                    style={{ ...secondaryButton, fontSize: "12px", padding: "4px 12px" }}
+                    onClick={() => handleLiquidacionChange("_showCajaPicker", !liquidacion._showCajaPicker)}
+                  >
+                    {liquidacion.cajaNap ? "Cambiar" : "Asignar"}
+                  </button>
+                </div>
+
+                {liquidacion._showCajaPicker && (
+                  <div style={{ marginTop: "10px" }}>
+                    <label style={labelStyle}>Seleccionar caja NAP</label>
+                    <select
+                      style={inputStyle}
+                      value={liquidacion.cajaNap}
+                      onChange={e => {
+                        handleLiquidacionChange("cajaNap", e.target.value);
+                        handleLiquidacionChange("_showCajaPicker", false);
+                      }}
+                    >
+                      <option value="">— Sin caja —</option>
+                      {napCajasMapData
+                        .filter(c => !ordenEnLiquidacion.nodo || c.nodo === ordenEnLiquidacion.nodo)
+                        .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo)))
+                        .map(c => (
+                          <option key={c.id} value={c.codigo}>
+                            {c.codigo} — {c.sector || c.nodo} ({c.puertos_ocupados || 0}/{c.capacidad || 8} puertos)
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Resultado final — pills */}
+            <div style={cardStyle}>
+              <label style={{ ...labelStyle, marginBottom: "10px", display: "block" }}>Resultado final</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {["Completada","Reprogramada","No se encontró al cliente","No viable","Pendiente por material"].map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => handleLiquidacionChange("resultadoFinal", v)}
+                    style={{
+                      padding: "8px 16px", borderRadius: "20px", border: "1.5px solid",
+                      borderColor: liquidacion.resultadoFinal === v ? "#2563eb" : "#cbd5e1",
+                      background: liquidacion.resultadoFinal === v ? "#2563eb" : "#f8fafc",
+                      color: liquidacion.resultadoFinal === v ? "#fff" : "#374151",
+                      fontWeight: 600, fontSize: "13px", cursor: "pointer", transition: "all 0.15s",
+                    }}
+                  >{v}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Datos técnicos: etiqueta, SN ONU, parámetro, técnico */}
+            <div style={cardStyle}>
+              <h3 style={{ ...sectionTitleStyle, fontSize: "14px", marginBottom: "14px" }}>Datos técnicos</h3>
               <div style={formGridStyle}>
                 <div>
                   <label style={labelStyle}>Técnico que liquida</label>
@@ -14350,7 +15307,6 @@ export default function App() {
                     ))}
                   </select>
                 </div>
-
                 <div>
                   <label style={labelStyle}>Código etiqueta</label>
                   <input
@@ -14360,63 +15316,24 @@ export default function App() {
                     placeholder="Ej. ETQ-0001"
                   />
                 </div>
-
                 <div>
-                  <label style={labelStyle}>Resultado final</label>
-                  <select
+                  <label style={labelStyle}>SN ONU</label>
+                  <input
                     style={inputStyle}
-                    value={liquidacion.resultadoFinal}
-                    onChange={(e) => handleLiquidacionChange("resultadoFinal", e.target.value)}
-                  >
-                    <option>Completada</option>
-                    <option>Reprogramada</option>
-                    <option>No se encontró al cliente</option>
-                    <option>No viable</option>
-                    <option>Pendiente por material</option>
-                  </select>
+                    value={liquidacion.snOnu}
+                    onChange={(e) => handleLiquidacionChange("snOnu", e.target.value)}
+                    placeholder="Serial number ONU"
+                  />
                 </div>
-
                 <div>
-                  <label style={labelStyle}>Cobro realizado</label>
-                  <select
+                  <label style={labelStyle}>Parámetro</label>
+                  <input
                     style={inputStyle}
-                    value={liquidacion.cobroRealizado}
-                    onChange={(e) => handleLiquidacionChange("cobroRealizado", e.target.value)}
-                  >
-                    <option>SI</option>
-                    <option>NO</option>
-                  </select>
+                    value={liquidacion.parametro}
+                    onChange={(e) => handleLiquidacionChange("parametro", e.target.value)}
+                    placeholder="Parámetro de liquidación"
+                  />
                 </div>
-
-                {liquidacion.cobroRealizado === "SI" && (
-                  <>
-                    <div>
-                      <label style={labelStyle}>Monto cobrado</label>
-                      <input
-                        style={inputStyle}
-                        value={liquidacion.montoCobrado}
-                        onChange={(e) => handleLiquidacionChange("montoCobrado", e.target.value)}
-                        placeholder="Monto cobrado"
-                      />
-                    </div>
-
-                    <div>
-                      <label style={labelStyle}>Medio de pago</label>
-                      <select
-                        style={inputStyle}
-                        value={liquidacion.medioPago}
-                        onChange={(e) => handleLiquidacionChange("medioPago", e.target.value)}
-                      >
-                        <option value="">Seleccionar</option>
-                        <option>Efectivo</option>
-                        <option>Yape</option>
-                        <option>Plin</option>
-                        <option>Transferencia</option>
-                      </select>
-                    </div>
-                  </>
-                )}
-
                 <div style={fullWidth}>
                   <label style={labelStyle}>Observación final</label>
                   <textarea
@@ -14429,28 +15346,127 @@ export default function App() {
               </div>
             </div>
 
+            {/* Cobro — toggle SI/NO + monto + método pago pills */}
             <div style={cardStyle}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "16px",
-                  gap: "12px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Equipos con código</h2>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                  <button onClick={agregarEquipo} style={secondaryButton}>
-                    Agregar manual
-                  </button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                <label style={{ ...labelStyle, margin: 0 }}>Cobro realizado</label>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {["SI","NO"].map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => handleLiquidacionChange("cobroRealizado", v)}
+                      style={{
+                        padding: "7px 22px", borderRadius: "20px", border: "1.5px solid",
+                        borderColor: liquidacion.cobroRealizado === v ? "#2563eb" : "#cbd5e1",
+                        background: liquidacion.cobroRealizado === v ? "#2563eb" : "#f8fafc",
+                        color: liquidacion.cobroRealizado === v ? "#fff" : "#374151",
+                        fontWeight: 700, fontSize: "14px", cursor: "pointer",
+                      }}
+                    >{v}</button>
+                  ))}
+                </div>
+              </div>
+              {liquidacion.cobroRealizado === "SI" && (
+                <div style={{ marginTop: "14px", display: "grid", gap: "12px" }}>
+                  <div>
+                    <label style={labelStyle}>Monto cobrado (S/)</label>
+                    <input
+                      style={inputStyle}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={liquidacion.montoCobrado}
+                      onChange={(e) => handleLiquidacionChange("montoCobrado", e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ ...labelStyle, marginBottom: "8px", display: "block" }}>Método de pago</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {["Efectivo","Yape","Plin","Transferencia"].map(v => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => handleLiquidacionChange("medioPago", v)}
+                          style={{
+                            padding: "8px 18px", borderRadius: "20px", border: "1.5px solid",
+                            borderColor: liquidacion.medioPago === v ? "#16a34a" : "#cbd5e1",
+                            background: liquidacion.medioPago === v ? "#16a34a" : "#f8fafc",
+                            color: liquidacion.medioPago === v ? "#fff" : "#374151",
+                            fontWeight: 600, fontSize: "13px", cursor: "pointer",
+                          }}
+                        >{v}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actualizar ubicación */}
+            <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+              <label style={{ ...labelStyle, margin: 0 }}>Actualizar ubicación</label>
+              <div style={{ display: "flex", gap: "6px" }}>
+                {["SI","NO"].map(v => (
                   <button
-                    onClick={() => setMostrarScannerLiquidacion((prev) => !prev)}
-                    style={infoButton}
-                  >
-                    Escanear QR
-                  </button>
+                    key={v}
+                    type="button"
+                    onClick={() => handleLiquidacionChange("actualizarUbicacion", v)}
+                    style={{
+                      padding: "7px 22px", borderRadius: "20px", border: "1.5px solid",
+                      borderColor: liquidacion.actualizarUbicacion === v ? "#2563eb" : "#cbd5e1",
+                      background: liquidacion.actualizarUbicacion === v ? "#2563eb" : "#f8fafc",
+                      color: liquidacion.actualizarUbicacion === v ? "#fff" : "#374151",
+                      fontWeight: 700, fontSize: "14px", cursor: "pointer",
+                    }}
+                  >{v}</button>
+                ))}
+              </div>
+              {liquidacion.actualizarUbicacion === "SI" && (
+                <div style={{ width: "100%", marginTop: "10px" }}>
+                  <label style={labelStyle}>Nueva ubicación (lat,lng)</label>
+                  <input
+                    style={inputStyle}
+                    value={liquidacion.nuevaUbicacion}
+                    onChange={(e) => handleLiquidacionChange("nuevaUbicacion", e.target.value)}
+                    placeholder="-16.438490, -71.598208"
+                  />
+                  <div style={{ marginTop: "6px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      style={secondaryButton}
+                      onClick={() => {
+                        if (!navigator.geolocation) { alert("GPS no disponible en este navegador"); return; }
+                        navigator.geolocation.getCurrentPosition(
+                          pos => handleLiquidacionChange("nuevaUbicacion", `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`),
+                          () => alert("No se pudo obtener la ubicación GPS")
+                        );
+                      }}
+                    >Usar mi GPS</button>
+                    <button
+                      type="button"
+                      style={secondaryButton}
+                      onClick={() => handleLiquidacionChange("nuevaUbicacion", String(ordenEnLiquidacion?.ubicacion || ""))}
+                    >Ubicación actual de la orden</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", gap: "12px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Equipos y materiales</h2>
+                  {(liquidacion.equipos.length > 0 || liquidacion.materiales.length > 0) && (
+                    <span style={{ background: "#eff6ff", color: "#2563eb", borderRadius: "12px", padding: "3px 10px", fontSize: "12px", fontWeight: 700, border: "1px solid #bfdbfe" }}>
+                      {liquidacion.equipos.length} eq · {liquidacion.materiales.length} mat
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <button onClick={agregarEquipo} style={secondaryButton}>+ Agregar equipo</button>
+                  <button onClick={() => setMostrarScannerLiquidacion((prev) => !prev)} style={infoButton}>Escanear QR</button>
                 </div>
               </div>
 
@@ -14461,7 +15477,7 @@ export default function App() {
                     style={inputStyle}
                     value={liquidacion.codigoQRManual}
                     onChange={(e) => handleLiquidacionChange("codigoQRManual", e.target.value)}
-                    placeholder="Escanea o pega QR (si no tiene QR, usa Agregar manual)"
+                    placeholder="Escanea o pega QR (si no tiene QR, usa Agregar equipo)"
                   />
                 </div>
 
@@ -14480,18 +15496,52 @@ export default function App() {
 
               {equiposDisponiblesParaSeleccionManual.length > 0 && (
                 <div style={{ marginBottom: "16px" }}>
-                  <label style={labelStyle}>Equipos asignados al técnico</label>
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {equiposDisponiblesParaSeleccionManual.map((eq) => (
-                      <button
-                        key={eq.id}
-                        onClick={() => agregarEquipoDesdeCatalogoALiquidacion(eq.codigoQR)}
-                        style={secondaryButton}
-                      >
-                        {eq.tipo} · {eq.codigoQR}
-                      </button>
-                    ))}
-                  </div>
+                  <label style={labelStyle}>
+                    Buscar en inventario del técnico ({equiposDisponiblesParaSeleccionManual.length} disponibles)
+                  </label>
+                  <input
+                    style={inputStyle}
+                    value={busquedaEqInv}
+                    onChange={e => setBusquedaEqInv(e.target.value)}
+                    placeholder="Escribe tipo, código QR o serial para filtrar…"
+                  />
+                  {busquedaEqInv.trim().length >= 2 && (() => {
+                    const q = busquedaEqInv.trim().toLowerCase();
+                    const matches = equiposDisponiblesParaSeleccionManual.filter(eq =>
+                      (eq.tipo || "").toLowerCase().includes(q) ||
+                      (eq.codigoQR || "").toLowerCase().includes(q) ||
+                      (eq.serial || "").toLowerCase().includes(q) ||
+                      (eq.marca || "").toLowerCase().includes(q) ||
+                      (eq.modelo || "").toLowerCase().includes(q)
+                    ).slice(0, 12);
+                    return matches.length > 0 ? (
+                      <div style={{ display:"flex", flexDirection:"column", gap:4, marginTop:8, border:"1px solid #e2e8f0", borderRadius:10, overflow:"hidden", background:"#fff" }}>
+                        {matches.map(eq => (
+                          <button
+                            key={eq.id}
+                            onClick={() => { agregarEquipoDesdeCatalogoALiquidacion(eq.codigoQR); setBusquedaEqInv(""); }}
+                            style={{ background:"#f8fafc", border:"none", borderBottom:"1px solid #f1f5f9", padding:"10px 14px", cursor:"pointer", textAlign:"left", fontSize:13, color:"#1e293b" }}
+                            onMouseEnter={e => e.currentTarget.style.background="#eff6ff"}
+                            onMouseLeave={e => e.currentTarget.style.background="#f8fafc"}
+                          >
+                            <strong>{eq.tipo}</strong>
+                            <span style={{ color:"#6b7280", marginLeft:8 }}>{eq.codigoQR}</span>
+                            {eq.serial && <span style={{ color:"#94a3b8", marginLeft:8, fontSize:12 }}>· {eq.serial}</span>}
+                            {eq.marca && <span style={{ color:"#94a3b8", marginLeft:8, fontSize:12 }}>· {eq.marca}</span>}
+                          </button>
+                        ))}
+                        {equiposDisponiblesParaSeleccionManual.filter(eq =>
+                          (eq.tipo||"").toLowerCase().includes(q)||(eq.codigoQR||"").toLowerCase().includes(q)||(eq.serial||"").toLowerCase().includes(q)
+                        ).length > 12 && (
+                          <div style={{ padding:"8px 14px", fontSize:12, color:"#94a3b8", background:"#f8fafc" }}>
+                            Más de 12 resultados — escribe más para filtrar
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop:8, fontSize:13, color:"#94a3b8" }}>Sin coincidencias para "{busquedaEqInv}"</div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -14650,6 +15700,169 @@ export default function App() {
               )}
             </div>
 
+            {/* Equipos recuperados del cliente — solo para incidencia/mantenimiento, NO instalación */}
+            {(() => { const _t = String(ordenEnLiquidacion?.tipoActuacion || "").toUpperCase(); return !_t.includes("INSTALACION") && !_t.includes("RECOJO") && !_t.includes("RECUPERACION"); })() && <div style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "10px" }}>
+                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Equipos recuperados del cliente</h2>
+                <button
+                  style={secondaryButton}
+                  onClick={() => handleLiquidacionChange("equiposRecuperados", [
+                    ...(Array.isArray(liquidacion.equiposRecuperados) ? liquidacion.equiposRecuperados : []),
+                    { tipo: "ONU", estado: "Bueno", marca: "", serial: "", fotos: [] }
+                  ])}
+                >
+                  + Agregar equipo
+                </button>
+              </div>
+              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+                Si retiraste algún equipo del cliente en esta visita, regístralo aquí. Quedará en Custodia Técnica pendiente de entrega a almacén.
+              </div>
+              {(Array.isArray(liquidacion.equiposRecuperados) ? liquidacion.equiposRecuperados : []).length === 0 ? (
+                <div style={{ border: "1px dashed #cbd5e1", borderRadius: "14px", padding: "18px", color: "#6b7280", background: "#f8fafc" }}>
+                  Sin equipos recuperados. Si no retiraste ningún equipo, puedes continuar.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: "14px" }}>
+                  {(Array.isArray(liquidacion.equiposRecuperados) ? liquidacion.equiposRecuperados : []).map((eq, idx) => (
+                    <div key={idx} style={{ border: "1px solid #fde68a", borderRadius: "14px", padding: "14px", background: "#fffbeb" }}>
+                      <div style={formGridStyle}>
+                        <div>
+                          <label style={labelStyle}>Tipo</label>
+                          <select style={inputStyle} value={eq.tipo} onChange={(e) => {
+                            const arr = [...(liquidacion.equiposRecuperados || [])];
+                            arr[idx] = { ...arr[idx], tipo: e.target.value };
+                            handleLiquidacionChange("equiposRecuperados", arr);
+                          }}>
+                            <option>ONU</option>
+                            <option>Router</option>
+                            <option>Repetidor</option>
+                            <option>Switch</option>
+                            <option>Decodificador</option>
+                            <option>Otro</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Estado del equipo</label>
+                          <select style={inputStyle} value={eq.estado} onChange={(e) => {
+                            const arr = [...(liquidacion.equiposRecuperados || [])];
+                            arr[idx] = { ...arr[idx], estado: e.target.value };
+                            handleLiquidacionChange("equiposRecuperados", arr);
+                          }}>
+                            <option>Bueno</option>
+                            <option>Dañado</option>
+                            <option>Incompleto</option>
+                            <option>Obsoleto</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <label style={labelStyle}>Marca</label>
+                        <select style={inputStyle} value={eq.marca || ""} onChange={(e) => {
+                          const arr = [...(liquidacion.equiposRecuperados || [])];
+                          arr[idx] = { ...arr[idx], marca: e.target.value };
+                          handleLiquidacionChange("equiposRecuperados", arr);
+                        }}>
+                          <option value="">— Seleccionar —</option>
+                          <option>ZTE</option>
+                          <option>Huawei</option>
+                          <option>VSOL</option>
+                          <option>Optictimes</option>
+                          <option>Otras</option>
+                        </select>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <label style={labelStyle}>Serial / Código QR</label>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <input
+                            style={{ ...inputStyle, flex: 1 }}
+                            placeholder="Escanear o ingresar manual"
+                            value={eq.serial || ""}
+                            onChange={(e) => {
+                              const arr = [...(liquidacion.equiposRecuperados || [])];
+                              arr[idx] = { ...arr[idx], serial: e.target.value };
+                              handleLiquidacionChange("equiposRecuperados", arr);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            style={{ ...secondaryButton, whiteSpace: "nowrap" }}
+                            onClick={() => setScannerLiqRecIdx(idx)}
+                          >
+                            📷 Escanear QR
+                          </button>
+                        </div>
+                        {scannerLiqRecIdx === idx && (
+                          <QRScanner
+                            onDetected={(codigo) => {
+                              const arr = [...(liquidacion.equiposRecuperados || [])];
+                              arr[idx] = { ...arr[idx], serial: codigo };
+                              handleLiquidacionChange("equiposRecuperados", arr);
+                              setScannerLiqRecIdx(null);
+                            }}
+                            onClose={() => setScannerLiqRecIdx(null)}
+                          />
+                        )}
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <label style={labelStyle}>Foto del equipo (obligatoria)</label>
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginBottom: "8px" }}>
+                          <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                            + Agregar foto
+                            <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={async (e) => {
+                              const files = Array.from(e.target.files || []);
+                              e.target.value = "";
+                              for (const file of files) {
+                                const valor = await uploadFotoOrBase64(file, "recuperados");
+                                if (valor) {
+                                  const arr = [...(liquidacion.equiposRecuperados || [])];
+                                  arr[idx] = { ...arr[idx], fotos: [...(arr[idx].fotos || []), valor] };
+                                  handleLiquidacionChange("equiposRecuperados", arr);
+                                }
+                              }
+                            }} />
+                          </label>
+                          {(!eq.fotos || eq.fotos.length === 0) && (
+                            <span style={{ fontSize: "12px", color: "#b45309", fontWeight: 700 }}>Falta foto</span>
+                          )}
+                        </div>
+                        {eq.fotos && eq.fotos.length > 0 && (
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                            {eq.fotos.map((f, fi) => (
+                              <div key={fi} style={{ position: "relative" }}>
+                                <img
+                                  src={f}
+                                  alt={`rec-liq-${idx}-${fi}`}
+                                  style={{ width: "100px", height: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }}
+                                  onClick={() => abrirFotoZoom(f, `Equipo recuperado ${eq.tipo} foto ${fi + 1}`)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const arr = [...(liquidacion.equiposRecuperados || [])];
+                                    arr[idx] = { ...arr[idx], fotos: arr[idx].fotos.filter((_, fi2) => fi2 !== fi) };
+                                    handleLiquidacionChange("equiposRecuperados", arr);
+                                  }}
+                                  style={{ position: "absolute", top: "4px", right: "4px", background: "#fff", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: "999px", width: "22px", height: "22px", cursor: "pointer", fontSize: "12px", lineHeight: 1 }}
+                                >×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ marginTop: "10px" }}>
+                        <button
+                          style={dangerButton}
+                          onClick={() => handleLiquidacionChange("equiposRecuperados", (liquidacion.equiposRecuperados || []).filter((_, i) => i !== idx))}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>}
+
             <div style={cardStyle}>
               <div
                 style={{
@@ -14734,18 +15947,21 @@ export default function App() {
             </div>
 
             <div style={cardStyle}>
-              <h2 style={sectionTitleStyle}>Fotos de liquidación</h2>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={cargarFotosLiquidacion}
-                disabled={liquidacion.fotos.length >= 5}
-              />
-
-              <div style={{ marginTop: "10px", fontSize: "13px", color: "#6b7280" }}>
-                Fotos cargadas: {liquidacion.fotos.length}/5
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Fotos de liquidación</h2>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: liquidacion.fotos.length >= 3 ? "#16a34a" : "#dc2626", background: liquidacion.fotos.length >= 3 ? "#dcfce7" : "#fee2e2", borderRadius: 999, padding: "3px 10px" }}>
+                    {liquidacion.fotos.length}/3 mín
+                  </span>
+                </div>
+                <label style={{ ...primaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer", opacity: liquidacion.fotos.length >= 10 ? 0.5 : 1 }}>
+                  Subir foto
+                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={cargarFotosLiquidacion} disabled={liquidacion.fotos.length >= 10} />
+                </label>
               </div>
+              {liquidacion.fotos.length < 3 && (
+                <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 10 }}>Se requieren al menos 3 fotos de evidencia</div>
+              )}
 
               {liquidacion.fotos.length > 0 && (
                 <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "16px" }}>
@@ -14785,10 +16001,14 @@ export default function App() {
             </div>
 
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <button onClick={guardarLiquidacion} style={primaryButton}>
-                {liquidacionEditandoId ? "Guardar cambios" : "Guardar liquidación"}
+              <button
+                onClick={guardarLiquidacion}
+                disabled={liquidacionGuardando}
+                style={{ ...primaryButton, opacity: liquidacionGuardando ? 0.65 : 1, cursor: liquidacionGuardando ? "not-allowed" : "pointer" }}
+              >
+                {liquidacionGuardando ? "Guardando…" : liquidacionEditandoId ? "Guardar cambios" : "Guardar liquidación"}
               </button>
-              <button onClick={() => setVistaActiva("pendientes")} style={secondaryButton}>
+              <button onClick={() => setVistaActiva("pendientes")} disabled={liquidacionGuardando} style={secondaryButton}>
                 Cancelar
               </button>
             </div>
@@ -14910,118 +16130,150 @@ export default function App() {
 
             {/* STOCK TÉCNICO */}
             {recuperacionesSubmenu === "stock" && (
-              <div style={{ display: "grid", gap: "16px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <span style={{ padding: "4px 12px", borderRadius: "999px", background: "#fef3c7", color: "#92400e", fontSize: "13px", fontWeight: 700 }}>
-                      Pendientes: {stockTecnico.filter((s) => !s.ingresado_almacen).length}
-                    </span>
-                    <span style={{ padding: "4px 12px", borderRadius: "999px", background: "#dcfce7", color: "#166534", fontSize: "13px", fontWeight: 700 }}>
-                      Ingresados: {stockTecnico.filter((s) => s.ingresado_almacen).length}
-                    </span>
+              <div style={{ display: "grid", gap: "20px" }}>
+                {/* Stats header */}
+                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "10px", flex: 1, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "10px 16px", minWidth: "110px" }}>
+                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#d97706" }}>{stockTecnico.filter((s) => !s.ingresado_almacen).length}</span>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#92400e", lineHeight: 1.2 }}>Pendientes<br/>de ingreso</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "10px 16px", minWidth: "110px" }}>
+                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#16a34a" }}>{stockTecnico.filter((s) => s.ingresado_almacen).length}</span>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#166534", lineHeight: 1.2 }}>Ingresados<br/>a almacén</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "10px 16px", minWidth: "110px" }}>
+                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#1e40af" }}>{stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega).length}</span>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#1e3a5f", lineHeight: 1.2 }}>Con solicitud<br/>de entrega</span>
+                    </div>
                   </div>
                   <button style={secondaryButton} onClick={cargarStockTecnico} disabled={cargandoStockTecnico}>
-                    {cargandoStockTecnico ? "Cargando..." : "Actualizar"}
+                    {cargandoStockTecnico ? "Cargando..." : "↻ Actualizar"}
                   </button>
                 </div>
 
                 {/* Pendientes */}
                 {stockTecnico.filter((s) => !s.ingresado_almacen).length === 0 ? (
-                  <div style={{ border: "1px dashed #cbd5e1", borderRadius: "14px", padding: "24px", color: "#6b7280", background: "#f8fafc", textAlign: "center" }}>
-                    No hay equipos pendientes de ingreso a almacén.
+                  <div style={{ border: "1px dashed #bbf7d0", borderRadius: "14px", padding: "32px", color: "#166534", background: "#f0fdf4", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "28px" }}>✓</span>
+                    <span style={{ fontWeight: 700, fontSize: "14px" }}>Todo al día</span>
+                    <span style={{ fontSize: "12px", color: "#6b7280" }}>No hay equipos pendientes de ingreso a almacén.</span>
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gap: "12px" }}>
-                    {/* Separar: con solicitud vs sin solicitud */}
+                  <div style={{ display: "grid", gap: "14px" }}>
                     {(() => {
                       const conSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega);
                       const sinSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && !s.codigo_entrega);
+                      const pendientesVisibles = stockTecnico.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true));
                       return (
                         <>
+                          {/* Grupo: con solicitud */}
                           {conSolicitud.length > 0 && (
-                            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "8px 14px", fontSize: "13px", fontWeight: 700, color: "#166534" }}>
-                              Entregas solicitadas por técnico ({conSolicitud.length}) — listas para confirmar
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                              <div style={{ flex: 1, height: "1.5px", background: "#bbf7d0" }} />
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#dcfce7", border: "1px solid #86efac", borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, color: "#15803d", whiteSpace: "nowrap" }}>
+                                ✓ Listos para confirmar ({conSolicitud.length})
+                              </span>
+                              <div style={{ flex: 1, height: "1.5px", background: "#bbf7d0" }} />
                             </div>
                           )}
-                          {sinSolicitud.length > 0 && (
-                            <div style={{ fontSize: "13px", fontWeight: 700, color: "#92400e" }}>Sin solicitud aún ({sinSolicitud.length})</div>
+                          {sinSolicitud.length > 0 && conSolicitud.length > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px" }}>
+                              <div style={{ flex: 1, height: "1.5px", background: "#fde68a" }} />
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "20px", padding: "4px 12px", fontSize: "12px", fontWeight: 700, color: "#b45309", whiteSpace: "nowrap" }}>
+                                ⏱ Sin solicitud aún ({sinSolicitud.length})
+                              </span>
+                              <div style={{ flex: 1, height: "1.5px", background: "#fde68a" }} />
+                            </div>
                           )}
-                          {stockTecnico.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true)).map((item) => {
+                          {pendientesVisibles.map((item) => {
                             const solicitado = Boolean(item.codigo_entrega);
+                            const accentColor = solicitado ? "#22c55e" : "#f59e0b";
                             return (
-                              <div key={item.id} style={{ border: `2px solid ${solicitado ? "#22c55e" : "#fcd34d"}`, borderRadius: "14px", padding: "16px", background: solicitado ? "#f0fdf4" : "#fffbeb" }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
-                                  <div style={{ display: "grid", gap: "3px" }}>
+                              <div key={item.id} style={{ borderRadius: "14px", border: `1px solid ${solicitado ? "#d1fae5" : "#fde68a"}`, background: "#fff", overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+                                {/* Accent top */}
+                                <div style={{ height: "3px", background: accentColor }} />
+                                <div style={{ padding: "16px" }}>
+                                  {/* Header */}
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                                      <span style={{ fontWeight: 700, fontSize: "15px" }}>{item.tipo}</span>
-                                      <span style={{ color: item.estado === "Bueno" ? "#166534" : item.estado === "Dañado" ? "#991b1b" : "#92400e", fontSize: "12px", fontWeight: 600, background: item.estado === "Bueno" ? "#dcfce7" : item.estado === "Dañado" ? "#fee2e2" : "#fef3c7", borderRadius: "999px", padding: "2px 8px" }}>{item.estado}</span>
-                                      {solicitado && <span style={{ fontSize: "11px", background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "2px 8px", fontWeight: 700 }}>{item.codigo_entrega}</span>}
+                                      <span style={{ fontWeight: 800, fontSize: "15px", color: "#111827" }}>{item.tipo}</span>
+                                      <span style={{ fontSize: "11px", fontWeight: 700, background: item.estado === "Bueno" ? "#dcfce7" : item.estado === "Dañado" ? "#fee2e2" : "#fef3c7", color: item.estado === "Bueno" ? "#166534" : item.estado === "Dañado" ? "#991b1b" : "#92400e", borderRadius: "999px", padding: "2px 9px" }}>{item.estado}</span>
+                                      {solicitado && <span style={{ fontSize: "11px", fontWeight: 700, background: "#dbeafe", color: "#1e40af", borderRadius: "999px", padding: "2px 9px", fontFamily: "monospace" }}>{item.codigo_entrega}</span>}
                                     </div>
-                                    {item.serial && <div style={{ fontSize: "12px", color: "#0369a1", fontFamily: "monospace" }}>S/N: {item.serial}</div>}
-                                    <div style={{ fontSize: "13px", color: "#374151", fontWeight: 600 }}>Cliente: {item.nombre_cliente || "-"} &nbsp;·&nbsp; Nodo: {item.nodo || "-"}</div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280" }}>Orden: {item.orden_codigo || "-"} &nbsp;·&nbsp; Técnico: {item.tecnico_recupera || "-"}</div>
-                                    <div style={{ fontSize: "11px", color: "#94a3b8" }}>Recogido: {item.created_at ? new Date(item.created_at).toLocaleString("es-PE") : "-"}</div>
-                                    {solicitado && <div style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>Entrega solicitada: {item.fecha_solicitud_entrega ? new Date(item.fecha_solicitud_entrega).toLocaleString("es-PE") : "-"} por {item.solicitado_por || "-"}</div>}
+                                    {solicitado
+                                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#dcfce7", border: "1px solid #86efac", borderRadius: "999px", padding: "4px 12px", fontSize: "11px", fontWeight: 700, color: "#15803d", whiteSpace: "nowrap" }}>✓ Entrega solicitada</span>
+                                      : <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "999px", padding: "4px 12px", fontSize: "11px", fontWeight: 700, color: "#b45309", whiteSpace: "nowrap" }}>⏳ Pendiente</span>
+                                    }
                                   </div>
-                                  <div>
-                                    {rolSesion === "Tecnico" ? (
-                                      // Técnico: solo puede solicitar entrega
-                                      solicitado ? (
-                                        <span style={{ background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>Entrega solicitada</span>
-                                      ) : (
-                                        <button
-                                          style={{ ...primaryButton, background: "#f59e0b", borderColor: "#f59e0b" }}
-                                          onClick={async () => {
-                                            const año = new Date().getFullYear();
-                                            const seq = String(item.id).padStart(4, "0");
-                                            const codigo = `ENT-${seq}-${año}`;
-                                            const ahora = new Date().toISOString();
-                                            await supabase.from("stock_tecnico").update({ codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: usuarioSesion?.nombre || "" }).eq("id", item.id);
-                                            setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: usuarioSesion?.nombre || "" } : s));
-                                          }}
-                                        >
-                                          Solicitar entrega
-                                        </button>
-                                      )
-                                    ) : (
-                                      // Almacén / Admin: confirmar ingreso
-                                      ingresandoStockId === item.id ? (
-                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", minWidth: "200px" }}>
-                                          <textarea style={{ ...textareaStyle, minHeight: "60px", fontSize: "12px" }} placeholder="Observación de ingreso (opcional)" value={observacionIngreso} onChange={(e) => setObservacionIngreso(e.target.value)} />
-                                          <div>
-                                            <div style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>Foto de recepción</div>
-                                            <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
-                                              📷 {fotoRecepcion ? "Cambiar foto" : "Subir foto"}
-                                              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-                                                const reader = new FileReader();
-                                                reader.onload = (ev) => setFotoRecepcion(ev.target.result);
-                                                reader.readAsDataURL(file);
-                                              }} />
-                                            </label>
-                                            {fotoRecepcion && <img src={fotoRecepcion} style={{ display: "block", marginTop: "6px", width: "100px", height: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid #d1d5db" }} />}
-                                          </div>
-                                          <div style={{ display: "flex", gap: "6px" }}>
-                                            <button style={primaryButton} onClick={() => ingresarEquipoAlmacen(item)}>Confirmar ingreso</button>
-                                            <button style={secondaryButton} onClick={() => { setIngresandoStockId(null); setObservacionIngreso(""); setFotoRecepcion(""); }}>Cancelar</button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <button style={{ ...primaryButton, background: "#059669", borderColor: "#059669" }} onClick={() => setIngresandoStockId(item.id)}>
-                                          {solicitado ? "Confirmar recepción" : "Ingresar a almacén"}
-                                        </button>
-                                      )
-                                    )}
+                                  {/* Info grid */}
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "6px 16px", background: "#f8fafc", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px", fontSize: "12px" }}>
+                                    {item.serial && <div><span style={{ color: "#9ca3af" }}>Serial: </span><span style={{ fontFamily: "monospace", fontWeight: 700, color: "#0369a1" }}>{item.serial}</span></div>}
+                                    <div><span style={{ color: "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nombre_cliente || "-"}</span></div>
+                                    <div><span style={{ color: "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nodo || "-"}</span></div>
+                                    <div><span style={{ color: "#9ca3af" }}>Orden: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.orden_codigo || "-"}</span></div>
+                                    <div><span style={{ color: "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.tecnico_recupera || "-"}</span></div>
+                                    <div><span style={{ color: "#9ca3af" }}>Recogido: </span><span style={{ color: "#6b7280" }}>{item.created_at ? new Date(item.created_at).toLocaleDateString("es-PE") : "-"}</span></div>
+                                    {solicitado && <div style={{ color: "#166534" }}><span style={{ color: "#9ca3af" }}>Solicitó: </span><span style={{ fontWeight: 700 }}>{item.solicitado_por || "-"}</span>{item.fecha_solicitud_entrega ? ` · ${new Date(item.fecha_solicitud_entrega).toLocaleDateString("es-PE")}` : ""}</div>}
                                   </div>
+                                  {/* Fotos del equipo */}
+                                  {Array.isArray(item.fotos) && item.fotos.length > 0 && (
+                                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
+                                      {item.fotos.map((f, fi) => (
+                                        <img key={fi} src={f} alt="foto" style={{ width: "72px", height: "58px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${item.tipo} foto ${fi + 1}`)} />
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Acción */}
+                                  {rolSesion === "Tecnico" ? (
+                                    solicitado ? null : (
+                                      <button
+                                        style={{ ...primaryButton, background: "#f59e0b", borderColor: "#f59e0b" }}
+                                        onClick={async () => {
+                                          if (item.codigo_entrega) return; // guard anti-doble click
+                                          const año = new Date().getFullYear();
+                                          const seq = String(item.id).padStart(4, "0");
+                                          const codigo = `ENT-${seq}-${año}`;
+                                          const ahora = new Date().toISOString();
+                                          const { error } = await supabase.from("stock_tecnico").update({ codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: usuarioSesion?.nombre || "" }).eq("id", item.id).is("codigo_entrega", null);
+                                          if (!error) setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, codigo_entrega: codigo, fecha_solicitud_entrega: ahora, solicitado_por: usuarioSesion?.nombre || "" } : s));
+                                        }}
+                                      >
+                                        Solicitar entrega
+                                      </button>
+                                    )
+                                  ) : ingresandoStockId === item.id ? (
+                                    <div style={{ display: "grid", gap: "10px", borderTop: "1px solid #e5e7eb", paddingTop: "12px" }}>
+                                      <textarea style={{ ...textareaStyle, minHeight: "60px", fontSize: "12px" }} placeholder="Observación de ingreso (opcional)" value={observacionIngreso} onChange={(e) => setObservacionIngreso(e.target.value)} />
+                                      <div>
+                                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>📷 Foto de recepción <span style={{ color: "#ef4444" }}>*requerida</span></div>
+                                        <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+                                          {fotoRecepcion ? "🔄 Cambiar foto" : "📷 Subir foto"}
+                                          <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            const valor = await uploadFotoOrBase64(file, "recepcion");
+                                            setFotoRecepcion(valor);
+                                          }} />
+                                        </label>
+                                        {fotoRecepcion && (
+                                          <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", marginLeft: "10px" }}>
+                                            <img src={fotoRecepcion} style={{ width: "90px", height: "72px", objectFit: "cover", borderRadius: "8px", border: "2px solid #86efac", cursor: "pointer" }} onClick={() => abrirFotoZoom(fotoRecepcion, "Foto de recepción")} />
+                                            <button style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: "18px", lineHeight: 1 }} onClick={() => setFotoRecepcion("")}>✕</button>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{ display: "flex", gap: "8px" }}>
+                                        <button style={{ ...primaryButton, background: "#059669", borderColor: "#059669" }} onClick={() => ingresarEquipoAlmacen(item)}>✓ Confirmar ingreso</button>
+                                        <button style={secondaryButton} onClick={() => { setIngresandoStockId(null); setObservacionIngreso(""); setFotoRecepcion(""); }}>Cancelar</button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button style={{ ...primaryButton, background: "#059669", borderColor: "#059669" }} onClick={() => setIngresandoStockId(item.id)}>
+                                      {solicitado ? "✓ Confirmar recepción" : "Ingresar a almacén"}
+                                    </button>
+                                  )}
                                 </div>
-                                {Array.isArray(item.fotos) && item.fotos.length > 0 && (
-                                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                                    {item.fotos.map((f, fi) => (
-                                      <img key={fi} src={f} alt="foto" style={{ width: "80px", height: "65px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${item.tipo} foto ${fi + 1}`)} />
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -15032,13 +16284,14 @@ export default function App() {
                 )}
 
                 {/* Ya ingresados */}
-                <div style={{ display: "grid", gap: "10px", marginTop: "16px" }}>
+                <div style={{ display: "grid", gap: "12px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#166534", whiteSpace: "nowrap" }}>
-                      Historial de ingresados a almacén ({stockTecnico.filter((s) => s.ingresado_almacen).length})
+                    <div style={{ flex: 1, height: "1.5px", background: "#d1fae5" }} />
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 700, color: "#15803d", whiteSpace: "nowrap" }}>
+                      📦 Historial de ingresados
+                      <span style={{ background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px" }}>{stockTecnico.filter((s) => s.ingresado_almacen).length}</span>
                     </span>
-                    <div style={{ flex: 1, height: "1px", background: "#e5e7eb" }} />
+                    <div style={{ flex: 1, height: "1.5px", background: "#d1fae5" }} />
                   </div>
                   {stockTecnico.filter((s) => s.ingresado_almacen).length === 0 ? (
                     <div style={{ border: "1px dashed #bbf7d0", borderRadius: "12px", padding: "16px", color: "#6b7280", textAlign: "center", fontSize: "13px" }}>
@@ -15135,31 +16388,97 @@ export default function App() {
                         if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
                       }
                       return true;
-                    }).map((item) => (
-                      <div key={item.id} style={{ border: "1px solid #bbf7d0", borderRadius: "12px", padding: "12px 16px", background: "#f0fdf4" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", alignItems: "flex-start" }}>
-                          <div style={{ display: "grid", gap: "2px" }}>
-                            <div style={{ fontWeight: 700 }}>{item.tipo} <span style={{ color: "#6b7280", fontSize: "12px", fontWeight: 400 }}>{item.estado}</span> {item.codigo_entrega && <span style={{ fontSize: "11px", background: "#e0f2fe", color: "#0369a1", borderRadius: "999px", padding: "1px 7px", marginLeft: "6px" }}>{item.codigo_entrega}</span>}</div>
-                            {item.serial && <div style={{ fontSize: "12px", color: "#0369a1", fontFamily: "monospace" }}>S/N: {item.serial}</div>}
-                            <div style={{ fontSize: "12px", color: "#374151", fontWeight: 600 }}>Cliente: {item.nombre_cliente || "-"} &nbsp;·&nbsp; Nodo: {item.nodo || "-"}</div>
-                            <div style={{ fontSize: "11px", color: "#6b7280" }}>Orden: {item.orden_codigo || "-"} &nbsp;·&nbsp; Técnico: {item.tecnico_recupera || "-"}</div>
-                            <div style={{ fontSize: "11px", color: "#6b7280" }}>Recogido: {item.created_at ? new Date(item.created_at).toLocaleDateString("es-PE") : "-"}</div>
-                            {item.solicitado_por && <div style={{ fontSize: "11px", color: "#0369a1" }}>Solicitó entrega: {item.solicitado_por} · {item.fecha_solicitud_entrega ? new Date(item.fecha_solicitud_entrega).toLocaleDateString("es-PE") : "-"}</div>}
-                            <div style={{ fontSize: "11px", color: "#166534", fontWeight: 600 }}>Ingresado por: {item.ingresado_por || "-"} · {item.fecha_ingreso ? new Date(item.fecha_ingreso).toLocaleString("es-PE") : "-"}</div>
-                            {item.observacion_ingreso && <div style={{ fontSize: "11px", color: "#64748b" }}>Obs: {item.observacion_ingreso}</div>}
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
-                            <span style={{ background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "3px 10px", fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap" }}>Ingresado</span>
-                            {item.catalogado && (
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px" }}>
-                                <span style={{ background: "#e0f2fe", color: "#0369a1", borderRadius: "999px", padding: "3px 10px", fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap" }}>En catálogo ✓</span>
-                                {item.estado_catalogado && <span style={{ fontSize: "10px", color: "#0369a1" }}>como: {item.estado_catalogado}</span>}
-                                {item.fecha_catalogado && <span style={{ fontSize: "10px", color: "#94a3b8" }}>{new Date(item.fecha_catalogado).toLocaleDateString("es-PE")}</span>}
+                    }).map((item) => {
+                      // Fix foto bug: solo mostrar fotos con URI válido (data: o http)
+                      const fotoValida = item.foto_recepcion && (item.foto_recepcion.startsWith("data:") || item.foto_recepcion.startsWith("http"));
+                      return (
+                      <div key={item.id} style={{ border: "1px solid #d1fae5", borderRadius: "14px", background: "#fff", overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
+                        <div style={{ height: "3px", background: "#22c55e" }} />
+                        <div style={{ padding: "14px 16px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", alignItems: "flex-start" }}>
+                            {/* Info lado izquierdo */}
+                            <div style={{ display: "grid", gap: "4px", flex: 1 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 800, fontSize: "14px", color: "#111827" }}>{item.tipo}</span>
+                                <span style={{ fontSize: "11px", fontWeight: 700, background: item.estado === "Bueno" ? "#dcfce7" : item.estado === "Dañado" ? "#fee2e2" : "#fef3c7", color: item.estado === "Bueno" ? "#166534" : item.estado === "Dañado" ? "#991b1b" : "#92400e", borderRadius: "999px", padding: "1px 8px" }}>{item.estado}</span>
+                                {item.codigo_entrega && <span style={{ fontSize: "10px", fontWeight: 700, background: "#dbeafe", color: "#1e40af", borderRadius: "999px", padding: "1px 8px", fontFamily: "monospace" }}>{item.codigo_entrega}</span>}
+                                <span style={{ background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "2px 9px", fontSize: "11px", fontWeight: 700 }}>✓ Ingresado</span>
+                                {item.catalogado && <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: "999px", padding: "2px 9px", fontSize: "11px", fontWeight: 700 }}>📋 En catálogo</span>}
                               </div>
-                            )}
-                            {item.foto_recepcion && (
-                              <img src={item.foto_recepcion} alt="Foto recepción" style={{ width: "80px", height: "65px", objectFit: "cover", borderRadius: "8px", border: "2px solid #86efac", cursor: "pointer" }} onClick={() => abrirFotoZoom(item.foto_recepcion, "Foto de recepción")} title="Foto de recepción" />
-                            )}
+                              {item.serial && <div style={{ fontSize: "12px", color: "#0369a1", fontFamily: "monospace", fontWeight: 600 }}>S/N: {item.serial}</div>}
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "3px 16px", background: "#f8fafc", borderRadius: "8px", padding: "8px 10px", fontSize: "11px", marginTop: "4px" }}>
+                                <div><span style={{ color: "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nombre_cliente || "-"}</span></div>
+                                <div><span style={{ color: "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nodo || "-"}</span></div>
+                                <div><span style={{ color: "#9ca3af" }}>Orden: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.orden_codigo || "-"}</span></div>
+                                <div><span style={{ color: "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.tecnico_recupera || "-"}</span></div>
+                                {item.solicitado_por && <div><span style={{ color: "#9ca3af" }}>Solicitó: </span><span style={{ color: "#0369a1" }}>{item.solicitado_por}</span></div>}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f0fdf4", borderRadius: "8px", padding: "6px 10px", fontSize: "11px", marginTop: "2px" }}>
+                                <span><span style={{ color: "#9ca3af" }}>Ingresado por: </span><span style={{ fontWeight: 700, color: "#166534" }}>{item.ingresado_por || "-"}</span></span>
+                                <span style={{ color: "#d1d5db" }}>·</span>
+                                <span style={{ color: "#6b7280" }}>{item.fecha_ingreso ? new Date(item.fecha_ingreso).toLocaleString("es-PE") : "-"}</span>
+                              </div>
+                              {item.observacion_ingreso && (
+                                <div style={{ display: "flex", gap: "6px", background: "#fffbeb", borderRadius: "8px", padding: "6px 10px", border: "1px solid #fde68a", fontSize: "11px" }}>
+                                  <span style={{ color: "#9ca3af" }}>Obs:</span>
+                                  <span style={{ color: "#78350f" }}>{item.observacion_ingreso}</span>
+                                </div>
+                              )}
+                              {item.catalogado && (
+                                <div style={{ fontSize: "10px", color: "#6b7280" }}>
+                                  Catálogo: <span style={{ fontWeight: 600, color: "#1d4ed8" }}>{item.estado_catalogado || "-"}</span>{item.fecha_catalogado ? ` · ${new Date(item.fecha_catalogado).toLocaleDateString("es-PE")}` : ""}
+                                </div>
+                              )}
+                            </div>
+                            {/* Foto lado derecho */}
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+                              {fotoValida ? (
+                                <div style={{ position: "relative", cursor: "pointer" }} onClick={() => abrirFotoZoom(item.foto_recepcion, "Foto de recepción")}>
+                                  <img
+                                    src={item.foto_recepcion}
+                                    alt="Foto recepción"
+                                    style={{ width: "90px", height: "72px", objectFit: "cover", borderRadius: "10px", border: "2px solid #86efac", display: "block" }}
+                                    onError={(e) => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
+                                  />
+                                  <div style={{ display: "none", width: "90px", height: "72px", borderRadius: "10px", border: "2px solid #fca5a5", background: "#fef2f2", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px" }}>
+                                    <span style={{ fontSize: "18px" }}>🖼️</span>
+                                    <span style={{ fontSize: "9px", color: "#ef4444", textAlign: "center" }}>No disponible</span>
+                                  </div>
+                                  <div style={{ position: "absolute", bottom: "4px", right: "4px", background: "rgba(0,0,0,0.45)", borderRadius: "4px", padding: "2px 4px", fontSize: "9px", color: "#fff" }}>🔍</div>
+                                </div>
+                              ) : item.foto_recepcion ? (
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                                  <div style={{ width: "90px", height: "72px", borderRadius: "10px", border: "2px solid #fca5a5", background: "#fef2f2", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px" }} title="Foto guardada desde móvil — URI local no disponible en web">
+                                    <span style={{ fontSize: "20px" }}>📷</span>
+                                    <span style={{ fontSize: "9px", color: "#ef4444", textAlign: "center", padding: "0 4px" }}>Foto desde móvil</span>
+                                  </div>
+                                  <label style={{ cursor: "pointer", fontSize: "10px", color: "#1d4ed8", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", padding: "3px 7px" }}
+                                    title="Reemplazar con una foto desde este equipo">
+                                    🔄 Reemplazar
+                                    <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (!file) return;
+                                      const nuevaFoto = await uploadFotoOrBase64(file, "recepcion");
+                                      if (!isSupabaseConfigured) return;
+                                      await supabase.from("stock_tecnico").update({ foto_recepcion: nuevaFoto }).eq("id", item.id);
+                                      setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, foto_recepcion: nuevaFoto } : s));
+                                    }} />
+                                  </label>
+                                </div>
+                              ) : rolSesion !== "Tecnico" ? (
+                                <label style={{ cursor: "pointer", fontSize: "10px", color: "#6b7280", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "3px 7px" }}
+                                  title="Agregar foto de recepción">
+                                  📷 Agregar foto
+                                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    const nuevaFoto = await uploadFotoOrBase64(file, "recepcion");
+                                    if (!isSupabaseConfigured) return;
+                                    await supabase.from("stock_tecnico").update({ foto_recepcion: nuevaFoto }).eq("id", item.id);
+                                    setStockTecnico((prev) => prev.map((s) => s.id === item.id ? { ...s, foto_recepcion: nuevaFoto } : s));
+                                  }} />
+                                </label>
+                              ) : null}
                             {item.serial && rolSesion !== "Tecnico" && (
                               liberandoCatalogoId === item.id ? (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "170px" }}>
@@ -15297,7 +16616,7 @@ export default function App() {
                             )}
                             {rolSesion === "Administrador" && (
                               <button
-                                style={{ ...dangerButton, fontSize: "11px", padding: "3px 10px" }}
+                                style={{ ...dangerButton, fontSize: "11px", padding: "3px 8px" }}
                                 onClick={async () => {
                                   if (!window.confirm("¿Eliminar este registro del historial?")) return;
                                   await supabase.from("stock_tecnico").delete().eq("id", item.id);
@@ -15310,7 +16629,9 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    </div>
+                    );
+                    })}
                   </div>
                   )}
                 </div>
