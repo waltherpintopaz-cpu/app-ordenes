@@ -1986,7 +1986,7 @@ export default function App() {
       void guardarUsuariosEnSupabase(usuarios).catch((e) => {
         console.error("Error sincronizando usuarios en Supabase:", e);
       });
-    }, 800);
+    }, 5000);
     return () => {
       if (usuariosSyncTimerRef.current) clearTimeout(usuariosSyncTimerRef.current);
     };
@@ -2018,7 +2018,7 @@ export default function App() {
       void guardarClientesEnSupabase(clientes).catch((e) => {
         console.error("Error sincronizando clientes en Supabase:", e);
       });
-    }, 1200);
+    }, 5000);
     return () => {
       if (clientesSyncTimerRef.current) clearTimeout(clientesSyncTimerRef.current);
     };
@@ -3368,6 +3368,7 @@ export default function App() {
       for (const chunk of chunks) {
         let chunkFinal = chunk.map((item) => ({ ...item }));
         for (let intento = 0; intento < 4; intento += 1) {
+          if (intento > 0) await new Promise((r) => setTimeout(r, intento * 1500));
           const { error } = await supabase.from(USUARIOS_TABLE).upsert(chunkFinal, { onConflict: "username" });
           if (!error) break;
           if (esErrorColumnaAccesosWeb(error)) {
@@ -3535,9 +3536,12 @@ export default function App() {
 
     const chunks = [];
     for (let i = 0; i < payload.length; i += 200) chunks.push(payload.slice(i, i + 200));
-    for (const chunk of chunks) {
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
+      if (ci > 0) await new Promise((r) => setTimeout(r, 300)); // pausa entre chunks para no saturar
       let { error } = await supabase.from(CLIENTES_TABLE).upsert(chunk, { onConflict: "id" });
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
+        await new Promise((r) => setTimeout(r, 1000));
         const fallback = chunk.map((r) => ({
           id: r.id,
           dni: r.dni,
