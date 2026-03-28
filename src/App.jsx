@@ -6798,8 +6798,8 @@ export default function App() {
     <div class="stats">
       <div class="stat"><div class="stat-n">${liquidacionesFiltradas.length}</div><div class="stat-l">Total</div></div>
       <div class="stat"><div class="stat-n" style="color:#ea580c">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("incidencia")).length}</div><div class="stat-l">Incidencias</div></div>
-      <div class="stat"><div class="stat-n" style="color:#1d4ed8">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("servicio")).length}</div><div class="stat-l">Ord. Servicio</div></div>
       <div class="stat"><div class="stat-n" style="color:#16a34a">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("instalacion")).length}</div><div class="stat-l">Instalaciones</div></div>
+      <div class="stat"><div class="stat-n" style="color:#9333ea">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("recuperacion")).length}</div><div class="stat-l">Recuperaciones</div></div>
     </div>
     <table>
       <thead><tr>
@@ -9049,9 +9049,10 @@ export default function App() {
     let base = (Array.isArray(liquidaciones) ? liquidaciones : []).filter((item) =>
       tieneAccesoNodoSesion(firstText(item?.nodo, item?.payload?.nodo, item?.payload?.Nodo))
     );
-    // Filtro nodo
+    // Filtro nodo (normalizado para cubrir variaciones de capitalización)
     if (histFiltroNodo !== "TODOS") {
-      base = base.filter((item) => String(item.nodo || "").trim() === histFiltroNodo);
+      const nodoNorm = normalizeNodoKey(histFiltroNodo);
+      base = base.filter((item) => normalizeNodoKey(String(item.nodo || "").trim()) === nodoNorm);
     }
     // Filtro tipo de orden
     if (histFiltroTipo !== "TODOS") {
@@ -11434,17 +11435,15 @@ export default function App() {
 
         {vistaActiva === "historial" && (() => {
           const TIPOS_ORDEN = [
-            { key: "TODOS",        label: "Todos",           color: "#64748B", bg: "#F1F5F9" },
-            { key: "incidencia",   label: "Incidencia",      color: "#EA580C", bg: "#FFF7ED" },
-            { key: "servicio",     label: "Ord. Servicio",   color: "#1D4ED8", bg: "#EFF6FF" },
-            { key: "instalacion",  label: "Instalación",     color: "#16A34A", bg: "#F0FDF4" },
-            { key: "recuperacion", label: "Recuperación",    color: "#9333EA", bg: "#FDF4FF" },
+            { key: "TODOS",        label: "Todos",        color: "#64748B", bg: "#F1F5F9" },
+            { key: "incidencia",   label: "Incidencia",   color: "#EA580C", bg: "#FFF7ED" },
+            { key: "instalacion",  label: "Instalación",  color: "#16A34A", bg: "#F0FDF4" },
+            { key: "recuperacion", label: "Recuperación", color: "#9333EA", bg: "#FDF4FF" },
           ];
           const nodosDisp = ["TODOS", ...NODOS_BASE_WEB.filter((n) => n !== "Nod_05")];
           const tipoInfo = (tipo = "") => {
             const t = String(tipo).toLowerCase();
             if (t.includes("incidencia"))   return { color: "#EA580C", bg: "#FFF7ED", border: "#FED7AA" };
-            if (t.includes("servicio"))     return { color: "#1D4ED8", bg: "#EFF6FF", border: "#BFDBFE" };
             if (t.includes("instalacion"))  return { color: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0" };
             if (t.includes("recuperacion")) return { color: "#9333EA", bg: "#FDF4FF", border: "#E9D5FF" };
             return { color: "#475569", bg: "#F8FAFC", border: "#E2E8F0" };
