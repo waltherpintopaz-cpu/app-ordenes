@@ -1974,6 +1974,11 @@ export default function App() {
 
   useEffect(() => {
     void cargarUsuariosDesdeSupabase({ silent: true });
+    // Recargar usuarios cada 30s para ver sesiones activas en tiempo real
+    const intervaloUsuarios = setInterval(() => {
+      void cargarUsuariosDesdeSupabase({ silent: true });
+    }, 30000);
+    return () => clearInterval(intervaloUsuarios);
   }, []);
 
   useEffect(() => {
@@ -3358,6 +3363,8 @@ export default function App() {
       accesosHistorialAppsheet: row.accesos_menu,
       accesosDiagnosticoServicio: row.accesos_menu,
       nodosAcceso: row.nodos_acceso,
+      sesion_token: row.sesion_token || null,
+      ultimo_acceso: row.ultimo_acceso || null,
     });
 
   const esErrorColumnaAccesosWeb = (error) => {
@@ -3408,11 +3415,11 @@ export default function App() {
   };
 
   const cerrarSesionRemota = async (userId) => {
-    if (!window.confirm("¿Cerrar la sesión activa de este usuario? Será desconectado en hasta 60 segundos.")) return;
+    if (!window.confirm("¿Cerrar la sesión activa de este usuario? Será desconectado automáticamente.")) return;
     try {
-      await supabase.from(USUARIOS_TABLE).update({ sesion_token: null }).eq("id", userId);
+      await supabase.from(USUARIOS_TABLE).update({ sesion_token: null, forzar_logout: true }).eq("id", userId);
       await cargarUsuariosDesdeSupabase({ silent: true });
-      window.alert("Sesión cerrada. El usuario será desconectado en breve.");
+      window.alert("Sesión cerrada. El usuario será redirigido al login en breve.");
     } catch {
       window.alert("Error al cerrar sesión remota.");
     }
@@ -4342,7 +4349,11 @@ export default function App() {
     let cancelled = false;
     const verificarSesion = async () => {
       try {
-        const { data } = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token").eq("id", usuarioSesionId).maybeSingle();
+        let res = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token, forzar_logout").eq("id", usuarioSesionId).maybeSingle();
+        if (res.error && String(res.error?.message || "").toLowerCase().includes("forzar_logout")) {
+          res = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token").eq("id", usuarioSesionId).maybeSingle();
+        }
+        const { data } = res;
         if (cancelled || !data) return;
         if (data.activo === false) {
           if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
@@ -4352,8 +4363,17 @@ export default function App() {
           window.alert("Tu cuenta fue desactivada por el administrador.");
           return;
         }
+        if (data.forzar_logout === true) {
+          await supabase.from(USUARIOS_TABLE).update({ forzar_logout: false }).eq("id", usuarioSesionId);
+          if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
+          localStorage.removeItem("sesionToken");
+          setUsuarioSesionId(null);
+          setVistaActiva("crear");
+          window.alert("Tu sesión fue cerrada por el administrador.");
+          return;
+        }
         const tokenLocal = localStorage.getItem("sesionToken");
-        if (data.sesion_token && tokenLocal && data.sesion_token !== tokenLocal) {
+        if (tokenLocal && (data.sesion_token === null || data.sesion_token !== tokenLocal)) {
           if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
           localStorage.removeItem("sesionToken");
           setUsuarioSesionId(null);
@@ -4366,7 +4386,7 @@ export default function App() {
       } catch { /* error de red: mantener sesión */ }
     };
     verificarSesion();
-    const interval = setInterval(verificarSesion, 60000);
+    const interval = setInterval(verificarSesion, 15000); // cada 15s
     return () => { cancelled = true; clearInterval(interval); };
   }, [usuarioSesionId]);
 
@@ -14046,384 +14066,306 @@ export default function App() {
             </div>
 
             {usuariosPanelTab === "personal" ? (
-              <>
-            <div style={gridStyle}>
-              <div style={cardStyle} ref={usuarioFormRef}>
-                <h2 style={sectionTitleStyle}>
-                  {usuarioEditandoId ? "Editar usuario" : "Agregar técnico o gestor"}
-                </h2>
-
-                <div style={formGridStyle}>
-                  <div>
-                    <label style={labelStyle}>Nombre completo</label>
-                    <input
-                      style={inputStyle}
-                      value={usuarioForm.nombre}
-                      onChange={(e) => handleUsuarioChange("nombre", e.target.value)}
-                      placeholder="Ej. Luis Pacsi"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Usuario</label>
-                    <input
-                      style={inputStyle}
-                      value={usuarioForm.username || ""}
-                      onChange={(e) => handleUsuarioChange("username", e.target.value)}
-                      placeholder="usuario.login"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Contraseña</label>
-                    <input
-                      type="password"
-                      style={inputStyle}
-                      value={usuarioForm.password || ""}
-                      onChange={(e) => handleUsuarioChange("password", e.target.value)}
-                      placeholder="********"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Celular</label>
-                    <input
-                      style={inputStyle}
-                      value={usuarioForm.celular}
-                      onChange={(e) => handleUsuarioChange("celular", e.target.value)}
-                      placeholder="999999999"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Email</label>
-                    <input
-                      style={inputStyle}
-                      value={usuarioForm.email}
-                      onChange={(e) => handleUsuarioChange("email", e.target.value)}
-                      placeholder="correo@empresa.com"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Empresa</label>
-                    <select
-                      style={inputStyle}
-                      value={usuarioForm.empresa}
-                      onChange={(e) => handleUsuarioChange("empresa", e.target.value)}
-                    >
-                      {EMPRESAS_USUARIO_WEB.map((empresa) => (
-                        <option key={empresa} value={empresa}>
-                          {empresa}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Grupo compartido</label>
-                    <input
-                      style={inputStyle}
-                      value={usuarioForm.grupo || ""}
-                      onChange={(e) => handleUsuarioChange("grupo", e.target.value)}
-                      placeholder="Ej. equipo-norte (mismo valor = comparten stock)"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Estado</label>
-                    <select
-                      style={inputStyle}
-                      value={usuarioForm.activo ? "SI" : "NO"}
-                      onChange={(e) => handleUsuarioChange("activo", e.target.value === "SI")}
-                    >
-                      <option value="SI">Activo</option>
-                      <option value="NO">Inactivo</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "12px" }}>
-                  <div style={{ ...labelStyle, marginBottom: "8px" }}>Rol</div>
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {ROLES_USUARIO_WEB.map((rol) => {
-                      const activo = normalizarRolSimple(usuarioForm.rol) === rol;
-                      return (
-                        <button
-                          key={rol}
-                          type="button"
-                          onClick={() => handleUsuarioChange("rol", rol)}
-                          style={activo ? primaryButton : secondaryButton}
-                        >
-                          {rol}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "12px", display: "grid", gap: "8px" }}>
-                  <div style={{ ...labelStyle, marginBottom: 0 }}>Accesos de menú</div>
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <button type="button" style={secondaryButton} onClick={aplicarAccesosPorRolUsuario}>
-                      Por rol
-                    </button>
-                    <button type="button" style={secondaryButton} onClick={seleccionarTodosAccesosUsuario}>
-                      Todos
-                    </button>
-                    <button type="button" style={secondaryButton} onClick={limpiarAccesosUsuario}>
-                      Limpiar
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {MENU_VISTAS_WEB.map((menu) => {
-                      const activo = normalizarAccesosMenuWeb(usuarioForm.accesosMenu, usuarioForm.rol).includes(menu.key);
-                      return (
-                        <button
-                          key={menu.key}
-                          type="button"
-                          onClick={() => toggleAccesoMenuUsuario(menu.key)}
-                          style={activo ? primaryButton : secondaryButton}
-                        >
-                          {menu.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {normalizarAccesosMenuWeb(usuarioForm.accesosMenu, usuarioForm.rol).includes("historialAppsheet") ? (
-                  <div style={{ marginTop: "12px", display: "grid", gap: "8px" }}>
-                    <div style={{ ...labelStyle, marginBottom: 0 }}>Submenús de Historial AppSheet</div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      <button type="button" style={secondaryButton} onClick={aplicarAccesosHistorialAppsheetPorRolUsuario}>
-                        Por rol
-                      </button>
-                      <button type="button" style={secondaryButton} onClick={seleccionarTodosAccesosHistorialAppsheetUsuario}>
-                        Todos
-                      </button>
-                      <button type="button" style={secondaryButton} onClick={limpiarAccesosHistorialAppsheetUsuario}>
-                        Limpiar
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      {HISTORIAL_APPSHEET_SUBMENU_ITEMS.map((submenu) => {
-                        const activo = normalizarAccesosHistorialAppsheetWeb(usuarioForm.accesosHistorialAppsheet, usuarioForm.rol).includes(submenu.key);
-                        return (
-                          <button
-                            key={`historial-submenu-${submenu.key}`}
-                            type="button"
-                            onClick={() => toggleAccesoHistorialAppsheetUsuario(submenu.key)}
-                            style={activo ? primaryButton : secondaryButton}
-                          >
-                            {submenu.sideLabel || submenu.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                {normalizarAccesosMenuWeb(usuarioForm.accesosMenu, usuarioForm.rol).includes("diagnosticoServicio") ? (
-                  <div style={{ marginTop: "12px", display: "grid", gap: "8px" }}>
-                    <div style={{ ...labelStyle, marginBottom: 0 }}>Permisos de Diagnóstico de servicio</div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      <button type="button" style={secondaryButton} onClick={aplicarAccesosDiagnosticoServicioPorRolUsuario}>
-                        Por rol
-                      </button>
-                      <button type="button" style={secondaryButton} onClick={seleccionarTodosAccesosDiagnosticoServicioUsuario}>
-                        Todos
-                      </button>
-                      <button type="button" style={secondaryButton} onClick={limpiarAccesosDiagnosticoServicioUsuario}>
-                        Limpiar
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      {DIAGNOSTICO_SERVICIO_PERMISOS_ITEMS.map((permiso) => {
-                        const activo = normalizarAccesosDiagnosticoServicioWeb(
-                          usuarioForm.accesosDiagnosticoServicio,
-                          usuarioForm.rol,
-                          usuarioForm.accesosMenu
-                        ).includes(permiso.key);
-                        return (
-                          <button
-                            key={`diag-servicio-perm-${permiso.key}`}
-                            type="button"
-                            onClick={() => toggleAccesoDiagnosticoServicioUsuario(permiso.key)}
-                            style={activo ? primaryButton : secondaryButton}
-                          >
-                            {permiso.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                {normalizarRolSimple(usuarioForm.rol) === "Gestora" ? (
-                  <div style={{ marginTop: "12px", display: "grid", gap: "8px" }}>
-                    <div style={{ ...labelStyle, marginBottom: 0 }}>Nodos de acceso (Gestora)</div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      <button type="button" style={secondaryButton} onClick={seleccionarTodosNodosUsuario}>
-                        Todos
-                      </button>
-                      <button type="button" style={secondaryButton} onClick={limpiarNodosUsuario}>
-                        Limpiar
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      {NODOS_BASE_WEB.map((nodo) => {
-                        const activo = normalizarNodosAccesoWeb(usuarioForm.nodosAcceso).includes(nodo);
-                        return (
-                          <button
-                            key={nodo}
-                            type="button"
-                            onClick={() => toggleNodoAccesoUsuario(nodo)}
-                            style={activo ? primaryButton : secondaryButton}
-                          >
-                            {nodo}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div style={{ marginTop: "18px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                  <button onClick={guardarUsuario} style={primaryButton}>
-                    {usuarioEditandoId ? "Guardar cambios" : "Guardar usuario"}
-                  </button>
-
-                  {usuarioEditandoId && (
-                    <button onClick={cancelarEdicionUsuario} style={secondaryButton}>
-                      Cancelar edición
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div style={cardStyle}>
-                <h2 style={sectionTitleStyle}>Resumen de personal</h2>
-                <div style={{ display: "grid", gap: "12px" }}>
-                  <div><strong>Total usuarios:</strong> {usuarios.length}</div>
-                  <div><strong>Técnicos activos:</strong> {tecnicosActivos.length}</div>
-                  <div><strong>Gestoras activas:</strong> {gestoresActivos.length}</div>
-                </div>
-              </div>
-            </div>
-
-            <div style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "18px" }}>
-                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Listado de usuarios</h2>
-                <input
-                  style={{ ...inputStyle, maxWidth: "420px" }}
-                  value={busquedaUsuarios}
-                  onChange={(e) => setBusquedaUsuarios(e.target.value)}
-                  placeholder="Buscar por nombre, rol, celular, empresa, estado..."
-                />
-              </div>
-
-              {usuariosFiltrados.length === 0 ? (
-                <p style={{ color: "#6b7280", margin: 0 }}>No hay usuarios registrados.</p>
-              ) : (
-                <div style={{ display: "grid", gap: "14px" }}>
-                  {usuariosFiltrados.map((usuario) => (
-                    <div
-                      key={usuario.id}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                        padding: "16px",
-                        background: "#fafafa",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontWeight: "700", fontSize: "16px" }}>{usuario.nombre}</div>
-                          <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                            {normalizarRolSimple(usuario.rol)} · {usuario.empresa}
-                          </div>
-                          <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                            Cel: {usuario.celular || "-"} · Email: {usuario.email || "-"}
-                          </div>
-                          <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                            Usuario: {usuario.username || "-"}
-                          </div>
-                          <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                            Accesos: {normalizarAccesosMenuWeb(usuario.accesosMenu ?? usuario.accesos_menu, usuario.rol).map((k) => menuLabelByKeyWeb[k] || k).join(", ") || "-"}
-                          </div>
-                          {normalizarAccesosMenuWeb(usuario.accesosMenu ?? usuario.accesos_menu, usuario.rol).includes("historialAppsheet") ? (
-                            <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                              Historial AppSheet:{" "}
-                              {normalizarAccesosHistorialAppsheetWeb(
-                                usuario.accesosHistorialAppsheet ?? usuario.accesos_historial_appsheet ?? usuario.accesosMenu ?? usuario.accesos_menu,
-                                usuario.rol
-                              )
-                                .map((k) => historialAppsheetSubmenuLabelByKey[k] || k)
-                                .join(", ") || "-"}
-                            </div>
-                          ) : null}
-                          {normalizarAccesosMenuWeb(usuario.accesosMenu ?? usuario.accesos_menu, usuario.rol).includes("diagnosticoServicio") ? (
-                            <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                              Diagnóstico servicio:{" "}
-                              {normalizarAccesosDiagnosticoServicioWeb(
-                                usuario.accesosDiagnosticoServicio ??
-                                  usuario.accesos_diagnostico_servicio ??
-                                  usuario.accesosMenu ??
-                                  usuario.accesos_menu,
-                                usuario.rol,
-                                usuario.accesosMenu ?? usuario.accesos_menu
-                              )
-                                .map((k) => diagnosticoServicioPermisoLabelByKey[k] || k)
-                                .join(", ") || "-"}
-                            </div>
-                          ) : null}
-                          {normalizarRolSimple(usuario.rol) === "Gestora" ? (
-                            <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                              Nodos: {normalizarNodosAccesoWeb(usuario.nodosAcceso ?? usuario.nodos_acceso).join(", ") || "-"}
-                            </div>
-                          ) : null}
-                          <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                            <span style={usuario.activo ? badgeSuccess : badgeDanger}>
-                              {usuario.activo ? "Activo" : "Inactivo"}
-                            </span>
-                            {usuario.sesion_token && (
-                              <span style={{ background: "#DCFCE7", color: "#15803D", border: "1px solid #86EFAC", borderRadius: "999px", padding: "2px 10px", fontSize: "11px", fontWeight: 700 }}>
-                                🟢 Sesión activa
-                              </span>
-                            )}
-                            {usuario.ultimo_acceso && (
-                              <span style={{ fontSize: "11px", color: "#6B7280" }}>
-                                Último acceso: {new Date(usuario.ultimo_acceso).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}
-                              </span>
-                            )}
-                          </div>
+              (() => {
+                const rolColor = (rol) => {
+                  const r = normalizarRolSimple(rol);
+                  if (r === "Administrador") return { color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE" };
+                  if (r === "Gestora") return { color: "#0284C7", bg: "#F0F9FF", border: "#BAE6FD" };
+                  if (r === "Almacen") return { color: "#EA580C", bg: "#FFF7ED", border: "#FED7AA" };
+                  return { color: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0" }; // Tecnico
+                };
+                const initials = (nombre) => String(nombre || "?").trim().split(/\s+/).slice(0, 2).map((n) => n[0]?.toUpperCase() || "").join("");
+                const sesionesActivas = usuariosActivos.filter((u) => u.sesion_token).length;
+                return (
+                  <>
+                    {/* KPI row */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 12 }}>
+                      {[
+                        { label: "Total personal", value: usuarios.length, color: "#0A2E5F", bg: "#EFF6FF", border: "#BFDBFE", icon: "👥" },
+                        { label: "Técnicos activos", value: tecnicosActivos.length, color: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0", icon: "🔧" },
+                        { label: "Gestoras activas", value: gestoresActivos.length, color: "#0284C7", bg: "#F0F9FF", border: "#BAE6FD", icon: "📋" },
+                        { label: "Sesiones activas", value: sesionesActivas, color: "#7C3AED", bg: "#F5F3FF", border: "#DDD6FE", icon: "🟢" },
+                      ].map((s) => (
+                        <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 16, padding: "16px 18px" }}>
+                          <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
+                          <div style={{ fontSize: 28, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
                         </div>
+                      ))}
+                    </div>
 
-                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "start" }}>
-                          <button onClick={() => editarUsuario(usuario)} style={warningButton}>
-                            Editar
-                          </button>
-                          <button onClick={() => cambiarEstadoUsuario(usuario.id)} style={infoButton}>
-                            {usuario.activo ? "Desactivar" : "Activar"}
-                          </button>
-                          {esAdminSesion && usuario.sesion_token && (
-                            <button onClick={() => cerrarSesionRemota(usuario.id)} style={{ ...dangerButton, background: "#7C3AED", borderColor: "#7C3AED" }}>
-                              Cerrar sesión
-                            </button>
-                          )}
-                          <button onClick={() => eliminarUsuario(usuario.id)} style={dangerButton}>
-                            Eliminar
-                          </button>
+                    {/* Form */}
+                    <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 20, padding: "24px 28px", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }} ref={usuarioFormRef}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 12, background: usuarioEditandoId ? "#FFF7ED" : "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                          {usuarioEditandoId ? "✏️" : "➕"}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#0F172A" }}>{usuarioEditandoId ? "Editar usuario" : "Nuevo usuario"}</div>
+                          <div style={{ fontSize: 12, color: "#94A3B8" }}>{usuarioEditandoId ? "Modifica los datos del usuario seleccionado" : "Completa los campos para registrar al personal"}</div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
 
-              </>
+                      {/* Datos básicos */}
+                      <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 14 }}>Datos básicos</div>
+                        <div style={formGridStyle}>
+                          <div>
+                            <label style={labelStyle}>Nombre completo</label>
+                            <input style={inputStyle} value={usuarioForm.nombre} onChange={(e) => handleUsuarioChange("nombre", e.target.value)} placeholder="Ej. Luis Pacsi" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Usuario (login)</label>
+                            <input style={inputStyle} value={usuarioForm.username || ""} onChange={(e) => handleUsuarioChange("username", e.target.value)} placeholder="luis.pacsi" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Contraseña</label>
+                            <input type="password" style={inputStyle} value={usuarioForm.password || ""} onChange={(e) => handleUsuarioChange("password", e.target.value)} placeholder="••••••••" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Celular</label>
+                            <input style={inputStyle} value={usuarioForm.celular} onChange={(e) => handleUsuarioChange("celular", e.target.value)} placeholder="999999999" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Email</label>
+                            <input style={inputStyle} value={usuarioForm.email} onChange={(e) => handleUsuarioChange("email", e.target.value)} placeholder="correo@empresa.com" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Empresa</label>
+                            <select style={inputStyle} value={usuarioForm.empresa} onChange={(e) => handleUsuarioChange("empresa", e.target.value)}>
+                              {EMPRESAS_USUARIO_WEB.map((emp) => <option key={emp} value={emp}>{emp}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Grupo compartido</label>
+                            <input style={inputStyle} value={usuarioForm.grupo || ""} onChange={(e) => handleUsuarioChange("grupo", e.target.value)} placeholder="Ej. equipo-norte" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Estado</label>
+                            <select style={inputStyle} value={usuarioForm.activo ? "SI" : "NO"} onChange={(e) => handleUsuarioChange("activo", e.target.value === "SI")}>
+                              <option value="SI">Activo</option>
+                              <option value="NO">Inactivo</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Rol */}
+                      <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Rol del usuario</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {ROLES_USUARIO_WEB.map((rol) => {
+                            const activo = normalizarRolSimple(usuarioForm.rol) === rol;
+                            const rc = rolColor(rol);
+                            return (
+                              <button key={rol} type="button" onClick={() => handleUsuarioChange("rol", rol)}
+                                style={{ padding: "8px 18px", borderRadius: 10, border: `2px solid ${activo ? rc.color : "#E2E8F0"}`, background: activo ? rc.bg : "#fff", color: activo ? rc.color : "#64748B", fontWeight: 700, fontSize: 13, cursor: "pointer", transition: "all 0.15s" }}>
+                                {rol}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Accesos */}
+                      <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Accesos de menú</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                          <button type="button" style={secondaryButton} onClick={aplicarAccesosPorRolUsuario}>Por rol</button>
+                          <button type="button" style={secondaryButton} onClick={seleccionarTodosAccesosUsuario}>Todos</button>
+                          <button type="button" style={secondaryButton} onClick={limpiarAccesosUsuario}>Limpiar</button>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {MENU_VISTAS_WEB.map((menu) => {
+                            const activo = normalizarAccesosMenuWeb(usuarioForm.accesosMenu, usuarioForm.rol).includes(menu.key);
+                            return (
+                              <button key={menu.key} type="button" onClick={() => toggleAccesoMenuUsuario(menu.key)}
+                                style={{ padding: "5px 12px", borderRadius: 8, border: `1.5px solid ${activo ? "#0A2E5F" : "#E2E8F0"}`, background: activo ? "#0A2E5F" : "#fff", color: activo ? "#fff" : "#475569", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                                {menu.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {normalizarAccesosMenuWeb(usuarioForm.accesosMenu, usuarioForm.rol).includes("historialAppsheet") && (
+                        <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Submenús Historial AppSheet</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                            <button type="button" style={secondaryButton} onClick={aplicarAccesosHistorialAppsheetPorRolUsuario}>Por rol</button>
+                            <button type="button" style={secondaryButton} onClick={seleccionarTodosAccesosHistorialAppsheetUsuario}>Todos</button>
+                            <button type="button" style={secondaryButton} onClick={limpiarAccesosHistorialAppsheetUsuario}>Limpiar</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {HISTORIAL_APPSHEET_SUBMENU_ITEMS.map((sub) => {
+                              const activo = normalizarAccesosHistorialAppsheetWeb(usuarioForm.accesosHistorialAppsheet, usuarioForm.rol).includes(sub.key);
+                              return (
+                                <button key={`hs-${sub.key}`} type="button" onClick={() => toggleAccesoHistorialAppsheetUsuario(sub.key)}
+                                  style={{ padding: "5px 12px", borderRadius: 8, border: `1.5px solid ${activo ? "#0A2E5F" : "#E2E8F0"}`, background: activo ? "#0A2E5F" : "#fff", color: activo ? "#fff" : "#475569", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                                  {sub.sideLabel || sub.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {normalizarAccesosMenuWeb(usuarioForm.accesosMenu, usuarioForm.rol).includes("diagnosticoServicio") && (
+                        <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Permisos Diagnóstico de servicio</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                            <button type="button" style={secondaryButton} onClick={aplicarAccesosDiagnosticoServicioPorRolUsuario}>Por rol</button>
+                            <button type="button" style={secondaryButton} onClick={seleccionarTodosAccesosDiagnosticoServicioUsuario}>Todos</button>
+                            <button type="button" style={secondaryButton} onClick={limpiarAccesosDiagnosticoServicioUsuario}>Limpiar</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {DIAGNOSTICO_SERVICIO_PERMISOS_ITEMS.map((p) => {
+                              const activo = normalizarAccesosDiagnosticoServicioWeb(usuarioForm.accesosDiagnosticoServicio, usuarioForm.rol, usuarioForm.accesosMenu).includes(p.key);
+                              return (
+                                <button key={`ds-${p.key}`} type="button" onClick={() => toggleAccesoDiagnosticoServicioUsuario(p.key)}
+                                  style={{ padding: "5px 12px", borderRadius: 8, border: `1.5px solid ${activo ? "#0A2E5F" : "#E2E8F0"}`, background: activo ? "#0A2E5F" : "#fff", color: activo ? "#fff" : "#475569", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                                  {p.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {normalizarRolSimple(usuarioForm.rol) === "Gestora" && (
+                        <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Nodos de acceso (Gestora)</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                            <button type="button" style={secondaryButton} onClick={seleccionarTodosNodosUsuario}>Todos</button>
+                            <button type="button" style={secondaryButton} onClick={limpiarNodosUsuario}>Limpiar</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {NODOS_BASE_WEB.map((nodo) => {
+                              const activo = normalizarNodosAccesoWeb(usuarioForm.nodosAcceso).includes(nodo);
+                              return (
+                                <button key={nodo} type="button" onClick={() => toggleNodoAccesoUsuario(nodo)}
+                                  style={{ padding: "5px 14px", borderRadius: 8, border: `1.5px solid ${activo ? "#0284C7" : "#E2E8F0"}`, background: activo ? "#0284C7" : "#fff", color: activo ? "#fff" : "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                                  {nodo}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", paddingTop: 4 }}>
+                        <button onClick={guardarUsuario} style={{ ...primaryButton, padding: "10px 24px", fontSize: 14, borderRadius: 12 }}>
+                          {usuarioEditandoId ? "💾 Guardar cambios" : "✅ Crear usuario"}
+                        </button>
+                        {usuarioEditandoId && (
+                          <button onClick={cancelarEdicionUsuario} style={{ ...secondaryButton, padding: "10px 20px", fontSize: 14, borderRadius: 12 }}>
+                            Cancelar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* User list */}
+                    <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 20, padding: "24px 28px", boxShadow: "0 1px 6px rgba(0,0,0,0.06)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 17, color: "#0F172A" }}>Personal registrado</div>
+                          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 2 }}>{usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} encontrado{usuariosFiltrados.length !== 1 ? "s" : ""}</div>
+                        </div>
+                        <input style={{ ...inputStyle, maxWidth: 340, borderRadius: 12 }} value={busquedaUsuarios} onChange={(e) => setBusquedaUsuarios(e.target.value)} placeholder="🔍  Buscar nombre, rol, usuario..." />
+                      </div>
+
+                      {usuariosFiltrados.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: "40px 0", color: "#94A3B8" }}>
+                          <div style={{ fontSize: 36, marginBottom: 8 }}>👤</div>
+                          <div style={{ fontWeight: 600 }}>No hay usuarios registrados</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 12 }}>
+                          {usuariosFiltrados.map((usuario) => {
+                            const rc = rolColor(usuario.rol);
+                            const ini = initials(usuario.nombre);
+                            const accesos = normalizarAccesosMenuWeb(usuario.accesosMenu ?? usuario.accesos_menu, usuario.rol);
+                            return (
+                              <div key={usuario.id} style={{ border: `1px solid ${usuario.activo ? "#E2E8F0" : "#FEE2E2"}`, borderLeft: `4px solid ${rc.color}`, borderRadius: 14, padding: "16px 18px", background: usuario.activo ? "#FAFAFA" : "#FFF5F5", transition: "box-shadow 0.15s" }}
+                                onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.08)"}
+                                onMouseLeave={(e) => e.currentTarget.style.boxShadow = "none"}>
+                                <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                  {/* Avatar */}
+                                  <div style={{ width: 46, height: 46, borderRadius: 12, background: rc.bg, border: `2px solid ${rc.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15, color: rc.color, flexShrink: 0 }}>
+                                    {ini}
+                                  </div>
+                                  {/* Info */}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                                      <span style={{ fontWeight: 800, fontSize: 15, color: "#0F172A" }}>{usuario.nombre}</span>
+                                      <span style={{ background: rc.bg, color: rc.color, border: `1px solid ${rc.border}`, borderRadius: 999, padding: "1px 10px", fontSize: 11, fontWeight: 700 }}>
+                                        {normalizarRolSimple(usuario.rol)}
+                                      </span>
+                                      {usuario.activo ? (
+                                        <span style={{ background: "#DCFCE7", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 999, padding: "1px 10px", fontSize: 11, fontWeight: 700 }}>Activo</span>
+                                      ) : (
+                                        <span style={{ background: "#FEE2E2", color: "#DC2626", border: "1px solid #FECACA", borderRadius: 999, padding: "1px 10px", fontSize: 11, fontWeight: 700 }}>Inactivo</span>
+                                      )}
+                                      {usuario.sesion_token && (
+                                        <span style={{ background: "#F0FDF4", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 999, padding: "1px 10px", fontSize: 11, fontWeight: 700 }}>🟢 En línea</span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: 12, color: "#64748B", display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
+                                      <span>👤 {usuario.username || "-"}</span>
+                                      {usuario.celular && <span>📱 {usuario.celular}</span>}
+                                      {usuario.empresa && <span>🏢 {usuario.empresa}</span>}
+                                      {usuario.ultimo_acceso && <span>🕐 {new Date(usuario.ultimo_acceso).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}</span>}
+                                    </div>
+                                    {accesos.length > 0 && (
+                                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                        {accesos.slice(0, 8).map((k) => (
+                                          <span key={k} style={{ background: "#F1F5F9", color: "#475569", borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 600 }}>
+                                            {menuLabelByKeyWeb[k] || k}
+                                          </span>
+                                        ))}
+                                        {accesos.length > 8 && <span style={{ background: "#F1F5F9", color: "#94A3B8", borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 600 }}>+{accesos.length - 8} más</span>}
+                                      </div>
+                                    )}
+                                    {normalizarRolSimple(usuario.rol) === "Gestora" && normalizarNodosAccesoWeb(usuario.nodosAcceso ?? usuario.nodos_acceso).length > 0 && (
+                                      <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                        {normalizarNodosAccesoWeb(usuario.nodosAcceso ?? usuario.nodos_acceso).map((n) => (
+                                          <span key={n} style={{ background: "#EFF6FF", color: "#1D4ED8", borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 700, border: "1px solid #BFDBFE" }}>{n}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Actions */}
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
+                                    <button onClick={() => editarUsuario(usuario)}
+                                      style={{ padding: "7px 14px", borderRadius: 9, border: "1.5px solid #F59E0B", background: "#FFFBEB", color: "#B45309", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                                      ✏️ Editar
+                                    </button>
+                                    <button onClick={() => cambiarEstadoUsuario(usuario.id)}
+                                      style={{ padding: "7px 14px", borderRadius: 9, border: `1.5px solid ${usuario.activo ? "#94A3B8" : "#16A34A"}`, background: usuario.activo ? "#F1F5F9" : "#F0FDF4", color: usuario.activo ? "#475569" : "#16A34A", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                                      {usuario.activo ? "⏸ Desactivar" : "▶ Activar"}
+                                    </button>
+                                    {esAdminSesion && usuario.sesion_token && (
+                                      <button onClick={() => cerrarSesionRemota(usuario.id)}
+                                        style={{ padding: "7px 14px", borderRadius: 9, border: "1.5px solid #7C3AED", background: "#F5F3FF", color: "#7C3AED", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                                        🔒 Cerrar sesión
+                                      </button>
+                                    )}
+                                    <button onClick={() => eliminarUsuario(usuario.id)}
+                                      style={{ padding: "7px 14px", borderRadius: 9, border: "1.5px solid #DC2626", background: "#FFF5F5", color: "#DC2626", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                                      🗑 Eliminar
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()
             ) : null}
 
             {esAdminSesion && usuariosPanelTab === "mikrotik" ? (
