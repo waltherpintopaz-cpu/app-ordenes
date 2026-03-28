@@ -1767,6 +1767,8 @@ export default function App() {
   const [clientesSyncLoading, setClientesSyncLoading] = useState(false);
   const [clientesSyncInfo, setClientesSyncInfo] = useState("");
   const [clientesSyncError, setClientesSyncError] = useState("");
+  const [importCsvLoading, setImportCsvLoading] = useState(false);
+  const [importCsvInfo, setImportCsvInfo] = useState("");
   const [clientesSupabaseReady, setClientesSupabaseReady] = useState(false);
   const [clientesSupabaseSaving, setClientesSupabaseSaving] = useState(false);
   const [ordenesSupabaseReady, setOrdenesSupabaseReady] = useState(false);
@@ -3615,6 +3617,88 @@ export default function App() {
         error = null;
       }
       if (error) throw error;
+    }
+  };
+
+  const importarClientesDesdeCSV = async (file) => {
+    setImportCsvLoading(true);
+    setImportCsvInfo("");
+    try {
+      const rawText = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+        reader.readAsText(file);
+      });
+
+      const rows = parseGoogleSheetCsvRows(rawText);
+
+      const getCol = (row, ...names) => {
+        const keys = Object.keys(row);
+        for (const name of names) {
+          const normalizedName = name.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const found = keys.find((k) => {
+            const normalizedKey = k.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            return normalizedKey === normalizedName;
+          });
+          if (found !== undefined && row[found] !== undefined && String(row[found]).trim() !== "") {
+            return String(row[found]).trim();
+          }
+        }
+        return "";
+      };
+
+      const newClients = [];
+      rows.forEach((row, idx) => {
+        const dni = getCol(row, "dni", "documento", "doc");
+        if (!dni) return;
+        const cliente = {
+          dni,
+          nombre: getCol(row, "nombre", "name", "cliente"),
+          direccion: getCol(row, "direccion", "dirección", "address"),
+          celular: getCol(row, "celular", "telefono", "teléfono", "phone", "cel"),
+          email: getCol(row, "email"),
+          nodo: getCol(row, "nodo", "node"),
+          velocidad: getCol(row, "velocidad", "plan", "velocidad plan"),
+          precioPlan: getCol(row, "precio", "precio_plan", "monto"),
+          codigoAbonado: getCol(row, "codigo_abonado", "codigo abonado", "abonado", "cod_abonado"),
+          codigoCliente: getCol(row, "codigo_cliente", "codigoCliente"),
+        };
+        newClients.push({ ...cliente, _idx: idx });
+      });
+
+      let agregados = 0;
+      let actualizados = 0;
+
+      setClientes((prev) => {
+        const merged = [...prev];
+        newClients.forEach((nc) => {
+          const existingIndex = merged.findIndex((c) => String(c.dni || "").trim() === String(nc.dni).trim());
+          if (existingIndex >= 0) {
+            const existing = merged[existingIndex];
+            merged[existingIndex] = {
+              ...existing,
+              ...Object.fromEntries(Object.entries(nc).filter(([k, v]) => k !== "_idx" && v !== "")),
+              historialInstalaciones: existing.historialInstalaciones,
+              equiposHistorial: existing.equiposHistorial,
+            };
+            actualizados++;
+          } else {
+            const { _idx, ...clienteData } = nc;
+            merged.push({ ...clienteData, id: Date.now() + _idx });
+            agregados++;
+          }
+        });
+        const toSave = merged.filter((c) => newClients.some((nc) => String(nc.dni).trim() === String(c.dni || "").trim()));
+        guardarClientesEnSupabase(toSave).catch(() => {});
+        return merged;
+      });
+
+      setImportCsvInfo(`CSV importado: ${agregados} nuevos, ${actualizados} actualizados.`);
+    } catch (err) {
+      setImportCsvInfo("Error al importar CSV: " + (err?.message || String(err)));
+    } finally {
+      setImportCsvLoading(false);
     }
   };
 
@@ -7504,10 +7588,71 @@ export default function App() {
 
   const guardarClienteDesdeLiquidacion = async (registroLiquidado) => {
     if (!registroLiquidado) return;
-    if (!esActuacionInstalacion(registroLiquidado.tipoActuacion)) return;
 
     const dni = String(registroLiquidado.dni || "").trim();
     if (!dni) return;
+
+    const esInstalacion = esActuacionInstalacion(registroLiquidado.tipoActuacion);
+
+    // Si NO es instalación: actualizar cliente existente por DNI, o crear uno básico si no existe
+    if (!esInstalacion) {
+      let clienteResultado = null;
+      setClientes((prev) => {
+        const existente = prev.find(
+          (c) => String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
+        );
+        if (existente) {
+          const actualizado = {
+            ...existente,
+            nombre: registroLiquidado.nombre || existente.nombre || "",
+            direccion: registroLiquidado.direccion || existente.direccion || "",
+            celular: registroLiquidado.celular || existente.celular || "",
+            nodo: registroLiquidado.nodo || existente.nodo || "",
+            ultimaActualizacion: new Date().toLocaleString(),
+          };
+          clienteResultado = actualizado;
+          return prev.map((c) =>
+            String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
+              ? actualizado : c
+          );
+        }
+        // Cliente no existe → crear registro básico sin codigoAbonado ni historial instalación
+        const nuevo = {
+          id: Date.now(),
+          codigoAbonado: "",
+          codigoCliente: dni,
+          dni,
+          nombre: registroLiquidado.nombre || "",
+          direccion: registroLiquidado.direccion || "",
+          celular: registroLiquidado.celular || "",
+          email: registroLiquidado.email || "",
+          contacto: registroLiquidado.contacto || "",
+          empresa: registroLiquidado.empresa || "",
+          velocidad: registroLiquidado.velocidad || "",
+          precioPlan: registroLiquidado.precioPlan || "",
+          nodo: registroLiquidado.nodo || "",
+          usuarioNodo: "",
+          passwordUsuario: "",
+          ubicacion: registroLiquidado.ubicacion || "",
+          descripcion: registroLiquidado.descripcion || "",
+          fotoFachada: registroLiquidado.fotoFachada || "",
+          fotosLiquidacion: [],
+          tecnico: registroLiquidado.tecnico || "",
+          autorOrden: registroLiquidado.autorOrden || "",
+          fechaRegistro: new Date().toLocaleString(),
+          ultimaActualizacion: new Date().toLocaleString(),
+          historialInstalaciones: [],
+          equiposHistorial: [],
+          origenRegistro: "incidencia",
+        };
+        clienteResultado = nuevo;
+        return [nuevo, ...prev];
+      });
+      if (isSupabaseConfigured && clienteResultado) {
+        void guardarClientesEnSupabase([clienteResultado]);
+      }
+      return clienteResultado;
+    }
 
     const nodo = String(registroLiquidado.nodo || "").trim();
 
@@ -14215,6 +14360,16 @@ export default function App() {
                   <button onClick={actualizarEstadoMasivoMikrowisp} disabled={actualizarEstadoMasivoLoading} title="Consulta Mikrowisp por DNI para actualizar estado" style={{ padding: "8px 14px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     {actualizarEstadoMasivoLoading ? `MK ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}` : "Sync MikroTik"}
                   </button>
+                  <label style={{ padding: "8px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    {importCsvLoading ? "Importando..." : "↑ Importar CSV"}
+                    <input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      e.target.value = "";
+                      await importarClientesDesdeCSV(file);
+                    }} />
+                  </label>
+                  {!!importCsvInfo && <span style={{ fontSize: 11, color: "#0369a1" }}>{importCsvInfo}</span>}
                   {esAdminSesion && (
                     <button onClick={limpiarClientesLocales} style={{ padding: "8px 14px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                       Vaciar
