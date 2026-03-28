@@ -13,6 +13,7 @@ import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
+import logoAmericanet from "./assets/americanet-logo-clean.png";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -6785,8 +6786,7 @@ export default function App() {
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:'Segoe UI',Arial,sans-serif;padding:24px;color:#0f172a;background:#f8fafc}
       .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #e2e8f0}
-      .logo{font-size:20px;font-weight:900;color:#0A2E5F}
-      .logo span{color:#F47A20}
+      .logo{display:flex;align-items:center}
       .meta{font-size:11px;color:#64748b;text-align:right;line-height:1.7}
       .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
       .chip{background:#e2e8f0;color:#334155;padding:3px 12px;border-radius:999px;font-size:11px;font-weight:600}
@@ -6805,7 +6805,7 @@ export default function App() {
       @media print{body{padding:12px}.stats{grid-template-columns:repeat(4,1fr)}}
     </style></head><body>
     <div class="header">
-      <div class="logo">AMERI<span>NET</span></div>
+      <div class="logo"><img src="${logoAmericanet}" alt="Americanet" style="height:48px;object-fit:contain" /></div>
       <div class="meta">
         <div><b>Historial de Liquidaciones</b></div>
         <div>Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
