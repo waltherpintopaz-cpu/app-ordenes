@@ -11,6 +11,7 @@ import SmartOltPanel from "./components/SmartOltPanel";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import NapPanel from "./components/NapPanel";
+import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 
 const REPORTES_PAGE_SIZE = 25;
@@ -14542,168 +14543,9 @@ export default function App() {
           <NapPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
         )}
 
-        {vistaActiva === "recordatorios" && (() => {
-          const [recs, setRecs] = React.useState([]);
-          const [recLoading, setRecLoading] = React.useState(true);
-          const [recFiltro, setRecFiltro] = React.useState("pendientes");
-          const [recModal, setRecModal] = React.useState(false);
-          const [recForm, setRecForm] = React.useState({ titulo: "", descripcion: "", prioridad: "normal", fecha_vencimiento: "", foto_url: "" });
-          const [recEditId, setRecEditId] = React.useState(null);
-          const [recSaving, setRecSaving] = React.useState(false);
-          const recUserId = String(usuarioSesion?.id || usuarioSesion?.username || "");
-          const PRIOS = [
-            { key: "alta", label: "Alta", color: "#EF4444", bg: "#FEF2F2", border: "#FECACA" },
-            { key: "normal", label: "Normal", color: "#D97706", bg: "#FFFBEB", border: "#FDE68A" },
-            { key: "baja", label: "Baja", color: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0" }
-          ];
-          const pInfo = (p) => PRIOS.find((x) => x.key === p) || PRIOS[1];
-          const fmtFecha = (iso) => { if (!iso) return ""; try { return new Date(iso).toLocaleString("es-PE", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
-          const isVenc = (f) => f && new Date(f) < new Date();
-
-          React.useEffect(() => {
-            if (!recUserId || !isSupabaseConfigured) { setRecLoading(false); return; }
-            setRecLoading(true);
-            supabase.from("recordatorios").select("*").eq("usuario_id", recUserId).order("completado", { ascending: true }).order("created_at", { ascending: false })
-              .then(({ data }) => { setRecs(data || []); setRecLoading(false); });
-          }, [recUserId]);
-
-          const pendientesRec = recs.filter((r) => !r.completado);
-          const completadosRec = recs.filter((r) => r.completado);
-          const listaRec = recFiltro === "completados" ? completadosRec : pendientesRec;
-
-          const abrirNuevo = () => { setRecForm({ titulo: "", descripcion: "", prioridad: "normal", fecha_vencimiento: "", foto_url: "" }); setRecEditId(null); setRecModal(true); };
-          const abrirEditar = (r) => { setRecForm({ titulo: r.titulo || "", descripcion: r.descripcion || "", prioridad: r.prioridad || "normal", fecha_vencimiento: r.fecha_vencimiento ? r.fecha_vencimiento.slice(0, 16).replace("T", " ") : "", foto_url: r.foto_url || "" }); setRecEditId(r.id); setRecModal(true); };
-
-          const guardarRec = async () => {
-            if (!recForm.titulo.trim()) { alert("Ingresa un título."); return; }
-            setRecSaving(true);
-            try {
-              let fechaIso = null;
-              if (recForm.fecha_vencimiento.trim()) { const p = new Date(recForm.fecha_vencimiento.trim().replace(" ", "T")); if (!isNaN(p.getTime())) fechaIso = p.toISOString(); }
-              const payload = { usuario_id: recUserId, titulo: recForm.titulo.trim(), descripcion: recForm.descripcion.trim(), prioridad: recForm.prioridad, fecha_vencimiento: fechaIso, foto_url: recForm.foto_url || "" };
-              if (recEditId) { await supabase.from("recordatorios").update(payload).eq("id", recEditId); setRecs((prev) => prev.map((r) => r.id === recEditId ? { ...r, ...payload } : r)); }
-              else { const { data: nd } = await supabase.from("recordatorios").insert({ ...payload, completado: false }).select().maybeSingle(); if (nd) setRecs((prev) => [nd, ...prev]); }
-              setRecModal(false);
-            } finally { setRecSaving(false); }
-          };
-
-          const toggleRec = async (r) => {
-            const nuevo = !r.completado;
-            setRecs((prev) => prev.map((x) => x.id === r.id ? { ...x, completado: nuevo } : x));
-            await supabase.from("recordatorios").update({ completado: nuevo }).eq("id", r.id);
-          };
-
-          const eliminarRec = async (r) => {
-            if (!window.confirm(`¿Eliminar "${r.titulo}"?`)) return;
-            await supabase.from("recordatorios").delete().eq("id", r.id);
-            setRecs((prev) => prev.filter((x) => x.id !== r.id));
-          };
-
-          const cs = {
-            wrap: { maxWidth: 860, margin: "0 auto", padding: "0 0 40px 0" },
-            header: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 },
-            h1: { fontSize: 22, fontWeight: 800, color: "#0A2E5F", margin: 0 },
-            sub: { fontSize: 12, color: "#94A3B8", marginTop: 2 },
-            badge: { background: pendientesRec.length > 0 ? "#1E4F9C" : "#E2E8F0", color: pendientesRec.length > 0 ? "#fff" : "#64748B", borderRadius: 999, padding: "4px 12px", fontWeight: 800, fontSize: 13 },
-            tabs: { display: "flex", gap: 8, marginBottom: 18 },
-            tab: (active) => ({ flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: active ? "#1E4F9C" : "#F1F5F9", color: active ? "#fff" : "#64748B" }),
-            addBtn: { background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 },
-            card: (prio, completado) => ({ background: "#fff", borderRadius: 14, borderLeft: `4px solid ${prio.color}`, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", opacity: completado ? 0.7 : 1, display: "flex", gap: 12, alignItems: "flex-start" }),
-            checkbox: (done) => ({ width: 22, height: 22, borderRadius: 6, border: `2px solid ${done ? "#22C55E" : "#CBD5E1"}`, background: done ? "#22C55E" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, fontSize: 12, color: "#fff" }),
-            cardTitle: (done) => ({ fontSize: 15, fontWeight: 700, color: done ? "#94A3B8" : "#0F172A", textDecoration: done ? "line-through" : "none", margin: "0 0 4px 0" }),
-            cardDesc: { fontSize: 13, color: "#64748B", margin: "0 0 8px 0" },
-            prioPill: (prio) => ({ background: prio.bg, color: prio.color, border: `1px solid ${prio.border}`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700, display: "inline-block" }),
-            fechaSpan: (venc) => ({ fontSize: 11, color: venc ? "#EF4444" : "#94A3B8", display: "flex", alignItems: "center", gap: 3 }),
-            thumb: { width: 64, height: 64, borderRadius: 10, objectFit: "cover", flexShrink: 0 },
-            actions: { display: "flex", gap: 6, marginLeft: "auto", flexShrink: 0 },
-            editBtn: { background: "#F1F5F9", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, color: "#475569", fontWeight: 600 },
-            delBtn: { background: "#FEF2F2", border: "none", borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 12, color: "#EF4444", fontWeight: 600 },
-            empty: { textAlign: "center", padding: "48px 0", color: "#94A3B8" },
-            overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 },
-            modal: { background: "#fff", borderRadius: 18, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto" },
-            mTitle: { fontSize: 17, fontWeight: 800, color: "#0A2E5F", margin: "0 0 18px 0" },
-            label: { fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 5, display: "block" },
-            input: { width: "100%", border: "1px solid #E2E8F0", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: "#1E293B", background: "#F8FAFC", boxSizing: "border-box", marginBottom: 12 },
-            pBtns: { display: "flex", gap: 8, marginBottom: 14 },
-            pBtn: (p, sel) => ({ flex: 1, padding: "9px 0", border: `2px solid ${p.color}`, borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, background: sel ? p.color : "#fff", color: sel ? "#fff" : p.color }),
-            saveBtn: { width: "100%", background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 12, padding: 14, fontWeight: 800, fontSize: 15, cursor: "pointer", marginTop: 8 }
-          };
-
-          return (
-            <div style={cs.wrap}>
-              <div style={cs.header}>
-                <div>
-                  <h2 style={cs.h1}>🔔 Recordatorios</h2>
-                  <p style={cs.sub}>Privados · solo tú los ves</p>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={cs.badge}>{pendientesRec.length} pendiente{pendientesRec.length !== 1 ? "s" : ""}</span>
-                  <button style={cs.addBtn} onClick={abrirNuevo}>+ Nuevo</button>
-                </div>
-              </div>
-
-              <div style={cs.tabs}>
-                {[{ key: "pendientes", label: `Pendientes (${pendientesRec.length})` }, { key: "completados", label: `Completados (${completadosRec.length})` }].map((t) => (
-                  <button key={t.key} style={cs.tab(recFiltro === t.key)} onClick={() => setRecFiltro(t.key)}>{t.label}</button>
-                ))}
-              </div>
-
-              {recLoading ? <p style={{ color: "#94A3B8", textAlign: "center" }}>Cargando...</p> : listaRec.length === 0 ? (
-                <div style={cs.empty}>
-                  <div style={{ fontSize: 40, marginBottom: 10 }}>🔕</div>
-                  <p style={{ fontWeight: 700, margin: 0 }}>{recFiltro === "completados" ? "Sin completados aún" : "Sin recordatorios pendientes"}</p>
-                  {recFiltro === "pendientes" && <p style={{ fontSize: 13, marginTop: 4 }}>Haz clic en "+ Nuevo" para agregar uno</p>}
-                </div>
-              ) : listaRec.map((r) => {
-                const prio = pInfo(r.prioridad);
-                const venc = isVenc(r.fecha_vencimiento);
-                return (
-                  <div key={r.id} style={cs.card(prio, r.completado)}>
-                    <div style={cs.checkbox(r.completado)} onClick={() => toggleRec(r)}>{r.completado ? "✓" : ""}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={cs.cardTitle(r.completado)}>{r.titulo}</p>
-                      {r.descripcion && <p style={cs.cardDesc}>{r.descripcion}</p>}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span style={cs.prioPill(prio)}>{prio.label}</span>
-                        {r.fecha_vencimiento && <span style={cs.fechaSpan(venc)}>{venc ? "⚠ " : "📅 "}{fmtFecha(r.fecha_vencimiento)}</span>}
-                      </div>
-                    </div>
-                    {r.foto_url && <img src={r.foto_url} alt="" style={cs.thumb} onError={(e) => { e.target.style.display = "none"; }} />}
-                    <div style={cs.actions}>
-                      <button style={cs.editBtn} onClick={() => abrirEditar(r)}>Editar</button>
-                      <button style={cs.delBtn} onClick={() => eliminarRec(r)}>✕</button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {recModal && (
-                <div style={cs.overlay} onClick={(e) => { if (e.target === e.currentTarget) setRecModal(false); }}>
-                  <div style={cs.modal}>
-                    <h3 style={cs.mTitle}>{recEditId ? "Editar recordatorio" : "Nuevo recordatorio"}</h3>
-                    <label style={cs.label}>Título *</label>
-                    <input style={cs.input} value={recForm.titulo} onChange={(e) => setRecForm((p) => ({ ...p, titulo: e.target.value }))} placeholder="¿Qué debes recordar?" />
-                    <label style={cs.label}>Descripción</label>
-                    <textarea style={{ ...cs.input, height: 72, resize: "vertical" }} value={recForm.descripcion} onChange={(e) => setRecForm((p) => ({ ...p, descripcion: e.target.value }))} placeholder="Detalles adicionales..." />
-                    <label style={cs.label}>Prioridad</label>
-                    <div style={cs.pBtns}>
-                      {PRIOS.map((p) => <button key={p.key} style={cs.pBtn(p, recForm.prioridad === p.key)} onClick={() => setRecForm((prev) => ({ ...prev, prioridad: p.key }))}>{p.label}</button>)}
-                    </div>
-                    <label style={cs.label}>Fecha límite (opcional)</label>
-                    <input type="datetime-local" style={cs.input} value={recForm.fecha_vencimiento} onChange={(e) => setRecForm((p) => ({ ...p, fecha_vencimiento: e.target.value }))} />
-                    <label style={cs.label}>URL de foto (opcional)</label>
-                    <input style={cs.input} value={recForm.foto_url} onChange={(e) => setRecForm((p) => ({ ...p, foto_url: e.target.value }))} placeholder="https://..." />
-                    {recForm.foto_url && <img src={recForm.foto_url} alt="" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 10, marginBottom: 12 }} onError={(e) => { e.target.style.display = "none"; }} />}
-                    <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                      <button style={{ ...cs.saveBtn, background: "#F1F5F9", color: "#475569", flex: 1 }} onClick={() => setRecModal(false)}>Cancelar</button>
-                      <button style={{ ...cs.saveBtn, flex: 2 }} onClick={guardarRec} disabled={recSaving}>{recSaving ? "Guardando..." : recEditId ? "Guardar cambios" : "Crear recordatorio"}</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {vistaActiva === "recordatorios" && (
+          <RecordatoriosPanel sessionUser={usuarioSesion} />
+        )}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
           const cli = clienteSeleccionado;
