@@ -467,7 +467,7 @@ function getDiagnosticoEstadoVisual(value = "") {
 }
 
 const buildInitialOrder = () => ({
-  empresa: "Americanet",
+  empresa: "",
   codigo: "",
   generarUsuario: "SI",
   orden: "ORDEN DE SERVICIO",
@@ -10805,6 +10805,7 @@ export default function App() {
                   <div>
                     <label style={labelStyle}>Empresa</label>
                     <select style={inputStyle} value={orden.empresa} onChange={(e) => handleChange("empresa", e.target.value)}>
+                      <option value="">Selecciona empresa</option>
                       <option>Americanet</option>
                       <option>DIM</option>
                     </select>
@@ -11197,7 +11198,7 @@ export default function App() {
                   {mostrarMontoCobrar && (
                     <div>
                       <label style={labelStyle}>Monto a cobrar</label>
-                      <input style={inputStyle} value={orden.montoCobrar} onChange={(e) => handleChange("montoCobrar", e.target.value)} placeholder="50" />
+                      <input style={inputStyle} value={orden.montoCobrar} onChange={(e) => handleChange("montoCobrar", e.target.value)} placeholder="S/" />
                     </div>
                   )}
 
