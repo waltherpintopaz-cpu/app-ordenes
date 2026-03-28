@@ -1843,6 +1843,10 @@ export default function App() {
   const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
+  const [histFiltroNodo, setHistFiltroNodo] = useState("TODOS");
+  const [histFiltroTipo, setHistFiltroTipo] = useState("TODOS");
+  const [histFiltroDesde, setHistFiltroDesde] = useState("");
+  const [histFiltroHasta, setHistFiltroHasta] = useState("");
   const [usuarioSesionId, setUsuarioSesionId] = useState(() => {
     const guardado = localStorage.getItem("usuarioSesionId");
     return guardado ? Number(guardado) : null;
@@ -6725,6 +6729,90 @@ export default function App() {
     imprimirHtmlMismaPestana(html);
   };
 
+  const generarPdfHistorial = () => {
+    if (!liquidacionesFiltradas.length) { alert("No hay registros para exportar con los filtros actuales."); return; }
+    const tipoLabel = histFiltroTipo === "TODOS" ? "Todos los tipos" : histFiltroTipo;
+    const nodoLabel = histFiltroNodo === "TODOS" ? "Todos los nodos" : histFiltroNodo;
+    const filas = liquidacionesFiltradas.map((item) => {
+      const tipo = String(item.tipoActuacion || "-");
+      const color = tipo.toLowerCase().includes("incidencia") ? "#fff7ed" :
+        tipo.toLowerCase().includes("servicio") ? "#eff6ff" :
+        tipo.toLowerCase().includes("instalacion") ? "#f0fdf4" :
+        tipo.toLowerCase().includes("recuperacion") ? "#fdf2f8" : "#f8fafc";
+      const badge = tipo.toLowerCase().includes("incidencia") ? "#ea580c" :
+        tipo.toLowerCase().includes("servicio") ? "#1d4ed8" :
+        tipo.toLowerCase().includes("instalacion") ? "#16a34a" :
+        tipo.toLowerCase().includes("recuperacion") ? "#9333ea" : "#475569";
+      return `<tr style="background:${color}">
+        <td>${escHtml(item.codigo)}</td>
+        <td>${escHtml(item.fechaLiquidacion)}</td>
+        <td>${escHtml(item.nombre)}</td>
+        <td>${escHtml(item.dni)}</td>
+        <td><span style="background:${badge};color:#fff;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap">${escHtml(tipo)}</span></td>
+        <td>${escHtml(item.nodo || "-")}</td>
+        <td>${escHtml(item.tecnico || "-")}</td>
+        <td>${escHtml(item.liquidacion?.resultadoFinal || "-")}</td>
+        <td>${escHtml(item.velocidad || "-")}</td>
+        <td>${escHtml(item.usuarioNodo || "-")}</td>
+      </tr>`;
+    }).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"/>
+    <title>Historial de Liquidaciones</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Segoe UI',Arial,sans-serif;padding:24px;color:#0f172a;background:#f8fafc}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #e2e8f0}
+      .logo{font-size:20px;font-weight:900;color:#0A2E5F}
+      .logo span{color:#F47A20}
+      .meta{font-size:11px;color:#64748b;text-align:right;line-height:1.7}
+      .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+      .chip{background:#e2e8f0;color:#334155;padding:3px 12px;border-radius:999px;font-size:11px;font-weight:600}
+      .chip.blue{background:#dbeafe;color:#1d4ed8}
+      .chip.orange{background:#ffedd5;color:#c2410c}
+      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+      .stat{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center}
+      .stat-n{font-size:24px;font-weight:900;color:#0A2E5F}
+      .stat-l{font-size:11px;color:#64748b;margin-top:2px}
+      table{width:100%;border-collapse:collapse;font-size:10.5px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+      thead tr{background:#0A2E5F;color:#fff}
+      th{padding:9px 8px;text-align:left;font-weight:700;font-size:10px;letter-spacing:0.04em;text-transform:uppercase}
+      td{padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+      tr:last-child td{border-bottom:none}
+      .footer{margin-top:16px;font-size:10px;color:#94a3b8;text-align:center}
+      @media print{body{padding:12px}.stats{grid-template-columns:repeat(4,1fr)}}
+    </style></head><body>
+    <div class="header">
+      <div class="logo">AMERI<span>NET</span></div>
+      <div class="meta">
+        <div><b>Historial de Liquidaciones</b></div>
+        <div>Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+        <div>Nodo: ${escHtml(nodoLabel)} &nbsp;|&nbsp; Tipo: ${escHtml(tipoLabel)}</div>
+        ${histFiltroDesde || histFiltroHasta ? `<div>Periodo: ${escHtml(histFiltroDesde || "inicio")} → ${escHtml(histFiltroHasta || "hoy")}</div>` : ""}
+      </div>
+    </div>
+    <div class="chips">
+      <span class="chip blue">Total: ${liquidacionesFiltradas.length} registros</span>
+      ${histFiltroNodo !== "TODOS" ? `<span class="chip orange">Nodo: ${escHtml(histFiltroNodo)}</span>` : ""}
+      ${histFiltroTipo !== "TODOS" ? `<span class="chip orange">Tipo: ${escHtml(histFiltroTipo)}</span>` : ""}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="stat-n">${liquidacionesFiltradas.length}</div><div class="stat-l">Total</div></div>
+      <div class="stat"><div class="stat-n" style="color:#ea580c">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("incidencia")).length}</div><div class="stat-l">Incidencias</div></div>
+      <div class="stat"><div class="stat-n" style="color:#1d4ed8">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("servicio")).length}</div><div class="stat-l">Ord. Servicio</div></div>
+      <div class="stat"><div class="stat-n" style="color:#16a34a">${liquidacionesFiltradas.filter(x=>String(x.tipoActuacion||"").toLowerCase().includes("instalacion")).length}</div><div class="stat-l">Instalaciones</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Código</th><th>Fecha</th><th>Cliente</th><th>DNI</th><th>Tipo</th>
+        <th>Nodo</th><th>Técnico</th><th>Resultado</th><th>Plan</th><th>Usuario</th>
+      </tr></thead>
+      <tbody>${filas}</tbody>
+    </table>
+    <div class="footer">Americanet — Sistema de Gestión de Órdenes — ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+    </body></html>`;
+    imprimirHtmlMismaPestana(html);
+  };
+
   const handleUsuarioChange = (field, value) => {
     if (field === "rol") {
       const rolNorm = normalizarRolSimple(value);
@@ -8958,25 +9046,36 @@ export default function App() {
 
   const liquidacionesFiltradas = useMemo(() => {
     const q = busquedaHistorial.trim().toLowerCase();
-    const base = (Array.isArray(liquidaciones) ? liquidaciones : []).filter((item) =>
+    let base = (Array.isArray(liquidaciones) ? liquidaciones : []).filter((item) =>
       tieneAccesoNodoSesion(firstText(item?.nodo, item?.payload?.nodo, item?.payload?.Nodo))
     );
+    // Filtro nodo
+    if (histFiltroNodo !== "TODOS") {
+      base = base.filter((item) => String(item.nodo || "").trim() === histFiltroNodo);
+    }
+    // Filtro tipo de orden
+    if (histFiltroTipo !== "TODOS") {
+      const tipoLower = histFiltroTipo.toLowerCase();
+      base = base.filter((item) => String(item.tipoActuacion || "").toLowerCase().includes(tipoLower));
+    }
+    // Filtro fecha desde
+    if (histFiltroDesde) {
+      const desde = new Date(histFiltroDesde + "T00:00:00");
+      base = base.filter((item) => {
+        const f = item.fechaLiquidacion ? new Date(item.fechaLiquidacion) : null;
+        return f && f >= desde;
+      });
+    }
+    // Filtro fecha hasta
+    if (histFiltroHasta) {
+      const hasta = new Date(histFiltroHasta + "T23:59:59");
+      base = base.filter((item) => {
+        const f = item.fechaLiquidacion ? new Date(item.fechaLiquidacion) : null;
+        return f && f <= hasta;
+      });
+    }
     if (!q) return base;
-
     return base.filter((item) => {
-      const equiposTexto = (item.liquidacion?.equipos || [])
-        .map(
-          (eq) =>
-            `${eq.tipo} ${eq.codigo} ${eq.serial} ${eq.accion} ${eq.marca || ""} ${eq.modelo || ""}`
-        )
-        .join(" ")
-        .toLowerCase();
-
-      const materialesTexto = (item.liquidacion?.materiales || [])
-        .map((m) => `${m.material} ${m.cantidad} ${m.unidad}`)
-        .join(" ")
-        .toLowerCase();
-
       return (
         safeIncludes(item.codigo, q) ||
         safeIncludes(item.dni, q) ||
@@ -8991,12 +9090,10 @@ export default function App() {
         safeIncludes(item.liquidacion?.tecnicoLiquida, q) ||
         safeIncludes(item.liquidacion?.resultadoFinal, q) ||
         safeIncludes(item.liquidacion?.medioPago, q) ||
-        safeIncludes(item.liquidacion?.codigoEtiqueta, q) ||
-        equiposTexto.includes(q) ||
-        materialesTexto.includes(q)
+        safeIncludes(item.liquidacion?.codigoEtiqueta, q)
       );
     });
-  }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion]);
+  }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion, histFiltroNodo, histFiltroTipo, histFiltroDesde, histFiltroHasta]);
 
   const liquidacionesReporte = useMemo(() => {
     const q = reporteBusqueda.trim().toLowerCase();
@@ -11335,84 +11432,162 @@ export default function App() {
           );
         })()}
 
-        {vistaActiva === "historial" && (
-          <div style={cardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "18px" }}>
-              <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Historial de liquidaciones</h2>
-              <input
-                style={{ ...inputStyle, maxWidth: "420px" }}
-                value={busquedaHistorial}
-                onChange={(e) => setBusquedaHistorial(e.target.value)}
-                placeholder="Buscar por código, DNI, cliente, celular, usuario, nodo, técnico..."
-              />
+        {vistaActiva === "historial" && (() => {
+          const TIPOS_ORDEN = [
+            { key: "TODOS",        label: "Todos",           color: "#64748B", bg: "#F1F5F9" },
+            { key: "incidencia",   label: "Incidencia",      color: "#EA580C", bg: "#FFF7ED" },
+            { key: "servicio",     label: "Ord. Servicio",   color: "#1D4ED8", bg: "#EFF6FF" },
+            { key: "instalacion",  label: "Instalación",     color: "#16A34A", bg: "#F0FDF4" },
+            { key: "recuperacion", label: "Recuperación",    color: "#9333EA", bg: "#FDF4FF" },
+          ];
+          const nodosDisp = ["TODOS", ...NODOS_BASE_WEB.filter((n) => n !== "Nod_05")];
+          const tipoInfo = (tipo = "") => {
+            const t = String(tipo).toLowerCase();
+            if (t.includes("incidencia"))   return { color: "#EA580C", bg: "#FFF7ED", border: "#FED7AA" };
+            if (t.includes("servicio"))     return { color: "#1D4ED8", bg: "#EFF6FF", border: "#BFDBFE" };
+            if (t.includes("instalacion"))  return { color: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0" };
+            if (t.includes("recuperacion")) return { color: "#9333EA", bg: "#FDF4FF", border: "#E9D5FF" };
+            return { color: "#475569", bg: "#F8FAFC", border: "#E2E8F0" };
+          };
+          const countTipo = (k) => k === "TODOS" ? liquidacionesFiltradas.length :
+            (Array.isArray(liquidaciones) ? liquidaciones : []).filter(x =>
+              tieneAccesoNodoSesion(firstText(x?.nodo)) &&
+              String(x.tipoActuacion||"").toLowerCase().includes(k)
+            ).length;
+
+          return (
+          <div style={{ display: "grid", gap: "16px" }}>
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg,#0A2E5F 0%,#1E4F9C 100%)", borderRadius: "18px", padding: "22px 24px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", opacity: 0.7, marginBottom: 6 }}>Gestión de órdenes</div>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>Historial de Liquidaciones</h2>
+                <p style={{ margin: "4px 0 0", fontSize: 13, opacity: 0.75 }}>
+                  {liquidacionesFiltradas.length} registro{liquidacionesFiltradas.length !== 1 ? "s" : ""} encontrado{liquidacionesFiltradas.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <button
+                onClick={generarPdfHistorial}
+                style={{ background: "#F47A20", color: "#fff", border: "none", borderRadius: 12, padding: "10px 20px", fontWeight: 800, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+              >
+                ⬇ Exportar PDF
+              </button>
             </div>
 
+            {/* Filtros */}
+            <div style={{ background: "#fff", borderRadius: "16px", padding: "18px 20px", border: "1px solid #E2E8F0", display: "grid", gap: 14 }}>
+              {/* Fila 1: búsqueda + nodo + fechas */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  style={{ ...inputStyle, flex: "1 1 220px", minWidth: 0 }}
+                  value={busquedaHistorial}
+                  onChange={(e) => setBusquedaHistorial(e.target.value)}
+                  placeholder="🔍  Buscar código, cliente, DNI, técnico..."
+                />
+                {/* Nodos */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {nodosDisp.map((nodo) => {
+                    const active = histFiltroNodo === nodo;
+                    return (
+                      <button key={nodo} onClick={() => setHistFiltroNodo(nodo)}
+                        style={{ padding: "7px 14px", borderRadius: 10, border: `1.5px solid ${active ? "#1E4F9C" : "#E2E8F0"}`, background: active ? "#1E4F9C" : "#F8FAFC", color: active ? "#fff" : "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        {nodo === "TODOS" ? "Todos los nodos" : nodo}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Fechas */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input type="date" style={{ ...inputStyle, width: 145 }} value={histFiltroDesde} onChange={(e) => setHistFiltroDesde(e.target.value)} title="Desde" />
+                  <span style={{ color: "#94A3B8", fontSize: 12 }}>→</span>
+                  <input type="date" style={{ ...inputStyle, width: 145 }} value={histFiltroHasta} onChange={(e) => setHistFiltroHasta(e.target.value)} title="Hasta" />
+                  {(histFiltroDesde || histFiltroHasta) && (
+                    <button onClick={() => { setHistFiltroDesde(""); setHistFiltroHasta(""); }}
+                      style={{ padding: "7px 12px", borderRadius: 10, border: "1.5px solid #E2E8F0", background: "#F8FAFC", color: "#94A3B8", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                      ✕ Limpiar fecha
+                    </button>
+                  )}
+                </div>
+              </div>
+              {/* Fila 2: tipo de orden */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {TIPOS_ORDEN.map((t) => {
+                  const active = histFiltroTipo === t.key;
+                  const cnt = countTipo(t.key);
+                  return (
+                    <button key={t.key} onClick={() => setHistFiltroTipo(t.key)}
+                      style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 14px", borderRadius: 10, border: `1.5px solid ${active ? t.color : "#E2E8F0"}`, background: active ? t.bg : "#F8FAFC", color: active ? t.color : "#475569", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                      {t.label}
+                      <span style={{ background: active ? t.color : "#E2E8F0", color: active ? "#fff" : "#64748B", borderRadius: 999, padding: "1px 8px", fontSize: 11, fontWeight: 800 }}>{cnt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Lista */}
             {liquidacionesFiltradas.length === 0 ? (
-              <p style={{ color: "#6b7280", margin: 0 }}>No hay liquidaciones registradas.</p>
+              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E2E8F0", padding: "52px 24px", textAlign: "center" }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>🗂️</div>
+                <p style={{ color: "#94A3B8", fontWeight: 700, fontSize: 15, margin: 0 }}>Sin liquidaciones para los filtros seleccionados</p>
+              </div>
             ) : (
-              <div style={{ display: "grid", gap: "18px" }}>
-                {liquidacionesFiltradas.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "16px",
-                      padding: "18px",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-                      <div>
-                        <div style={{ fontWeight: "700", fontSize: "16px" }}>
-                          {item.codigo} · {item.nombre}
+              <div style={{ display: "grid", gap: "10px" }}>
+                {liquidacionesFiltradas.map((item) => {
+                  const ti = tipoInfo(item.tipoActuacion);
+                  const resultado = String(item.liquidacion?.resultadoFinal || "Liquidada");
+                  const resColor = resultado.toLowerCase().includes("no") || resultado.toLowerCase().includes("cancel") ? "#DC2626" :
+                    resultado.toLowerCase().includes("complet") || resultado.toLowerCase().includes("instal") ? "#16A34A" : "#D97706";
+                  return (
+                    <div key={item.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #E2E8F0", borderLeft: `4px solid ${ti.color}`, padding: "14px 18px", display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      {/* Left content */}
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: "#0A2E5F" }}>{item.codigo}</span>
+                          <span style={{ background: ti.bg, color: ti.color, border: `1px solid ${ti.border}`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.tipoActuacion || "—"}</span>
+                          {item.nodo && (
+                            <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.nodo}</span>
+                          )}
+                          <span style={{ background: resColor + "18", color: resColor, border: `1px solid ${resColor}40`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{resultado}</span>
                         </div>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                          {item.tipoActuacion} · {item.direccion}
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", marginBottom: 3 }}>{item.nombre || "—"}</div>
+                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, color: "#64748B" }}>DNI: <b>{item.dni || "-"}</b></span>
+                          {item.celular && <span style={{ fontSize: 12, color: "#64748B" }}>Cel: <b>{item.celular}</b></span>}
+                          <span style={{ fontSize: 12, color: "#64748B" }}>Técnico: <b>{item.liquidacion?.tecnicoLiquida || item.tecnico || "-"}</b></span>
+                          <span style={{ fontSize: 12, color: "#64748B" }}>📅 <b>{item.fechaLiquidacion}</b></span>
                         </div>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                          DNI: {item.dni} · Cel: {item.celular || "-"}
-                        </div>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                          Técnico: {item.liquidacion?.tecnicoLiquida || item.tecnico || "-"} · Fecha: {item.fechaLiquidacion}
-                        </div>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                          Autor: {item.autorOrden || "-"} · Etiqueta: {item.liquidacion?.codigoEtiqueta || "-"}
-                        </div>
-                        <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                          Equipos: {(item.liquidacion?.equipos || []).length} · Materiales: {(item.liquidacion?.materiales || []).length}
-                        </div>
-                        <div style={{ marginTop: "8px" }}>
-                          <span style={badgeStyle}>{item.liquidacion?.resultadoFinal || "Liquidada"}</span>
-                        </div>
+                        {(item.velocidad || item.usuarioNodo) && (
+                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+                            {item.velocidad && <span style={{ fontSize: 11, color: "#64748B" }}>Plan: <b>{item.velocidad}</b></span>}
+                            {item.usuarioNodo && <span style={{ fontSize: 11, color: "#64748B" }}>Usuario: <b>{item.usuarioNodo}</b></span>}
+                          </div>
+                        )}
                       </div>
-
-                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "start" }}>
-                        <button
-                          onClick={() => void abrirDetalleLiquidacionHistorial(item)}
-                          style={infoButton}
-                        >
-                          Ver detalles
+                      {/* Actions */}
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        <button onClick={() => void abrirDetalleLiquidacionHistorial(item)} style={{ ...infoButton, padding: "7px 14px", fontSize: 12 }}>
+                          Ver detalle
                         </button>
-
-                        {puedeEditarLiquidacion ? (
-                          <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={warningButton}>
+                        {puedeEditarLiquidacion && (
+                          <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
                             Editar
                           </button>
-                        ) : null}
-
-                        {puedeEliminarLiquidacion ? (
-                          <button onClick={() => eliminarLiquidacion(item)} style={dangerButton}>
-                            Eliminar
+                        )}
+                        {puedeEliminarLiquidacion && (
+                          <button onClick={() => eliminarLiquidacion(item)} style={{ ...dangerButton, padding: "7px 12px", fontSize: 12 }}>
+                            ✕
                           </button>
-                        ) : null}
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {vistaActiva === "historialAppsheet" && (
           <div style={{ display: "grid", gap: "24px" }}>
