@@ -3407,12 +3407,23 @@ export default function App() {
     }
   };
 
+  const cerrarSesionRemota = async (userId) => {
+    if (!window.confirm("¿Cerrar la sesión activa de este usuario? Será desconectado en hasta 60 segundos.")) return;
+    try {
+      await supabase.from(USUARIOS_TABLE).update({ sesion_token: null }).eq("id", userId);
+      await cargarUsuariosDesdeSupabase({ silent: true });
+      window.alert("Sesión cerrada. El usuario será desconectado en breve.");
+    } catch {
+      window.alert("Error al cerrar sesión remota.");
+    }
+  };
+
   const cargarUsuariosDesdeSupabase = async (opts = { silent: true }) => {
     if (!isSupabaseConfigured) return;
     try {
       let { data, error } = await supabase
         .from(USUARIOS_TABLE)
-        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo")
+        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,sesion_token,ultimo_acceso")
         .order("id", { ascending: true })
         .limit(5000);
       if (error && (esErrorColumnaAccesosWeb(error) || esErrorColumnaNodosWeb(error))) {
@@ -4283,7 +4294,7 @@ export default function App() {
     }));
   };
 
-  const iniciarSesion = () => {
+  const iniciarSesion = async () => {
     const username = String(credencialesLogin.username || "").trim().toLowerCase();
     const password = String(credencialesLogin.password || "");
     if (!username || !password) {
@@ -4298,6 +4309,12 @@ export default function App() {
       setErrorLogin("Credenciales inválidas.");
       return;
     }
+    // Generar token de sesión y registrar acceso
+    const token = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+    try {
+      await supabase.from(USUARIOS_TABLE).update({ sesion_token: token, ultimo_acceso: new Date().toISOString() }).eq("id", encontrado.id);
+    } catch { /* no bloquear login */ }
+    localStorage.setItem("sesionToken", token);
     setUsuarioSesionId(Number(encontrado.id));
     setErrorLogin("");
     setCredencialesLogin({ username: "", password: "" });
@@ -4308,6 +4325,7 @@ export default function App() {
       window.clearTimeout(sessionIdleTimeoutRef.current);
       sessionIdleTimeoutRef.current = null;
     }
+    localStorage.removeItem("sesionToken");
     setUsuarioSesionId(null);
     setCredencialesLogin({ username: "", password: "" });
     setErrorLogin("");
@@ -4317,6 +4335,40 @@ export default function App() {
       window.alert(motivo);
     }
   };
+
+  // Verificación periódica de sesión: activo + token (igual que mobile)
+  useEffect(() => {
+    if (!usuarioSesionId || !isSupabaseConfigured) return undefined;
+    let cancelled = false;
+    const verificarSesion = async () => {
+      try {
+        const { data } = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token").eq("id", usuarioSesionId).maybeSingle();
+        if (cancelled || !data) return;
+        if (data.activo === false) {
+          if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
+          localStorage.removeItem("sesionToken");
+          setUsuarioSesionId(null);
+          setVistaActiva("crear");
+          window.alert("Tu cuenta fue desactivada por el administrador.");
+          return;
+        }
+        const tokenLocal = localStorage.getItem("sesionToken");
+        if (data.sesion_token && tokenLocal && data.sesion_token !== tokenLocal) {
+          if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
+          localStorage.removeItem("sesionToken");
+          setUsuarioSesionId(null);
+          setVistaActiva("crear");
+          window.alert("Tu sesión fue cerrada remotamente por el administrador.");
+          return;
+        }
+        // Registrar último acceso silenciosamente
+        supabase.from(USUARIOS_TABLE).update({ ultimo_acceso: new Date().toISOString() }).eq("id", usuarioSesionId).then(() => {});
+      } catch { /* error de red: mantener sesión */ }
+    };
+    verificarSesion();
+    const interval = setInterval(verificarSesion, 60000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [usuarioSesionId]);
 
   useEffect(() => {
     if (!usuarioSesionId) {
@@ -14331,10 +14383,20 @@ export default function App() {
                               Nodos: {normalizarNodosAccesoWeb(usuario.nodosAcceso ?? usuario.nodos_acceso).join(", ") || "-"}
                             </div>
                           ) : null}
-                          <div style={{ marginTop: "8px" }}>
+                          <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                             <span style={usuario.activo ? badgeSuccess : badgeDanger}>
                               {usuario.activo ? "Activo" : "Inactivo"}
                             </span>
+                            {usuario.sesion_token && (
+                              <span style={{ background: "#DCFCE7", color: "#15803D", border: "1px solid #86EFAC", borderRadius: "999px", padding: "2px 10px", fontSize: "11px", fontWeight: 700 }}>
+                                🟢 Sesión activa
+                              </span>
+                            )}
+                            {usuario.ultimo_acceso && (
+                              <span style={{ fontSize: "11px", color: "#6B7280" }}>
+                                Último acceso: {new Date(usuario.ultimo_acceso).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -14345,6 +14407,11 @@ export default function App() {
                           <button onClick={() => cambiarEstadoUsuario(usuario.id)} style={infoButton}>
                             {usuario.activo ? "Desactivar" : "Activar"}
                           </button>
+                          {esAdminSesion && usuario.sesion_token && (
+                            <button onClick={() => cerrarSesionRemota(usuario.id)} style={{ ...dangerButton, background: "#7C3AED", borderColor: "#7C3AED" }}>
+                              Cerrar sesión
+                            </button>
+                          )}
                           <button onClick={() => eliminarUsuario(usuario.id)} style={dangerButton}>
                             Eliminar
                           </button>
