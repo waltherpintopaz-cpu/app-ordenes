@@ -2180,9 +2180,11 @@ export default function App() {
   const tieneAccesoNodoSesion = useCallback(
     (rawNodo = "") => {
       if (!esGestorSesion) return true;
-      if (!nodosAccesoGestoraSet.size) return false;
+      // Sin nodos asignados → sin restricción (ver todo)
+      if (!nodosAccesoGestoraSet.size) return true;
       const nodoNormalizado = normalizeNodoKey(rawNodo);
-      if (!nodoNormalizado) return false;
+      // Item sin nodo → visible para todas las gestoras
+      if (!nodoNormalizado) return true;
       return nodosAccesoGestoraSet.has(nodoNormalizado);
     },
     [esGestorSesion, nodosAccesoGestoraSet]
