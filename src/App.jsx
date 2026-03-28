@@ -173,7 +173,9 @@ const PERMISOS_MENU_POR_ROL_WEB = {
 // Agregar aquí cualquier nuevo item de menú que deba aparecer automáticamente en roles existentes.
 const MENU_ITEMS_GARANTIZADOS_POR_ROL = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard"],
+  Gestora: ["dashboard", "recordatorios"],
+  Tecnico: ["recordatorios"],
+  Almacen: ["recordatorios"],
 };
 
 const HISTORIAL_APPSHEET_SUBMENU_ITEMS = [
