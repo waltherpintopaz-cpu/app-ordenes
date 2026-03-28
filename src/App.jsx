@@ -701,6 +701,7 @@ const initialUsuario = {
   email: "",
   empresa: "Americanet",
   activo: true,
+  grupo: "",
   accesosMenu: [...(PERMISOS_MENU_POR_ROL_WEB.Tecnico || [])],
   accesosHistorialAppsheet: HISTORIAL_APPSHEET_SUBMENU_ITEMS.map((item) => item.key),
   accesosDiagnosticoServicio: [],
@@ -3319,6 +3320,7 @@ export default function App() {
       email: nullIfEmpty(u?.email),
       empresa: nullIfEmpty(u?.empresa) || "Americanet",
       activo: Boolean(u?.activo),
+      grupo: nullIfEmpty(u?.grupo),
       accesos_menu: accesosMenuSerializados,
       nodos_acceso: normalizarNodosAccesoWeb(u?.nodosAcceso ?? u?.nodos_acceso),
     };
@@ -3335,6 +3337,7 @@ export default function App() {
       email: String(row.email || "").trim(),
       empresa: String(row.empresa || "").trim() || "Americanet",
       activo: row.activo !== false,
+      grupo: String(row.grupo || "").trim(),
       fechaCreacion: row.fecha_creacion ? formatFechaFlexible(row.fecha_creacion) : new Date().toLocaleString(),
       accesosMenu: row.accesos_menu,
       accesosHistorialAppsheet: row.accesos_menu,
@@ -3394,7 +3397,7 @@ export default function App() {
     try {
       let { data, error } = await supabase
         .from(USUARIOS_TABLE)
-        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso")
+        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo")
         .order("id", { ascending: true })
         .limit(5000);
       if (error && (esErrorColumnaAccesosWeb(error) || esErrorColumnaNodosWeb(error))) {
@@ -13849,6 +13852,16 @@ export default function App() {
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Grupo compartido</label>
+                    <input
+                      style={inputStyle}
+                      value={usuarioForm.grupo || ""}
+                      onChange={(e) => handleUsuarioChange("grupo", e.target.value)}
+                      placeholder="Ej. equipo-norte (mismo valor = comparten stock)"
+                    />
                   </div>
 
                   <div>
