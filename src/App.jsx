@@ -3885,7 +3885,30 @@ export default function App() {
         if (chunk.length < pageSize) break;
         offset += pageSize;
       }
-      const mapped = all.map(deserializeLiquidacionFromSupabase);
+      let mapped = all.map(deserializeLiquidacionFromSupabase);
+      // Enriquecer nodo desde ordenes para registros que no lo tienen
+      const sinNodo = mapped.filter((r) => !r.nodo);
+      if (sinNodo.length > 0) {
+        try {
+          const ordenIds = [...new Set(sinNodo.map((r) => Number(r.ordenOriginalId)).filter((x) => Number.isFinite(x) && x > 0))];
+          const codigos  = [...new Set(sinNodo.map((r) => String(r.codigo || "").trim()).filter(Boolean))];
+          const [byIdRes, byCodigoRes] = await Promise.all([
+            ordenIds.length ? supabase.from(ORDENES_TABLE).select("id,nodo,codigo").in("id", ordenIds) : Promise.resolve({ data: [] }),
+            codigos.length  ? supabase.from(ORDENES_TABLE).select("id,nodo,codigo").in("codigo", codigos) : Promise.resolve({ data: [] }),
+          ]);
+          const nodoMap = new Map();
+          for (const row of [...(byIdRes.data || []), ...(byCodigoRes.data || [])]) {
+            if (!String(row?.nodo || "").trim()) continue;
+            if (row.id)     nodoMap.set(`id:${row.id}`, String(row.nodo).trim());
+            if (row.codigo) nodoMap.set(`cod:${row.codigo}`, String(row.nodo).trim());
+          }
+          mapped = mapped.map((r) => {
+            if (r.nodo) return r;
+            const nodo = nodoMap.get(`id:${r.ordenOriginalId}`) || nodoMap.get(`cod:${r.codigo}`) || "";
+            return nodo ? { ...r, nodo } : r;
+          });
+        } catch { /* silent */ }
+      }
       setLiquidaciones(mapped);
     } catch (e) {
       if (!silent) alert(String(e?.message || "No se pudo cargar liquidaciones desde Supabase."));
