@@ -1993,11 +1993,11 @@ export default function App() {
   }, [usuarios, usuariosSupabaseReady, usuariosSupabaseSaving]);
 
   useEffect(() => {
-    localStorage.setItem("usuarioSesionId", String(usuarioSesionId || ""));
+    try { localStorage.setItem("usuarioSesionId", String(usuarioSesionId || "")); } catch (e) { console.warn("localStorage quota: usuarioSesionId", e); }
   }, [usuarioSesionId]);
 
   useEffect(() => {
-    localStorage.setItem("sessionIdleMinutes", String(sessionIdleMinutes));
+    try { localStorage.setItem("sessionIdleMinutes", String(sessionIdleMinutes)); } catch (e) { console.warn("localStorage quota: sessionIdleMinutes", e); }
   }, [sessionIdleMinutes]);
 
   useEffect(() => {
@@ -6867,17 +6867,25 @@ export default function App() {
     try {
       setBuscandoDni(true);
 
-      const response = await fetch("https://api.consultasperu.com/api/v1/query", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          token: "dcda84257b21983f0416885996aafc25e1e48793389fc8f26800b28421cee626",
-          type_document: "dni",
-          document_number: dni,
-        }),
-      });
+      const dniController = new AbortController();
+      const dniTimeout = setTimeout(() => dniController.abort(), 10000);
+      let response;
+      try {
+        response = await fetch("https://api.consultasperu.com/api/v1/query", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          signal: dniController.signal,
+          body: JSON.stringify({
+            token: "dcda84257b21983f0416885996aafc25e1e48793389fc8f26800b28421cee626",
+            type_document: "dni",
+            document_number: dni,
+          }),
+        });
+      } finally {
+        clearTimeout(dniTimeout);
+      }
 
       const result = await response.json();
 
@@ -7021,11 +7029,18 @@ export default function App() {
         if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
 
         const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
-        await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: waCfg.api_key },
-          body: JSON.stringify({ number: phone, text: message }),
-        });
+        const waController = new AbortController();
+        const waTimeout = setTimeout(() => waController.abort(), 8000);
+        try {
+          await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: waCfg.api_key },
+            body: JSON.stringify({ number: phone, text: message }),
+            signal: waController.signal,
+          });
+        } finally {
+          clearTimeout(waTimeout);
+        }
       } catch { /* silencioso — no interrumpir el flujo de la orden */ }
     },
     []
@@ -7297,6 +7312,9 @@ export default function App() {
         supabase.from("liquidacion_equipos").select("*").eq("liquidacion_id", liquidacionId).order("id", { ascending: true }),
         supabase.from("liquidacion_materiales").select("*").eq("liquidacion_id", liquidacionId).order("id", { ascending: true }),
       ]);
+      if (fotosRes.error) throw new Error("Error cargando fotos: " + fotosRes.error.message);
+      if (equiposRes.error) throw new Error("Error cargando equipos: " + equiposRes.error.message);
+      if (materialesRes.error) throw new Error("Error cargando materiales: " + materialesRes.error.message);
 
       let ordenRow = null;
       const ordenOriginalId = Number(liquidacionItem?.ordenOriginalId);
@@ -7693,9 +7711,14 @@ export default function App() {
       const { data: prevMats } = await supabase.from("liquidacion_materiales").select("material,cantidad,unidad").eq("liquidacion_id", liquidacionId);
 
       // Borrar detalles anteriores
-      await supabase.from("liquidacion_equipos").delete().eq("liquidacion_id", liquidacionId);
-      await supabase.from("liquidacion_materiales").delete().eq("liquidacion_id", liquidacionId);
-      await supabase.from("liquidacion_fotos").delete().eq("liquidacion_id", liquidacionId);
+      const [delEq, delMat, delFot] = await Promise.all([
+        supabase.from("liquidacion_equipos").delete().eq("liquidacion_id", liquidacionId),
+        supabase.from("liquidacion_materiales").delete().eq("liquidacion_id", liquidacionId),
+        supabase.from("liquidacion_fotos").delete().eq("liquidacion_id", liquidacionId),
+      ]);
+      if (delEq.error) throw new Error("Error limpiando equipos anteriores: " + delEq.error.message);
+      if (delMat.error) throw new Error("Error limpiando materiales anteriores: " + delMat.error.message);
+      if (delFot.error) throw new Error("Error limpiando fotos anteriores: " + delFot.error.message);
 
       // Equipos
       const equiposPayload = (liquidacion.equipos || []).map(eq => ({
@@ -8220,7 +8243,9 @@ export default function App() {
     // Guardar inmediatamente en Supabase sin esperar el debounce
     if (isSupabaseConfigured) {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
-      void supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" });
+      void supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" }).then(({ error }) => {
+        if (error) console.warn("Error guardando usuario en supabase:", error.message);
+      });
     }
 
     setUsuarioForm(normalizarUsuarioConPermisos(initialUsuario));
