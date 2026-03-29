@@ -3349,6 +3349,7 @@ export default function App() {
   const deserializarUsuarioSupabase = (row = {}) =>
     normalizarUsuarioConPermisos({
       id: Number(row.id) || Date.now() + Math.floor(Math.random() * 100000),
+      supabaseId: row.id ?? null,
       nombre: String(row.nombre || "").trim(),
       username: String(row.username || "").trim(),
       password: String(row.password || "").trim(),
@@ -8591,8 +8592,15 @@ export default function App() {
     // Guardar inmediatamente en Supabase
     if (isSupabaseConfigured) {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
+      // Para edición: buscar el usuario en Supabase por supabaseId (UUID/int real) o username
+      const usuarioExistente = usuarioEditandoId
+        ? usuarios.find((u) => u.id === usuarioEditandoId) || null
+        : null;
+      const supabaseId = usuarioExistente?.supabaseId ?? null;
       const savePromise = usuarioEditandoId
-        ? supabase.from(USUARIOS_TABLE).update(serializado).eq("id", usuarioEditandoId)
+        ? supabaseId != null
+          ? supabase.from(USUARIOS_TABLE).update(serializado).eq("id", supabaseId)
+          : supabase.from(USUARIOS_TABLE).update(serializado).eq("username", serializado.username)
         : supabase.from(USUARIOS_TABLE).insert(serializado);
       savePromise.then(({ error }) => {
         if (error) {
