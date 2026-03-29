@@ -8594,11 +8594,11 @@ export default function App() {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
       let savePromise;
       if (usuarioEditandoId) {
-        // Para edición: incluir el supabaseId en el payload para que upsert encuentre la fila por PK
         const usuarioExistente = usuarios.find((u) => u.id === usuarioEditandoId) || null;
         const supabaseId = usuarioExistente?.supabaseId ?? null;
-        const payload = supabaseId != null ? { id: supabaseId, ...serializado } : serializado;
-        savePromise = supabase.from(USUARIOS_TABLE).upsert(payload).select();
+        savePromise = supabaseId != null
+          ? supabase.from(USUARIOS_TABLE).update(serializado).eq("id", supabaseId).select()
+          : supabase.from(USUARIOS_TABLE).update(serializado).eq("username", serializado.username).select();
       } else {
         savePromise = supabase.from(USUARIOS_TABLE).insert(serializado).select();
       }
@@ -8606,7 +8606,7 @@ export default function App() {
         if (error) {
           alert(`Error guardando en Supabase:\n${error.message}`);
         } else if (!data || data.length === 0) {
-          alert("Advertencia: el usuario no fue encontrado en la base de datos. Verifica que exista el registro.");
+          alert(`No se encontró el usuario en la base de datos.\nID: ${usuarios.find((u) => u.id === usuarioEditandoId)?.supabaseId ?? "?"}\nUsername: ${serializado.username}`);
         } else {
           void cargarUsuariosDesdeSupabase({ silent: true });
         }
