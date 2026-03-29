@@ -8606,7 +8606,7 @@ export default function App() {
         if (error) {
           alert(`Error guardando en Supabase:\n${error.message}`);
         } else if (!data || data.length === 0) {
-          alert(`No se encontró el usuario en la base de datos.\nID: ${usuarios.find((u) => u.id === usuarioEditandoId)?.supabaseId ?? "?"}\nUsername: ${serializado.username}`);
+          alert("No se pudo actualizar el usuario. Verifica los permisos en Supabase.");
         } else {
           void cargarUsuariosDesdeSupabase({ silent: true });
         }
