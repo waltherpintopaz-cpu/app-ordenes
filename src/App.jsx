@@ -8588,11 +8588,16 @@ export default function App() {
       setUsuarios((prev) => [nuevoUsuario, ...prev]);
     }
 
-    // Guardar inmediatamente en Supabase sin esperar el debounce
+    // Guardar inmediatamente en Supabase
     if (isSupabaseConfigured) {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
-      void supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" }).then(({ error }) => {
-        if (error) console.warn("Error guardando usuario en supabase:", error.message);
+      supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" }).then(({ error }) => {
+        if (error) {
+          alert(`Error guardando permisos en Supabase:\n${error.message}\n\nVerifica que la columna accesos_menu existe y que tienes permisos de escritura.`);
+        } else {
+          // Recargar desde Supabase para confirmar que los datos se guardaron correctamente
+          void cargarUsuariosDesdeSupabase({ silent: true });
+        }
       });
     }
 
