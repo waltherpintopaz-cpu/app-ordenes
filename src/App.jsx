@@ -8591,11 +8591,13 @@ export default function App() {
     // Guardar inmediatamente en Supabase
     if (isSupabaseConfigured) {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
-      supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" }).then(({ error }) => {
+      const savePromise = usuarioEditandoId
+        ? supabase.from(USUARIOS_TABLE).update(serializado).eq("id", usuarioEditandoId)
+        : supabase.from(USUARIOS_TABLE).insert(serializado);
+      savePromise.then(({ error }) => {
         if (error) {
-          alert(`Error guardando permisos en Supabase:\n${error.message}\n\nVerifica que la columna accesos_menu existe y que tienes permisos de escritura.`);
+          alert(`Error guardando en Supabase:\n${error.message}`);
         } else {
-          // Recargar desde Supabase para confirmar que los datos se guardaron correctamente
           void cargarUsuariosDesdeSupabase({ silent: true });
         }
       });
