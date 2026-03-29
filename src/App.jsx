@@ -9642,10 +9642,23 @@ export default function App() {
 </svg>`,
         className: "", iconSize: [sw, sh], iconAnchor: [sw / 2, sh],
       });
+      const popupBase = `<div style="min-width:180px"><b style="font-size:13px">${caja.codigo}</b><br><span style="font-size:11px;color:#6b7280">${[caja.sector,caja.nodo].filter(Boolean).join(' · ')}</span><br><span style="font-size:11px;color:${p>=90?'#dc2626':p>=70?'#ea580c':'#16a34a'};font-weight:700">${caja.puertos_ocupados||0}/${caja.capacidad||8} puertos${p>=90?' — LLENA':` (${(caja.capacidad||8)-(caja.puertos_ocupados||0)} libres)`}</span>`;
       const m = L.marker([caja.lat, caja.lng], { icon })
         .addTo(mapaCrearInstanceRef.current)
-        .bindPopup(`<b>${caja.codigo}</b><br>${caja.sector} · ${caja.nodo}<br>${caja.puertos_ocupados||0}/${caja.capacidad||8} puertos (${p}%)<br><small>Clic para seleccionar</small>`);
-      m.on("click", () => { handleChange("cajaNap", caja.codigo); m.openPopup(); });
+        .bindPopup(popupBase + `<br><small style="color:#6b7280">Clic para seleccionar</small></div>`, { maxWidth: 240 });
+      m.on("click", () => {
+        handleChange("cajaNap", caja.codigo);
+        m.setPopupContent(popupBase + `<br><span style="font-size:11px;color:#6b7280">Cargando clientes...</span></div>`);
+        m.openPopup();
+        supabase.from("clientes").select("nombre,dni").eq("caja_nap", caja.codigo).order("nombre")
+          .then(({ data }) => {
+            const lista = data || [];
+            const clientesHtml = lista.length > 0
+              ? `<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:4px"><b style="font-size:11px;color:#92400e">Clientes (${lista.length}):</b><br>${lista.map(c => `<span style="font-size:10px;display:block">${c.nombre||'-'}<span style="color:#9ca3af;margin-left:6px">${c.dni||''}</span></span>`).join('')}</div>`
+              : `<div style="margin-top:4px;font-size:10px;color:#9ca3af">Sin clientes registrados en esta caja.</div>`;
+            m.setPopupContent(popupBase + clientesHtml + `</div>`);
+          });
+      });
       napMarkersCrearRef.current.push(m);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
