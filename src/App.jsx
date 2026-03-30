@@ -8192,6 +8192,18 @@ export default function App() {
       // WhatsApp
       if (!liquidacionEditandoId) void sendWhatsAppNotification(ordenEnLiquidacion, "liquidacion");
 
+      // Push al técnico: orden liquidada
+      if (!liquidacionEditandoId && isSupabaseConfigured && ordenEnLiquidacion?.tecnico) {
+        void supabase.functions.invoke("send-push-notification", {
+          body: {
+            tecnico_nombre: ordenEnLiquidacion.tecnico,
+            title: "Orden liquidada",
+            body: `${ordenEnLiquidacion.codigo} — ${ordenEnLiquidacion.nombre || "Cliente"} fue liquidada.`,
+            data: { tipo: "orden_liquidada", orden_codigo: String(ordenEnLiquidacion.codigo || ""), orden_id: String(ordenEnLiquidacion.id || "") },
+          },
+        });
+      }
+
       // Reset UI
       setOrdenEnLiquidacion(null);
       setLiquidacion(initialLiquidacion);
