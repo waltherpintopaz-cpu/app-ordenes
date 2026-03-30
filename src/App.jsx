@@ -4242,7 +4242,7 @@ export default function App() {
   );
 
   const bloquearUsuarioNodoManual = () => {
-    if (!esAdminSesion) return;
+    if (!esAdminSesion && !esGestorSesion) return;
     const raw = String(orden.usuarioNodo || "").trim();
     if (!raw) {
       alert("Ingresa un usuario para bloquear.");
@@ -4269,7 +4269,7 @@ export default function App() {
   };
 
   const habilitarUsuarioNodoManual = () => {
-    if (!esAdminSesion) return;
+    if (!esAdminSesion && !esGestorSesion) return;
     const raw = String(orden.usuarioNodo || "").trim();
     if (!raw) {
       alert("Ingresa un usuario para habilitar.");
@@ -8765,7 +8765,7 @@ export default function App() {
       precioPlan: firstText(cliente.precioPlan),
       nodo: firstText(cliente.nodo),
       usuarioNodo: firstText(cliente.usuarioNodo),
-      passwordUsuario: firstText(cliente.passwordUsuario),
+      passwordUsuario: firstText(cliente.passwordUsuario) || sugerirPasswordPorNodo(firstText(cliente.nodo)),
       codigoEtiqueta: firstText(cliente.codigoEtiqueta),
       snOnu: firstText(cliente.snOnu),
       ubicacion: firstText(cliente.ubicacion, base.ubicacion),
@@ -11048,7 +11048,7 @@ export default function App() {
                           <span style={usuarioNodoEstaBloqueado ? badgeDanger : badgeSuccess}>
                             {usuarioNodoEstaBloqueado ? "Deshabilitado" : "Habilitado"}
                           </span>
-                          {esAdminSesion ? (
+                          {(esAdminSesion || esGestorSesion) ? (
                             <>
                               <button type="button" style={dangerButton} onClick={bloquearUsuarioNodoManual}>
                                 Deshabilitar
