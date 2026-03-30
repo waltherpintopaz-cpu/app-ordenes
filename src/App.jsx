@@ -3478,6 +3478,7 @@ export default function App() {
       usuario_nodo: nullIfEmpty(cliente.usuarioNodo),
       password_usuario: nullIfEmpty(cliente.passwordUsuario),
       codigo_etiqueta: nullIfEmpty(cliente.codigoEtiqueta),
+      sn_onu: nullIfEmpty(cliente.snOnu),
       ubicacion: nullIfEmpty(cliente.ubicacion),
       descripcion: nullIfEmpty(cliente.descripcion),
       tecnico: nullIfEmpty(cliente.tecnico),
@@ -3498,12 +3499,22 @@ export default function App() {
 
   const deserializarClienteSupabase = (row = {}) => {
     const p = row && typeof row.payload === "object" && row.payload ? row.payload : null;
+    const signalFields = {
+      snOnu: row.sn_onu || (p && p.snOnu) || "",
+      rxSignal: row.rx_signal != null ? Number(row.rx_signal) : null,
+      txSignal: row.tx_signal != null ? Number(row.tx_signal) : null,
+      oltIp: row.olt_ip || "",
+      pon: row.pon || "",
+      onuId: row.onu_id != null ? Number(row.onu_id) : null,
+      signalUpdatedAt: row.signal_updated_at || "",
+    };
     if (p) {
       return {
         ...p,
         id: p.id || row.id,
         codigoAbonado: row.codigo_abonado || p.codigoAbonado || "",
-      estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
+        estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
+        ...signalFields,
       };
     }
     return {
@@ -3535,6 +3546,7 @@ export default function App() {
       fotosLiquidacion: Array.isArray(row.fotos_liquidacion) ? row.fotos_liquidacion : [],
       historialInstalaciones: Array.isArray(row.historial_instalaciones) ? row.historial_instalaciones : [],
       equiposHistorial: Array.isArray(row.equipos_historial) ? row.equipos_historial : [],
+      ...signalFields,
     };
   };
 
@@ -3780,7 +3792,7 @@ export default function App() {
       };
 
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,payload,updated_at");
@@ -14788,10 +14800,8 @@ export default function App() {
                       {clienteMikrotikAccionLoading === "activar" ? "Activando..." : "▶ Activar"}
                     </button>
                   )}
-                  {cli.snOnu && (
-                    <button onClick={() => void consultarSenalCliente(cli.snOnu)} disabled={clienteSenalLoading} style={{ padding: "8px 15px", background: clienteSenalLoading ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: clienteSenalLoading ? "wait" : "pointer" }}>
-                      {clienteSenalLoading ? "Consultando..." : "📶 Ver señal"}
-                    </button>
+                  {!cli.snOnu && (
+                    <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
                   {esAdminSesion && <button onClick={() => abrirEditarCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>}
@@ -14804,36 +14814,47 @@ export default function App() {
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
               )}
 
-              {/* ── Señal ONU ── */}
-              {clienteSenalError && (
-                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 14, padding: "14px 20px", color: "#dc2626", fontSize: 13, fontWeight: 600, display: "flex", gap: 10, alignItems: "center" }}>
-                  <span style={{ fontSize: 18 }}>⚠️</span> {clienteSenalError}
-                </div>
-              )}
-              {clienteSenal && (
+              {/* ── Señal ONU (automática desde OLT SSH) ── */}
+              {cli.snOnu && cli.rxSignal != null && (
                 <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.08em" }}>📶 Señal ONU — {cli.snOnu}</span>
-                    <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>Actualizado {clienteSenal.fecha}</span>
+                    {cli.signalUpdatedAt && (
+                      <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>
+                        Actualizado {new Date(cli.signalUpdatedAt).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
                     {[
-                      { label: "Rx ONU (dBm)", value: clienteSenal.rxOnuDbm, good: v => { const n = parseFloat(v); return !isNaN(n) && n >= -27 && n <= -8; } },
-                      { label: "OLT → ONU (dBm)", value: clienteSenal.oltRxOntDbm, good: v => { const n = parseFloat(v); return !isNaN(n) && n >= -27 && n <= -8; } },
-                      { label: "Estado", value: clienteSenal.estado, good: () => true },
-                    ].map(({ label, value, good }) => {
-                      const ok = good(value);
-                      const isNum = !isNaN(parseFloat(value));
+                      { label: "Rx ONU (dBm)", value: cli.rxSignal },
+                      { label: "Tx ONU (dBm)", value: cli.txSignal },
+                    ].map(({ label, value }) => {
+                      const n = parseFloat(value);
+                      const isNum = !isNaN(n);
+                      const ok = isNum && n >= -27 && n <= -8;
                       const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
                       return (
                         <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
                           <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-                          <div style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{value}</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{value != null ? value : "-"}</div>
                           {isNum && <div style={{ fontSize: 10, marginTop: 2, fontWeight: 700, color: ok ? "#16a34a" : "#dc2626" }}>{ok ? "✓ Óptima" : "✗ Baja"}</div>}
                         </div>
                       );
                     })}
+                    {cli.oltIp && (
+                      <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: "1.5px solid #e2e8f0" }}>
+                        <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>OLT / PON</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#374151" }}>{cli.oltIp}</div>
+                        {cli.pon && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Puerto {cli.pon} · ONU {cli.onuId}</div>}
+                      </div>
+                    )}
                   </div>
+                </div>
+              )}
+              {cli.snOnu && cli.rxSignal == null && (
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: "13px 18px", color: "#6b7280", fontSize: 13, fontWeight: 600, display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 16 }}>📡</span> Sin señal registrada aún — el monitor OLT actualizará automáticamente.
                 </div>
               )}
 
