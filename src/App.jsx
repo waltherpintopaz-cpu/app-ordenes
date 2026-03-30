@@ -3064,34 +3064,37 @@ export default function App() {
     };
   };
 
-  const consultarSenalCliente = async (sn) => {
-    const snLimpio = String(sn || "").trim();
-    if (!snLimpio) return;
+  const OLT_SIGNAL_API = "http://185.173.110.145:3001/api/signal";
+
+  const consultarSenalCliente = async (cli) => {
+    if (!cli?.snOnu) return;
     setClienteSenalLoading(true);
     setClienteSenalError("");
     setClienteSenal(null);
     try {
-      const url = SMART_OLT_API(`/api/smartolt/onu/get_onu_full_status_info/${encodeURIComponent(snLimpio)}`);
-      const res = await fetch(url, { headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
-      const json = await res.json().catch(() => ({}));
-      if (!(res.status >= 200 && res.status < 300) || json?.status !== true) {
-        throw new Error(json?.message || "No se pudo consultar la señal.");
-      }
-      const base =
-        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
-        (json?.response?.full_status_json && typeof json.response.full_status_json === "object" ? json.response.full_status_json : null) ||
-        (Array.isArray(json?.response) ? json.response[0] : null) ||
-        (json?.response && typeof json.response === "object" ? json.response : null) ||
-        json;
-      if (!base || typeof base !== "object") throw new Error("Respuesta sin datos para la ONU.");
-      const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
-      const oltRx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
-      setClienteSenal({
-        rxOnuDbm: String(rx),
-        oltRxOntDbm: String(oltRx),
-        estado: String(json?.response_code || base?.status || base?.onu_status || "-"),
-        fecha: new Date().toLocaleTimeString(),
+      const body = cli.oltIp && cli.pon && cli.onuId != null
+        ? { olt_ip: cli.oltIp, pon: cli.pon, onu_id: cli.onuId }
+        : { sn_onu: cli.snOnu };
+      const res = await fetch(OLT_SIGNAL_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.error) throw new Error(json?.error || "Error al consultar señal.");
+      setClienteSenal({ rx: json.rx, tx: json.tx, queried_at: json.queried_at });
+      // Update local state + Supabase
+      setClienteSeleccionado(prev => prev ? {
+        ...prev,
+        rxSignal: json.rx, txSignal: json.tx,
+        oltIp: json.olt_ip, pon: json.pon, onuId: json.onu_id,
+        signalUpdatedAt: json.queried_at,
+      } : prev);
+      await supabase.from("clientes").update({
+        rx_signal: json.rx, tx_signal: json.tx,
+        olt_ip: json.olt_ip, pon: json.pon, onu_id: json.onu_id,
+        signal_updated_at: json.queried_at,
+      }).eq("id", cli.id);
     } catch (e) {
       setClienteSenalError(String(e?.message || "Error al consultar señal."));
     } finally {
@@ -11506,6 +11509,7 @@ export default function App() {
                   const horaTexto = String(item.hora || "").trim();
                   const fechaTexto = String(item.fechaActuacion || "").slice(0, 10);
                   const esPasada = fechaTexto && fechaTexto < today;
+                  const bloqueadoPorNodo = esGestorSesion && nodosAccesoGestoraSet.size > 0 && !!item.nodo && !tieneAccesoNodoSesion(item.nodo);
                   return (
                     <div key={item.id} style={{ background: "#fff", border: "1px solid #e8edf5", borderLeft: `4px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(15,23,42,0.04)" }}>
 
@@ -11525,14 +11529,15 @@ export default function App() {
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad || "Normal"}</span>
                           <span style={getEstadoOperativoBadgeStyle(item.estado)}>{item.estado || "Pendiente"}</span>
                           {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>Vencida</span>}
+                          {bloqueadoPorNodo && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#6b7280", border: "1px solid #d1d5db" }}>🔒 Sin acceso</span>}
                         </div>
                         {/* Acciones principales */}
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <button onClick={async () => { setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Ver</button>
-                          <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>
-                          {puedeLiquidarOrden && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
-                          {puedeCancelarOrden && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
-                          {puedeEliminarOrden && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
+                          <button onClick={async () => { if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; } setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Ver</button>
+                          {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
+                          {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
+                          {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
+                          {puedeEliminarOrden && !bloqueadoPorNodo && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
                         </div>
                       </div>
 
@@ -14814,47 +14819,63 @@ export default function App() {
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
               )}
 
-              {/* ── Señal ONU (automática desde OLT SSH) ── */}
-              {cli.snOnu && cli.rxSignal != null && (
+              {/* ── Señal ONU ── */}
+              {cli.snOnu && (
                 <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.08em" }}>📶 Señal ONU — {cli.snOnu}</span>
-                    {cli.signalUpdatedAt && (
-                      <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>
-                        Actualizado {new Date(cli.signalUpdatedAt).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {cli.signalUpdatedAt && !clienteSenalLoading && (
+                        <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>
+                          Actualizado {new Date(cli.signalUpdatedAt).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => consultarSenalCliente(cli)}
+                        disabled={clienteSenalLoading}
+                        style={{ padding: "6px 14px", background: clienteSenalLoading ? "#d1fae5" : "#16a34a", color: "#fff", border: "none", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: clienteSenalLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                      >
+                        {clienteSenalLoading ? "⏳ Consultando..." : "📡 Consultar Señal"}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
-                    {[
-                      { label: "Rx ONU (dBm)", value: cli.rxSignal },
-                      { label: "Tx ONU (dBm)", value: cli.txSignal },
-                    ].map(({ label, value }) => {
-                      const n = parseFloat(value);
-                      const isNum = !isNaN(n);
-                      const ok = isNum && n >= -27 && n <= -8;
-                      const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
-                      return (
-                        <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
-                          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
-                          <div style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{value != null ? value : "-"}</div>
-                          {isNum && <div style={{ fontSize: 10, marginTop: 2, fontWeight: 700, color: ok ? "#16a34a" : "#dc2626" }}>{ok ? "✓ Óptima" : "✗ Baja"}</div>}
+                  {clienteSenalError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", color: "#dc2626", fontSize: 12, marginBottom: 12 }}>
+                      {clienteSenalError}
+                    </div>
+                  )}
+                  {cli.rxSignal != null && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12 }}>
+                      {[
+                        { label: "Rx ONU (dBm)", value: cli.rxSignal },
+                        { label: "Tx ONU (dBm)", value: cli.txSignal },
+                      ].map(({ label, value }) => {
+                        const n = parseFloat(value);
+                        const isNum = !isNaN(n);
+                        const ok = isNum && n >= -27 && n <= -8;
+                        const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
+                        return (
+                          <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
+                            <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+                            <div style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{value != null ? value : "-"}</div>
+                            {isNum && <div style={{ fontSize: 10, marginTop: 2, fontWeight: 700, color: ok ? "#16a34a" : "#dc2626" }}>{ok ? "✓ Óptima" : "✗ Baja"}</div>}
+                          </div>
+                        );
+                      })}
+                      {cli.oltIp && (
+                        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: "1.5px solid #e2e8f0" }}>
+                          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>OLT / PON</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#374151" }}>{cli.oltIp}</div>
+                          {cli.pon && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Puerto {cli.pon} · ONU {cli.onuId}</div>}
                         </div>
-                      );
-                    })}
-                    {cli.oltIp && (
-                      <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: "1.5px solid #e2e8f0" }}>
-                        <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>OLT / PON</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#374151" }}>{cli.oltIp}</div>
-                        {cli.pon && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Puerto {cli.pon} · ONU {cli.onuId}</div>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {cli.snOnu && cli.rxSignal == null && (
-                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 14, padding: "13px 18px", color: "#6b7280", fontSize: 13, fontWeight: 600, display: "flex", gap: 10, alignItems: "center" }}>
-                  <span style={{ fontSize: 16 }}>📡</span> Sin señal registrada aún — el monitor OLT actualizará automáticamente.
+                      )}
+                    </div>
+                  )}
+                  {cli.rxSignal == null && !clienteSenalLoading && (
+                    <div style={{ color: "#6b7280", fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}>
+                      <span>Sin señal registrada — presiona "Consultar Señal" para obtener datos en tiempo real.</span>
+                    </div>
+                  )}
                 </div>
               )}
 
