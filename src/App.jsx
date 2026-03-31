@@ -8672,12 +8672,22 @@ export default function App() {
   const eliminarUsuario = async (id) => {
     const confirmar = window.confirm("¿Deseas eliminar este usuario?");
     if (!confirmar) return;
+    const usuario = usuarios.find((u) => u.id === id);
     // Actualizar estado local inmediatamente
     setUsuarios((prev) => prev.filter((u) => u.id !== id));
-    // Eliminar en Supabase directamente (el upsert del timer nunca hace DELETE)
-    if (isSupabaseConfigured && id) {
+    // Eliminar en Supabase usando supabaseId (id real de DB) o username como fallback
+    if (isSupabaseConfigured && usuario) {
       try {
-        await supabase.from(USUARIOS_TABLE).delete().eq("id", id);
+        const supabaseId = usuario.supabaseId ?? usuario.id;
+        const username = String(usuario.username || "").trim();
+        if (supabaseId && String(supabaseId).length > 0) {
+          const { error } = await supabase.from(USUARIOS_TABLE).delete().eq("id", supabaseId);
+          if (error && username) {
+            await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
+          }
+        } else if (username) {
+          await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
+        }
       } catch (e) {
         console.error("Error eliminando usuario en Supabase:", e?.message);
       }
@@ -8692,10 +8702,19 @@ export default function App() {
     setUsuarios((prev) =>
       prev.map((u) => (u.id === id ? { ...u, activo: nuevoActivo } : u))
     );
-    // Persistir en Supabase directamente sin esperar el timer de 5s
-    if (isSupabaseConfigured && id) {
+    // Persistir en Supabase usando supabaseId o username como fallback
+    if (isSupabaseConfigured && usuario) {
       try {
-        await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", id);
+        const supabaseId = usuario.supabaseId ?? usuario.id;
+        const username = String(usuario.username || "").trim();
+        if (supabaseId && String(supabaseId).length > 0) {
+          const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", supabaseId);
+          if (error && username) {
+            await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
+          }
+        } else if (username) {
+          await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
+        }
       } catch (e) {
         console.error("Error actualizando estado usuario en Supabase:", e?.message);
       }
