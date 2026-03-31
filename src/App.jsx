@@ -3430,23 +3430,27 @@ export default function App() {
       if (error) throw error;
       const mapped = Array.isArray(data) ? data.map(deserializarUsuarioSupabase) : [];
 
-      // Deduplicar por username (el antiguo sync timer creó duplicados) — conservar el de mayor id
+      // Deduplicar por username — conservar el activo con menor id (original)
       const porUsername = new Map();
       for (const u of mapped) {
         const key = String(u.username || "").toLowerCase().trim();
         if (!key) continue;
         const prev = porUsername.get(key);
-        if (!prev || Number(u.id) > Number(prev.id)) porUsername.set(key, u);
+        if (!prev) { porUsername.set(key, u); continue; }
+        // Preferir activo; si igual estado, preferir menor id (original)
+        const uActivo = !!u.activo, prevActivo = !!prev.activo;
+        if (uActivo && !prevActivo) { porUsername.set(key, u); }
+        else if (!uActivo && prevActivo) { /* mantener prev */ }
+        else if (Number(u.supabaseId ?? u.id) < Number(prev.supabaseId ?? prev.id)) { porUsername.set(key, u); }
       }
       const deduplicados = Array.from(porUsername.values());
 
-      // Eliminar filas duplicadas de la DB en segundo plano
+      // Eliminar duplicados de DB en segundo plano (los que no conservamos)
       if (deduplicados.length < mapped.length) {
-        const idsValidos = new Set(deduplicados.map(u => u.supabaseId ?? u.id));
-        const duplicados = mapped.filter(u => !idsValidos.has(u.supabaseId ?? u.id));
-        for (const dup of duplicados) {
-          const dupId = dup.supabaseId ?? dup.id;
-          if (dupId) supabase.from(USUARIOS_TABLE).delete().eq("id", dupId).then(() => {});
+        const idsValidos = new Set(deduplicados.map(u => String(u.supabaseId ?? u.id)));
+        for (const dup of mapped) {
+          const dupId = String(dup.supabaseId ?? dup.id);
+          if (!idsValidos.has(dupId)) supabase.from(USUARIOS_TABLE).delete().eq("id", dupId).then(() => {});
         }
       }
 
@@ -8730,9 +8734,10 @@ export default function App() {
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        for (let i = 0; i < 10; i++) {
-          const { data: del } = await supabase.from(USUARIOS_TABLE).delete().ilike("username", username).select("id");
-          if (!del || del.length === 0) break;
+        // Obtener todos los IDs con ese username (cualquier capitalización) y borrar por ID
+        const { data: filas } = await supabase.from(USUARIOS_TABLE).select("id").ilike("username", username);
+        for (const fila of filas || []) {
+          await supabase.from(USUARIOS_TABLE).delete().eq("id", fila.id);
         }
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
@@ -8749,8 +8754,10 @@ export default function App() {
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).ilike("username", username);
-        if (error) console.error("Error cambiar estado:", error.message);
+        const { data: filas } = await supabase.from(USUARIOS_TABLE).select("id").ilike("username", username);
+        for (const fila of filas || []) {
+          await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", fila.id);
+        }
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
     }
