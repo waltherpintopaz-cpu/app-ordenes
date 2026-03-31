@@ -9280,18 +9280,16 @@ export default function App() {
     }
     // Filtro fecha desde
     if (histFiltroDesde) {
-      const desde = new Date(histFiltroDesde + "T00:00:00");
       base = base.filter((item) => {
-        const f = item.fechaLiquidacion ? new Date(item.fechaLiquidacion) : null;
-        return f && f >= desde;
+        const f = item.fechaLiquidacion ? String(item.fechaLiquidacion).slice(0, 10) : null;
+        return f && f >= histFiltroDesde;
       });
     }
     // Filtro fecha hasta
     if (histFiltroHasta) {
-      const hasta = new Date(histFiltroHasta + "T23:59:59");
       base = base.filter((item) => {
-        const f = item.fechaLiquidacion ? new Date(item.fechaLiquidacion) : null;
-        return f && f <= hasta;
+        const f = item.fechaLiquidacion ? String(item.fechaLiquidacion).slice(0, 10) : null;
+        return f && f <= histFiltroHasta;
       });
     }
     if (!q) return base;
