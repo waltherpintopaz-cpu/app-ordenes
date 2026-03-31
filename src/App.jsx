@@ -8669,23 +8669,37 @@ export default function App() {
     }, 0);
   };
 
-  const eliminarUsuario = (id) => {
+  const eliminarUsuario = async (id) => {
     const confirmar = window.confirm("¿Deseas eliminar este usuario?");
     if (!confirmar) return;
+    // Actualizar estado local inmediatamente
     setUsuarios((prev) => prev.filter((u) => u.id !== id));
+    // Eliminar en Supabase directamente (el upsert del timer nunca hace DELETE)
+    if (isSupabaseConfigured && id) {
+      try {
+        await supabase.from(USUARIOS_TABLE).delete().eq("id", id);
+      } catch (e) {
+        console.error("Error eliminando usuario en Supabase:", e?.message);
+      }
+    }
   };
 
-  const cambiarEstadoUsuario = (id) => {
+  const cambiarEstadoUsuario = async (id) => {
+    const usuario = usuarios.find((u) => u.id === id);
+    if (!usuario) return;
+    const nuevoActivo = !usuario.activo;
+    // Actualizar estado local inmediatamente
     setUsuarios((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? {
-              ...u,
-              activo: !u.activo,
-            }
-          : u
-      )
+      prev.map((u) => (u.id === id ? { ...u, activo: nuevoActivo } : u))
     );
+    // Persistir en Supabase directamente sin esperar el timer de 5s
+    if (isSupabaseConfigured && id) {
+      try {
+        await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", id);
+      } catch (e) {
+        console.error("Error actualizando estado usuario en Supabase:", e?.message);
+      }
+    }
   };
 
   const cancelarEdicionUsuario = () => {
