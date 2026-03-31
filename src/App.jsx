@@ -150,7 +150,7 @@ const MENU_VISTAS_WEB = [
   { key: "diagnosticoServicio", label: "Diagnóstico servicio" },
   { key: "reportes", label: "Reportes" },
   { key: "mapa", label: "Mapa" },
-  { key: "consultaApi", label: "Consulta API" },
+  { key: "consultaCliente", label: "Consulta API" },
   { key: "smartOlt", label: "Smart OLT" },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
   { key: "plantaExterna", label: "Planta externa" },
@@ -166,7 +166,7 @@ const MENU_VISTAS_WEB = [
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
   Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "whatsapp", "recordatorios"],
-  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "consultaApi", "smartOlt", "inventario", "clientes", "recordatorios"],
+  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "consultaCliente", "smartOlt", "inventario", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
 };
 
@@ -201,7 +201,7 @@ const HISTORIAL_APPSHEET_SUBMENU_ACCESS_KEYS = HISTORIAL_APPSHEET_SUBMENU_ITEMS.
   (item) => `${HISTORIAL_APPSHEET_SUBMENU_ACCESS_PREFIX}${item.key}`
 );
 const DIAGNOSTICO_SERVICIO_PERMISOS_ITEMS = [
-  { key: "dni", label: "Buscar por DNI" },
+  { key: "buscarDni", label: "Buscar por DNI" },
   { key: "consultaDirecta", label: "Consulta directa por usuario" },
   { key: "suspensionManual", label: "Suspensión manual" },
 ];
