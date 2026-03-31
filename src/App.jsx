@@ -8709,7 +8709,6 @@ export default function App() {
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        // Borrar en loop con ilike (case-insensitive) para limpiar duplicados y variantes de mayúsculas
         for (let i = 0; i < 10; i++) {
           const { data: del } = await supabase.from(USUARIOS_TABLE).delete().ilike("username", username).select("id");
           if (!del || del.length === 0) break;
