@@ -644,7 +644,16 @@ function deserializeLiquidacionFromSupabase(row = {}) {
     codigo: String(row.codigo || row.codigo_orden || "").trim(),
     ordenOriginalId: row.orden_original_id ?? null,
     fechaLiquidacion: formatFechaFlexible(row.fecha_liquidacion || row.updated_at || row.created_at || ""),
-    fechaLiquidacionISO: String(row.fecha_liquidacion || row.updated_at || row.created_at || "").slice(0, 10),
+    fechaLiquidacionISO: (() => {
+      const raw = row.fecha_liquidacion || row.updated_at || row.created_at || "";
+      if (!raw) return "";
+      const d = new Date(raw);
+      if (isNaN(d.getTime())) return "";
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    })(),
     tipoActuacion: String(row.tipo_actuacion || "").trim(),
     dni: String(row.dni || "").trim(),
     nombre: String(row.nombre || row.cliente || "").trim(),
