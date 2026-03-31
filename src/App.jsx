@@ -4324,10 +4324,30 @@ export default function App() {
       setErrorLogin("Ingresa usuario y contraseña.");
       return;
     }
-    const encontrado = usuariosActivos.find((u) => {
-      const uName = String(u.username || usernameDesdeNombre(u.nombre || "")).trim().toLowerCase();
-      return uName === username && String(u.password || "123456") === password;
-    });
+    // Consultar Supabase directamente para tener siempre la contraseña más reciente
+    let encontrado = null;
+    if (isSupabaseConfigured) {
+      try {
+        const { data } = await supabase
+          .from(USUARIOS_TABLE)
+          .select("*")
+          .eq("activo", true)
+          .ilike("username", username)
+          .limit(1)
+          .maybeSingle();
+        if (data && String(data.password || "123456") === password) {
+          encontrado = deserializarUsuarioSupabase(data);
+        }
+      } catch { /* fallback al estado local */ }
+    }
+    // Fallback al estado local si Supabase no está disponible
+    if (!encontrado) {
+      const local = usuariosActivos.find((u) => {
+        const uName = String(u.username || usernameDesdeNombre(u.nombre || "")).trim().toLowerCase();
+        return uName === username && String(u.password || "123456") === password;
+      });
+      if (local) encontrado = local;
+    }
     if (!encontrado) {
       setErrorLogin("Credenciales inválidas.");
       return;
@@ -4335,9 +4355,15 @@ export default function App() {
     // Generar token de sesión y registrar acceso
     const token = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
     try {
-      await supabase.from(USUARIOS_TABLE).update({ sesion_token: token, ultimo_acceso: new Date().toISOString() }).eq("id", encontrado.id);
+      await supabase.from(USUARIOS_TABLE).update({ sesion_token: token, ultimo_acceso: new Date().toISOString() }).eq("id", encontrado.supabaseId ?? encontrado.id);
     } catch { /* no bloquear login */ }
     localStorage.setItem("sesionToken", token);
+    // Sincronizar usuario actualizado al estado local
+    setUsuarios((prev) => {
+      const existe = prev.find((u) => String(u.username || "").toLowerCase() === username);
+      if (existe) return prev.map((u) => String(u.username || "").toLowerCase() === username ? { ...u, ...encontrado } : u);
+      return [encontrado, ...prev];
+    });
     setUsuarioSesionId(Number(encontrado.id));
     setErrorLogin("");
     setCredencialesLogin({ username: "", password: "" });
