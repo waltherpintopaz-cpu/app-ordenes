@@ -1974,11 +1974,6 @@ export default function App() {
 
   useEffect(() => {
     void cargarUsuariosDesdeSupabase({ silent: true });
-    // Recargar usuarios cada 30s para ver sesiones activas en tiempo real
-    const intervaloUsuarios = setInterval(() => {
-      void cargarUsuariosDesdeSupabase({ silent: true });
-    }, 30000);
-    return () => clearInterval(intervaloUsuarios);
   }, []);
 
   useEffect(() => {
