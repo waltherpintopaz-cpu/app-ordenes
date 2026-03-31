@@ -8642,28 +8642,18 @@ export default function App() {
       setUsuarios((prev) => [nuevoUsuario, ...prev]);
     }
 
-    // Guardar inmediatamente en Supabase
+    // Guardar inmediatamente en Supabase usando upsert (compatible con RLS anon key)
     if (isSupabaseConfigured) {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
-      let savePromise;
-      if (usuarioEditandoId) {
-        const usuarioExistente = usuarios.find((u) => u.id === usuarioEditandoId) || null;
-        const supabaseId = usuarioExistente?.supabaseId ?? null;
-        savePromise = supabaseId != null
-          ? supabase.from(USUARIOS_TABLE).update(serializado).eq("id", supabaseId).select()
-          : supabase.from(USUARIOS_TABLE).update(serializado).eq("username", serializado.username).select();
-      } else {
-        savePromise = supabase.from(USUARIOS_TABLE).insert(serializado).select();
-      }
-      savePromise.then(({ data, error }) => {
-        if (error) {
-          alert(`Error guardando en Supabase:\n${error.message}`);
-        } else if (!data || data.length === 0) {
-          alert("No se pudo actualizar el usuario. Verifica los permisos en Supabase.");
-        } else {
-          void cargarUsuariosDesdeSupabase({ silent: true });
-        }
-      });
+      supabase.from(USUARIOS_TABLE)
+        .upsert(serializado, { onConflict: "username" })
+        .then(({ error }) => {
+          if (error) {
+            alert(`Error guardando en Supabase:\n${error.message}`);
+          } else {
+            void cargarUsuariosDesdeSupabase({ silent: true });
+          }
+        });
     }
 
     setUsuarioForm(normalizarUsuarioConPermisos(initialUsuario));
