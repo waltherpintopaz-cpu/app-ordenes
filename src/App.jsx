@@ -1714,37 +1714,7 @@ export default function App() {
 
   const [liquidaciones, setLiquidaciones] = useState(() => readLocalJson("liquidaciones", []));
 
-  const [usuarios, setUsuarios] = useState(() => {
-    const guardados = readLocalJson("usuarios", null);
-    return guardados
-      ? asegurarCredencialesUsuarios(guardados).map(normalizarUsuarioConPermisos)
-      : [
-          {
-            id: 1,
-            nombre: "Luis Pacsi",
-            rol: "Tecnico",
-            celular: "999999999",
-            email: "",
-            empresa: "Americanet",
-            activo: true,
-            fechaCreacion: new Date().toLocaleString(),
-            accesosMenu: [...(PERMISOS_MENU_POR_ROL_WEB.Tecnico || [])],
-            nodosAcceso: [],
-          },
-          {
-            id: 2,
-            nombre: "María Quispe",
-            rol: "Gestora",
-            celular: "988888888",
-            email: "",
-            empresa: "Americanet",
-            activo: true,
-            fechaCreacion: new Date().toLocaleString(),
-            accesosMenu: [...(PERMISOS_MENU_POR_ROL_WEB.Gestora || [])],
-            nodosAcceso: [...NODOS_BASE_WEB],
-          },
-        ].map(normalizarUsuarioConPermisos);
-  });
+  const [usuarios, setUsuarios] = useState([]);
 
   const [clientes, setClientes] = useState(() => {
     const guardados = readLocalJson("clientes", []);
@@ -1968,12 +1938,9 @@ export default function App() {
     try { localStorage.setItem("liquidaciones", JSON.stringify(liquidaciones)); } catch (e) { console.warn("localStorage quota: liquidaciones", e); }
   }, [liquidaciones]);
 
-  useEffect(() => {
-    try { localStorage.setItem("usuarios", JSON.stringify(usuarios)); } catch (e) { console.warn("localStorage quota: usuarios", e); }
-  }, [usuarios]);
+  // Usuarios siempre desde Supabase — no persistir en localStorage
 
   useEffect(() => {
-    // Siempre cargar desde Supabase al iniciar y limpiar localStorage para que no restaure datos viejos
     localStorage.removeItem("usuarios");
     void cargarUsuariosDesdeSupabase({ silent: true });
   }, []);
