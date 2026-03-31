@@ -1997,21 +1997,7 @@ export default function App() {
     void cargarLiquidacionesDesdeSupabase({ silent: true });
   }, []);
 
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    if (!usuariosSupabaseReady) return;
-    if (usuariosHydratingRef.current) return;
-    if (usuariosSupabaseSaving) return;
-    if (usuariosSyncTimerRef.current) clearTimeout(usuariosSyncTimerRef.current);
-    usuariosSyncTimerRef.current = setTimeout(() => {
-      void guardarUsuariosEnSupabase(usuarios).catch((e) => {
-        console.error("Error sincronizando usuarios en Supabase:", e);
-      });
-    }, 5000);
-    return () => {
-      if (usuariosSyncTimerRef.current) clearTimeout(usuariosSyncTimerRef.current);
-    };
-  }, [usuarios, usuariosSupabaseReady, usuariosSupabaseSaving]);
+  // Sync automático deshabilitado — guardado explícito en guardarUsuario/eliminarUsuario/cambiarEstadoUsuario
 
   useEffect(() => {
     try { localStorage.setItem("usuarioSesionId", String(usuarioSesionId || "")); } catch (e) { console.warn("localStorage quota: usuarioSesionId", e); }
