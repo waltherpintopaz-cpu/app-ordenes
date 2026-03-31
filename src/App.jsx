@@ -10561,7 +10561,15 @@ export default function App() {
                           if (cambioClaveForm.nueva.length < 4) {
                             alert("La contraseña debe tener al menos 4 caracteres."); return;
                           }
-                          if (usuarioSesion?.password !== cambioClaveForm.actual) {
+                          // Verificar contraseña actual contra Supabase (fuente de verdad)
+                          const usernameVerif = String(usuarioSesion?.username || "").trim().toLowerCase();
+                          if (isSupabaseConfigured && usernameVerif) {
+                            const { data: dbUser } = await supabase.from(USUARIOS_TABLE).select("password").eq("username", usernameVerif).maybeSingle();
+                            const passDb = dbUser?.password ?? usuarioSesion?.password ?? "";
+                            if (passDb !== cambioClaveForm.actual) {
+                              alert("La contraseña actual es incorrecta."); return;
+                            }
+                          } else if (usuarioSesion?.password !== cambioClaveForm.actual) {
                             alert("La contraseña actual es incorrecta."); return;
                           }
                           const nuevaPass = cambioClaveForm.nueva.trim();
@@ -10569,8 +10577,14 @@ export default function App() {
                           const nuevosUsuarios = usuarios.map((u) => String(u.username || "").trim().toLowerCase() === usernameActual ? { ...u, password: nuevaPass } : u);
                           const usuarioActualizado = nuevosUsuarios.find((u) => String(u.username || "").trim().toLowerCase() === usernameActual);
                           if (isSupabaseConfigured && usuarioActualizado) {
-                            const serializado = serializarUsuarioParaSupabase({ ...usuarioActualizado, password: nuevaPass });
-                            const { error: errUpdate } = await supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" });
+                            const supabaseId = usuarioActualizado.supabaseId ?? usuarioActualizado.id;
+                            let errUpdate = null;
+                            if (supabaseId) {
+                              ({ error: errUpdate } = await supabase.from(USUARIOS_TABLE).update({ password: nuevaPass }).eq("id", supabaseId));
+                            }
+                            if (errUpdate || !supabaseId) {
+                              ({ error: errUpdate } = await supabase.from(USUARIOS_TABLE).update({ password: nuevaPass }).eq("username", usernameActual));
+                            }
                             if (errUpdate) { alert("Error al guardar: " + errUpdate.message); return; }
                           }
                           setUsuarios(nuevosUsuarios);
