@@ -8652,7 +8652,11 @@ export default function App() {
         const username = serializado.username;
         if (!username) return;
 
-        // Intentar UPDATE por username (funciona aunque supabaseId sea local)
+        // Bloquear el timer de sync para que no sobreescriba con datos viejos
+        if (usuariosSyncTimerRef.current) clearTimeout(usuariosSyncTimerRef.current);
+        usuariosHydratingRef.current = true;
+
+        // Intentar UPDATE por username
         const { data: updatedRows, error } = await supabase
           .from(USUARIOS_TABLE)
           .update(serializado)
@@ -8681,7 +8685,8 @@ export default function App() {
             await supabase.from(USUARIOS_TABLE).insert(serializadoBase);
           }
         }
-        void cargarUsuariosDesdeSupabase({ silent: true });
+        await cargarUsuariosDesdeSupabase({ silent: true });
+        usuariosHydratingRef.current = false;
       };
       void doSave();
     }
