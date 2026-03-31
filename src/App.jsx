@@ -163,20 +163,20 @@ const MENU_VISTAS_WEB = [
   { key: "recordatorios", label: "Recordatorios" },
 ];
 
+// Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "whatsapp", "recordatorios"],
-  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "consultaCliente", "smartOlt", "inventario", "clientes", "recordatorios"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "whatsapp", "recordatorios"],
+  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
 };
 
-// Items que siempre se garantizan por rol, independientemente de localStorage o versión guardada.
-// Agregar aquí cualquier nuevo item de menú que deba aparecer automáticamente en roles existentes.
+// Solo recordatorios se garantiza siempre — todo lo demás es flexible
 const MENU_ITEMS_GARANTIZADOS_POR_ROL = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "historialAppsheet", "nap", "recordatorios"],
-  Tecnico: ["stockTecnico", "mapa", "recordatorios"],
-  Almacen: ["nap", "recordatorios"],
+  Gestora: ["recordatorios"],
+  Tecnico: ["recordatorios"],
+  Almacen: ["recordatorios"],
 };
 
 const HISTORIAL_APPSHEET_SUBMENU_ITEMS = [
