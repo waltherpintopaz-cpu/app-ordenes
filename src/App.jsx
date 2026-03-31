@@ -11116,7 +11116,9 @@ export default function App() {
                           <option>100 Mbps</option>
                           <option>200 Mbps</option>
                           <option>300 Mbps</option>
+                          <option>400 Mbps</option>
                           <option>500 Mbps</option>
+                          <option>600 Mbps</option>
                           <option>800 Mbps</option>
                           <option>1000 Mbps</option>
                         </select>
