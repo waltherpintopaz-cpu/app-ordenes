@@ -10575,22 +10575,14 @@ export default function App() {
                           const nuevaPass = cambioClaveForm.nueva.trim();
                           const usernameActual = String(usuarioSesion.username || "").trim().toLowerCase();
                           const nuevosUsuarios = usuarios.map((u) => String(u.username || "").trim().toLowerCase() === usernameActual ? { ...u, password: nuevaPass } : u);
-                          const usuarioActualizado = nuevosUsuarios.find((u) => String(u.username || "").trim().toLowerCase() === usernameActual);
-                          if (isSupabaseConfigured && usuarioActualizado) {
-                            // Usar upsert (mismo mecanismo que funciona para todo el CRUD de usuarios)
-                            const serializado = serializarUsuarioParaSupabase({ ...usuarioActualizado, password: nuevaPass });
-                            const { error: errUpsert } = await supabase
-                              .from(USUARIOS_TABLE)
-                              .upsert(serializado, { onConflict: "username" });
-                            if (errUpsert) { alert("Error al guardar: " + errUpsert.message); return; }
-                            // Verificar que se guardó correctamente
-                            const { data: verificacion } = await supabase
-                              .from(USUARIOS_TABLE)
-                              .select("password")
-                              .eq("username", usernameActual)
-                              .maybeSingle();
-                            if (verificacion && verificacion.password !== nuevaPass) {
-                              alert("No se pudo guardar la contraseña. Contacta al administrador."); return;
+                          if (isSupabaseConfigured) {
+                            try {
+                              // Usar la misma función que guarda todos los cambios de usuario — funciona con RLS
+                              await guardarUsuariosEnSupabase(nuevosUsuarios);
+                              // Recargar desde Supabase para confirmar que se persistió
+                              await cargarUsuariosDesdeSupabase({ silent: true });
+                            } catch (e) {
+                              alert("Error al guardar contraseña: " + (e?.message || String(e))); return;
                             }
                           }
                           setUsuarios(nuevosUsuarios);
