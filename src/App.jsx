@@ -1973,6 +1973,8 @@ export default function App() {
   }, [usuarios]);
 
   useEffect(() => {
+    // Siempre cargar desde Supabase al iniciar y limpiar localStorage para que no restaure datos viejos
+    localStorage.removeItem("usuarios");
     void cargarUsuariosDesdeSupabase({ silent: true });
   }, []);
 
