@@ -7458,6 +7458,10 @@ export default function App() {
   };
 
   const eliminarOrden = async (id) => {
+    const target = (Array.isArray(ordenes) ? ordenes : []).find((x) => String(x?.id) === String(id));
+    const codigo = target?.codigo || String(id);
+    const confirmar = window.confirm(`¿Eliminar permanentemente la orden ${codigo}?\n\nEsta acción no se puede deshacer.`);
+    if (!confirmar) return;
     if (isSupabaseConfigured && Number.isFinite(Number(id))) {
       const del = await supabase.from(ORDENES_TABLE).delete().eq("id", Number(id));
       if (del.error) {
