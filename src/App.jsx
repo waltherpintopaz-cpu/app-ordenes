@@ -8710,14 +8710,14 @@ export default function App() {
     const confirmar = window.confirm("¿Deseas eliminar este usuario?");
     if (!confirmar) return;
     const usuario = usuarios.find((u) => u.id === id);
-    // Actualizar estado local inmediatamente
     setUsuarios((prev) => prev.filter((u) => u.id !== id));
-    // Eliminar en Supabase usando supabaseId (id real de DB) o username como fallback
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
+        const { error } = await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
+        if (error) alert(`Error al eliminar usuario:\n${error.message}`);
       }
+      await cargarUsuariosDesdeSupabase({ silent: true });
     }
   };
 
@@ -8725,16 +8725,16 @@ export default function App() {
     const usuario = usuarios.find((u) => u.id === id);
     if (!usuario) return;
     const nuevoActivo = !usuario.activo;
-    // Actualizar estado local inmediatamente
     setUsuarios((prev) =>
       prev.map((u) => (u.id === id ? { ...u, activo: nuevoActivo } : u))
     );
-    // Persistir en Supabase usando supabaseId o username como fallback
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
+        const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
+        if (error) alert(`Error al cambiar estado:\n${error.message}`);
       }
+      await cargarUsuariosDesdeSupabase({ silent: true });
     }
   };
 
