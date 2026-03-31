@@ -8714,8 +8714,11 @@ export default function App() {
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        const { error } = await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
-        if (error) alert(`Error al eliminar usuario:\n${error.message}`);
+        // Borrar en loop por si hay filas duplicadas del antiguo sync timer
+        for (let i = 0; i < 10; i++) {
+          const { data: del } = await supabase.from(USUARIOS_TABLE).delete().eq("username", username).select("id");
+          if (!del || del.length === 0) break;
+        }
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
     }
@@ -8732,7 +8735,7 @@ export default function App() {
       const username = String(usuario.username || "").trim();
       if (username) {
         const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
-        if (error) alert(`Error al cambiar estado:\n${error.message}`);
+        if (error) console.error("Error cambiar estado:", error.message);
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
     }
