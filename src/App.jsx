@@ -8129,7 +8129,8 @@ export default function App() {
       }
 
       // Actualizar orden
-      const ordenUpdate = { estado: "Liquidada", sn_onu: String(liquidacion.snOnu || "") };
+      const esCompletada = String(liquidacion.resultadoFinal || "Completada") === "Completada";
+      const ordenUpdate = { estado: "Liquidada", sn_onu: String(liquidacion.snOnu || ""), usuario_nodo_liberado: !esCompletada };
       if (liquidacion.actualizarUbicacion === "SI" && String(liquidacion.nuevaUbicacion || "").trim()) {
         ordenUpdate.ubicacion = String(liquidacion.nuevaUbicacion).trim();
       }
@@ -8268,9 +8269,10 @@ export default function App() {
       }
       // Solo marcar Liquidada si el stock se guardó correctamente
       if (Number.isFinite(payload.orden_id)) {
+        const esCompletada = String(liquidacion.resultadoFinal || "Completada") === "Completada";
         await supabase
           .from(ORDENES_TABLE)
-          .update({ estado: "Liquidada" })
+          .update({ estado: "Liquidada", usuario_nodo_liberado: !esCompletada })
           .eq("id", payload.orden_id);
       }
     }
