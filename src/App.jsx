@@ -3429,8 +3429,29 @@ export default function App() {
       }
       if (error) throw error;
       const mapped = Array.isArray(data) ? data.map(deserializarUsuarioSupabase) : [];
+
+      // Deduplicar por username (el antiguo sync timer creó duplicados) — conservar el de mayor id
+      const porUsername = new Map();
+      for (const u of mapped) {
+        const key = String(u.username || "").toLowerCase().trim();
+        if (!key) continue;
+        const prev = porUsername.get(key);
+        if (!prev || Number(u.id) > Number(prev.id)) porUsername.set(key, u);
+      }
+      const deduplicados = Array.from(porUsername.values());
+
+      // Eliminar filas duplicadas de la DB en segundo plano
+      if (deduplicados.length < mapped.length) {
+        const idsValidos = new Set(deduplicados.map(u => u.supabaseId ?? u.id));
+        const duplicados = mapped.filter(u => !idsValidos.has(u.supabaseId ?? u.id));
+        for (const dup of duplicados) {
+          const dupId = dup.supabaseId ?? dup.id;
+          if (dupId) supabase.from(USUARIOS_TABLE).delete().eq("id", dupId).then(() => {});
+        }
+      }
+
       usuariosHydratingRef.current = true;
-      setUsuarios(asegurarCredencialesUsuarios(mapped));
+      setUsuarios(asegurarCredencialesUsuarios(deduplicados));
       setTimeout(() => {
         usuariosHydratingRef.current = false;
       }, 0);
