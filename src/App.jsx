@@ -8650,21 +8650,33 @@ export default function App() {
 
       const doSave = async () => {
         if (supabaseId) {
-          // Usuario existente: UPDATE directo por PK (sin conflicto de upsert)
-          const { error } = await supabase.from(USUARIOS_TABLE).update(serializado).eq("id", supabaseId);
+          // Usuario existente: UPDATE directo por PK
+          const { data: updatedRows, error } = await supabase
+            .from(USUARIOS_TABLE)
+            .update(serializado)
+            .eq("id", supabaseId)
+            .select("id");
           if (error) {
-            // Fallback: upsert por username si UPDATE falla
-            const { error: err2 } = await supabase.from(USUARIOS_TABLE).upsert({ ...serializado, id: supabaseId }, { onConflict: "id" });
+            alert(`Error al guardar (UPDATE):\n${error.message}\n\nsupabaseId: ${supabaseId}`);
+            return;
+          }
+          if (!updatedRows || updatedRows.length === 0) {
+            // UPDATE no afectó ninguna fila — intentar upsert con id explícito
+            const { error: err2 } = await supabase
+              .from(USUARIOS_TABLE)
+              .upsert({ ...serializado, id: supabaseId }, { onConflict: "id" });
             if (err2) {
-              alert(`Error guardando usuario:\n${err2.message}`);
+              alert(`Error al guardar (UPSERT):\n${err2.message}\n\nsupabaseId: ${supabaseId}`);
               return;
             }
           }
         } else {
-          // Usuario nuevo: insert/upsert por username
-          const { error } = await supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" });
+          // Usuario nuevo: insert por username
+          const { error } = await supabase
+            .from(USUARIOS_TABLE)
+            .upsert(serializado, { onConflict: "username" });
           if (error) {
-            alert(`Error guardando usuario:\n${error.message}`);
+            alert(`Error al guardar usuario nuevo:\n${error.message}`);
             return;
           }
         }
