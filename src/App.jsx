@@ -10574,18 +10574,25 @@ export default function App() {
                           }
                           const nuevaPass = cambioClaveForm.nueva.trim();
                           const usernameActual = String(usuarioSesion.username || "").trim().toLowerCase();
-                          const nuevosUsuarios = usuarios.map((u) => String(u.username || "").trim().toLowerCase() === usernameActual ? { ...u, password: nuevaPass } : u);
                           if (isSupabaseConfigured) {
-                            try {
-                              // Usar la misma función que guarda todos los cambios de usuario — funciona con RLS
-                              await guardarUsuariosEnSupabase(nuevosUsuarios);
-                              // Recargar desde Supabase para confirmar que se persistió
-                              await cargarUsuariosDesdeSupabase({ silent: true });
-                            } catch (e) {
-                              alert("Error al guardar contraseña: " + (e?.message || String(e))); return;
+                            // Usar el mismo patrón que cambiarEstadoUsuario — UPDATE directo con supabaseId
+                            const usuarioLocal = usuarios.find((u) => String(u.username || "").trim().toLowerCase() === usernameActual);
+                            const supabaseId = usuarioLocal?.supabaseId ?? usuarioLocal?.id;
+                            let guardado = false;
+                            if (supabaseId) {
+                              const { error } = await supabase.from(USUARIOS_TABLE).update({ password: nuevaPass }).eq("id", supabaseId);
+                              if (error) { alert("Error al guardar: " + error.message); return; }
+                              guardado = true;
+                            }
+                            if (!guardado) {
+                              const { error } = await supabase.from(USUARIOS_TABLE).update({ password: nuevaPass }).eq("username", usernameActual);
+                              if (error) { alert("Error al guardar: " + error.message); return; }
                             }
                           }
-                          setUsuarios(nuevosUsuarios);
+                          // Actualizar estado local bloqueando el timer de sync para no sobreescribir
+                          usuariosHydratingRef.current = true;
+                          setUsuarios((prev) => prev.map((u) => String(u.username || "").trim().toLowerCase() === usernameActual ? { ...u, password: nuevaPass } : u));
+                          setTimeout(() => { usuariosHydratingRef.current = false; }, 200);
                           setCambioClaveForm({ actual: "", nueva: "", confirmar: "" });
                           setCambiandoClave(false);
                           alert("Contraseña actualizada correctamente.");
