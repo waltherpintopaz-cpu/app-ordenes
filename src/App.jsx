@@ -8649,35 +8649,36 @@ export default function App() {
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
 
       const doSave = async () => {
-        if (supabaseId) {
-          // Usuario existente: UPDATE directo por PK
-          const { data: updatedRows, error } = await supabase
+        const username = serializado.username;
+        if (!username) return;
+
+        // Intentar UPDATE por username (funciona aunque supabaseId sea local)
+        const { data: updatedRows, error } = await supabase
+          .from(USUARIOS_TABLE)
+          .update(serializado)
+          .eq("username", username)
+          .select("id");
+
+        if (error) {
+          // Si falla por columnas inexistentes, reintentar sin accesos_menu/nodos_acceso
+          const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
+          const { error: err2 } = await supabase
             .from(USUARIOS_TABLE)
-            .update(serializado)
-            .eq("id", supabaseId)
-            .select("id");
-          if (error) {
-            alert(`Error al guardar (UPDATE):\n${error.message}\n\nsupabaseId: ${supabaseId}`);
+            .update(serializadoBase)
+            .eq("username", username);
+          if (err2) {
+            alert(`Error al guardar usuario:\n${err2.message}`);
             return;
           }
-          if (!updatedRows || updatedRows.length === 0) {
-            // UPDATE no afectó ninguna fila — intentar upsert con id explícito
-            const { error: err2 } = await supabase
-              .from(USUARIOS_TABLE)
-              .upsert({ ...serializado, id: supabaseId }, { onConflict: "id" });
-            if (err2) {
-              alert(`Error al guardar (UPSERT):\n${err2.message}\n\nsupabaseId: ${supabaseId}`);
-              return;
-            }
-          }
-        } else {
-          // Usuario nuevo: insert por username
-          const { error } = await supabase
+        } else if (!updatedRows || updatedRows.length === 0) {
+          // No existe en DB — insertar como nuevo
+          const { error: err3 } = await supabase
             .from(USUARIOS_TABLE)
-            .upsert(serializado, { onConflict: "username" });
-          if (error) {
-            alert(`Error al guardar usuario nuevo:\n${error.message}`);
-            return;
+            .insert(serializado);
+          if (err3) {
+            // Fallback sin columnas opcionales
+            const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
+            await supabase.from(USUARIOS_TABLE).insert(serializadoBase);
           }
         }
         void cargarUsuariosDesdeSupabase({ silent: true });
@@ -8722,19 +8723,9 @@ export default function App() {
     setUsuarios((prev) => prev.filter((u) => u.id !== id));
     // Eliminar en Supabase usando supabaseId (id real de DB) o username como fallback
     if (isSupabaseConfigured && usuario) {
-      try {
-        const supabaseId = usuario.supabaseId ?? usuario.id;
-        const username = String(usuario.username || "").trim();
-        if (supabaseId && String(supabaseId).length > 0) {
-          const { error } = await supabase.from(USUARIOS_TABLE).delete().eq("id", supabaseId);
-          if (error && username) {
-            await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
-          }
-        } else if (username) {
-          await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
-        }
-      } catch (e) {
-        console.error("Error eliminando usuario en Supabase:", e?.message);
+      const username = String(usuario.username || "").trim();
+      if (username) {
+        await supabase.from(USUARIOS_TABLE).delete().eq("username", username);
       }
     }
   };
@@ -8749,19 +8740,9 @@ export default function App() {
     );
     // Persistir en Supabase usando supabaseId o username como fallback
     if (isSupabaseConfigured && usuario) {
-      try {
-        const supabaseId = usuario.supabaseId ?? usuario.id;
-        const username = String(usuario.username || "").trim();
-        if (supabaseId && String(supabaseId).length > 0) {
-          const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", supabaseId);
-          if (error && username) {
-            await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
-          }
-        } else if (username) {
-          await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
-        }
-      } catch (e) {
-        console.error("Error actualizando estado usuario en Supabase:", e?.message);
+      const username = String(usuario.username || "").trim();
+      if (username) {
+        await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
       }
     }
   };
