@@ -8641,7 +8641,7 @@ export default function App() {
         const { data: updatedRows, error } = await supabase
           .from(USUARIOS_TABLE)
           .update(serializado)
-          .eq("username", username)
+          .ilike("username", username)
           .select("id");
 
         if (error) {
@@ -8650,7 +8650,7 @@ export default function App() {
           const { error: err2 } = await supabase
             .from(USUARIOS_TABLE)
             .update(serializadoBase)
-            .eq("username", username);
+            .ilike("username", username);
           if (err2) {
             alert(`Error al guardar usuario:\n${err2.message}`);
             return;
@@ -8709,9 +8709,9 @@ export default function App() {
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        // Borrar en loop por si hay filas duplicadas del antiguo sync timer
+        // Borrar en loop con ilike (case-insensitive) para limpiar duplicados y variantes de mayúsculas
         for (let i = 0; i < 10; i++) {
-          const { data: del } = await supabase.from(USUARIOS_TABLE).delete().eq("username", username).select("id");
+          const { data: del } = await supabase.from(USUARIOS_TABLE).delete().ilike("username", username).select("id");
           if (!del || del.length === 0) break;
         }
       }
@@ -8729,7 +8729,7 @@ export default function App() {
     if (isSupabaseConfigured && usuario) {
       const username = String(usuario.username || "").trim();
       if (username) {
-        const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("username", username);
+        const { error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).ilike("username", username);
         if (error) console.error("Error cambiar estado:", error.message);
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
