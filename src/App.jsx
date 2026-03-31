@@ -1816,8 +1816,8 @@ export default function App() {
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
   const [histFiltroNodo, setHistFiltroNodo] = useState("TODOS");
   const [histFiltroTipo, setHistFiltroTipo] = useState("TODOS");
-  const [histFiltroDesde, setHistFiltroDesde] = useState("");
-  const [histFiltroHasta, setHistFiltroHasta] = useState("");
+  const [histFiltroDesde, setHistFiltroDesde] = useState(() => new Date().toISOString().slice(0, 10));
+  const [histFiltroHasta, setHistFiltroHasta] = useState(() => new Date().toISOString().slice(0, 10));
   const [usuarioSesionId, setUsuarioSesionId] = useState(() => {
     const guardado = localStorage.getItem("usuarioSesionId");
     return guardado ? Number(guardado) : null;
