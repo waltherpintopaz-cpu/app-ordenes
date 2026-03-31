@@ -8642,18 +8642,35 @@ export default function App() {
       setUsuarios((prev) => [nuevoUsuario, ...prev]);
     }
 
-    // Guardar inmediatamente en Supabase usando upsert (compatible con RLS anon key)
+    // Guardar en Supabase
     if (isSupabaseConfigured) {
+      const usuarioExistente = usuarioEditandoId ? usuarios.find((u) => u.id === usuarioEditandoId) : null;
+      const supabaseId = usuarioExistente?.supabaseId ?? null;
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
-      supabase.from(USUARIOS_TABLE)
-        .upsert(serializado, { onConflict: "username" })
-        .then(({ error }) => {
+
+      const doSave = async () => {
+        if (supabaseId) {
+          // Usuario existente: UPDATE directo por PK (sin conflicto de upsert)
+          const { error } = await supabase.from(USUARIOS_TABLE).update(serializado).eq("id", supabaseId);
           if (error) {
-            alert(`Error guardando en Supabase:\n${error.message}`);
-          } else {
-            void cargarUsuariosDesdeSupabase({ silent: true });
+            // Fallback: upsert por username si UPDATE falla
+            const { error: err2 } = await supabase.from(USUARIOS_TABLE).upsert({ ...serializado, id: supabaseId }, { onConflict: "id" });
+            if (err2) {
+              alert(`Error guardando usuario:\n${err2.message}`);
+              return;
+            }
           }
-        });
+        } else {
+          // Usuario nuevo: insert/upsert por username
+          const { error } = await supabase.from(USUARIOS_TABLE).upsert(serializado, { onConflict: "username" });
+          if (error) {
+            alert(`Error guardando usuario:\n${error.message}`);
+            return;
+          }
+        }
+        void cargarUsuariosDesdeSupabase({ silent: true });
+      };
+      void doSave();
     }
 
     setUsuarioForm(normalizarUsuarioConPermisos(initialUsuario));
