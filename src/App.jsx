@@ -10577,15 +10577,21 @@ export default function App() {
                           const nuevosUsuarios = usuarios.map((u) => String(u.username || "").trim().toLowerCase() === usernameActual ? { ...u, password: nuevaPass } : u);
                           const usuarioActualizado = nuevosUsuarios.find((u) => String(u.username || "").trim().toLowerCase() === usernameActual);
                           if (isSupabaseConfigured && usuarioActualizado) {
-                            const supabaseId = usuarioActualizado.supabaseId ?? usuarioActualizado.id;
-                            let errUpdate = null;
-                            if (supabaseId) {
-                              ({ error: errUpdate } = await supabase.from(USUARIOS_TABLE).update({ password: nuevaPass }).eq("id", supabaseId));
+                            // Usar upsert (mismo mecanismo que funciona para todo el CRUD de usuarios)
+                            const serializado = serializarUsuarioParaSupabase({ ...usuarioActualizado, password: nuevaPass });
+                            const { error: errUpsert } = await supabase
+                              .from(USUARIOS_TABLE)
+                              .upsert(serializado, { onConflict: "username" });
+                            if (errUpsert) { alert("Error al guardar: " + errUpsert.message); return; }
+                            // Verificar que se guardó correctamente
+                            const { data: verificacion } = await supabase
+                              .from(USUARIOS_TABLE)
+                              .select("password")
+                              .eq("username", usernameActual)
+                              .maybeSingle();
+                            if (verificacion && verificacion.password !== nuevaPass) {
+                              alert("No se pudo guardar la contraseña. Contacta al administrador."); return;
                             }
-                            if (errUpdate || !supabaseId) {
-                              ({ error: errUpdate } = await supabase.from(USUARIOS_TABLE).update({ password: nuevaPass }).eq("username", usernameActual));
-                            }
-                            if (errUpdate) { alert("Error al guardar: " + errUpdate.message); return; }
                           }
                           setUsuarios(nuevosUsuarios);
                           setCambioClaveForm({ actual: "", nueva: "", confirmar: "" });
