@@ -2202,12 +2202,7 @@ export default function App() {
     return null;
   }, [orden.usuarioNodo, clientes, ordenes, ordenEditandoId]);
 
-  useEffect(() => {
-    if (usuarioSesionId) {
-      const existe = usuariosActivos.some((u) => Number(u.id) === Number(usuarioSesionId));
-      if (!existe) setUsuarioSesionId(null);
-    }
-  }, [usuarioSesionId, usuariosActivos]);
+  // La sesión solo se cierra por verificarSesion (que consulta Supabase directamente)
 
   useEffect(() => {
     if (!mostrarMenuSesion) return undefined;
@@ -3399,32 +3394,8 @@ export default function App() {
       if (error) throw error;
       const mapped = Array.isArray(data) ? data.map(deserializarUsuarioSupabase) : [];
 
-      // Deduplicar por username — conservar el activo con menor id (original)
-      const porUsername = new Map();
-      for (const u of mapped) {
-        const key = String(u.username || "").toLowerCase().trim();
-        if (!key) continue;
-        const prev = porUsername.get(key);
-        if (!prev) { porUsername.set(key, u); continue; }
-        // Preferir activo; si igual estado, preferir menor id (original)
-        const uActivo = !!u.activo, prevActivo = !!prev.activo;
-        if (uActivo && !prevActivo) { porUsername.set(key, u); }
-        else if (!uActivo && prevActivo) { /* mantener prev */ }
-        else if (Number(u.supabaseId ?? u.id) < Number(prev.supabaseId ?? prev.id)) { porUsername.set(key, u); }
-      }
-      const deduplicados = Array.from(porUsername.values());
-
-      // Eliminar duplicados de DB en segundo plano (los que no conservamos)
-      if (deduplicados.length < mapped.length) {
-        const idsValidos = new Set(deduplicados.map(u => String(u.supabaseId ?? u.id)));
-        for (const dup of mapped) {
-          const dupId = String(dup.supabaseId ?? dup.id);
-          if (!idsValidos.has(dupId)) supabase.from(USUARIOS_TABLE).delete().eq("id", dupId).then(() => {});
-        }
-      }
-
       usuariosHydratingRef.current = true;
-      setUsuarios(asegurarCredencialesUsuarios(deduplicados));
+      setUsuarios(asegurarCredencialesUsuarios(mapped));
       setTimeout(() => {
         usuariosHydratingRef.current = false;
       }, 0);
@@ -4390,7 +4361,7 @@ export default function App() {
           return;
         }
         const tokenLocal = localStorage.getItem("sesionToken");
-        if (tokenLocal && (data.sesion_token === null || data.sesion_token !== tokenLocal)) {
+        if (tokenLocal && data.sesion_token && data.sesion_token !== tokenLocal) {
           if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
           localStorage.removeItem("sesionToken");
           setUsuarioSesionId(null);
@@ -8604,6 +8575,7 @@ export default function App() {
       nodosAcceso: rolNorm === "Gestora" ? nodosAcceso : [],
     };
 
+    const esEdicion = Boolean(usuarioEditandoId);
     if (usuarioEditandoId) {
       setUsuarios((prev) =>
         prev.map((u) =>
@@ -8621,6 +8593,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const usuarioExistente = usuarioEditandoId ? usuarios.find((u) => u.id === usuarioEditandoId) : null;
       const supabaseId = usuarioExistente?.supabaseId ?? null;
+      const usernameOriginal = String(usuarioExistente?.username || "").trim().toLowerCase();
       const serializado = serializarUsuarioParaSupabase(usuarioActualizado);
 
       const doSave = async () => {
@@ -8631,37 +8604,61 @@ export default function App() {
         if (usuariosSyncTimerRef.current) clearTimeout(usuariosSyncTimerRef.current);
         usuariosHydratingRef.current = true;
 
-        // Intentar UPDATE por username
-        const { data: updatedRows, error } = await supabase
-          .from(USUARIOS_TABLE)
-          .update(serializado)
-          .ilike("username", username)
-          .select("id");
+        try {
+          if (esEdicion) {
+            const buildUpdate = (payload) => {
+              if (supabaseId) {
+                return supabase.from(USUARIOS_TABLE).update(payload).eq("id", supabaseId).select("id");
+              }
+              if (usernameOriginal) {
+                return supabase.from(USUARIOS_TABLE).update(payload).ilike("username", usernameOriginal).select("id");
+              }
+              return null;
+            };
 
-        if (error) {
-          // Si falla por columnas inexistentes, reintentar sin accesos_menu/nodos_acceso
-          const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
-          const { error: err2 } = await supabase
-            .from(USUARIOS_TABLE)
-            .update(serializadoBase)
-            .ilike("username", username);
-          if (err2) {
-            alert(`Error al guardar usuario:\n${err2.message}`);
-            return;
+            const updater = buildUpdate(serializado);
+            if (!updater) {
+              alert("No se pudo identificar el usuario en Supabase para actualizar. Refresca y vuelve a intentar.");
+              return;
+            }
+
+            let { data: updatedRows, error } = await updater;
+            if (error) {
+              const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
+              const updaterBase = buildUpdate(serializadoBase);
+              if (!updaterBase) {
+                alert("No se pudo identificar el usuario en Supabase para actualizar. Refresca y vuelve a intentar.");
+                return;
+              }
+              const res2 = await updaterBase;
+              if (res2.error) {
+                alert(`Error al guardar usuario:\n${res2.error.message}`);
+                return;
+              }
+              updatedRows = res2.data;
+            }
+
+            if (!updatedRows || updatedRows.length === 0) {
+              alert("No se encontró el usuario en Supabase para actualizar. No se insertó un nuevo registro.");
+              return;
+            }
+          } else {
+            // Insertar solo cuando es creación
+            const { error: err3 } = await supabase.from(USUARIOS_TABLE).insert(serializado);
+            if (err3) {
+              const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
+              const resBase = await supabase.from(USUARIOS_TABLE).insert(serializadoBase);
+              if (resBase.error) {
+                alert(`Error al guardar usuario:\n${resBase.error.message}`);
+                return;
+              }
+            }
           }
-        } else if (!updatedRows || updatedRows.length === 0) {
-          // No existe en DB — insertar como nuevo
-          const { error: err3 } = await supabase
-            .from(USUARIOS_TABLE)
-            .insert(serializado);
-          if (err3) {
-            // Fallback sin columnas opcionales
-            const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
-            await supabase.from(USUARIOS_TABLE).insert(serializadoBase);
-          }
+
+          await cargarUsuariosDesdeSupabase({ silent: true });
+        } finally {
+          usuariosHydratingRef.current = false;
         }
-        await cargarUsuariosDesdeSupabase({ silent: true });
-        usuariosHydratingRef.current = false;
       };
       void doSave();
     }
@@ -8701,12 +8698,29 @@ export default function App() {
     const usuario = usuarios.find((u) => u.id === id);
     setUsuarios((prev) => prev.filter((u) => u.id !== id));
     if (isSupabaseConfigured && usuario) {
+      const dbId = usuario.supabaseId ?? null;
       const username = String(usuario.username || "").trim();
-      if (username) {
-        // Obtener todos los IDs con ese username (cualquier capitalización) y borrar por ID
-        const { data: filas } = await supabase.from(USUARIOS_TABLE).select("id").ilike("username", username);
-        for (const fila of filas || []) {
-          await supabase.from(USUARIOS_TABLE).delete().eq("id", fila.id);
+      if (dbId) {
+        const { data, error } = await supabase.from(USUARIOS_TABLE).delete().eq("id", dbId).select("id");
+        if (error) {
+          alert(`Error al eliminar:\n${error.message}`);
+        } else if (!data || data.length === 0) {
+          alert("No se encontró el usuario en Supabase para eliminar.");
+        }
+      } else if (username) {
+        const { data: filas, error: selErr } = await supabase.from(USUARIOS_TABLE).select("id").ilike("username", username);
+        if (selErr) {
+          alert(`Error al buscar usuario:\n${selErr.message}`);
+        } else if (!filas || filas.length === 0) {
+          alert("No se encontró el usuario en Supabase para eliminar.");
+        } else {
+          for (const fila of filas || []) {
+            const { error: delErr } = await supabase.from(USUARIOS_TABLE).delete().eq("id", fila.id);
+            if (delErr) {
+              alert(`Error al eliminar:\n${delErr.message}`);
+              break;
+            }
+          }
         }
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
@@ -8721,11 +8735,29 @@ export default function App() {
       prev.map((u) => (u.id === id ? { ...u, activo: nuevoActivo } : u))
     );
     if (isSupabaseConfigured && usuario) {
+      const dbId = usuario.supabaseId ?? null;
       const username = String(usuario.username || "").trim();
-      if (username) {
-        const { data: filas } = await supabase.from(USUARIOS_TABLE).select("id").ilike("username", username);
-        for (const fila of filas || []) {
-          await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", fila.id);
+      if (dbId) {
+        const { data, error } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", dbId).select("id");
+        if (error) {
+          alert(`Error al actualizar estado:\n${error.message}`);
+        } else if (!data || data.length === 0) {
+          alert("No se encontró el usuario en Supabase para actualizar estado.");
+        }
+      } else if (username) {
+        const { data: filas, error: selErr } = await supabase.from(USUARIOS_TABLE).select("id").ilike("username", username);
+        if (selErr) {
+          alert(`Error al buscar usuario:\n${selErr.message}`);
+        } else if (!filas || filas.length === 0) {
+          alert("No se encontró el usuario en Supabase para actualizar estado.");
+        } else {
+          for (const fila of filas || []) {
+            const { error: updErr } = await supabase.from(USUARIOS_TABLE).update({ activo: nuevoActivo }).eq("id", fila.id);
+            if (updErr) {
+              alert(`Error al actualizar estado:\n${updErr.message}`);
+              break;
+            }
+          }
         }
       }
       await cargarUsuariosDesdeSupabase({ silent: true });
@@ -10333,6 +10365,14 @@ export default function App() {
     : { dni: "", nodo: "", userPppoe: "", clienteNombre: "" };
   const diagnosticoRapidoMikrotik = clienteDiagnosticoRapidoResultado?.mikrotik || null;
   const diagnosticoRapidoEstadoVisual = getDiagnosticoEstadoVisual(diagnosticoRapidoMikrotik?.estado);
+
+  if (!usuarioSesion && !usuariosSupabaseReady && isSupabaseConfigured) {
+    return (
+      <div style={{ ...pageStyle, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div style={{ color: "#6b7280", fontSize: "16px" }}>Cargando...</div>
+      </div>
+    );
+  }
 
   if (!usuarioSesion) {
     return (
