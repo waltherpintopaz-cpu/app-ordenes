@@ -644,6 +644,7 @@ function deserializeLiquidacionFromSupabase(row = {}) {
     codigo: String(row.codigo || row.codigo_orden || "").trim(),
     ordenOriginalId: row.orden_original_id ?? null,
     fechaLiquidacion: formatFechaFlexible(row.fecha_liquidacion || row.updated_at || row.created_at || ""),
+    fechaLiquidacionISO: String(row.fecha_liquidacion || row.updated_at || row.created_at || "").slice(0, 10),
     tipoActuacion: String(row.tipo_actuacion || "").trim(),
     dni: String(row.dni || "").trim(),
     nombre: String(row.nombre || row.cliente || "").trim(),
@@ -9281,14 +9282,14 @@ export default function App() {
     // Filtro fecha desde
     if (histFiltroDesde) {
       base = base.filter((item) => {
-        const f = item.fechaLiquidacion ? String(item.fechaLiquidacion).slice(0, 10) : null;
+        const f = item.fechaLiquidacionISO || "";
         return f && f >= histFiltroDesde;
       });
     }
     // Filtro fecha hasta
     if (histFiltroHasta) {
       base = base.filter((item) => {
-        const f = item.fechaLiquidacion ? String(item.fechaLiquidacion).slice(0, 10) : null;
+        const f = item.fechaLiquidacionISO || "";
         return f && f <= histFiltroHasta;
       });
     }
