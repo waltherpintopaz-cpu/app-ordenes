@@ -1776,6 +1776,10 @@ export default function App() {
   const [ordenDetalle, setOrdenDetalle] = useState(null);
   const [fotosOrdenDetalle, setFotosOrdenDetalle] = useState([]);
   const [liquidacion, setLiquidacion] = useState(initialLiquidacion);
+  const [etiquetaFiltro, setEtiquetaFiltro] = useState("");
+  const [showEtiquetaDropdown, setShowEtiquetaDropdown] = useState(false);
+  const [etiquetaFiltroEdit, setEtiquetaFiltroEdit] = useState("");
+  const [showEtiquetaDropdownEdit, setShowEtiquetaDropdownEdit] = useState(false);
   const [liquidacionGuardando, setLiquidacionGuardando] = useState(false);
   const [busquedaEqInv, setBusquedaEqInv] = useState("");
   const [liquidacionRecojo, setLiquidacionRecojo] = useState(initialLiquidacionRecojo);
@@ -2173,6 +2177,19 @@ export default function App() {
   const autoresOrdenActivos = useMemo(() => {
     return usuarios.filter((u) => normalizarRolSimple(u.rol) === "Gestora" && u.activo);
   }, [usuarios]);
+
+  const etiquetasUsadas = useMemo(() =>
+    new Set((clientes || []).map(c => String(c.codigoEtiqueta || c.codigo_etiqueta || "").trim()).filter(Boolean)),
+    [clientes]
+  );
+  const todasEtiquetas = useMemo(() =>
+    Array.from({ length: 2000 }, (_, i) => "05" + String(i + 1).padStart(4, "0")),
+    []
+  );
+  const etiquetasDisponibles = useMemo(() =>
+    todasEtiquetas.filter(e => !etiquetasUsadas.has(e)),
+    [todasEtiquetas, etiquetasUsadas]
+  );
 
   const usuariosNodoUsados = useMemo(() => {
     const fromOrdenes = (Array.isArray(ordenes) ? ordenes : [])
@@ -15235,7 +15252,34 @@ export default function App() {
                       {grp("Nodo", "nodo")}
                       {grp("Usuario PPPoE", "usuarioNodo")}
                       {grp("Contraseña PPPoE", "passwordUsuario")}
-                      {grp("Código etiqueta", "codigoEtiqueta")}
+                      <div>
+                        <label style={lbl}>Código etiqueta</label>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            value={f.codigoEtiqueta || ""}
+                            onChange={e => { set("codigoEtiqueta", e.target.value); setEtiquetaFiltroEdit(e.target.value); setShowEtiquetaDropdownEdit(true); }}
+                            onFocus={() => { setEtiquetaFiltroEdit(f.codigoEtiqueta || ""); setShowEtiquetaDropdownEdit(true); }}
+                            onBlur={() => setTimeout(() => setShowEtiquetaDropdownEdit(false), 150)}
+                            style={inp} placeholder="Buscar etiqueta..." autoComplete="off"
+                          />
+                          {showEtiquetaDropdownEdit && (
+                            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 180, overflowY: "auto", zIndex: 10000, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
+                              {[...(f.codigoEtiqueta ? [f.codigoEtiqueta] : []), ...etiquetasDisponibles.filter(e => e !== f.codigoEtiqueta)]
+                                .filter(e => !etiquetaFiltroEdit || e.includes(etiquetaFiltroEdit))
+                                .slice(0, 60)
+                                .map(e => (
+                                  <div key={e} onMouseDown={() => { set("codigoEtiqueta", e); setShowEtiquetaDropdownEdit(false); }}
+                                    style={{ padding: "7px 12px", cursor: "pointer", fontSize: 12, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #f8fafc" }}
+                                    onMouseEnter={ev => ev.currentTarget.style.background = "#eff6ff"}
+                                    onMouseLeave={ev => ev.currentTarget.style.background = ""}>
+                                    <span style={{ color: "#0f172a" }}>{e}</span>
+                                    {e === f.codigoEtiqueta && <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 700 }}>Actual</span>}
+                                  </div>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       {grp("SN ONU", "snOnu")}
                       {grp("Estado servicio", "estadoServicio", { select: true, options: ["ACTIVO", "SUSPENDIDO", "INACTIVO", "DESCONOCIDO"] })}
                     </div>
@@ -15865,13 +15909,33 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Código etiqueta</label>
-                  <input
-                    style={inputStyle}
-                    value={liquidacion.codigoEtiqueta}
-                    onChange={(e) => handleLiquidacionChange("codigoEtiqueta", e.target.value)}
-                    placeholder="Ej. ETQ-0001"
-                  />
+                  <label style={labelStyle}>Código etiqueta <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 600 }}>({etiquetasDisponibles.length} disponibles)</span></label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      style={inputStyle}
+                      value={liquidacion.codigoEtiqueta}
+                      onChange={(e) => { handleLiquidacionChange("codigoEtiqueta", e.target.value); setEtiquetaFiltro(e.target.value); setShowEtiquetaDropdown(true); }}
+                      onFocus={() => { setEtiquetaFiltro(liquidacion.codigoEtiqueta || ""); setShowEtiquetaDropdown(true); }}
+                      onBlur={() => setTimeout(() => setShowEtiquetaDropdown(false), 150)}
+                      placeholder="Buscar etiqueta disponible..."
+                      autoComplete="off"
+                    />
+                    {showEtiquetaDropdown && (
+                      <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 180, overflowY: "auto", zIndex: 1000, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
+                        {etiquetasDisponibles.filter(e => !etiquetaFiltro || e.includes(etiquetaFiltro)).slice(0, 60).map(e => (
+                          <div key={e} onMouseDown={() => { handleLiquidacionChange("codigoEtiqueta", e); setShowEtiquetaDropdown(false); }}
+                            style={{ padding: "7px 12px", cursor: "pointer", fontSize: 12, color: "#0f172a", borderBottom: "1px solid #f8fafc" }}
+                            onMouseEnter={ev => ev.currentTarget.style.background = "#eff6ff"}
+                            onMouseLeave={ev => ev.currentTarget.style.background = ""}>
+                            {e}
+                          </div>
+                        ))}
+                        {etiquetasDisponibles.filter(e => !etiquetaFiltro || e.includes(etiquetaFiltro)).length === 0 && (
+                          <div style={{ padding: "10px 12px", fontSize: 12, color: "#94a3b8" }}>Sin etiquetas disponibles</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label style={labelStyle}>SN ONU</label>
