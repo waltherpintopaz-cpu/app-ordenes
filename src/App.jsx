@@ -3597,8 +3597,16 @@ export default function App() {
       // usando codigo_abonado como conflict key para los que tienen ese campo
       if (error && (error?.code === "23505" || /duplicate key/i.test(String(error?.message || "")))) {
         for (const row of chunk) {
-          const conflictKey = row.codigo_abonado ? "codigo_abonado" : "id";
-          const rowToUpsert = row.codigo_abonado ? { ...row, id: undefined } : row;
+          let rowToUpsert, conflictKey;
+          if (row.codigo_abonado) {
+            // upsert por codigo_abonado sin enviar id (evita identity column conflict)
+            const { id: _omit, ...rowSinId } = row;
+            rowToUpsert = rowSinId;
+            conflictKey = "codigo_abonado";
+          } else {
+            rowToUpsert = row;
+            conflictKey = "id";
+          }
           const r = await supabase.from(CLIENTES_TABLE).upsert([rowToUpsert], { onConflict: conflictKey });
           if (r.error) console.error("[guardarClientesEnSupabase] row retry error:", r.error?.message, row.codigo_abonado || row.id);
         }
