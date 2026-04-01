@@ -10399,7 +10399,7 @@ export default function App() {
           <div style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
               <img
-                src="/americanet-logo-new.png"
+                src="/americanet-logo-clean.png"
                 alt="Americanet"
                 style={{ width: "220px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
               />
@@ -10471,7 +10471,7 @@ export default function App() {
         <div style={sidebarHeaderStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
             <img
-              src="/americanet-logo-new.png"
+              src="/americanet-logo-clean.png"
               alt="Americanet"
               style={{ width: "180px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
             />
@@ -11652,10 +11652,8 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
-                          {item.empresa && (
-                            <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
-                              <img src={item.empresa === "Americanet" ? logoAmericanet : item.empresa === "DIM" ? logoDim : null} alt={item.empresa} style={{ height: 18, maxWidth: 64, objectFit: "contain" }} />
-                            </span>
+                          {item.empresa && (item.empresa === "Americanet" || item.empresa === "DIM") && (
+                            <img src={item.empresa === "Americanet" ? logoAmericanet : logoDim} alt={item.empresa} style={{ height: 20, maxWidth: 68, objectFit: "contain", mixBlendMode: "multiply" }} />
                           )}
                           {/* HORA — destacada */}
                           {horaTexto ? (
@@ -14845,9 +14843,7 @@ export default function App() {
                               <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
                               <td style={{ padding: "11px 14px" }}>
                                 {cliente.empresa ? (
-                                  <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 7px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
-                                    <img src={cliente.empresa === "Americanet" ? logoAmericanet : cliente.empresa === "DIM" ? logoDim : null} alt={cliente.empresa} style={{ height: 18, maxWidth: 64, objectFit: "contain" }} />
-                                  </span>
+                                  <img src={cliente.empresa === "Americanet" ? logoAmericanet : cliente.empresa === "DIM" ? logoDim : null} alt={cliente.empresa} style={{ height: 20, maxWidth: 68, objectFit: "contain", mixBlendMode: "multiply" }} />
                                 ) : <span style={{ color: "#94a3b8", fontSize: 11 }}>-</span>}
                               </td>
                               <td style={{ padding: "11px 14px", color: "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
