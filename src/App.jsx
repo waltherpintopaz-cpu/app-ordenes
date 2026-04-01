@@ -3593,11 +3593,16 @@ export default function App() {
       if (error) {
         console.error("[guardarClientesEnSupabase] error upsert:", error?.message, error?.details, error?.code);
       }
-      // Conflicto en unique constraint de codigo_abonado — reintentar ignorando duplicados
+      // Conflicto en unique constraint de codigo_abonado — reintentar por chunks individuales
+      // usando codigo_abonado como conflict key para los que tienen ese campo
       if (error && (error?.code === "23505" || /duplicate key/i.test(String(error?.message || "")))) {
-        const retry = await supabase.from(CLIENTES_TABLE).upsert(chunk, { onConflict: "id", ignoreDuplicates: true });
-        error = retry.error;
-        if (retry.error) console.error("[guardarClientesEnSupabase] retry ignoreDuplicates error:", retry.error?.message);
+        for (const row of chunk) {
+          const conflictKey = row.codigo_abonado ? "codigo_abonado" : "id";
+          const rowToUpsert = row.codigo_abonado ? { ...row, id: undefined } : row;
+          const r = await supabase.from(CLIENTES_TABLE).upsert([rowToUpsert], { onConflict: conflictKey });
+          if (r.error) console.error("[guardarClientesEnSupabase] row retry error:", r.error?.message, row.codigo_abonado || row.id);
+        }
+        error = null; // procesado fila por fila
       }
       // identity column GENERATED ALWAYS — tratar igual que non-DEFAULT
       if (error && (error?.code === "428C9" || /non-DEFAULT value into column "id"/i.test(String(error?.message || "")))) {
