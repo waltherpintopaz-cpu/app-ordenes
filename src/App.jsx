@@ -1777,7 +1777,7 @@ export default function App() {
   // ── Helper de logs ──────────────────────────────────────────
   const escribirLog = ({ accion, categoria, criticidad = "normal", tabla = null, registro_id = null, detalle = {}, actor = null }) => {
     if (!isSupabaseConfigured) return;
-    void supabase.from("logs").insert([{
+    supabase.from("logs").insert([{
       accion,
       categoria,
       criticidad,
@@ -1788,7 +1788,9 @@ export default function App() {
       rol: actor?.rol || null,
       empresa: actor?.empresa || null,
       dispositivo: "web",
-    }]);
+    }]).then(({ error }) => {
+      if (error) console.error("[escribirLog] Error al insertar log:", error.message, { accion, actor });
+    });
   };
   // ────────────────────────────────────────────────────────────
 

@@ -23,10 +23,26 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
   const [filtroCriticidad, setFiltroCriticidad] = useState("");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
+  const cargarLogs = () => {
     setLogsCargando(true);
     supabase.from("logs").select("*").order("fecha", { ascending: false }).limit(1000)
-      .then(({ data }) => { setLogsData(data || []); setLogsCargando(false); });
+      .then(({ data, error }) => {
+        if (error) console.error("[LogsPanel] Error cargando logs:", error.message);
+        setLogsData(data || []);
+        setLogsCargando(false);
+      });
+  };
+
+  useEffect(() => {
+    cargarLogs();
+    const channel = supabase
+      .channel("logs-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "logs" }, (payload) => {
+        setLogsData(prev => [payload.new, ...prev].slice(0, 1000));
+        setPage(1);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const logsFiltrados = logsData.filter(l =>
@@ -74,6 +90,7 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
           <div style={{ fontSize: 12, color: "#64748b" }}>{logsFiltrados.length} registros</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={cargarLogs} style={{ padding: "7px 14px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#15803d", cursor: "pointer" }}>↺ Recargar</button>
           <button onClick={exportarCSV} style={{ padding: "7px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#1d4ed8", cursor: "pointer" }}>⬇ Exportar CSV</button>
           <button onClick={() => limpiarLogs(60, true)} style={{ padding: "7px 14px", background: "#fef3c7", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#92400e", cursor: "pointer" }}>🧹 Limpiar normales &gt;60d</button>
           <button onClick={() => limpiarLogs(365, false)} style={{ padding: "7px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#dc2626", cursor: "pointer" }}>🗑 Limpiar todo &gt;1 año</button>
