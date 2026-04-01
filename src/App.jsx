@@ -13,8 +13,8 @@ import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
-import logoAmericanet from "./assets/americanet-logo-new.png";
-import logoDim from "./assets/dim-logo.png";
+import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
+import logoDim from "./assets/dim-logo-trimmed.png";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -11652,8 +11652,13 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
-                          {item.empresa && (item.empresa === "Americanet" || item.empresa === "DIM") && (
-                            <img src={item.empresa === "Americanet" ? logoAmericanet : logoDim} alt={item.empresa} style={{ height: 20, maxWidth: 68, objectFit: "contain", mixBlendMode: "multiply" }} />
+                          {item.empresa === "Americanet" && (
+                            <img src={logoAmericanet} alt="Americanet" style={{ height: 22, maxWidth: 80, objectFit: "contain", mixBlendMode: "multiply" }} />
+                          )}
+                          {item.empresa === "DIM" && (
+                            <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 6, overflow: "hidden", height: 22 }}>
+                              <img src={logoDim} alt="DIM" style={{ height: 22, objectFit: "contain" }} />
+                            </span>
                           )}
                           {/* HORA — destacada */}
                           {horaTexto ? (
@@ -14842,8 +14847,12 @@ export default function App() {
                               </td>
                               <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
                               <td style={{ padding: "11px 14px" }}>
-                                {cliente.empresa ? (
-                                  <img src={cliente.empresa === "Americanet" ? logoAmericanet : cliente.empresa === "DIM" ? logoDim : null} alt={cliente.empresa} style={{ height: 20, maxWidth: 68, objectFit: "contain", mixBlendMode: "multiply" }} />
+                                {cliente.empresa === "Americanet" ? (
+                                  <img src={logoAmericanet} alt="Americanet" style={{ height: 22, maxWidth: 80, objectFit: "contain", mixBlendMode: "multiply" }} />
+                                ) : cliente.empresa === "DIM" ? (
+                                  <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 6, overflow: "hidden", height: 22 }}>
+                                    <img src={logoDim} alt="DIM" style={{ height: 22, objectFit: "contain" }} />
+                                  </span>
                                 ) : <span style={{ color: "#94a3b8", fontSize: 11 }}>-</span>}
                               </td>
                               <td style={{ padding: "11px 14px", color: "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
