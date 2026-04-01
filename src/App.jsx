@@ -162,6 +162,7 @@ const MENU_VISTAS_WEB = [
   { key: "whatsapp", label: "WhatsApp" },
   { key: "nap", label: "Cajas NAP" },
   { key: "recordatorios", label: "Recordatorios" },
+  { key: "logs", label: "Logs" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -1771,6 +1772,25 @@ export default function App() {
   const clientesSavePromiseRef = useRef(null);
   const usuariosHydratingRef = useRef(false);
   const usuariosSyncTimerRef = useRef(null);
+
+  // ── Helper de logs ──────────────────────────────────────────
+  const escribirLog = ({ accion, categoria, criticidad = "normal", tabla = null, registro_id = null, detalle = {} }) => {
+    if (!isSupabaseConfigured) return;
+    const actor = usuarioSesion;
+    void supabase.from("logs").insert([{
+      accion,
+      categoria,
+      criticidad,
+      tabla,
+      registro_id: registro_id ? String(registro_id) : null,
+      detalle,
+      usuario: actor?.nombre || "desconocido",
+      rol: actor?.rol || null,
+      empresa: actor?.empresa || null,
+      dispositivo: "web",
+    }]);
+  };
+  // ────────────────────────────────────────────────────────────
 
   const [ordenEnLiquidacion, setOrdenEnLiquidacion] = useState(null);
   const [ordenDetalle, setOrdenDetalle] = useState(null);
@@ -4339,6 +4359,7 @@ export default function App() {
       return [encontrado, ...prev];
     });
     setUsuarioSesionId(Number(encontrado.id));
+    void supabase.from("logs").insert([{ accion: "login", categoria: "sesion", criticidad: "normal", usuario: encontrado.nombre || encontrado.username, rol: encontrado.rol, empresa: encontrado.empresa, dispositivo: "web", detalle: { username: encontrado.username } }]);
     setErrorLogin("");
     setCredencialesLogin({ username: "", password: "" });
   };
@@ -4349,6 +4370,7 @@ export default function App() {
       sessionIdleTimeoutRef.current = null;
     }
     localStorage.removeItem("sesionToken");
+    if (isSupabaseConfigured && usuarioSesion) void supabase.from("logs").insert([{ accion: "logout", categoria: "sesion", criticidad: "normal", usuario: usuarioSesion.nombre, rol: usuarioSesion.rol, empresa: usuarioSesion.empresa, dispositivo: "web", detalle: motivo ? { motivo } : {} }]);
     setUsuarioSesionId(null);
     setCredencialesLogin({ username: "", password: "" });
     setErrorLogin("");
@@ -7403,8 +7425,10 @@ export default function App() {
         const merged = deserializeOrderFromSupabase(saved || payload);
         if (ordenEditandoId) {
           setOrdenes((prev) => prev.map((item) => (item.id === ordenEditandoId ? { ...item, ...merged } : item)));
+          escribirLog({ accion: "editar_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre } });
         } else {
           setOrdenes((prev) => [merged, ...prev.filter((x) => String(x.codigo) !== String(merged.codigo))]);
+          escribirLog({ accion: "crear_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre, tecnico: merged.tecnico } });
         }
       } catch (e) {
         const msg = String(e?.message || "No se pudo guardar orden en Supabase.");
@@ -7487,6 +7511,7 @@ export default function App() {
         alert(del.error.message || "No se pudo eliminar la orden en Supabase.");
         return;
       }
+      escribirLog({ accion: "eliminar_orden", categoria: "orden", criticidad: "critica", tabla: "ordenes", registro_id: id, detalle: { codigo, empresa: target?.empresa, cliente: target?.nombre, tecnico: target?.tecnico, estado: target?.estado } });
     }
     setOrdenes((prev) => prev.filter((item) => item.id !== id));
   };
@@ -8220,6 +8245,7 @@ export default function App() {
       setVistaActiva("historial");
 
       const custodiaMsg = eqsRecuperados.length > 0 ? `\n\n${eqsRecuperados.length} equipo(s) en custodia técnica.` : "";
+      escribirLog({ accion: liquidacionEditandoId ? "editar_liquidacion" : "crear_liquidacion", categoria: "liquidacion", tabla: "liquidaciones", registro_id: liquidacionId, detalle: { codigo: ordenEnLiquidacion?.codigo, empresa: ordenEnLiquidacion?.empresa, cliente: ordenEnLiquidacion?.nombre, tecnico: liquidacion.tecnicoLiquida, resultado: liquidacion.resultadoFinal } });
       if (avisos.length > 0) alert(`Liquidación guardada con avisos:\n• ${avisos.join("\n• ")}${custodiaMsg}`);
       else alert(`Liquidación guardada correctamente.${custodiaMsg}`);
 
@@ -9014,6 +9040,7 @@ export default function App() {
           const cliDel = await supabase.from(CLIENTES_TABLE).delete().eq("dni", dni);
           if (cliDel.error) throw cliDel.error;
         }
+        escribirLog({ accion: "eliminar_cliente", categoria: "cliente", criticidad: "critica", tabla: "clientes", registro_id: clienteId || dni, detalle: { nombre: cliente?.nombre, dni: cliente?.dni, nodo: cliente?.nodo, empresa: cliente?.empresa } });
       }
 
       setClientes((prev) =>
@@ -14931,6 +14958,173 @@ export default function App() {
         {vistaActiva === "recordatorios" && (
           <RecordatoriosPanel sessionUser={usuarioSesion} />
         )}
+
+        {vistaActiva === "logs" && esAdminSesion && (() => {
+          const [logsData, setLogsData] = React.useState([]);
+          const [logsCargando, setLogsCargando] = React.useState(true);
+          const [logsFiltroAccion, setLogsFiltroAccion] = React.useState("");
+          const [logsFiltroUsuario, setLogsFiltroUsuario] = React.useState("");
+          const [logsFiltroCategoria, setLogsFiltroCategoria] = React.useState("");
+          const [logsFiltroCriticidad, setLogsFiltroCriticidad] = React.useState("");
+          const [logsPage, setLogsPage] = React.useState(1);
+          const LOGS_PAGE_SIZE = 50;
+
+          React.useEffect(() => {
+            setLogsCargando(true);
+            supabase.from("logs").select("*").order("fecha", { ascending: false }).limit(1000)
+              .then(({ data }) => { setLogsData(data || []); setLogsCargando(false); });
+          }, []);
+
+          const logsFiltrados = logsData.filter(l =>
+            (!logsFiltroAccion || l.accion?.includes(logsFiltroAccion)) &&
+            (!logsFiltroUsuario || (l.usuario || "").toLowerCase().includes(logsFiltroUsuario.toLowerCase())) &&
+            (!logsFiltroCategoria || l.categoria === logsFiltroCategoria) &&
+            (!logsFiltroCriticidad || l.criticidad === logsFiltroCriticidad)
+          );
+          const totalPags = Math.max(1, Math.ceil(logsFiltrados.length / LOGS_PAGE_SIZE));
+          const logsPag = logsFiltrados.slice((logsPage - 1) * LOGS_PAGE_SIZE, logsPage * LOGS_PAGE_SIZE);
+
+          const accionColor = (a) => {
+            if (!a) return { bg: "#f1f5f9", c: "#475569" };
+            if (a.includes("eliminar")) return { bg: "#fee2e2", c: "#dc2626" };
+            if (a.includes("crear")) return { bg: "#dcfce7", c: "#16a34a" };
+            if (a.includes("editar")) return { bg: "#fef3c7", c: "#d97706" };
+            if (a.includes("login")) return { bg: "#eff6ff", c: "#2563eb" };
+            if (a.includes("logout")) return { bg: "#f3f4f6", c: "#6b7280" };
+            if (a.includes("liquidac")) return { bg: "#f0fdf4", c: "#15803d" };
+            return { bg: "#f1f5f9", c: "#475569" };
+          };
+
+          const exportarCSV = () => {
+            const cols = ["fecha","usuario","rol","empresa","accion","categoria","criticidad","tabla","registro_id","dispositivo","detalle"];
+            const rows = logsFiltrados.map(l => cols.map(c => {
+              const v = c === "detalle" ? JSON.stringify(l[c] || {}) : (l[c] || "");
+              return `"${String(v).replace(/"/g, '""')}"`;
+            }).join(","));
+            const csv = [cols.join(","), ...rows].join("\n");
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+            a.download = `logs_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+          };
+
+          const limpiarLogs = async (dias, solo_normales) => {
+            const confirm = window.confirm(`¿Eliminar logs ${solo_normales ? "normales" : ""} anteriores a ${dias} días?`);
+            if (!confirm) return;
+            let q = supabase.from("logs").delete().lt("fecha", new Date(Date.now() - dias * 86400000).toISOString());
+            if (solo_normales) q = q.eq("criticidad", "normal");
+            await q;
+            setLogsData(prev => prev.filter(l => {
+              const old = new Date(l.fecha) < new Date(Date.now() - dias * 86400000);
+              return !(old && (solo_normales ? l.criticidad === "normal" : true));
+            }));
+          };
+
+          return (
+            <div style={{ display: "grid", gap: 16 }}>
+              {/* Header */}
+              <div style={{ ...cardStyle, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h2 style={{ ...sectionTitleStyle, marginBottom: 4 }}>Logs del sistema</h2>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{logsFiltrados.length} registros</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={exportarCSV} style={{ padding: "7px 14px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#1d4ed8", cursor: "pointer" }}>⬇ Exportar CSV</button>
+                  <button onClick={() => limpiarLogs(60, true)} style={{ padding: "7px 14px", background: "#fef3c7", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#92400e", cursor: "pointer" }}>🧹 Limpiar normales &gt;60d</button>
+                  <button onClick={() => limpiarLogs(365, false)} style={{ padding: "7px 14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#dc2626", cursor: "pointer" }}>🗑 Limpiar todo &gt;1 año</button>
+                </div>
+              </div>
+
+              {/* Filtros */}
+              <div style={{ ...cardStyle, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <input value={logsFiltroUsuario} onChange={e => { setLogsFiltroUsuario(e.target.value); setLogsPage(1); }} placeholder="Filtrar por usuario..." style={{ ...inputStyle, width: 180, margin: 0 }} />
+                <select value={logsFiltroCategoria} onChange={e => { setLogsFiltroCategoria(e.target.value); setLogsPage(1); }} style={{ ...inputStyle, width: 140, margin: 0 }}>
+                  <option value="">Todas categorías</option>
+                  <option value="orden">Orden</option>
+                  <option value="liquidacion">Liquidación</option>
+                  <option value="cliente">Cliente</option>
+                  <option value="sesion">Sesión</option>
+                </select>
+                <select value={logsFiltroAccion} onChange={e => { setLogsFiltroAccion(e.target.value); setLogsPage(1); }} style={{ ...inputStyle, width: 180, margin: 0 }}>
+                  <option value="">Todas las acciones</option>
+                  <option value="crear_orden">Crear orden</option>
+                  <option value="editar_orden">Editar orden</option>
+                  <option value="eliminar_orden">Eliminar orden</option>
+                  <option value="crear_liquidacion">Crear liquidación</option>
+                  <option value="editar_liquidacion">Editar liquidación</option>
+                  <option value="eliminar_cliente">Eliminar cliente</option>
+                  <option value="login">Login</option>
+                  <option value="logout">Logout</option>
+                </select>
+                <select value={logsFiltroCriticidad} onChange={e => { setLogsFiltroCriticidad(e.target.value); setLogsPage(1); }} style={{ ...inputStyle, width: 140, margin: 0 }}>
+                  <option value="">Toda criticidad</option>
+                  <option value="critica">🔴 Crítica</option>
+                  <option value="normal">🟢 Normal</option>
+                </select>
+                {(logsFiltroUsuario || logsFiltroCategoria || logsFiltroAccion || logsFiltroCriticidad) && (
+                  <button onClick={() => { setLogsFiltroUsuario(""); setLogsFiltroCategoria(""); setLogsFiltroAccion(""); setLogsFiltroCriticidad(""); setLogsPage(1); }} style={{ padding: "7px 12px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>✕ Limpiar filtros</button>
+                )}
+              </div>
+
+              {/* Tabla */}
+              {logsCargando ? (
+                <div style={{ ...cardStyle, textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando logs...</div>
+              ) : (
+                <div style={{ border: "1px solid #f1f5f9", borderRadius: 14, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc" }}>
+                        {["Fecha", "Usuario", "Rol", "Empresa", "Acción", "Criticidad", "Detalle", "Dispositivo"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", borderBottom: "1.5px solid #f1f5f9" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logsPag.map(l => {
+                        const ac = accionColor(l.accion);
+                        const det = l.detalle || {};
+                        return (
+                          <tr key={l.id} style={{ borderTop: "1px solid #f8fafc" }} onMouseEnter={e => e.currentTarget.style.background = "#fafbff"} onMouseLeave={e => e.currentTarget.style.background = ""}>
+                            <td style={{ padding: "9px 12px", color: "#475569", whiteSpace: "nowrap" }}>{new Date(l.fecha).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}</td>
+                            <td style={{ padding: "9px 12px", fontWeight: 700, color: "#0f172a" }}>{l.usuario || "-"}</td>
+                            <td style={{ padding: "9px 12px", color: "#64748b" }}>{l.rol || "-"}</td>
+                            <td style={{ padding: "9px 12px", color: "#64748b" }}>{l.empresa || "-"}</td>
+                            <td style={{ padding: "9px 12px" }}><span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: ac.bg, color: ac.c }}>{l.accion || "-"}</span></td>
+                            <td style={{ padding: "9px 12px" }}><span style={{ fontSize: 11, fontWeight: 700, color: l.criticidad === "critica" ? "#dc2626" : "#16a34a" }}>{l.criticidad === "critica" ? "🔴 Crítica" : "🟢 Normal"}</span></td>
+                            <td style={{ padding: "9px 12px", color: "#475569", maxWidth: 260 }}>
+                              {det.codigo && <span><b>Orden:</b> {det.codigo} </span>}
+                              {det.cliente && <span><b>Cliente:</b> {det.cliente} </span>}
+                              {det.nombre && <span><b>Nombre:</b> {det.nombre} </span>}
+                              {det.tecnico && <span><b>Técnico:</b> {det.tecnico} </span>}
+                              {det.resultado && <span><b>Resultado:</b> {det.resultado} </span>}
+                              {det.motivo && <span><b>Motivo:</b> {det.motivo}</span>}
+                            </td>
+                            <td style={{ padding: "9px 12px", color: "#94a3b8" }}>{l.dispositivo || "web"}</td>
+                          </tr>
+                        );
+                      })}
+                      {logsPag.length === 0 && (
+                        <tr><td colSpan={8} style={{ padding: "30px", textAlign: "center", color: "#94a3b8" }}>Sin logs con los filtros actuales</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Paginación */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                  {logsFiltrados.length === 0 ? 0 : (logsPage - 1) * LOGS_PAGE_SIZE + 1}–{Math.min(logsPage * LOGS_PAGE_SIZE, logsFiltrados.length)} de {logsFiltrados.length}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setLogsPage(p => Math.max(1, p - 1))} disabled={logsPage <= 1} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>← Ant.</button>
+                  <span style={{ fontSize: 12, color: "#64748b", padding: "0 8px", alignSelf: "center" }}>Pág. {logsPage} / {totalPags}</span>
+                  <button onClick={() => setLogsPage(p => Math.min(totalPags, p + 1))} disabled={logsPage >= totalPags} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>Sig. →</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
           const cli = clienteSeleccionado;
