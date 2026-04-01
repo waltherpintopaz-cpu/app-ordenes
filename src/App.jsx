@@ -7225,7 +7225,7 @@ export default function App() {
       if (isSupabaseConfigured) {
         const { data: cli } = await supabase
           .from("clientes")
-          .select("nombre,direccion,celular,email,contacto,nodo,usuario_nodo,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu")
+          .select("nombre,direccion,celular,email,contacto,nodo,usuario_nodo,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta")
           .eq("dni", dni)
           .order("id", { ascending: false })
           .limit(1)
@@ -7261,6 +7261,7 @@ export default function App() {
           cajaNap: clienteInterno.caja_nap || prev.cajaNap,
           puertoNap: clienteInterno.puerto_nap || prev.puertoNap,
           snOnu: clienteInterno.sn_onu || prev.snOnu,
+          codigoEtiqueta: clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
         }));
         if (clienteInterno.caja_nap) cajaNapDesdClienteRef.current = true;
         // Cargar todas las fotos del cliente
