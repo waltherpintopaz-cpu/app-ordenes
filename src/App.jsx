@@ -9668,7 +9668,6 @@ export default function App() {
   // Mapa interactivo en formulario Crear orden
   useEffect(() => {
     if (vistaActiva !== "crear") {
-      // Destruir mapa al salir de la vista para evitar conflictos
       if (mapaCrearInstanceRef.current) {
         mapaCrearInstanceRef.current.remove();
         mapaCrearInstanceRef.current = null;
@@ -9676,34 +9675,16 @@ export default function App() {
       }
       return;
     }
-    // Esperar a que el div esté en el DOM y con tamaño real
-    const initMap = () => {
-      if (!mapaCrearRef.current) return false;
-      const { offsetWidth, offsetHeight } = mapaCrearRef.current;
-      if (offsetWidth === 0 || offsetHeight === 0) return false;
-      return true;
-    };
-    if (!initMap()) {
-      const timer = setInterval(() => {
-        if (initMap()) {
-          clearInterval(timer);
-          // re-trigger via invalidateSize si ya existe
-          if (mapaCrearInstanceRef.current) {
-            mapaCrearInstanceRef.current.invalidateSize();
-          }
-        }
-      }, 50);
-      setTimeout(() => clearInterval(timer), 3000);
-      return () => clearInterval(timer);
-    }
-    if (!mapaCrearRef.current) return;
 
     const DEFAULT_COORDS = [-16.43849, -71.598208];
     const coords = parseCoords(orden.ubicacion) ?? DEFAULT_COORDS;
 
-    if (!mapaCrearInstanceRef.current) {
-      const map = L.map(mapaCrearRef.current, { zoomControl: true }).setView(coords, 16);
-
+    const crearMapa = (node) => {
+      if (mapaCrearInstanceRef.current) {
+        mapaCrearInstanceRef.current.invalidateSize();
+        return;
+      }
+      const map = L.map(node, { zoomControl: true }).setView(coords, 16);
       const tileNormal = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
         attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
         subdomains: "abcd",
@@ -9713,10 +9694,8 @@ export default function App() {
         attribution: "Tiles &copy; Esri",
         maxZoom: 19,
       });
-
       tileNormal.addTo(map);
 
-      // Botón toggle satélite
       let sateliteActivo = false;
       const toggleBtn = L.control({ position: "topright" });
       toggleBtn.onAdd = () => {
@@ -9727,17 +9706,8 @@ export default function App() {
         L.DomEvent.on(btn, "click", (e) => {
           L.DomEvent.stopPropagation(e);
           sateliteActivo = !sateliteActivo;
-          if (sateliteActivo) {
-            map.removeLayer(tileNormal);
-            tileSatelite.addTo(map);
-            btn.innerHTML = "🗺️";
-            btn.title = "Vista normal";
-          } else {
-            map.removeLayer(tileSatelite);
-            tileNormal.addTo(map);
-            btn.innerHTML = "🛰️";
-            btn.title = "Vista satelital";
-          }
+          if (sateliteActivo) { map.removeLayer(tileNormal); tileSatelite.addTo(map); btn.innerHTML = "🗺️"; btn.title = "Vista normal"; }
+          else { map.removeLayer(tileSatelite); tileNormal.addTo(map); btn.innerHTML = "🛰️"; btn.title = "Vista satelital"; }
         });
         return btn;
       };
@@ -9748,22 +9718,30 @@ export default function App() {
         const { lat, lng } = e.target.getLatLng();
         handleChange("ubicacion", `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
       });
-
       map.on("click", (e) => {
         const { lat, lng } = e.latlng;
-        const newCoords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        handleChange("ubicacion", newCoords);
+        handleChange("ubicacion", `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
         marker.setLatLng([lat, lng]);
       });
 
       mapaCrearInstanceRef.current = map;
       mapaCrearMarkerRef.current = marker;
-      // Forzar recalculo de tamaño por si el contenedor renderizo con alto 0
-      setTimeout(() => { map.invalidateSize(); }, 150);
+      map.invalidateSize();
+    };
+
+    // Si el div ya está en el DOM con tamaño, inicializar de inmediato
+    if (mapaCrearRef.current && mapaCrearRef.current.offsetHeight > 0) {
+      crearMapa(mapaCrearRef.current);
     } else {
-      mapaCrearInstanceRef.current.setView(coords, 16);
-      mapaCrearMarkerRef.current?.setLatLng(coords);
-      setTimeout(() => { mapaCrearInstanceRef.current?.invalidateSize(); }, 150);
+      // Sino, hacer polling hasta que aparezca
+      const timer = setInterval(() => {
+        if (mapaCrearRef.current && mapaCrearRef.current.offsetHeight > 0) {
+          clearInterval(timer);
+          crearMapa(mapaCrearRef.current);
+        }
+      }, 50);
+      setTimeout(() => clearInterval(timer), 5000);
+      return () => clearInterval(timer);
     }
   }, [vistaActiva]);
 
