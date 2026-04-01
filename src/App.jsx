@@ -9738,9 +9738,12 @@ export default function App() {
 
       mapaCrearInstanceRef.current = map;
       mapaCrearMarkerRef.current = marker;
+      // Forzar recalculo de tamaño por si el contenedor renderizo con alto 0
+      setTimeout(() => { map.invalidateSize(); }, 150);
     } else {
       mapaCrearInstanceRef.current.setView(coords, 16);
       mapaCrearMarkerRef.current?.setLatLng(coords);
+      setTimeout(() => { mapaCrearInstanceRef.current?.invalidateSize(); }, 150);
     }
   }, [vistaActiva]);
 
