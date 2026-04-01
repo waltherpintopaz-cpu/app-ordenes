@@ -15910,32 +15910,21 @@ export default function App() {
                 </div>
                 <div>
                   <label style={labelStyle}>Código etiqueta <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 600 }}>({etiquetasDisponibles.length} disponibles)</span></label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      style={inputStyle}
-                      value={liquidacion.codigoEtiqueta}
-                      onChange={(e) => { handleLiquidacionChange("codigoEtiqueta", e.target.value); setEtiquetaFiltro(e.target.value); setShowEtiquetaDropdown(true); }}
-                      onFocus={() => { setEtiquetaFiltro(liquidacion.codigoEtiqueta || ""); setShowEtiquetaDropdown(true); }}
-                      onBlur={() => setTimeout(() => setShowEtiquetaDropdown(false), 150)}
-                      placeholder="Buscar etiqueta disponible..."
-                      autoComplete="off"
-                    />
-                    {showEtiquetaDropdown && (
-                      <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: 180, overflowY: "auto", zIndex: 1000, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}>
-                        {etiquetasDisponibles.filter(e => !etiquetaFiltro || e.includes(etiquetaFiltro)).slice(0, 60).map(e => (
-                          <div key={e} onMouseDown={() => { handleLiquidacionChange("codigoEtiqueta", e); setShowEtiquetaDropdown(false); }}
-                            style={{ padding: "7px 12px", cursor: "pointer", fontSize: 12, color: "#0f172a", borderBottom: "1px solid #f8fafc" }}
-                            onMouseEnter={ev => ev.currentTarget.style.background = "#eff6ff"}
-                            onMouseLeave={ev => ev.currentTarget.style.background = ""}>
-                            {e}
-                          </div>
-                        ))}
-                        {etiquetasDisponibles.filter(e => !etiquetaFiltro || e.includes(etiquetaFiltro)).length === 0 && (
-                          <div style={{ padding: "10px 12px", fontSize: 12, color: "#94a3b8" }}>Sin etiquetas disponibles</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <input
+                    style={inputStyle}
+                    value={liquidacion.codigoEtiqueta}
+                    onChange={(e) => { handleLiquidacionChange("codigoEtiqueta", e.target.value); setEtiquetaFiltro(e.target.value); setShowEtiquetaDropdown(true); }}
+                    onFocus={() => { setEtiquetaFiltro(liquidacion.codigoEtiqueta || ""); setShowEtiquetaDropdown(true); }}
+                    onBlur={() => setTimeout(() => setShowEtiquetaDropdown(false), 200)}
+                    placeholder="Escribe para buscar etiqueta..."
+                    autoComplete="off"
+                    list="etiquetas-disponibles-list"
+                  />
+                  <datalist id="etiquetas-disponibles-list">
+                    {etiquetasDisponibles.filter(e => !etiquetaFiltro || e.includes(etiquetaFiltro)).slice(0, 100).map(e => (
+                      <option key={e} value={e} />
+                    ))}
+                  </datalist>
                 </div>
                 <div>
                   <label style={labelStyle}>SN ONU</label>
