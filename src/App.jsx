@@ -3589,9 +3589,15 @@ export default function App() {
     for (let ci = 0; ci < chunks.length; ci++) {
       const chunk = chunks[ci];
       if (ci > 0) await new Promise((r) => setTimeout(r, 300)); // pausa entre chunks para no saturar
-      let { error } = await supabase.from(CLIENTES_TABLE).upsert(chunk, { onConflict: "id" });
+      let { error } = await supabase.from(CLIENTES_TABLE).upsert(chunk, { onConflict: "id", ignoreDuplicates: false });
       if (error) {
         console.error("[guardarClientesEnSupabase] error upsert:", error?.message, error?.details, error?.code);
+      }
+      // Conflicto en unique constraint de codigo_abonado — reintentar ignorando duplicados
+      if (error && (error?.code === "23505" || /duplicate key/i.test(String(error?.message || "")))) {
+        const retry = await supabase.from(CLIENTES_TABLE).upsert(chunk, { onConflict: "id", ignoreDuplicates: true });
+        error = retry.error;
+        if (retry.error) console.error("[guardarClientesEnSupabase] retry ignoreDuplicates error:", retry.error?.message);
       }
       // identity column GENERATED ALWAYS — tratar igual que non-DEFAULT
       if (error && (error?.code === "428C9" || /non-DEFAULT value into column "id"/i.test(String(error?.message || "")))) {
