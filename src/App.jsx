@@ -7362,9 +7362,15 @@ export default function App() {
           ""
         ).toUpperCase();
         const tipoOrden = tipoOrdenRaw || "INSTALACIÓN";
+        const resultadoFinal = String(ordenData._resultadoFinal || "").trim();
         let tpl = waCfg.template_instalacion || "";
-        if (tipo === "liquidacion") tpl = waCfg.template_liquidacion || "";
-        else if (tipoOrden.includes("INCIDEN")) tpl = waCfg.template_incidencia || "";
+        if (tipo === "liquidacion") {
+          if (resultadoFinal && resultadoFinal !== "Completada") {
+            tpl = waCfg.template_sin_completar || "";
+          } else {
+            tpl = waCfg.template_liquidacion || "";
+          }
+        } else if (tipoOrden.includes("INCIDEN")) tpl = waCfg.template_incidencia || "";
         else if (tipoOrden.includes("RECUP") || tipoOrden.includes("RECOJ")) tpl = waCfg.template_recuperacion || "";
         if (!tpl.trim()) return;
 
@@ -7374,7 +7380,8 @@ export default function App() {
           .replace(/{empresa}/g, empresa)
           .replace(/{tecnico}/g, ordenData.tecnico || "")
           .replace(/{fecha}/g, ordenData.fechaActuacion || ordenData.fecha_actuacion || "")
-          .replace(/{direccion}/g, ordenData.direccion || "");
+          .replace(/{direccion}/g, ordenData.direccion || "")
+          .replace(/{resultado}/g, resultadoFinal);
 
         let phone = numero.replace(/[\s\-\(\)]/g, "");
         if (phone.startsWith("+")) phone = phone.slice(1);
@@ -8275,7 +8282,7 @@ export default function App() {
       }
 
       // WhatsApp
-      if (!liquidacionEditandoId) void sendWhatsAppNotification(ordenEnLiquidacion, "liquidacion");
+      if (!liquidacionEditandoId) void sendWhatsAppNotification({ ...ordenEnLiquidacion, _resultadoFinal: liquidacion.resultadoFinal }, "liquidacion");
 
       // Push al técnico: orden liquidada
       if (!liquidacionEditandoId && isSupabaseConfigured && ordenEnLiquidacion?.tecnico) {
@@ -8401,7 +8408,7 @@ export default function App() {
     setHistorialRecuperaciones((prev) => [{ ...payload, id: Date.now() }, ...prev]);
 
     // WhatsApp al cliente al liquidar recuperación
-    void sendWhatsAppNotification(ordenEnLiquidacion, "liquidacion");
+    void sendWhatsAppNotification({ ...ordenEnLiquidacion, _resultadoFinal: liquidacionRecojo.resultado }, "liquidacion");
 
     setOrdenEnLiquidacion(null);
     setLiquidacionRecojo(initialLiquidacionRecojo);

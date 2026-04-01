@@ -11,6 +11,7 @@ const VARIABLES = [
   { key: "{tecnico}", desc: "Técnico asignado" },
   { key: "{fecha}", desc: "Fecha de actuación" },
   { key: "{direccion}", desc: "Dirección" },
+  { key: "{resultado}", desc: "Resultado de la liquidación (Reprogramada, No se encontró, etc.)" },
 ];
 
 const TIPOS = [
@@ -18,6 +19,7 @@ const TIPOS = [
   { key: "template_incidencia", label: "Incidencia", color: "#d97706", bg: "#fffbeb", dot: "#fcd34d" },
   { key: "template_recuperacion", label: "Recuperación", color: "#7c3aed", bg: "#f5f3ff", dot: "#c4b5fd" },
   { key: "template_liquidacion", label: "Al liquidar", color: "#059669", bg: "#f0fdf4", dot: "#86efac" },
+  { key: "template_sin_completar", label: "Sin completar", color: "#dc2626", bg: "#fef2f2", dot: "#fca5a5" },
 ];
 
 const defaultConfig = (emp) => ({
@@ -30,6 +32,7 @@ const defaultConfig = (emp) => ({
   template_incidencia: "Estimado/a {nombre}, su reporte #{codigo} fue registrado. Pronto un técnico lo atenderá. — {empresa}",
   template_recuperacion: "Estimado/a {nombre}, se generó la orden de recuperación #{codigo}. Coordinaremos con usted. — {empresa}",
   template_liquidacion: "Estimado/a {nombre}, su orden #{codigo} fue completada. ¡Gracias por preferir {empresa}!",
+  template_sin_completar: "Estimado/a {nombre}, su orden #{codigo} no pudo completarse en esta visita. Motivo: {resultado}. Nos comunicaremos para reagendar. — {empresa}",
 });
 
 function loadFromLS() {
@@ -56,7 +59,8 @@ function previewMsg(tpl, empresa) {
     .replace(/{empresa}/g, empresa || "Americanet")
     .replace(/{tecnico}/g, "Carlos López")
     .replace(/{fecha}/g, new Date().toLocaleDateString("es-PE"))
-    .replace(/{direccion}/g, "Av. Principal 123");
+    .replace(/{direccion}/g, "Av. Principal 123")
+    .replace(/{resultado}/g, "Reprogramada");
 }
 
 export default function WhatsAppConfigPanel() {
