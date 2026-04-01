@@ -3522,6 +3522,7 @@ export default function App() {
       return {
         ...p,
         id: p.id || row.id,
+        empresa: row.empresa || p.empresa || "",
         codigoAbonado: row.codigo_abonado || p.codigoAbonado || "",
         estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
         ...signalFields,
