@@ -3593,20 +3593,8 @@ export default function App() {
       if (error) {
         console.error("[guardarClientesEnSupabase] error upsert:", error?.message, error?.details, error?.code);
       }
-      if (error && (/column .* does not exist/i.test(String(error?.message || "")) || /Could not find/i.test(String(error?.message || "")) || error?.code === "PGRST204" || error?.code === "42703")) {
-        await new Promise((r) => setTimeout(r, 1000));
-        const fallback = chunk.map((r) => ({
-          id: r.id,
-          dni: r.dni,
-          nombre: r.nombre,
-          payload: r.payload,
-          updated_at: r.updated_at,
-        }));
-        const retry = await supabase.from(CLIENTES_TABLE).upsert(fallback, { onConflict: "id" });
-        if (retry.error) console.error("[guardarClientesEnSupabase] fallback error:", retry.error?.message);
-        error = retry.error;
-      }
-      if (error && /non-DEFAULT value into column "id"/i.test(String(error?.message || ""))) {
+      // identity column GENERATED ALWAYS — tratar igual que non-DEFAULT
+      if (error && (error?.code === "428C9" || /non-DEFAULT value into column "id"/i.test(String(error?.message || "")))) {
         if (replaceAllOnIdentity) {
           // Modo importación completa desde Sheet: reemplaza todo para mantener conteo 1:1.
           const del = await supabase.from(CLIENTES_TABLE).delete().not("id", "is", null);
