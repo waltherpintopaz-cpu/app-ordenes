@@ -7432,16 +7432,34 @@ export default function App() {
           serializeOrderToSupabase(ordenLocal, { autorOrden: usuarioSesion?.nombre || "" })
         );
         let saved = null;
+        const isEdit = ordenEditandoId && Number.isFinite(Number(ordenEditandoId));
         const doSave = async (p) => {
-          if (ordenEditandoId && Number.isFinite(Number(ordenEditandoId))) {
-            const upd = await supabase.from(ORDENES_TABLE).update(p).eq("id", Number(ordenEditandoId)).select("*").single();
-            return upd;
+          if (isEdit) {
+            return supabase.from(ORDENES_TABLE).update(p).eq("id", Number(ordenEditandoId)).select("*").single();
           } else {
-            return supabase.from(ORDENES_TABLE).upsert([p], { onConflict: "codigo,empresa" }).select("*").single();
+            // INSERT para nuevas órdenes — evita reemplazar silenciosamente si hay colisión de código
+            return supabase.from(ORDENES_TABLE).insert([p]).select("*").single();
           }
         };
         let res = await doSave(payload);
         if (res.error) {
+          // Si hay colisión de código en INSERT, regenerar desde la DB y reintentar
+          const isDuplicateCode = !isEdit && (res.error?.code === "23505" || /duplicate key/i.test(String(res.error?.message || "")));
+          if (isDuplicateCode) {
+            const { data: maxRow } = await supabase.from(ORDENES_TABLE).select("codigo").ilike("codigo", `ORD-%-${new Date().getFullYear()}`).order("id", { ascending: false }).limit(100);
+            const year = new Date().getFullYear();
+            let maxNum = 0;
+            (maxRow || []).forEach((r) => {
+              const m = String(r.codigo || "").match(/^ORD-(\d+)-\d{4}$/);
+              if (m) { const n = parseInt(m[1], 10); if (n > maxNum) maxNum = n; }
+            });
+            const newCodigo = `ORD-${String(maxNum + 1).padStart(4, "0")}-${year}`;
+            const payloadFixed = { ...payload, codigo: newCodigo };
+            res = await supabase.from(ORDENES_TABLE).insert([payloadFixed]).select("*").single();
+            if (!res.error) {
+              handleChange("codigo", newCodigo);
+            }
+          }
           const missingCol = getMissingColumnWeb(res.error);
           if (missingCol && missingCol in payload) {
             const payloadSin = { ...payload };
