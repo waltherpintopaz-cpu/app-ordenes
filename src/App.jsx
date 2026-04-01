@@ -102,6 +102,8 @@ const NODO_PASSWORD_RULES = {
 const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen"];
 const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
 const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
+const DIM_NODOS_WEB = new Set(["nod_04", "nod_06"]);
+const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(nodo || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {
     routerKey: "tiabaya",
@@ -3479,7 +3481,7 @@ export default function App() {
       celular: nullIfEmpty(cliente.celular),
       email: nullIfEmpty(cliente.email),
       contacto: nullIfEmpty(cliente.contacto),
-      empresa: nullIfEmpty(cliente.empresa),
+      empresa: nullIfEmpty(cliente.empresa) || (nullIfEmpty(cliente.nodo) ? empresaPorNodo(cliente.nodo) : null),
       velocidad: nullIfEmpty(cliente.velocidad),
       precio_plan: nullIfEmpty(cliente.precioPlan),
       nodo: nullIfEmpty(cliente.nodo),
@@ -4242,14 +4244,16 @@ export default function App() {
     setOrden((prev) => {
       const nextNodo = String(nodoValue || "").trim();
       const passwordSugerido = sugerirPasswordPorNodo(nextNodo);
+      const empresaAuto = prev.empresa || empresaPorNodo(nextNodo);
       if (String(prev.generarUsuario || "").toUpperCase() !== "SI") {
-        return { ...prev, nodo: nextNodo, passwordUsuario: passwordSugerido || prev.passwordUsuario };
+        return { ...prev, nodo: nextNodo, empresa: empresaAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
       }
       const sugerido = sugerirUsuarioPorNodo(nextNodo, usuariosNodoUsados, usuariosNodoHabilitadosManual);
-      if (!sugerido) return { ...prev, nodo: nextNodo, passwordUsuario: passwordSugerido || prev.passwordUsuario };
+      if (!sugerido) return { ...prev, nodo: nextNodo, empresa: empresaAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
       return {
         ...prev,
         nodo: nextNodo,
+        empresa: empresaAuto,
         usuarioNodo: sugerido,
         passwordUsuario: passwordSugerido || prev.passwordUsuario,
       };
