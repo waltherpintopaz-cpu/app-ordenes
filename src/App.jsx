@@ -11766,6 +11766,11 @@ export default function App() {
                             <span>👷 {item.tecnico || "Sin técnico"}</span>
                             <span>🌐 {item.nodo || "-"} · {item.usuarioNodo || "-"}</span>
                           </div>
+                          {item.codigoEtiqueta && (
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 6, padding: "2px 8px", display: "flex", alignItems: "center", gap: 4 }}>
+                              🏷️ {item.codigoEtiqueta}
+                            </div>
+                          )}
                           {(esAdminSesion || esGestorSesion) && item.autorOrden && (
                             <div style={{ fontSize: 11, color: "#94a3b8" }}>Autor: {item.autorOrden}</div>
                           )}
@@ -17985,6 +17990,7 @@ export default function App() {
                   ["Velocidad / Plan", `${ordenDetalle.velocidad || "-"} / S/ ${ordenDetalle.precioPlan || "-"}`],
                   ["Usuario nodo", ordenDetalle.usuarioNodo],
                   ["SN ONU", ordenDetalle.snOnu],
+                  ["Código etiqueta", ordenDetalle.codigoEtiqueta],
                   ["Autor de la orden", ordenDetalle.autorOrden],
                   ["Solicitar pago", ordenDetalle.solicitarPago],
                   ["Monto a cobrar", ordenDetalle.montoCobrar],
