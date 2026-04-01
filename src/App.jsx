@@ -11296,6 +11296,15 @@ export default function App() {
                     <label style={labelStyle}>SN ONU</label>
                     <input style={inputStyle} value={orden.snOnu} onChange={(e) => handleChange("snOnu", e.target.value)} placeholder="Serial ONU" />
                   </div>
+                  <div>
+                    <label style={labelStyle}>Código de etiqueta</label>
+                    <input
+                      style={inputStyle}
+                      value={orden.codigoEtiqueta || ""}
+                      onChange={(e) => handleChange("codigoEtiqueta", e.target.value)}
+                      placeholder="Etiqueta del cliente (auto desde cliente)"
+                    />
+                  </div>
                 </div>
               </div>
 
