@@ -1612,7 +1612,10 @@ export default function App() {
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
   const [enviarWhatsappOrden, setEnviarWhatsappOrden] = useState(true);
-  const [vistaActiva, setVistaActiva] = useState("crear");
+  const [vistaActiva, setVistaActiva] = useState(() => {
+    const sesionGuardada = localStorage.getItem("usuarioSesionId");
+    return sesionGuardada ? "dashboard" : "crear";
+  });
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
   const [historialAppsheetEquipos, setHistorialAppsheetEquipos] = useState([]);
   const [historialAppsheetLiquidaciones, setHistorialAppsheetLiquidaciones] = useState([]);
@@ -4386,6 +4389,7 @@ export default function App() {
       return [encontrado, ...prev];
     });
     setUsuarioSesionId(Number(encontrado.id));
+    setVistaActiva("dashboard");
     void supabase.from("logs").insert([{ accion: "login", categoria: "sesion", criticidad: "normal", usuario: encontrado.nombre || encontrado.username, rol: encontrado.rol, empresa: encontrado.empresa, dispositivo: "web", detalle: { username: encontrado.username } }]);
     setErrorLogin("");
     setCredencialesLogin({ username: "", password: "" });
