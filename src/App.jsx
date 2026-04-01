@@ -7116,7 +7116,12 @@ export default function App() {
     }));
   };
 
-  const generarCodigoUnico = useCallback(() => {
+  const generarCodigoDesdeDB = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc("generar_codigo_orden");
+      if (!error && data) return String(data);
+    } catch { /* fallback */ }
+    // Fallback local si falla la DB
     const year = new Date().getFullYear();
     const prefix = "ORD-";
     const suffix = `-${year}`;
@@ -7132,18 +7137,23 @@ export default function App() {
     return `ORD-${String(max + 1).padStart(4, "0")}-${year}`;
   }, [ordenes]);
 
-  const generarCodigo = () => {
-    handleChange("codigo", generarCodigoUnico());
+  const generarCodigo = async () => {
+    const codigo = await generarCodigoDesdeDB();
+    handleChange("codigo", codigo);
   };
 
   // Auto-generar código único al abrir formulario de nueva orden
-  // (debe estar aquí, después de generarCodigoUnico para evitar ReferenceError)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (vistaActiva !== "crear" || ordenEditandoId) return;
-    setOrden((prev) => prev.codigo ? prev : { ...prev, codigo: generarCodigoUnico() });
-    // Resetear ref solo cuando se abre un formulario totalmente nuevo (sin cliente precargado)
     if (!orden.cajaNap) cajaNapDesdClienteRef.current = false;
+    setOrden((prev) => {
+      if (prev.codigo) return prev;
+      return prev; // se carga async abajo
+    });
+    void generarCodigoDesdeDB().then((codigo) => {
+      setOrden((prev) => prev.codigo ? prev : { ...prev, codigo });
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vistaActiva, ordenEditandoId]);
 
@@ -7446,18 +7456,12 @@ export default function App() {
           // Si hay colisión de código en INSERT, regenerar desde la DB y reintentar
           const isDuplicateCode = !isEdit && (res.error?.code === "23505" || /duplicate key/i.test(String(res.error?.message || "")));
           if (isDuplicateCode) {
-            const { data: maxRow } = await supabase.from(ORDENES_TABLE).select("codigo").ilike("codigo", `ORD-%-${new Date().getFullYear()}`).order("id", { ascending: false }).limit(100);
-            const year = new Date().getFullYear();
-            let maxNum = 0;
-            (maxRow || []).forEach((r) => {
-              const m = String(r.codigo || "").match(/^ORD-(\d+)-\d{4}$/);
-              if (m) { const n = parseInt(m[1], 10); if (n > maxNum) maxNum = n; }
-            });
-            const newCodigo = `ORD-${String(maxNum + 1).padStart(4, "0")}-${year}`;
-            const payloadFixed = { ...payload, codigo: newCodigo };
-            res = await supabase.from(ORDENES_TABLE).insert([payloadFixed]).select("*").single();
-            if (!res.error) {
-              handleChange("codigo", newCodigo);
+            const { data: newCodigoData } = await supabase.rpc("generar_codigo_orden");
+            const newCodigo = String(newCodigoData || "");
+            if (newCodigo) {
+              const payloadFixed = { ...payload, codigo: newCodigo };
+              res = await supabase.from(ORDENES_TABLE).insert([payloadFixed]).select("*").single();
+              if (!res.error) handleChange("codigo", newCodigo);
             }
           }
           const missingCol = getMissingColumnWeb(res.error);
