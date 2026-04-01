@@ -1775,9 +1775,8 @@ export default function App() {
   const usuariosSyncTimerRef = useRef(null);
 
   // ── Helper de logs ──────────────────────────────────────────
-  const escribirLog = ({ accion, categoria, criticidad = "normal", tabla = null, registro_id = null, detalle = {} }) => {
+  const escribirLog = ({ accion, categoria, criticidad = "normal", tabla = null, registro_id = null, detalle = {}, actor = null }) => {
     if (!isSupabaseConfigured) return;
-    const actor = usuarioSesion;
     void supabase.from("logs").insert([{
       accion,
       categoria,
@@ -7426,10 +7425,10 @@ export default function App() {
         const merged = deserializeOrderFromSupabase(saved || payload);
         if (ordenEditandoId) {
           setOrdenes((prev) => prev.map((item) => (item.id === ordenEditandoId ? { ...item, ...merged } : item)));
-          escribirLog({ accion: "editar_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre } });
+          escribirLog({ accion: "editar_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre }, actor: usuarioSesion });
         } else {
           setOrdenes((prev) => [merged, ...prev.filter((x) => String(x.codigo) !== String(merged.codigo))]);
-          escribirLog({ accion: "crear_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre, tecnico: merged.tecnico } });
+          escribirLog({ accion: "crear_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre, tecnico: merged.tecnico }, actor: usuarioSesion });
         }
       } catch (e) {
         const msg = String(e?.message || "No se pudo guardar orden en Supabase.");
@@ -7512,7 +7511,7 @@ export default function App() {
         alert(del.error.message || "No se pudo eliminar la orden en Supabase.");
         return;
       }
-      escribirLog({ accion: "eliminar_orden", categoria: "orden", criticidad: "critica", tabla: "ordenes", registro_id: id, detalle: { codigo, empresa: target?.empresa, cliente: target?.nombre, tecnico: target?.tecnico, estado: target?.estado } });
+      escribirLog({ accion: "eliminar_orden", categoria: "orden", criticidad: "critica", tabla: "ordenes", registro_id: id, detalle: { codigo, empresa: target?.empresa, cliente: target?.nombre, tecnico: target?.tecnico, estado: target?.estado }, actor: usuarioSesion });
     }
     setOrdenes((prev) => prev.filter((item) => item.id !== id));
   };
@@ -8246,7 +8245,7 @@ export default function App() {
       setVistaActiva("historial");
 
       const custodiaMsg = eqsRecuperados.length > 0 ? `\n\n${eqsRecuperados.length} equipo(s) en custodia técnica.` : "";
-      escribirLog({ accion: liquidacionEditandoId ? "editar_liquidacion" : "crear_liquidacion", categoria: "liquidacion", tabla: "liquidaciones", registro_id: liquidacionId, detalle: { codigo: ordenEnLiquidacion?.codigo, empresa: ordenEnLiquidacion?.empresa, cliente: ordenEnLiquidacion?.nombre, tecnico: liquidacion.tecnicoLiquida, resultado: liquidacion.resultadoFinal } });
+      escribirLog({ accion: liquidacionEditandoId ? "editar_liquidacion" : "crear_liquidacion", categoria: "liquidacion", tabla: "liquidaciones", registro_id: liquidacionId, detalle: { codigo: ordenEnLiquidacion?.codigo, empresa: ordenEnLiquidacion?.empresa, cliente: ordenEnLiquidacion?.nombre, tecnico: liquidacion.tecnicoLiquida, resultado: liquidacion.resultadoFinal }, actor: usuarioSesion });
       if (avisos.length > 0) alert(`Liquidación guardada con avisos:\n• ${avisos.join("\n• ")}${custodiaMsg}`);
       else alert(`Liquidación guardada correctamente.${custodiaMsg}`);
 
@@ -9041,7 +9040,7 @@ export default function App() {
           const cliDel = await supabase.from(CLIENTES_TABLE).delete().eq("dni", dni);
           if (cliDel.error) throw cliDel.error;
         }
-        escribirLog({ accion: "eliminar_cliente", categoria: "cliente", criticidad: "critica", tabla: "clientes", registro_id: clienteId || dni, detalle: { nombre: cliente?.nombre, dni: cliente?.dni, nodo: cliente?.nodo, empresa: cliente?.empresa } });
+        escribirLog({ accion: "eliminar_cliente", categoria: "cliente", criticidad: "critica", tabla: "clientes", registro_id: clienteId || dni, detalle: { nombre: cliente?.nombre, dni: cliente?.dni, nodo: cliente?.nodo, empresa: cliente?.empresa }, actor: usuarioSesion });
       }
 
       setClientes((prev) =>
