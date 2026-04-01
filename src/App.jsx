@@ -3590,7 +3590,10 @@ export default function App() {
       const chunk = chunks[ci];
       if (ci > 0) await new Promise((r) => setTimeout(r, 300)); // pausa entre chunks para no saturar
       let { error } = await supabase.from(CLIENTES_TABLE).upsert(chunk, { onConflict: "id" });
-      if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
+      if (error) {
+        console.error("[guardarClientesEnSupabase] error upsert:", error?.message, error?.details, error?.code);
+      }
+      if (error && (/column .* does not exist/i.test(String(error?.message || "")) || /Could not find/i.test(String(error?.message || "")) || error?.code === "PGRST204" || error?.code === "42703")) {
         await new Promise((r) => setTimeout(r, 1000));
         const fallback = chunk.map((r) => ({
           id: r.id,
@@ -3600,6 +3603,7 @@ export default function App() {
           updated_at: r.updated_at,
         }));
         const retry = await supabase.from(CLIENTES_TABLE).upsert(fallback, { onConflict: "id" });
+        if (retry.error) console.error("[guardarClientesEnSupabase] fallback error:", retry.error?.message);
         error = retry.error;
       }
       if (error && /non-DEFAULT value into column "id"/i.test(String(error?.message || ""))) {
