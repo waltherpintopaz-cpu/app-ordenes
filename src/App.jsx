@@ -7142,18 +7142,10 @@ export default function App() {
     handleChange("codigo", codigo);
   };
 
-  // Auto-generar código único al abrir formulario de nueva orden
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Código de orden se genera desde la DB al momento de guardar (no al abrir el formulario)
   useEffect(() => {
     if (vistaActiva !== "crear" || ordenEditandoId) return;
     if (!orden.cajaNap) cajaNapDesdClienteRef.current = false;
-    setOrden((prev) => {
-      if (prev.codigo) return prev;
-      return prev; // se carga async abajo
-    });
-    void generarCodigoDesdeDB().then((codigo) => {
-      setOrden((prev) => prev.codigo ? prev : { ...prev, codigo });
-    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vistaActiva, ordenEditandoId]);
 
@@ -7405,13 +7397,12 @@ export default function App() {
   const guardarOrden = async () => {
     if (
       !orden.empresa.trim() ||
-      !orden.codigo.trim() ||
       !orden.fechaActuacion.trim() ||
       !orden.dni.trim() ||
       !orden.nombre.trim() ||
       !orden.direccion.trim()
     ) {
-      alert("Completa los campos obligatorios: empresa, codigo, fecha, DNI, nombre y direccion.");
+      alert("Completa los campos obligatorios: empresa, fecha, DNI, nombre y direccion.");
       return;
     }
     if (!orden.tecnico.trim()) {
@@ -7438,11 +7429,17 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
+        // Generar código desde DB al momento de guardar si es nueva orden y aún no tiene código
+        const isEdit = ordenEditandoId && Number.isFinite(Number(ordenEditandoId));
+        if (!isEdit && !ordenLocal.codigo) {
+          const codigoGenerado = await generarCodigoDesdeDB();
+          ordenLocal.codigo = codigoGenerado;
+          handleChange("codigo", codigoGenerado);
+        }
         const payload = sanitizeOrderPayloadForSupabase(
           serializeOrderToSupabase(ordenLocal, { autorOrden: usuarioSesion?.nombre || "" })
         );
         let saved = null;
-        const isEdit = ordenEditandoId && Number.isFinite(Number(ordenEditandoId));
         const doSave = async (p) => {
           if (isEdit) {
             return supabase.from(ORDENES_TABLE).update(p).eq("id", Number(ordenEditandoId)).select("*").single();
