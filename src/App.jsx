@@ -9676,6 +9676,26 @@ export default function App() {
       }
       return;
     }
+    // Esperar a que el div esté en el DOM y con tamaño real
+    const initMap = () => {
+      if (!mapaCrearRef.current) return false;
+      const { offsetWidth, offsetHeight } = mapaCrearRef.current;
+      if (offsetWidth === 0 || offsetHeight === 0) return false;
+      return true;
+    };
+    if (!initMap()) {
+      const timer = setInterval(() => {
+        if (initMap()) {
+          clearInterval(timer);
+          // re-trigger via invalidateSize si ya existe
+          if (mapaCrearInstanceRef.current) {
+            mapaCrearInstanceRef.current.invalidateSize();
+          }
+        }
+      }, 50);
+      setTimeout(() => clearInterval(timer), 3000);
+      return () => clearInterval(timer);
+    }
     if (!mapaCrearRef.current) return;
 
     const DEFAULT_COORDS = [-16.43849, -71.598208];
