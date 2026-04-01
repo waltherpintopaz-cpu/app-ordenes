@@ -13,7 +13,8 @@ import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
-import logoAmericanet from "./assets/americanet-logo-clean.png";
+import logoAmericanet from "./assets/americanet-logo-new.png";
+import logoDim from "./assets/dim-logo.png";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -7326,13 +7327,14 @@ export default function App() {
 
   const guardarOrden = async () => {
     if (
+      !orden.empresa.trim() ||
       !orden.codigo.trim() ||
       !orden.fechaActuacion.trim() ||
       !orden.dni.trim() ||
       !orden.nombre.trim() ||
       !orden.direccion.trim()
     ) {
-      alert("Completa los campos obligatorios: codigo, fecha, DNI, nombre y direccion.");
+      alert("Completa los campos obligatorios: empresa, codigo, fecha, DNI, nombre y direccion.");
       return;
     }
     if (!orden.tecnico.trim()) {
@@ -7375,7 +7377,7 @@ export default function App() {
         } else {
           const up = await supabase
             .from(ORDENES_TABLE)
-            .upsert([payload], { onConflict: "codigo" })
+            .upsert([payload], { onConflict: "codigo,empresa" })
             .select("*")
             .single();
           if (up.error) throw up.error;
@@ -10397,7 +10399,7 @@ export default function App() {
           <div style={cardStyle}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
               <img
-                src="/americanet-logo-clean.png"
+                src="/americanet-logo-new.png"
                 alt="Americanet"
                 style={{ width: "220px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
               />
@@ -10469,7 +10471,7 @@ export default function App() {
         <div style={sidebarHeaderStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
             <img
-              src="/americanet-logo-clean.png"
+              src="/americanet-logo-new.png"
               alt="Americanet"
               style={{ width: "180px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
             />
@@ -10979,8 +10981,8 @@ export default function App() {
                 <h2 style={{ ...sectionTitleStyle, marginBottom: "12px" }}>Paso 1. Datos de la orden</h2>
                 <div style={formGridStyle}>
                   <div>
-                    <label style={labelStyle}>Empresa</label>
-                    <select style={inputStyle} value={orden.empresa} onChange={(e) => handleChange("empresa", e.target.value)}>
+                    <label style={labelStyle}>Empresa <span style={{ color: "#dc2626" }}>*</span></label>
+                    <select style={{ ...inputStyle, borderColor: !orden.empresa ? "#fca5a5" : undefined, background: !orden.empresa ? "#fff5f5" : undefined }} value={orden.empresa} onChange={(e) => handleChange("empresa", e.target.value)}>
                       <option value="">Selecciona empresa</option>
                       <option>Americanet</option>
                       <option>DIM</option>
@@ -11650,6 +11652,11 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
+                          {item.empresa && (
+                            <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 6px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                              <img src={item.empresa === "Americanet" ? logoAmericanet : item.empresa === "DIM" ? logoDim : null} alt={item.empresa} style={{ height: 18, maxWidth: 64, objectFit: "contain" }} />
+                            </span>
+                          )}
                           {/* HORA — destacada */}
                           {horaTexto ? (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: esPasada ? "#fef2f2" : "#fff7ed", color: esPasada ? "#dc2626" : "#c2410c", border: `1px solid ${esPasada ? "#fca5a5" : "#fed7aa"}` }}>
@@ -14803,8 +14810,8 @@ export default function App() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
                       <thead>
                         <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #f1f5f9" }}>
-                          {["Cliente", "DNI", "Contacto", "Nodo · Plan", "Estado", "Acciones"].map((h, i) => (
-                            <th key={h} style={{ textAlign: i === 5 ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
+                          {["Cliente", "DNI", "Empresa", "Contacto", "Nodo · Plan", "Estado", "Acciones"].map((h, i) => (
+                            <th key={h} style={{ textAlign: i === 6 ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -14836,6 +14843,13 @@ export default function App() {
                                 </div>
                               </td>
                               <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
+                              <td style={{ padding: "11px 14px" }}>
+                                {cliente.empresa ? (
+                                  <span style={{ display: "inline-flex", alignItems: "center", padding: "3px 7px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                                    <img src={cliente.empresa === "Americanet" ? logoAmericanet : cliente.empresa === "DIM" ? logoDim : null} alt={cliente.empresa} style={{ height: 18, maxWidth: 64, objectFit: "contain" }} />
+                                  </span>
+                                ) : <span style={{ color: "#94a3b8", fontSize: 11 }}>-</span>}
+                              </td>
                               <td style={{ padding: "11px 14px", color: "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{cliente.nodo || "-"}</div>
