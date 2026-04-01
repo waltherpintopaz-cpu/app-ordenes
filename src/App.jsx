@@ -547,6 +547,12 @@ function serializeOrderToSupabase(orderItem = {}, opts = {}) {
   return payload;
 }
 
+function getMissingColumnWeb(error) {
+  const msg = String(error?.message || error?.details || "").toLowerCase();
+  const m = msg.match(/column "([^"]+)"/);
+  return m ? m[1] : null;
+}
+
 function sanitizeOrderPayloadForSupabase(rawPayload = {}) {
   const allowedKeys = [
     "empresa",
@@ -7421,24 +7427,25 @@ export default function App() {
           serializeOrderToSupabase(ordenLocal, { autorOrden: usuarioSesion?.nombre || "" })
         );
         let saved = null;
-        if (ordenEditandoId && Number.isFinite(Number(ordenEditandoId))) {
-          const upd = await supabase
-            .from(ORDENES_TABLE)
-            .update(payload)
-            .eq("id", Number(ordenEditandoId))
-            .select("*")
-            .single();
-          if (upd.error) throw upd.error;
-          saved = upd.data;
-        } else {
-          const up = await supabase
-            .from(ORDENES_TABLE)
-            .upsert([payload], { onConflict: "codigo,empresa" })
-            .select("*")
-            .single();
-          if (up.error) throw up.error;
-          saved = up.data;
+        const doSave = async (p) => {
+          if (ordenEditandoId && Number.isFinite(Number(ordenEditandoId))) {
+            const upd = await supabase.from(ORDENES_TABLE).update(p).eq("id", Number(ordenEditandoId)).select("*").single();
+            return upd;
+          } else {
+            return supabase.from(ORDENES_TABLE).upsert([p], { onConflict: "codigo,empresa" }).select("*").single();
+          }
+        };
+        let res = await doSave(payload);
+        if (res.error) {
+          const missingCol = getMissingColumnWeb(res.error);
+          if (missingCol && missingCol in payload) {
+            const payloadSin = { ...payload };
+            delete payloadSin[missingCol];
+            res = await doSave(payloadSin);
+          }
+          if (res.error) throw res.error;
         }
+        saved = res.data;
         const merged = deserializeOrderFromSupabase(saved || payload);
         if (ordenEditandoId) {
           setOrdenes((prev) => prev.map((item) => (item.id === ordenEditandoId ? { ...item, ...merged } : item)));
