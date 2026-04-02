@@ -14843,30 +14843,12 @@ export default function App() {
                   <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={syncClientesDesdeSheet} disabled={clientesSyncLoading} style={{ padding: "8px 16px", background: "#163f86", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    {clientesSyncLoading ? "Actualizando..." : "↻ Sync"}
-                  </button>
                   <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Recargar
                   </button>
                   <button onClick={actualizarEstadoMasivoMikrowisp} disabled={actualizarEstadoMasivoLoading} title="Consulta Mikrowisp por DNI para actualizar estado" style={{ padding: "8px 14px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     {actualizarEstadoMasivoLoading ? `MK ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}` : "Sync MikroTik"}
                   </button>
-                  <label style={{ padding: "8px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    {importCsvLoading ? "Importando..." : "↑ Importar CSV"}
-                    <input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      e.target.value = "";
-                      await importarClientesDesdeCSV(file);
-                    }} />
-                  </label>
-                  {!!importCsvInfo && <span style={{ fontSize: 11, color: "#0369a1" }}>{importCsvInfo}</span>}
-                  {esAdminSesion && (
-                    <button onClick={limpiarClientesLocales} style={{ padding: "8px 14px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                      Vaciar
-                    </button>
-                  )}
                 </div>
               </div>
 
