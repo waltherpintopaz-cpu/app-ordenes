@@ -16,6 +16,7 @@ import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import LogsPanel from "./components/LogsPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
+import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -9787,7 +9788,7 @@ export default function App() {
     const totalGeneral = reporteMateriales.reduce((acc, x) => acc + Number(x.costo || 0), 0);
     const empresa = String(usuarioSesion?.empresa || "Americanet");
     const esDim = empresa.toLowerCase().includes("dim");
-    const logoSrc = esDim ? logoDim : logoAmericanet;
+    const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = esDim ? "#0f3460" : "#1a3a6b";
     const rows = reporteMateriales.map((item, idx) => {
       const cant = Number(item.cantidad || 0);
