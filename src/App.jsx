@@ -4013,10 +4013,25 @@ export default function App() {
             arr.push({ material: m.material, cantidad: cant, unidad: m.unidad, costoUnitario: cu, costoTotal: cu * cant });
             matsMap.set(m.liquidacion_id, arr);
           }
+          // Cruzar precio desde equipos_catalogo por codigo_qr
+          const codigosQR = eqsAll.map((e) => String(e.codigo || "").trim()).filter(Boolean);
+          const precioEqMap = new Map();
+          if (codigosQR.length > 0) {
+            const eqChunks = [];
+            for (let i = 0; i < codigosQR.length; i += 100) eqChunks.push(codigosQR.slice(i, i + 100));
+            await Promise.all(eqChunks.map(async (chunk) => {
+              const res = await supabase.from("equipos_catalogo").select("codigo_qr,precio_unitario").in("codigo_qr", chunk);
+              for (const row of (res.data || [])) {
+                const key = String(row.codigo_qr || "").trim();
+                if (key && !precioEqMap.has(key)) precioEqMap.set(key, Number(row.precio_unitario || 0));
+              }
+            }));
+          }
           const eqsMap = new Map();
           for (const e of eqsAll) {
             const arr = eqsMap.get(e.liquidacion_id) || [];
-            arr.push({ tipo: e.tipo, marca: e.marca, modelo: e.modelo, serial: e.serial, codigo: e.codigo, accion: e.accion });
+            const precio = precioEqMap.get(String(e.codigo || "").trim()) || 0;
+            arr.push({ tipo: e.tipo, marca: e.marca, modelo: e.modelo, serial: e.serial, codigo: e.codigo, accion: e.accion, precioUnitario: precio });
             eqsMap.set(e.liquidacion_id, arr);
           }
           mapped = mapped.map((r) => ({
@@ -14013,6 +14028,7 @@ export default function App() {
                             <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Código QR</th>
                             <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Serial</th>
                             <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Acción</th>
+                            <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Precio</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -14023,9 +14039,16 @@ export default function App() {
                               <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: "11px" }}>{e.codigo || "-"}</td>
                               <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: "11px" }}>{e.serial || "-"}</td>
                               <td style={{ padding: "4px 8px" }}>{e.accion || "-"}</td>
+                              <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {Number(e.precioUnitario || 0).toFixed(2)}</td>
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 700, background: "#f9fafb" }}>
+                            <td colSpan={5} style={{ padding: "4px 8px", textAlign: "right" }}>Total equipos:</td>
+                            <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {item.equipos.reduce((a, e) => a + Number(e.precioUnitario || 0), 0).toFixed(2)}</td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   ))}
