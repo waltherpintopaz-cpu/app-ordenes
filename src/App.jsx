@@ -1889,6 +1889,8 @@ export default function App() {
   const [reporteBusqueda, setReporteBusqueda] = useState("");
   const [reportePaginaAct, setReportePaginaAct] = useState(1);
   const [reportePaginaMat, setReportePaginaMat] = useState(1);
+  const [reportePaginaDetMat, setReportePaginaDetMat] = useState(1);
+  const [reportePaginaCosto, setReportePaginaCosto] = useState(1);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -2423,6 +2425,11 @@ export default function App() {
 
   useEffect(() => {
     setReportePaginaMat(1);
+  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda]);
+
+  useEffect(() => {
+    setReportePaginaDetMat(1);
+    setReportePaginaCosto(1);
   }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda]);
 
   const menuLabelByKeyWeb = useMemo(
@@ -9555,6 +9562,53 @@ export default function App() {
     return reporteMateriales.slice(start, start + REPORTES_PAGE_SIZE);
   }, [reporteMateriales, reportePaginaMat]);
 
+  // Detalle: materiales por orden
+  const reporteDetalleMateriales = useMemo(() => {
+    return liquidacionesReporte
+      .map((item) => {
+        const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
+        if (!mats.length) return null;
+        const costoTotal = mats.reduce((acc, m) => {
+          const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+          const cant = Number(m?.cantidad ?? 0);
+          const ct = Number(m?.costoTotal ?? m?.costo_total ?? cu * cant);
+          return acc + (Number.isFinite(ct) ? ct : 0);
+        }, 0);
+        return { codigo: item.codigo, nombre: item.nombre, tecnico: item.liquidacion?.tecnicoLiquida || item.tecnico || "-", fecha: item.fechaLiquidacion, materiales: mats, costoTotal };
+      })
+      .filter(Boolean);
+  }, [liquidacionesReporte]);
+
+  // Detalle: costo por actuación
+  const reporteCostoActuaciones = useMemo(() => {
+    return liquidacionesReporte.map((item) => {
+      const tipo = String(item.tipoActuacion || "").toLowerCase();
+      const esInstal = tipo.includes("instal");
+      const esInciden = tipo.includes("inciden");
+      const costoAct = esInstal ? 60 : esInciden ? 25 : 0;
+      const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
+      const costoMat = mats.reduce((acc, m) => {
+        const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+        const cant = Number(m?.cantidad ?? 0);
+        const ct = Number(m?.costoTotal ?? m?.costo_total ?? cu * cant);
+        return acc + (Number.isFinite(ct) ? ct : 0);
+      }, 0);
+      const montoCobrado = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+      return { codigo: item.codigo, nombre: item.nombre, tecnico: item.liquidacion?.tecnicoLiquida || item.tecnico || "-", nodo: item.nodo, fecha: item.fechaLiquidacion, tipoActuacion: item.tipoActuacion, costoAct, costoMat, costoTotal: costoAct + costoMat, montoCobrado };
+    });
+  }, [liquidacionesReporte]);
+
+  const totalPaginasDetMat = Math.max(1, Math.ceil(reporteDetalleMateriales.length / REPORTES_PAGE_SIZE));
+  const totalPaginasCosto = Math.max(1, Math.ceil(reporteCostoActuaciones.length / REPORTES_PAGE_SIZE));
+  const reporteDetMatPagina = useMemo(() => {
+    const start = (reportePaginaDetMat - 1) * REPORTES_PAGE_SIZE;
+    return reporteDetalleMateriales.slice(start, start + REPORTES_PAGE_SIZE);
+  }, [reporteDetalleMateriales, reportePaginaDetMat]);
+  const reporteCostoPagina = useMemo(() => {
+    const start = (reportePaginaCosto - 1) * REPORTES_PAGE_SIZE;
+    return reporteCostoActuaciones.slice(start, start + REPORTES_PAGE_SIZE);
+  }, [reporteCostoActuaciones, reportePaginaCosto]);
+
   useEffect(() => {
     if (reportePaginaAct > totalPaginasAct) setReportePaginaAct(totalPaginasAct);
   }, [reportePaginaAct, totalPaginasAct]);
@@ -13814,6 +13868,111 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Detalle: materiales por orden */}
+            <div style={cardStyle}>
+              <h3 style={{ ...sectionTitleStyle, marginTop: 0 }}>Detalle de materiales por orden</h3>
+              {reporteDetalleMateriales.length === 0 ? (
+                <p style={{ color: "#6b7280", margin: 0 }}>Sin órdenes con materiales para este filtro.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {reporteDetMatPagina.map((item, idx) => (
+                    <div key={`detmat-${idx}`} style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "10px 12px", background: "#fafafa" }}>
+                      <div style={{ fontWeight: 700 }}>{item.codigo} — {item.nombre}</div>
+                      <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>
+                        {item.fecha} | Técnico: {item.tecnico}
+                      </div>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                        <thead>
+                          <tr style={{ background: "#f3f4f6" }}>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Material</th>
+                            <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Cant.</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Unidad</th>
+                            <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>C.Unit.</th>
+                            <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.materiales.map((m, mi) => {
+                            const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+                            const cant = Number(m?.cantidad ?? 0);
+                            const ct = Number(m?.costoTotal ?? m?.costo_total ?? cu * cant);
+                            return (
+                              <tr key={mi} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                                <td style={{ padding: "4px 8px" }}>{m?.material || m?.nombre || "-"}</td>
+                                <td style={{ padding: "4px 8px", textAlign: "right" }}>{Number.isFinite(cant) ? cant : 0}</td>
+                                <td style={{ padding: "4px 8px" }}>{m?.unidad || "unidad"}</td>
+                                <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {Number.isFinite(cu) ? cu.toFixed(2) : "0.00"}</td>
+                                <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {Number.isFinite(ct) ? ct.toFixed(2) : "0.00"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 700, background: "#f9fafb" }}>
+                            <td colSpan={4} style={{ padding: "4px 8px", textAlign: "right" }}>Total materiales:</td>
+                            <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {item.costoTotal.toFixed(2)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280" }}>Página {reportePaginaDetMat} de {totalPaginasDetMat} · {reporteDetalleMateriales.length} órdenes con materiales</div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaDetMat((p) => Math.max(1, p - 1))} disabled={reportePaginaDetMat <= 1}>Anterior</button>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaDetMat((p) => Math.min(totalPaginasDetMat, p + 1))} disabled={reportePaginaDetMat >= totalPaginasDetMat}>Siguiente</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Costo por actuación */}
+            <div style={cardStyle}>
+              <h3 style={{ ...sectionTitleStyle, marginTop: 0 }}>Costo por actuación</h3>
+              <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "10px" }}>
+                Costo actuación: Instalación S/60 · Incidencia S/25 · Otros S/0. Incluye costo de materiales usados.
+              </div>
+              {reporteCostoActuaciones.length === 0 ? (
+                <p style={{ color: "#6b7280", margin: 0 }}>Sin registros para este filtro.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "8px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 80px 80px 80px 90px", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#6b7280", padding: "4px 8px", background: "#f3f4f6", borderRadius: "8px" }}>
+                    <span>Orden / Cliente</span><span>Técnico / Nodo</span><span style={{ textAlign: "right" }}>Actuación</span><span style={{ textAlign: "right" }}>Materiales</span><span style={{ textAlign: "right" }}>Total costo</span><span style={{ textAlign: "right" }}>Cobrado</span><span>Tipo</span>
+                  </div>
+                  {reporteCostoPagina.map((item, idx) => (
+                    <div key={`costo-${idx}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px 80px 80px 80px 90px", gap: "4px", fontSize: "12px", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: "8px", background: "#fafafa", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{item.codigo}</div>
+                        <div style={{ color: "#6b7280", fontSize: "11px" }}>{item.nombre} · {item.fecha}</div>
+                      </div>
+                      <div>
+                        <div>{item.tecnico}</div>
+                        <div style={{ color: "#6b7280", fontSize: "11px" }}>{item.nodo || "-"}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>S/ {item.costoAct.toFixed(2)}</div>
+                      <div style={{ textAlign: "right" }}>S/ {item.costoMat.toFixed(2)}</div>
+                      <div style={{ textAlign: "right", fontWeight: 700 }}>S/ {item.costoTotal.toFixed(2)}</div>
+                      <div style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>S/ {item.montoCobrado.toFixed(2)}</div>
+                      <div style={{ fontSize: "11px", color: "#6b7280" }}>{item.tipoActuacion || "-"}</div>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                      Página {reportePaginaCosto} de {totalPaginasCosto} · {reporteCostoActuaciones.length} actuaciones |
+                      Costo total: <strong>S/ {reporteCostoActuaciones.reduce((a, x) => a + x.costoTotal, 0).toFixed(2)}</strong> |
+                      Cobrado total: <strong>S/ {reporteCostoActuaciones.reduce((a, x) => a + x.montoCobrado, 0).toFixed(2)}</strong>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaCosto((p) => Math.max(1, p - 1))} disabled={reportePaginaCosto <= 1}>Anterior</button>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaCosto((p) => Math.min(totalPaginasCosto, p + 1))} disabled={reportePaginaCosto >= totalPaginasCosto}>Siguiente</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 
