@@ -1890,6 +1890,7 @@ export default function App() {
   const [reportePaginaAct, setReportePaginaAct] = useState(1);
   const [reportePaginaMat, setReportePaginaMat] = useState(1);
   const [reportePaginaDetMat, setReportePaginaDetMat] = useState(1);
+  const [reportePaginaDetEq, setReportePaginaDetEq] = useState(1);
   const [reportePaginaCosto, setReportePaginaCosto] = useState(1);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
@@ -2429,6 +2430,7 @@ export default function App() {
 
   useEffect(() => {
     setReportePaginaDetMat(1);
+    setReportePaginaDetEq(1);
     setReportePaginaCosto(1);
   }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda]);
 
@@ -3991,7 +3993,7 @@ export default function App() {
           await Promise.all(chunks.map(async (chunk) => {
             const [matsRes, eqsRes] = await Promise.all([
               supabase.from("liquidacion_materiales").select("liquidacion_id,material,cantidad,unidad").in("liquidacion_id", chunk),
-              supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo_qr,estado").in("liquidacion_id", chunk),
+              supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo,accion").in("liquidacion_id", chunk),
             ]);
             matsAll.push(...(matsRes.data || []));
             eqsAll.push(...(eqsRes.data || []));
@@ -4014,7 +4016,7 @@ export default function App() {
           const eqsMap = new Map();
           for (const e of eqsAll) {
             const arr = eqsMap.get(e.liquidacion_id) || [];
-            arr.push({ tipo: e.tipo, marca: e.marca, modelo: e.modelo, serial: e.serial, codigoQR: e.codigo_qr, estado: e.estado });
+            arr.push({ tipo: e.tipo, marca: e.marca, modelo: e.modelo, serial: e.serial, codigo: e.codigo, accion: e.accion });
             eqsMap.set(e.liquidacion_id, arr);
           }
           mapped = mapped.map((r) => ({
@@ -9646,12 +9648,28 @@ export default function App() {
     });
   }, [liquidacionesReporte]);
 
+  // Detalle: equipos por orden
+  const reporteDetalleEquipos = useMemo(() => {
+    return liquidacionesReporte
+      .map((item) => {
+        const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
+        if (!eqs.length) return null;
+        return { codigo: item.codigo, nombre: item.nombre, tecnico: item.liquidacion?.tecnicoLiquida || item.tecnico || "-", fecha: item.fechaLiquidacion, equipos: eqs };
+      })
+      .filter(Boolean);
+  }, [liquidacionesReporte]);
+
   const totalPaginasDetMat = Math.max(1, Math.ceil(reporteDetalleMateriales.length / REPORTES_PAGE_SIZE));
+  const totalPaginasDetEq = Math.max(1, Math.ceil(reporteDetalleEquipos.length / REPORTES_PAGE_SIZE));
   const totalPaginasCosto = Math.max(1, Math.ceil(reporteCostoActuaciones.length / REPORTES_PAGE_SIZE));
   const reporteDetMatPagina = useMemo(() => {
     const start = (reportePaginaDetMat - 1) * REPORTES_PAGE_SIZE;
     return reporteDetalleMateriales.slice(start, start + REPORTES_PAGE_SIZE);
   }, [reporteDetalleMateriales, reportePaginaDetMat]);
+  const reporteDetEqPagina = useMemo(() => {
+    const start = (reportePaginaDetEq - 1) * REPORTES_PAGE_SIZE;
+    return reporteDetalleEquipos.slice(start, start + REPORTES_PAGE_SIZE);
+  }, [reporteDetalleEquipos, reportePaginaDetEq]);
   const reporteCostoPagina = useMemo(() => {
     const start = (reportePaginaCosto - 1) * REPORTES_PAGE_SIZE;
     return reporteCostoActuaciones.slice(start, start + REPORTES_PAGE_SIZE);
@@ -13970,6 +13988,52 @@ export default function App() {
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button type="button" style={secondaryButton} onClick={() => setReportePaginaDetMat((p) => Math.max(1, p - 1))} disabled={reportePaginaDetMat <= 1}>Anterior</button>
                       <button type="button" style={secondaryButton} onClick={() => setReportePaginaDetMat((p) => Math.min(totalPaginasDetMat, p + 1))} disabled={reportePaginaDetMat >= totalPaginasDetMat}>Siguiente</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Detalle: equipos por orden */}
+            <div style={cardStyle}>
+              <h3 style={{ ...sectionTitleStyle, marginTop: 0 }}>Equipos instalados por orden</h3>
+              {reporteDetalleEquipos.length === 0 ? (
+                <p style={{ color: "#6b7280", margin: 0 }}>Sin órdenes con equipos para este filtro.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {reporteDetEqPagina.map((item, idx) => (
+                    <div key={`deteq-${idx}`} style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "10px 12px", background: "#fafafa" }}>
+                      <div style={{ fontWeight: 700 }}>{item.codigo} — {item.nombre}</div>
+                      <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "6px" }}>{item.fecha} | Técnico: {item.tecnico}</div>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                        <thead>
+                          <tr style={{ background: "#f3f4f6" }}>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Tipo</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Marca / Modelo</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Código QR</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Serial</th>
+                            <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {item.equipos.map((e, ei) => (
+                            <tr key={ei} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                              <td style={{ padding: "4px 8px" }}>{e.tipo || "-"}</td>
+                              <td style={{ padding: "4px 8px" }}>{[e.marca, e.modelo].filter(Boolean).join(" ") || "-"}</td>
+                              <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: "11px" }}>{e.codigo || "-"}</td>
+                              <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: "11px" }}>{e.serial || "-"}</td>
+                              <td style={{ padding: "4px 8px" }}>{e.accion || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280" }}>Página {reportePaginaDetEq} de {totalPaginasDetEq} · {reporteDetalleEquipos.length} órdenes con equipos</div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaDetEq((p) => Math.max(1, p - 1))} disabled={reportePaginaDetEq <= 1}>Anterior</button>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaDetEq((p) => Math.min(totalPaginasDetEq, p + 1))} disabled={reportePaginaDetEq >= totalPaginasDetEq}>Siguiente</button>
                     </div>
                   </div>
                 </div>
