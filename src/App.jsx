@@ -9830,6 +9830,71 @@ export default function App() {
     imprimirHtmlMismaPestana(html);
   };
 
+  const imprimirDetalleMateriales = () => {
+    const totalGeneral = reporteDetalleMateriales.reduce((a, ord) => a + ord.costoTotal, 0);
+    const rows = reporteDetalleMateriales.map((ord) =>
+      ord.materiales.map((m) => {
+        const cu = Number(m?.costoUnitario ?? 0);
+        const cant = Number(m?.cantidad ?? 0);
+        const ct = Number(m?.costoTotal ?? cu * cant);
+        return `<tr>
+          <td>${escHtml(ord.fecha || "-")}</td>
+          <td>${escHtml(ord.codigo || "-")}</td>
+          <td>${escHtml(ord.nombre || "-")}</td>
+          <td>${escHtml(ord.tecnico || "-")}</td>
+          <td>${escHtml(m?.material || "-")}</td>
+          <td style="text-align:right">${Number.isFinite(cant) ? cant : 0}</td>
+          <td>${escHtml(m?.unidad || "unidad")}</td>
+          <td style="text-align:right">S/ ${Number.isFinite(cu) ? cu.toFixed(2) : "0.00"}</td>
+          <td style="text-align:right">S/ ${Number.isFinite(ct) ? ct.toFixed(2) : "0.00"}</td>
+        </tr>`;
+      }).join("")
+    ).join("");
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Detalle de materiales</title>
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;margin:18px;color:#111827;font-size:12px}
+    h1{margin:0 0 6px 0;font-size:20px}
+    p{margin:3px 0 8px 0;color:#374151}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    th,td{border:1px solid #d7e2f3;padding:5px 7px;vertical-align:top}
+    th{background:#eef4ff;text-align:left}
+    tfoot td{background:#f0fdf4;font-weight:700}
+    @media print{body{margin:10px}}
+  </style>
+</head>
+<body>
+  <h1>Detalle de materiales por orden</h1>
+  <p>Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</p>
+  <p>Periodo: <b>${escHtml(reporteDesde || "-")}</b> al <b>${escHtml(reporteHasta || "-")}</b>
+  ${reporteNodo !== "TODOS" ? ` | Nodo: <b>${escHtml(reporteNodo)}</b>` : ""}
+  ${reporteTecnico !== "TODOS" ? ` | Técnico: <b>${escHtml(reporteTecnico)}</b>` : ""}
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Orden</th><th>Cliente</th><th>Técnico</th>
+        <th>Material</th><th style="text-align:right">Cantidad</th><th>Unidad</th>
+        <th style="text-align:right">P.U. (S/.)</th><th style="text-align:right">Total (S/.)</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="8" style="text-align:right">Total general:</td>
+        <td style="text-align:right">S/ ${totalGeneral.toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`;
+    imprimirHtmlMismaPestana(html);
+  };
+
   const exportarCsvActuaciones = () => {
     const rows = liquidacionesReporte.map((item) => [
       item.fechaLiquidacion || "-",
@@ -13746,6 +13811,9 @@ export default function App() {
                   </button>
                   <button type="button" style={secondaryButton} onClick={imprimirReporteMateriales}>
                     PDF materiales
+                  </button>
+                  <button type="button" style={secondaryButton} onClick={imprimirDetalleMateriales}>
+                    PDF detalle materiales
                   </button>
                   <button type="button" style={secondaryButton} onClick={exportarCsvMateriales}>
                     CSV materiales
