@@ -9603,10 +9603,12 @@ export default function App() {
           unidad,
           cantidad: 0,
           costo: 0,
+          costoUnit: costoUnit,
           actuacionesSet: new Set(),
         };
         prev.cantidad += cantidad;
         prev.costo += costoTotal;
+        if (!prev.costoUnit && costoUnit) prev.costoUnit = costoUnit;
         prev.actuacionesSet.add(cod);
         map.set(key, prev);
       });
@@ -9786,7 +9788,7 @@ export default function App() {
     const rows = reporteMateriales.map((item) => {
       const cant = Number(item.cantidad || 0);
       const costo = Number(item.costo || 0);
-      const pu = cant > 0 ? costo / cant : 0;
+      const pu = Number(item.costoUnit || 0);
       return `<tr>
         <td>${escHtml(item.material)}</td>
         <td style="text-align:right">${Number.isFinite(cant) ? (Number.isInteger(cant) ? cant : cant.toFixed(3)) : 0}</td>
