@@ -3999,7 +3999,7 @@ export default function App() {
             eqsAll.push(...(eqsRes.data || []));
           }));
           // Cruzar costo_unitario desde catálogo de materiales por nombre
-          const catalogoMats = await supabase.from("materiales").select("nombre,costo_unitario");
+          const catalogoMats = await supabase.from("materiales_catalogo").select("nombre,costo_unitario");
           const costoMatMap = new Map();
           for (const cm of (catalogoMats.data || [])) {
             const key = String(cm.nombre || "").trim().toLowerCase();
