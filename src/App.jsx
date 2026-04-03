@@ -9435,7 +9435,7 @@ export default function App() {
   const liquidacionesReporte = useMemo(() => {
     const q = reporteBusqueda.trim().toLowerCase();
     return liquidaciones
-      .filter((item) => fechaDentroDeRango(item.fechaLiquidacion, reporteDesde, reporteHasta))
+      .filter((item) => fechaDentroDeRango(item.fechaLiquidacionISO || item.fechaLiquidacion, reporteDesde, reporteHasta))
       .filter((item) => (reporteNodo === "TODOS" ? true : String(item.nodo || "") === reporteNodo))
       .filter((item) =>
         reporteTecnico === "TODOS"
@@ -9445,7 +9445,11 @@ export default function App() {
       .filter((item) => {
         if (reporteTipo === "TODOS") return true;
         const tipo = String(item.tipoActuacion || "").toLowerCase();
-        return reporteTipo === "INSTALACION" ? tipo.includes("instal") : tipo.includes("inciden");
+        if (reporteTipo === "INSTALACION") return tipo.includes("instal");
+        if (reporteTipo === "INCIDENCIA") return tipo.includes("inciden");
+        if (reporteTipo === "MANTENIMIENTO") return tipo.includes("manten");
+        if (reporteTipo === "RECUPERACION") return tipo.includes("recup");
+        return true;
       })
       .filter((item) => {
         if (!q) return true;
@@ -13657,6 +13661,8 @@ export default function App() {
                     <option value="TODOS">Todos</option>
                     <option value="INSTALACION">Instalacion</option>
                     <option value="INCIDENCIA">Incidencia</option>
+                    <option value="MANTENIMIENTO">Mantenimiento</option>
+                    <option value="RECUPERACION">Recuperacion</option>
                   </select>
                 </div>
                 <div>
