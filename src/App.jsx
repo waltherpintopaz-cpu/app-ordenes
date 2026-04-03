@@ -9782,51 +9782,66 @@ export default function App() {
   };
 
   const imprimirReporteMateriales = () => {
-    const rows = reporteMateriales
-      .map(
-        (item, idx) => `<tr>
-      <td>${idx + 1}</td>
-      <td>${escHtml(item.material)}</td>
-      <td>${escHtml(item.unidad)}</td>
-      <td>${Number(item.cantidad || 0).toFixed(2)}</td>
-      <td>S/ ${Number(item.costo || 0).toFixed(2)}</td>
-      <td>${Number(item.actuaciones || 0)}</td>
-    </tr>`
-      )
-      .join("");
+    const totalGeneral = reporteMateriales.reduce((acc, x) => acc + Number(x.costo || 0), 0);
+    const rows = reporteMateriales.map((item) => {
+      const cant = Number(item.cantidad || 0);
+      const costo = Number(item.costo || 0);
+      const pu = cant > 0 ? costo / cant : 0;
+      return `<tr>
+        <td>${escHtml(item.material)}</td>
+        <td style="text-align:right">${Number.isFinite(cant) ? (Number.isInteger(cant) ? cant : cant.toFixed(3)) : 0}</td>
+        <td style="text-align:right">${pu.toFixed(2)} S/</td>
+        <td style="text-align:right">${costo.toFixed(2)} S/</td>
+      </tr>`;
+    }).join("");
 
     const html = `<!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>Reporte de materiales usados</title>
+  <meta charset="utf-8"/>
+  <title>Materiales usados</title>
   <style>
-    body{font-family:Segoe UI,Arial,sans-serif;margin:18px;color:#111827}
-    h1{margin:0 0 8px 0;font-size:22px}
-    p{margin:4px 0 10px 0;color:#374151}
-    table{width:100%;border-collapse:collapse;font-size:12px}
-    th,td{border:1px solid #d7e2f3;padding:6px;text-align:left;vertical-align:top}
-    th{background:#eef4ff}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#111;padding:24px;font-size:13px}
+    h2{font-size:16px;margin-bottom:4px}
+    .sub{color:#555;font-size:12px;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse}
+    thead tr{background:#1a3a6b;color:#fff}
+    thead th{padding:10px 12px;text-align:left;font-size:12px;font-weight:600}
+    thead th:not(:first-child){text-align:right}
+    tbody tr{border-bottom:1px solid #e5e7eb}
+    tbody td{padding:9px 12px;font-size:12px}
+    tfoot tr{border-top:2px solid #1a3a6b}
+    tfoot td{padding:10px 12px;font-size:13px;font-weight:700;text-align:right}
+    @media print{body{padding:12px}}
   </style>
 </head>
 <body>
-  <h1>Reporte de materiales usados</h1>
-  <p>Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</p>
-  <p>Rango: ${escHtml(reporteDesde || "-")} a ${escHtml(reporteHasta || "-")} | Nodo: ${escHtml(
-      reporteNodo === "TODOS" ? "Todos" : reporteNodo
-    )} | Tecnico: ${escHtml(reporteTecnico === "TODOS" ? "Todos" : reporteTecnico)}</p>
-  <p>Total materiales distintos: <b>${reporteMateriales.length}</b> | Costo total: <b>S/ ${reporteMateriales
-      .reduce((acc, x) => acc + Number(x.costo || 0), 0)
-      .toFixed(2)}</b></p>
+  <h2>Materiales usados</h2>
+  <div class="sub">
+    Periodo: ${escHtml(reporteDesde || "-")} al ${escHtml(reporteHasta || "-")}
+    ${reporteNodo !== "TODOS" ? ` &nbsp;|&nbsp; Nodo: ${escHtml(reporteNodo)}` : ""}
+    ${reporteTecnico !== "TODOS" ? ` &nbsp;|&nbsp; Técnico: ${escHtml(reporteTecnico)}` : ""}
+  </div>
   <table>
     <thead>
-      <tr><th>#</th><th>Material</th><th>Unidad</th><th>Cantidad</th><th>Costo</th><th>Actuaciones</th></tr>
+      <tr>
+        <th>Producto</th>
+        <th style="text-align:right">Cantidad</th>
+        <th style="text-align:right">PU (S/.)</th>
+        <th style="text-align:right">Total (S/.)</th>
+      </tr>
     </thead>
     <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" style="text-align:right">Total general: S/.</td>
+        <td>${totalGeneral.toFixed(2)} S/</td>
+      </tr>
+    </tfoot>
   </table>
 </body>
 </html>`;
-
     imprimirHtmlMismaPestana(html);
   };
 
