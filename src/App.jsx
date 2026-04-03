@@ -2288,6 +2288,13 @@ export default function App() {
     if (!esAdminSesion && vistaActiva === "almacenes") setVistaActiva("inventario");
   }, [puedeVerUsuarios, puedeVerReportes, puedeVerPlantaExterna, esAdminSesion, vistaActiva]);
 
+  // Recargar liquidaciones al entrar a reportes para asegurar datos frescos
+  useEffect(() => {
+    if (vistaActiva === "reportes") {
+      void cargarLiquidacionesDesdeSupabase({ silent: true });
+    }
+  }, [vistaActiva]);
+
   useEffect(() => {
     if (vistaActiva !== "historialAppsheet") return;
     if (!historialAppsheetSubmenuKeysPermitidos.length) return;
