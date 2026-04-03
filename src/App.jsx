@@ -3990,16 +3990,25 @@ export default function App() {
           const matsAll = [], eqsAll = [];
           await Promise.all(chunks.map(async (chunk) => {
             const [matsRes, eqsRes] = await Promise.all([
-              supabase.from("liquidacion_materiales").select("liquidacion_id,material,cantidad,unidad,costo_unitario,costo_total").in("liquidacion_id", chunk),
+              supabase.from("liquidacion_materiales").select("liquidacion_id,material,cantidad,unidad").in("liquidacion_id", chunk),
               supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo_qr,estado").in("liquidacion_id", chunk),
             ]);
             matsAll.push(...(matsRes.data || []));
             eqsAll.push(...(eqsRes.data || []));
           }));
+          // Cruzar costo_unitario desde catálogo de materiales por nombre
+          const catalogoMats = await supabase.from("materiales").select("nombre,costo_unitario");
+          const costoMatMap = new Map();
+          for (const cm of (catalogoMats.data || [])) {
+            const key = String(cm.nombre || "").trim().toLowerCase();
+            if (key && !costoMatMap.has(key)) costoMatMap.set(key, Number(cm.costo_unitario || 0));
+          }
           const matsMap = new Map();
           for (const m of matsAll) {
             const arr = matsMap.get(m.liquidacion_id) || [];
-            arr.push({ material: m.material, cantidad: m.cantidad, unidad: m.unidad, costoUnitario: m.costo_unitario, costoTotal: m.costo_total });
+            const cu = costoMatMap.get(String(m.material || "").trim().toLowerCase()) || 0;
+            const cant = Number(m.cantidad || 0);
+            arr.push({ material: m.material, cantidad: cant, unidad: m.unidad, costoUnitario: cu, costoTotal: cu * cant });
             matsMap.set(m.liquidacion_id, arr);
           }
           const eqsMap = new Map();
