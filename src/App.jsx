@@ -3980,22 +3980,30 @@ export default function App() {
           });
         } catch { /* silent */ }
       }
-      // Enriquecer materiales y equipos desde tablas separadas
+      // Enriquecer materiales y equipos desde tablas separadas (en lotes de 100)
       try {
         const ids = mapped.map((r) => r.id).filter((x) => Number.isFinite(x) && x > 0);
         if (ids.length > 0) {
-          const [matsRes, eqsRes] = await Promise.all([
-            supabase.from("liquidacion_materiales").select("liquidacion_id,material,cantidad,unidad,costo_unitario,costo_total").in("liquidacion_id", ids),
-            supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo_qr,estado").in("liquidacion_id", ids),
-          ]);
+          const chunkSize = 100;
+          const chunks = [];
+          for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+          const matsAll = [], eqsAll = [];
+          await Promise.all(chunks.map(async (chunk) => {
+            const [matsRes, eqsRes] = await Promise.all([
+              supabase.from("liquidacion_materiales").select("liquidacion_id,material,cantidad,unidad,costo_unitario,costo_total").in("liquidacion_id", chunk),
+              supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo_qr,estado").in("liquidacion_id", chunk),
+            ]);
+            matsAll.push(...(matsRes.data || []));
+            eqsAll.push(...(eqsRes.data || []));
+          }));
           const matsMap = new Map();
-          for (const m of (matsRes.data || [])) {
+          for (const m of matsAll) {
             const arr = matsMap.get(m.liquidacion_id) || [];
             arr.push({ material: m.material, cantidad: m.cantidad, unidad: m.unidad, costoUnitario: m.costo_unitario, costoTotal: m.costo_total });
             matsMap.set(m.liquidacion_id, arr);
           }
           const eqsMap = new Map();
-          for (const e of (eqsRes.data || [])) {
+          for (const e of eqsAll) {
             const arr = eqsMap.get(e.liquidacion_id) || [];
             arr.push({ tipo: e.tipo, marca: e.marca, modelo: e.modelo, serial: e.serial, codigoQR: e.codigo_qr, estado: e.estado });
             eqsMap.set(e.liquidacion_id, arr);
@@ -4004,8 +4012,8 @@ export default function App() {
             ...r,
             liquidacion: {
               ...r.liquidacion,
-              materiales: matsMap.get(r.id) || r.liquidacion.materiales,
-              equipos: eqsMap.get(r.id) || r.liquidacion.equipos,
+              materiales: matsMap.get(r.id)?.length ? matsMap.get(r.id) : r.liquidacion.materiales,
+              equipos: eqsMap.get(r.id)?.length ? eqsMap.get(r.id) : r.liquidacion.equipos,
             },
           }));
         }
