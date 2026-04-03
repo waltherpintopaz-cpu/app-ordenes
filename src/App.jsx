@@ -3980,6 +3980,37 @@ export default function App() {
           });
         } catch { /* silent */ }
       }
+      // Enriquecer materiales y equipos desde tablas separadas
+      try {
+        const ids = mapped.map((r) => r.id).filter((x) => Number.isFinite(x) && x > 0);
+        if (ids.length > 0) {
+          const [matsRes, eqsRes] = await Promise.all([
+            supabase.from("liquidacion_materiales").select("liquidacion_id,material,cantidad,unidad,costo_unitario,costo_total").in("liquidacion_id", ids),
+            supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo_qr,estado").in("liquidacion_id", ids),
+          ]);
+          const matsMap = new Map();
+          for (const m of (matsRes.data || [])) {
+            const arr = matsMap.get(m.liquidacion_id) || [];
+            arr.push({ material: m.material, cantidad: m.cantidad, unidad: m.unidad, costoUnitario: m.costo_unitario, costoTotal: m.costo_total });
+            matsMap.set(m.liquidacion_id, arr);
+          }
+          const eqsMap = new Map();
+          for (const e of (eqsRes.data || [])) {
+            const arr = eqsMap.get(e.liquidacion_id) || [];
+            arr.push({ tipo: e.tipo, marca: e.marca, modelo: e.modelo, serial: e.serial, codigoQR: e.codigo_qr, estado: e.estado });
+            eqsMap.set(e.liquidacion_id, arr);
+          }
+          mapped = mapped.map((r) => ({
+            ...r,
+            liquidacion: {
+              ...r.liquidacion,
+              materiales: matsMap.get(r.id) || r.liquidacion.materiales,
+              equipos: eqsMap.get(r.id) || r.liquidacion.equipos,
+            },
+          }));
+        }
+      } catch { /* silent */ }
+
       setLiquidaciones(mapped);
     } catch (e) {
       if (!silent) alert(String(e?.message || "No se pudo cargar liquidaciones desde Supabase."));
