@@ -9785,15 +9785,21 @@ export default function App() {
 
   const imprimirReporteMateriales = () => {
     const totalGeneral = reporteMateriales.reduce((acc, x) => acc + Number(x.costo || 0), 0);
-    const rows = reporteMateriales.map((item) => {
+    const empresa = String(usuarioSesion?.empresa || "Americanet");
+    const esDim = empresa.toLowerCase().includes("dim");
+    const logoSrc = esDim ? logoDim : logoAmericanet;
+    const accentColor = esDim ? "#0f3460" : "#1a3a6b";
+    const rows = reporteMateriales.map((item, idx) => {
       const cant = Number(item.cantidad || 0);
       const costo = Number(item.costo || 0);
       const pu = Number(item.costoUnit || 0);
-      return `<tr>
-        <td>${escHtml(item.material)}</td>
-        <td style="text-align:right">${Number.isFinite(cant) ? (Number.isInteger(cant) ? cant : cant.toFixed(3)) : 0}</td>
-        <td style="text-align:right">${pu.toFixed(2)} S/</td>
-        <td style="text-align:right">${costo.toFixed(2)} S/</td>
+      const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+      return `<tr style="background:${bg}">
+        <td style="padding:9px 12px;font-size:12px;color:#374151">${idx + 1}</td>
+        <td style="padding:9px 12px;font-size:12px;color:#111827;font-weight:500">${escHtml(item.material)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">${Number.isFinite(cant) ? (Number.isInteger(cant) ? cant : cant.toFixed(3)) : 0}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">S/ ${pu.toFixed(2)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#111827">S/ ${costo.toFixed(2)}</td>
       </tr>`;
     }).join("");
 
@@ -9801,47 +9807,71 @@ export default function App() {
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>Materiales usados</title>
+  <title>Reporte de Materiales</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;color:#111;padding:24px;font-size:13px}
-    h2{font-size:16px;margin-bottom:4px}
-    .sub{color:#555;font-size:12px;margin-bottom:16px}
-    table{width:100%;border-collapse:collapse}
-    thead tr{background:#1a3a6b;color:#fff}
-    thead th{padding:10px 12px;text-align:left;font-size:12px;font-weight:600}
-    thead th:not(:first-child){text-align:right}
-    tbody tr{border-bottom:1px solid #e5e7eb}
-    tbody td{padding:9px 12px;font-size:12px}
-    tfoot tr{border-top:2px solid #1a3a6b}
-    tfoot td{padding:10px 12px;font-size:13px;font-weight:700;text-align:right}
-    @media print{body{padding:12px}}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff;padding:32px;font-size:13px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:3px solid ${accentColor}}
+    .header-left img{height:52px;object-fit:contain}
+    .header-right{text-align:right}
+    .doc-title{font-size:20px;font-weight:700;color:${accentColor};margin-bottom:4px}
+    .doc-sub{font-size:12px;color:#6b7280}
+    .info-bar{display:flex;gap:24px;background:#f1f5f9;border-radius:8px;padding:12px 16px;margin-bottom:22px;flex-wrap:wrap}
+    .info-item{display:flex;flex-direction:column;gap:2px}
+    .info-label{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+    .info-value{font-size:13px;color:#1e293b;font-weight:600}
+    table{width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    thead tr{background:${accentColor};color:#fff}
+    thead th{padding:11px 12px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+    thead th:not(:nth-child(1)):not(:nth-child(2)){text-align:right}
+    tbody tr{border-bottom:1px solid #f1f5f9}
+    tbody tr:last-child{border-bottom:none}
+    tfoot tr{background:#f0fdf4;border-top:2px solid #22c55e}
+    tfoot td{padding:11px 12px;font-size:13px;font-weight:700;color:#15803d}
+    .footer{margin-top:24px;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:10px}
+    @media print{body{padding:16px}table{box-shadow:none}}
   </style>
 </head>
 <body>
-  <h2>Materiales usados</h2>
-  <div class="sub">
-    Periodo: ${escHtml(reporteDesde || "-")} al ${escHtml(reporteHasta || "-")}
-    ${reporteNodo !== "TODOS" ? ` &nbsp;|&nbsp; Nodo: ${escHtml(reporteNodo)}` : ""}
-    ${reporteTecnico !== "TODOS" ? ` &nbsp;|&nbsp; Técnico: ${escHtml(reporteTecnico)}` : ""}
+  <div class="header">
+    <div class="header-left"><img src="${logoSrc}" alt="${escHtml(empresa)}"/></div>
+    <div class="header-right">
+      <div class="doc-title">Reporte de Materiales</div>
+      <div class="doc-sub">Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+    </div>
   </div>
+
+  <div class="info-bar">
+    <div class="info-item"><span class="info-label">Periodo</span><span class="info-value">${escHtml(reporteDesde || "-")} — ${escHtml(reporteHasta || "-")}</span></div>
+    ${reporteNodo !== "TODOS" ? `<div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(reporteNodo)}</span></div>` : ""}
+    ${reporteTecnico !== "TODOS" ? `<div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(reporteTecnico)}</span></div>` : ""}
+    <div class="info-item"><span class="info-label">Total productos</span><span class="info-value">${reporteMateriales.length}</span></div>
+    <div class="info-item"><span class="info-label">Total general</span><span class="info-value" style="color:#15803d">S/ ${totalGeneral.toFixed(2)}</span></div>
+  </div>
+
   <table>
     <thead>
       <tr>
+        <th style="width:36px;text-align:center">#</th>
         <th>Producto</th>
-        <th style="text-align:right">Cantidad</th>
-        <th style="text-align:right">PU (S/.)</th>
-        <th style="text-align:right">Total (S/.)</th>
+        <th style="text-align:right;width:100px">Cantidad</th>
+        <th style="text-align:right;width:110px">P.U. (S/.)</th>
+        <th style="text-align:right;width:110px">Total (S/.)</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="3" style="text-align:right">Total general: S/.</td>
-        <td>${totalGeneral.toFixed(2)} S/</td>
+        <td colspan="4" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Total general:</td>
+        <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalGeneral.toFixed(2)}</td>
       </tr>
     </tfoot>
   </table>
+
+  <div class="footer">
+    <span>${escHtml(empresa)} — Reporte de materiales consumidos</span>
+    <span>Pág. 1</span>
+  </div>
 </body>
 </html>`;
     imprimirHtmlMismaPestana(html);
