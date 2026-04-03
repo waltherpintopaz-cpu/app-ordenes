@@ -9790,6 +9790,20 @@ export default function App() {
     const esDim = empresa.toLowerCase().includes("dim");
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = esDim ? "#0f3460" : "#1a3a6b";
+
+    // Agrupar equipos por tipo+marca+modelo
+    const eqMap = new Map();
+    reporteDetalleEquipos.forEach((ord) => {
+      (ord.equipos || []).forEach((e) => {
+        const key = `${e.tipo||""}||${e.marca||""}||${e.modelo||""}`;
+        const prev = eqMap.get(key) || { tipo: e.tipo||"-", marca: e.marca||"", modelo: e.modelo||"", cantidad: 0, precioUnit: Number(e.precioUnitario||0), total: 0 };
+        prev.cantidad += 1;
+        prev.total += Number(e.precioUnitario || 0);
+        eqMap.set(key, prev);
+      });
+    });
+    const equiposResumen = Array.from(eqMap.values()).sort((a,b) => b.total - a.total);
+    const totalEquipos = equiposResumen.reduce((a, x) => a + x.total, 0);
     const rows = reporteMateriales.map((item, idx) => {
       const cant = Number(item.cantidad || 0);
       const costo = Number(item.costo || 0);
@@ -9846,10 +9860,12 @@ export default function App() {
     <div class="info-item"><span class="info-label">Periodo</span><span class="info-value">${escHtml(reporteDesde || "-")} — ${escHtml(reporteHasta || "-")}</span></div>
     ${reporteNodo !== "TODOS" ? `<div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(reporteNodo)}</span></div>` : ""}
     ${reporteTecnico !== "TODOS" ? `<div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(reporteTecnico)}</span></div>` : ""}
-    <div class="info-item"><span class="info-label">Total productos</span><span class="info-value">${reporteMateriales.length}</span></div>
-    <div class="info-item"><span class="info-label">Total general</span><span class="info-value" style="color:#15803d">S/ ${totalGeneral.toFixed(2)}</span></div>
+    <div class="info-item"><span class="info-label">Materiales</span><span class="info-value">${reporteMateriales.length} productos</span></div>
+    <div class="info-item"><span class="info-label">Equipos</span><span class="info-value">${equiposResumen.length} tipos</span></div>
+    <div class="info-item"><span class="info-label">Total general</span><span class="info-value" style="color:#15803d">S/ ${(totalGeneral + totalEquipos).toFixed(2)}</span></div>
   </div>
 
+  <p style="font-size:13px;font-weight:700;color:${accentColor};margin-bottom:10px;margin-top:4px">Materiales consumidos</p>
   <table>
     <thead>
       <tr>
@@ -9863,14 +9879,53 @@ export default function App() {
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="4" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Total general:</td>
+        <td colspan="4" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Subtotal materiales:</td>
         <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalGeneral.toFixed(2)}</td>
       </tr>
     </tfoot>
   </table>
 
+  ${equiposResumen.length > 0 ? `
+  <p style="font-size:13px;font-weight:700;color:${accentColor};margin-bottom:10px;margin-top:24px">Equipos instalados</p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px;text-align:center">#</th>
+        <th>Tipo</th>
+        <th>Marca / Modelo</th>
+        <th style="text-align:right;width:90px">Cantidad</th>
+        <th style="text-align:right;width:110px">P.U. (S/.)</th>
+        <th style="text-align:right;width:110px">Total (S/.)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${equiposResumen.map((e, idx) => {
+        const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+        return `<tr style="background:${bg}">
+          <td style="padding:9px 12px;font-size:12px;color:#374151;text-align:center">${idx + 1}</td>
+          <td style="padding:9px 12px;font-size:12px;color:#111827;font-weight:500">${escHtml(e.tipo)}</td>
+          <td style="padding:9px 12px;font-size:12px;color:#374151">${escHtml([e.marca, e.modelo].filter(Boolean).join(" ") || "-")}</td>
+          <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">${e.cantidad}</td>
+          <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">S/ ${e.precioUnit.toFixed(2)}</td>
+          <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#111827">S/ ${e.total.toFixed(2)}</td>
+        </tr>`;
+      }).join("")}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="5" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Subtotal equipos:</td>
+        <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalEquipos.toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  </table>` : ""}
+
+  <div style="margin-top:16px;background:#f0fdf4;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:14px;font-weight:700;color:#15803d">TOTAL GENERAL (Materiales + Equipos)</span>
+    <span style="font-size:18px;font-weight:800;color:#15803d">S/ ${(totalGeneral + totalEquipos).toFixed(2)}</span>
+  </div>
+
   <div class="footer">
-    <span>${escHtml(empresa)} — Reporte de materiales consumidos</span>
+    <span>${escHtml(empresa)} — Reporte de materiales y equipos</span>
     <span>Pág. 1</span>
   </div>
 </body>
