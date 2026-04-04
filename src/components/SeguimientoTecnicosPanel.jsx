@@ -211,6 +211,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState("");
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
+  const [pingStates, setPingStates] = useState({}); // { [tecnicoId]: "idle"|"waiting"|"ok"|"timeout" }
 
   const _esAdmin = rolSesion === "Administrador";
   const esTecnico = rolSesion === "Tecnico";
@@ -235,6 +236,43 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
     markersRef.current = [];
     polylinesRef.current = [];
   }, []);
+
+  const pedirUbicacion = useCallback(async (tecnicoId) => {
+    if (!tecnicoId || !isSupabaseConfigured) return;
+    setPingStates((p) => ({ ...p, [tecnicoId]: "waiting" }));
+    const requestId = `${tecnicoId}_${Date.now()}`;
+    try {
+      await supabase.from("location_ping_requests").insert({
+        request_id: requestId,
+        tecnico_id: String(tecnicoId),
+        requested_at: new Date().toISOString(),
+        status: "pending",
+      });
+    } catch {
+      setPingStates((p) => ({ ...p, [tecnicoId]: "idle" }));
+      return;
+    }
+    // Esperar respuesta hasta 20s leyendo tecnico_ubicacion_actual
+    const antes = new Date();
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("tecnico_ubicacion_actual")
+        .select("updated_at")
+        .eq("tecnico_id", String(tecnicoId))
+        .maybeSingle();
+      const updatedAt = data?.updated_at ? new Date(data.updated_at) : null;
+      if (updatedAt && updatedAt > antes) {
+        clearInterval(interval);
+        setPingStates((p) => ({ ...p, [tecnicoId]: "ok" }));
+        await cargarUbicacionActual();
+        setTimeout(() => setPingStates((p) => ({ ...p, [tecnicoId]: "idle" })), 3000);
+      } else if (Date.now() - antes.getTime() > 20000) {
+        clearInterval(interval);
+        setPingStates((p) => ({ ...p, [tecnicoId]: "timeout" }));
+        setTimeout(() => setPingStates((p) => ({ ...p, [tecnicoId]: "idle" })), 4000);
+      }
+    }, 1500);
+  }, []);  // eslint-disable-line
 
   const cargarUbicacionActual = useCallback(async () => {
     const { data, error: fetchError } = await supabase
@@ -859,6 +897,20 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
               >
                 Llegar
               </button>
+              {!esTecnico && (() => {
+                const ps = pingStates[selectedRow.tecnico_id] || "idle";
+                return (
+                  <button
+                    type="button"
+                    className="secondary-btn small"
+                    disabled={ps === "waiting"}
+                    onClick={() => pedirUbicacion(selectedRow.tecnico_id)}
+                    style={{ minWidth: 110 }}
+                  >
+                    {ps === "waiting" ? "Solicitando..." : ps === "ok" ? "✓ Actualizado" : ps === "timeout" ? "Sin respuesta" : "📍 Pedir ubicación"}
+                  </button>
+                );
+              })()}
             </div>
           </article>
         ) : null}
@@ -903,21 +955,32 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
               techOptions.map((tecnico) => {
                 const row = rowsList.find((item) => item.tecnico_id === tecnico.id);
                 return (
-                  <button
+                  <div
                     key={`seg-tech-row-${tecnico.id}`}
-                    type="button"
                     className={parseTecnicoId(selectedTechId) === tecnico.id ? "maptech-row active" : "maptech-row"}
-                    onClick={() => {
-                      setSelectedTechId(tecnico.id);
-                      if (row) centerTech(row);
-                    }}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => { setSelectedTechId(tecnico.id); if (row) centerTech(row); }}
                   >
                     <p className="maptech-row-title">{tecnico.nombre}</p>
                     <p className="maptech-row-meta">Seguimiento: {tecnico.habilitado ? "ON" : "OFF"}</p>
                     <p className="maptech-row-meta">
-                      {row ? `Ultimo ping: ${formatDateTime(row.updated_at)}` : "Sin ubicacion actual."}
+                      {row ? `Ultimo ping: ${formatDateTime(row.updated_at)} (${formatAgo(row.updated_at)})` : "Sin ubicacion actual."}
                     </p>
-                  </button>
+                    {!esTecnico && (() => {
+                      const ps = pingStates[tecnico.id] || "idle";
+                      return (
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          style={{ marginTop: 6, minWidth: 130 }}
+                          disabled={ps === "waiting"}
+                          onClick={(e) => { e.stopPropagation(); pedirUbicacion(tecnico.id); }}
+                        >
+                          {ps === "waiting" ? "Solicitando..." : ps === "ok" ? "✓ Actualizado" : ps === "timeout" ? "Sin respuesta" : "📍 Pedir ubicación"}
+                        </button>
+                      );
+                    })()}
+                  </div>
                 );
               })
             )}
