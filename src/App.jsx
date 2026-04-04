@@ -1894,6 +1894,7 @@ export default function App() {
   const [reportePaginaDetMat, setReportePaginaDetMat] = useState(1);
   const [reportePaginaDetEq, setReportePaginaDetEq] = useState(1);
   const [reportePaginaCosto, setReportePaginaCosto] = useState(1);
+  const [reportePaginaTecnico, setReportePaginaTecnico] = useState(1);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -2434,7 +2435,8 @@ export default function App() {
     setReportePaginaDetMat(1);
     setReportePaginaDetEq(1);
     setReportePaginaCosto(1);
-  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda]);
+    setReportePaginaTecnico(1);
+  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
 
   const menuLabelByKeyWeb = useMemo(
     () => Object.fromEntries(MENU_VISTAS_WEB.map((item) => [item.key, item.label])),
@@ -9685,6 +9687,57 @@ export default function App() {
       .filter(Boolean);
   }, [liquidacionesReporte]);
 
+  // Resumen consumo por técnico (período filtrado)
+  const reporteAsignacionesTecnico = useMemo(() => {
+    const map = new Map();
+    for (const item of liquidacionesReporte) {
+      const tec = String(item.liquidacion?.tecnicoLiquida || item.tecnico || "Sin técnico").trim() || "Sin técnico";
+      const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
+      const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
+      const costoMat = mats.reduce((acc, m) => {
+        const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+        const cant = Number(m?.cantidad ?? 0);
+        const ct = Number(m?.costoTotal ?? m?.costo_total ?? cu * cant);
+        return acc + (Number.isFinite(ct) ? ct : 0);
+      }, 0);
+      const valorEq = eqs.reduce((acc, e) => {
+        const p = Number(e?.precioUnitario ?? e?.precio_unitario ?? 0);
+        return acc + (Number.isFinite(p) ? p : 0);
+      }, 0);
+      const montoCobrado = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+      const prev = map.get(tec) || { tecnico: tec, actuaciones: 0, costoMateriales: 0, equiposInstalados: 0, valorEquiposInstalados: 0, montoCobrado: 0 };
+      prev.actuaciones += 1;
+      prev.costoMateriales += costoMat;
+      prev.equiposInstalados += eqs.length;
+      prev.valorEquiposInstalados += valorEq;
+      prev.montoCobrado += Number.isFinite(montoCobrado) ? montoCobrado : 0;
+      map.set(tec, prev);
+    }
+    return Array.from(map.values()).sort((a, b) => b.actuaciones - a.actuaciones);
+  }, [liquidacionesReporte]);
+
+  // Stock de equipos actualmente asignados por técnico (catálogo completo, sin filtro de período)
+  const reporteStockAsignadoTecnico = useMemo(() => {
+    const map = new Map();
+    for (const eq of equiposCatalogo) {
+      const tec = String(eq.tecnicoAsignado || "").trim();
+      if (!tec) continue;
+      if (String(eq.estado || "").toLowerCase() === "liquidado") continue;
+      const precio = Number(eq.precioUnitario || 0);
+      const prev = map.get(tec) || { tecnico: tec, cantidad: 0, valor: 0 };
+      prev.cantidad += 1;
+      prev.valor += Number.isFinite(precio) ? precio : 0;
+      map.set(tec, prev);
+    }
+    return Array.from(map.values()).sort((a, b) => b.cantidad - a.cantidad);
+  }, [equiposCatalogo]);
+
+  const totalPaginasTecnico = Math.max(1, Math.ceil(reporteAsignacionesTecnico.length / REPORTES_PAGE_SIZE));
+  const reporteAsignTecnicoPagina = useMemo(() => {
+    const start = (reportePaginaTecnico - 1) * REPORTES_PAGE_SIZE;
+    return reporteAsignacionesTecnico.slice(start, start + REPORTES_PAGE_SIZE);
+  }, [reporteAsignacionesTecnico, reportePaginaTecnico]);
+
   const totalPaginasDetMat = Math.max(1, Math.ceil(reporteDetalleMateriales.length / REPORTES_PAGE_SIZE));
   const totalPaginasDetEq = Math.max(1, Math.ceil(reporteDetalleEquipos.length / REPORTES_PAGE_SIZE));
   const totalPaginasCosto = Math.max(1, Math.ceil(reporteCostoActuaciones.length / REPORTES_PAGE_SIZE));
@@ -14291,6 +14344,83 @@ export default function App() {
                       <button type="button" style={secondaryButton} onClick={() => setReportePaginaCosto((p) => Math.max(1, p - 1))} disabled={reportePaginaCosto <= 1}>Anterior</button>
                       <button type="button" style={secondaryButton} onClick={() => setReportePaginaCosto((p) => Math.min(totalPaginasCosto, p + 1))} disabled={reportePaginaCosto >= totalPaginasCosto}>Siguiente</button>
                     </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Asignaciones por técnico */}
+            <div style={cardStyle}>
+              <h3 style={{ ...sectionTitleStyle, marginTop: 0 }}>Asignaciones por técnico</h3>
+
+              {/* Resumen consumo período */}
+              <div style={{ fontWeight: 700, fontSize: "13px", color: "#374151", marginBottom: "6px" }}>
+                Consumo en el período filtrado
+              </div>
+              <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "10px" }}>
+                Materiales, equipos instalados y cobro por técnico según los filtros activos.
+              </div>
+              {reporteAsignacionesTecnico.length === 0 ? (
+                <p style={{ color: "#6b7280", margin: "0 0 18px 0" }}>Sin registros para este filtro.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "8px", marginBottom: "16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 60px 90px 70px 90px 90px", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#6b7280", padding: "4px 8px", background: "#f3f4f6", borderRadius: "8px" }}>
+                    <span>Técnico</span>
+                    <span style={{ textAlign: "right" }}>Actu.</span>
+                    <span style={{ textAlign: "right" }}>Materiales</span>
+                    <span style={{ textAlign: "right" }}>Eq. inst.</span>
+                    <span style={{ textAlign: "right" }}>Valor eq.</span>
+                    <span style={{ textAlign: "right" }}>Cobrado</span>
+                  </div>
+                  {reporteAsignTecnicoPagina.map((row, idx) => (
+                    <div key={`asign-tec-${idx}`} style={{ display: "grid", gridTemplateColumns: "1fr 60px 90px 70px 90px 90px", gap: "4px", fontSize: "12px", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: "8px", background: "#fafafa", alignItems: "center" }}>
+                      <div style={{ fontWeight: 700 }}>{row.tecnico}</div>
+                      <div style={{ textAlign: "right" }}>{row.actuaciones}</div>
+                      <div style={{ textAlign: "right" }}>S/ {row.costoMateriales.toFixed(2)}</div>
+                      <div style={{ textAlign: "right" }}>{row.equiposInstalados}</div>
+                      <div style={{ textAlign: "right" }}>S/ {row.valorEquiposInstalados.toFixed(2)}</div>
+                      <div style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>S/ {row.montoCobrado.toFixed(2)}</div>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                      Página {reportePaginaTecnico} de {totalPaginasTecnico} · {reporteAsignacionesTecnico.length} técnicos |
+                      Total cobrado: <strong>S/ {reporteAsignacionesTecnico.reduce((a, x) => a + x.montoCobrado, 0).toFixed(2)}</strong>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaTecnico((p) => Math.max(1, p - 1))} disabled={reportePaginaTecnico <= 1}>Anterior</button>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaTecnico((p) => Math.min(totalPaginasTecnico, p + 1))} disabled={reportePaginaTecnico >= totalPaginasTecnico}>Siguiente</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stock actual asignado */}
+              <div style={{ fontWeight: 700, fontSize: "13px", color: "#374151", marginBottom: "6px", marginTop: "8px" }}>
+                Stock de equipos asignados actualmente
+              </div>
+              <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "10px" }}>
+                Equipos del catálogo con técnico asignado (excluyendo liquidados). Independiente del período filtrado.
+              </div>
+              {reporteStockAsignadoTecnico.length === 0 ? (
+                <p style={{ color: "#6b7280", margin: 0 }}>No hay equipos asignados a técnicos en el catálogo.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "6px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#6b7280", padding: "4px 8px", background: "#f3f4f6", borderRadius: "8px" }}>
+                    <span>Técnico</span>
+                    <span style={{ textAlign: "right" }}>Equipos</span>
+                    <span style={{ textAlign: "right" }}>Valor total</span>
+                  </div>
+                  {reporteStockAsignadoTecnico.map((row, idx) => (
+                    <div key={`stock-tec-${idx}`} style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px", gap: "4px", fontSize: "12px", padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: "8px", background: idx % 2 === 0 ? "#fafafa" : "#fff", alignItems: "center" }}>
+                      <div style={{ fontWeight: 700 }}>{row.tecnico}</div>
+                      <div style={{ textAlign: "right" }}>{row.cantidad}</div>
+                      <div style={{ textAlign: "right", fontWeight: 700, color: "#1d4ed8" }}>S/ {row.valor.toFixed(2)}</div>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: "13px", color: "#6b7280", padding: "4px 8px" }}>
+                    {reporteStockAsignadoTecnico.reduce((a, x) => a + x.cantidad, 0)} equipos ·
+                    Valor total: <strong>S/ {reporteStockAsignadoTecnico.reduce((a, x) => a + x.valor, 0).toFixed(2)}</strong>
                   </div>
                 </div>
               )}
