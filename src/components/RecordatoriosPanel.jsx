@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../supabaseClient";
 
 const PRIOS = [
@@ -33,6 +33,9 @@ export default function RecordatoriosPanel({ sessionUser }) {
   const [form, setForm]         = useState(emptyForm);
   const [editId, setEditId]     = useState(null);
   const [saving, setSaving]     = useState(false);
+  const [uploadingFoto, setUploadingFoto] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!userId || !isSupabaseConfigured) { setLoading(false); return; }
@@ -60,6 +63,23 @@ export default function RecordatoriosPanel({ sessionUser }) {
     setEditId(r.id);
     setModal(true);
   };
+
+  const subirFoto = useCallback(async (file) => {
+    if (!file || !file.type.startsWith("image/")) { alert("Solo se aceptan imágenes."); return; }
+    setUploadingFoto(true);
+    try {
+      const ext = file.name.split(".").pop().toLowerCase() || "jpg";
+      const fileName = `recordatorios/${userId}_${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("fotos").upload(fileName, file, { contentType: file.type, upsert: true });
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from("fotos").getPublicUrl(fileName);
+      setForm((p) => ({ ...p, foto_url: urlData?.publicUrl || "" }));
+    } catch (e) {
+      alert("Error al subir foto: " + (e?.message || "intenta de nuevo"));
+    } finally {
+      setUploadingFoto(false);
+    }
+  }, [userId]);
 
   const guardar = async () => {
     if (!form.titulo.trim()) { alert("Ingresa un título."); return; }
@@ -233,14 +253,50 @@ export default function RecordatoriosPanel({ sessionUser }) {
               value={form.fecha_vencimiento}
               onChange={(e) => setForm((p) => ({ ...p, fecha_vencimiento: e.target.value }))} />
 
-            <label style={s.label}>URL de foto (opcional)</label>
-            <input style={s.input} value={form.foto_url}
-              onChange={(e) => setForm((p) => ({ ...p, foto_url: e.target.value }))}
-              placeholder="https://..." />
-            {form.foto_url && (
-              <img src={form.foto_url} alt="" style={{ width: "100%", maxHeight: 160, objectFit: "cover", borderRadius: 10, marginBottom: 12 }}
-                onError={(e) => { e.target.style.display = "none"; }} />
+            <label style={s.label}>Foto (opcional)</label>
+            {form.foto_url ? (
+              <div style={{ position: "relative", marginBottom: 12 }}>
+                <img src={form.foto_url} alt="" style={{ width: "100%", maxHeight: 180, objectFit: "cover", borderRadius: 10, display: "block" }}
+                  onError={(e) => { e.target.style.display = "none"; }} />
+                <button
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, foto_url: "" }))}
+                  style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 999, width: 26, height: 26, cursor: "pointer", color: "#fff", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  border: `2px dashed ${dragOver ? "#1E4F9C" : "#CBD5E1"}`,
+                  borderRadius: 12, padding: "22px 16px", textAlign: "center",
+                  background: dragOver ? "#EEF4FF" : "#F8FAFC",
+                  cursor: "pointer", marginBottom: 12, transition: "all .15s",
+                  color: dragOver ? "#1E4F9C" : "#94A3B8", fontSize: 13,
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) subirFoto(f); }}
+              >
+                {uploadingFoto ? (
+                  <span>Subiendo foto...</span>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 28, marginBottom: 6 }}>🖼️</div>
+                    <div style={{ fontWeight: 700 }}>Arrastra una imagen aquí</div>
+                    <div style={{ fontSize: 12, marginTop: 3 }}>o toca para seleccionar</div>
+                  </>
+                )}
+              </div>
             )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) subirFoto(f); e.target.value = ""; }}
+            />
 
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
               <button style={{ ...s.saveBtn, background: "#F1F5F9", color: "#475569", flex: 1 }}
