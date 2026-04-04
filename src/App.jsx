@@ -1888,6 +1888,7 @@ export default function App() {
   const [reporteTecnico, setReporteTecnico] = useState("TODOS");
   const [reporteTipo, setReporteTipo] = useState("TODOS");
   const [reporteBusqueda, setReporteBusqueda] = useState("");
+  const [reporteMedioPago, setReporteMedioPago] = useState("TODOS");
   const [reportePaginaAct, setReportePaginaAct] = useState(1);
   const [reportePaginaMat, setReportePaginaMat] = useState(1);
   const [reportePaginaDetMat, setReportePaginaDetMat] = useState(1);
@@ -2423,11 +2424,11 @@ export default function App() {
 
   useEffect(() => {
     setReportePaginaAct(1);
-  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda]);
+  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
 
   useEffect(() => {
     setReportePaginaMat(1);
-  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda]);
+  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
 
   useEffect(() => {
     setReportePaginaDetMat(1);
@@ -9532,6 +9533,12 @@ export default function App() {
         return true;
       })
       .filter((item) => {
+        if (reporteMedioPago === "TODOS") return true;
+        if (reporteMedioPago === "SIN_COBRO") return String(item.liquidacion?.cobroRealizado || "NO").toUpperCase() !== "SI";
+        const medio = String(item.liquidacion?.medioPago || "").toLowerCase();
+        return medio.includes(reporteMedioPago.toLowerCase());
+      })
+      .filter((item) => {
         if (!q) return true;
         return (
           safeIncludes(item.codigo, q) ||
@@ -9551,6 +9558,7 @@ export default function App() {
     reporteTecnico,
     reporteTipo,
     reporteBusqueda,
+    reporteMedioPago,
   ]);
 
   const reporteResumen = useMemo(() => {
@@ -13976,6 +13984,15 @@ export default function App() {
                     <option value="INCIDENCIA">Incidencia</option>
                     <option value="MANTENIMIENTO">Mantenimiento</option>
                     <option value="RECUPERACION">Recuperacion</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Cobro</label>
+                  <select style={inputStyle} value={reporteMedioPago} onChange={(e) => setReporteMedioPago(e.target.value)}>
+                    <option value="TODOS">Todos</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="yape">Yape</option>
+                    <option value="SIN_COBRO">Sin cobro</option>
                   </select>
                 </div>
                 <div>
