@@ -9994,6 +9994,150 @@ export default function App() {
     imprimirHtmlMismaPestana(html);
   };
 
+  const imprimirAsignacionesTecnico = () => {
+    const empresa = String(usuarioSesion?.empresa || "Americanet");
+    const esDim = empresa.toLowerCase().includes("dim");
+    const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
+    const accentColor = esDim ? "#0f3460" : "#1a3a6b";
+
+    const rowsConsumo = reporteAsignacionesTecnico.map((row, idx) => {
+      const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+      return `<tr style="background:${bg}">
+        <td style="padding:9px 12px;font-size:12px;color:#374151;text-align:center">${idx + 1}</td>
+        <td style="padding:9px 12px;font-size:12px;font-weight:700;color:#111827">${escHtml(row.tecnico)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right">${row.actuaciones}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right">S/ ${row.costoMateriales.toFixed(2)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right">${row.equiposInstalados}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right">S/ ${row.valorEquiposInstalados.toFixed(2)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:700;color:#059669">S/ ${row.montoCobrado.toFixed(2)}</td>
+      </tr>`;
+    }).join("");
+
+    const rowsStock = reporteStockAsignadoTecnico.map((row, idx) => {
+      const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+      return `<tr style="background:${bg}">
+        <td style="padding:9px 12px;font-size:12px;color:#374151;text-align:center">${idx + 1}</td>
+        <td style="padding:9px 12px;font-size:12px;font-weight:700;color:#111827">${escHtml(row.tecnico)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right">${row.cantidad}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:700;color:#1d4ed8">S/ ${row.valor.toFixed(2)}</td>
+      </tr>`;
+    }).join("");
+
+    const totalCobrado = reporteAsignacionesTecnico.reduce((a, x) => a + x.montoCobrado, 0);
+    const totalMatCosto = reporteAsignacionesTecnico.reduce((a, x) => a + x.costoMateriales, 0);
+    const totalStockCant = reporteStockAsignadoTecnico.reduce((a, x) => a + x.cantidad, 0);
+    const totalStockValor = reporteStockAsignadoTecnico.reduce((a, x) => a + x.valor, 0);
+
+    const filtroTexto = [
+      reporteDesde ? `Desde: ${reporteDesde}` : null,
+      reporteHasta ? `Hasta: ${reporteHasta}` : null,
+      reporteNodo !== "TODOS" ? `Nodo: ${reporteNodo}` : null,
+      reporteTecnico !== "TODOS" ? `Técnico: ${reporteTecnico}` : null,
+      reporteTipo !== "TODOS" ? `Tipo: ${reporteTipo}` : null,
+      reporteMedioPago !== "TODOS" ? `Cobro: ${reporteMedioPago}` : null,
+    ].filter(Boolean).join(" | ") || "Sin filtros activos";
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Asignaciones por técnico</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff;padding:32px;font-size:13px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:3px solid ${accentColor}}
+    .header-left img{height:52px;object-fit:contain}
+    .header-right{text-align:right}
+    .doc-title{font-size:20px;font-weight:700;color:${accentColor};margin-bottom:4px}
+    .doc-sub{font-size:12px;color:#6b7280}
+    .info-bar{display:flex;gap:24px;background:#f1f5f9;border-radius:8px;padding:12px 16px;margin-bottom:22px;flex-wrap:wrap}
+    .info-item{display:flex;flex-direction:column;gap:2px}
+    .info-label{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+    .info-value{font-size:13px;color:#1e293b;font-weight:600}
+    .section-title{font-size:14px;font-weight:700;color:${accentColor};margin:22px 0 10px 0}
+    table{width:100%;border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    thead tr{background:${accentColor};color:#fff}
+    thead th{padding:11px 12px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase}
+    thead th:not(:nth-child(1)):not(:nth-child(2)){text-align:right}
+    tbody tr{border-bottom:1px solid #f1f5f9}
+    tfoot tr{background:#f0fdf4;border-top:2px solid #22c55e}
+    tfoot td{padding:11px 12px;font-size:13px;font-weight:700;color:#15803d;text-align:right}
+    .footer{margin-top:24px;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:10px}
+    @media print{body{padding:16px}table{box-shadow:none}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left"><img src="${logoSrc}" alt="${escHtml(empresa)}"/></div>
+    <div class="header-right">
+      <div class="doc-title">Asignaciones por Técnico</div>
+      <div class="doc-sub">Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+    </div>
+  </div>
+
+  <div class="info-bar">
+    <div class="info-item"><span class="info-label">Filtros</span><span class="info-value">${escHtml(filtroTexto)}</span></div>
+    <div class="info-item"><span class="info-label">Técnicos (período)</span><span class="info-value">${reporteAsignacionesTecnico.length}</span></div>
+    <div class="info-item"><span class="info-label">Total cobrado</span><span class="info-value" style="color:#059669">S/ ${totalCobrado.toFixed(2)}</span></div>
+    <div class="info-item"><span class="info-label">Costo materiales</span><span class="info-value">S/ ${totalMatCosto.toFixed(2)}</span></div>
+    <div class="info-item"><span class="info-label">Stock asignado</span><span class="info-value">${totalStockCant} equipos · S/ ${totalStockValor.toFixed(2)}</span></div>
+  </div>
+
+  <div class="section-title">Consumo en el período filtrado</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px;text-align:center">#</th>
+        <th>Técnico</th>
+        <th style="text-align:right;width:70px">Actu.</th>
+        <th style="text-align:right;width:110px">Materiales</th>
+        <th style="text-align:right;width:70px">Eq. inst.</th>
+        <th style="text-align:right;width:110px">Valor eq.</th>
+        <th style="text-align:right;width:110px">Cobrado</th>
+      </tr>
+    </thead>
+    <tbody>${rowsConsumo}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="3" style="text-align:right;padding:11px 12px">Total cobrado:</td>
+        <td style="text-align:right;padding:11px 12px">S/ ${totalMatCosto.toFixed(2)}</td>
+        <td></td>
+        <td></td>
+        <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#059669">S/ ${totalCobrado.toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  ${rowsStock ? `
+  <div class="section-title">Stock de equipos asignados actualmente</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px;text-align:center">#</th>
+        <th>Técnico</th>
+        <th style="text-align:right;width:100px">Equipos</th>
+        <th style="text-align:right;width:130px">Valor total</th>
+      </tr>
+    </thead>
+    <tbody>${rowsStock}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="2" style="text-align:right;padding:11px 12px">Total:</td>
+        <td style="text-align:right;padding:11px 12px">${totalStockCant}</td>
+        <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#1d4ed8">S/ ${totalStockValor.toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  </table>` : ""}
+
+  <div class="footer">
+    <span>${escHtml(empresa)} — Reporte asignaciones por técnico</span>
+    <span>Pág. 1</span>
+  </div>
+</body>
+</html>`;
+    imprimirHtmlMismaPestana(html);
+  };
+
   const imprimirDetalleMateriales = () => {
     const totalGeneral = reporteDetalleMateriales.reduce((a, ord) => a + ord.costoTotal, 0);
     const rows = reporteDetalleMateriales.map((ord) =>
@@ -13981,6 +14125,9 @@ export default function App() {
                   </button>
                   <button type="button" style={secondaryButton} onClick={exportarCsvMateriales}>
                     CSV materiales
+                  </button>
+                  <button type="button" style={secondaryButton} onClick={imprimirAsignacionesTecnico}>
+                    PDF asignaciones
                   </button>
                 </div>
               </div>
