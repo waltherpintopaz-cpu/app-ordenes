@@ -2236,11 +2236,10 @@ export default function App() {
   const usuariosNodoUsados = useMemo(() => {
     const fromOrdenes = (Array.isArray(ordenes) ? ordenes : [])
       .filter((o) => {
-        const estado = String(o?.estado || "").trim().toLowerCase();
         const liberado =
           o?.usuarioNodoLiberado === true ||
           String(o?.usuarioNodoLiberado || "").trim().toLowerCase() === "true";
-        return !(estado.includes("cancel") && liberado);
+        return !liberado;
       })
       .map((o) => String(o?.usuarioNodo || "").trim());
     const fromClientes = (Array.isArray(clientes) ? clientes : []).map((c) => String(c?.usuarioNodo || "").trim());
@@ -2261,11 +2260,10 @@ export default function App() {
       (c) => String(c?.usuarioNodo || c?.usuario_nodo || "").trim().toLowerCase() === u
     );
     if (cliente) return { tipo: "cliente", nombre: String(cliente.nombre || cliente.razonSocial || "-"), dni: String(cliente.dni || "-") };
-    // Buscar en órdenes activas (no canceladas)
+    // Buscar en órdenes con usuario no liberado
     const orden_ = (Array.isArray(ordenes) ? ordenes : []).find((o) => {
-      const est = String(o?.estado || "").toLowerCase();
       const lib = o?.usuarioNodoLiberado === true || String(o?.usuarioNodoLiberado || "").toLowerCase() === "true";
-      if (est.includes("cancel") && lib) return false;
+      if (lib) return false;
       return String(o?.usuarioNodo || "").trim().toLowerCase() === u && o?.id !== ordenEditandoId;
     });
     if (orden_) return { tipo: "orden", nombre: String(orden_.nombre || "-"), codigo: String(orden_.codigo || "-") };
