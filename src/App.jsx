@@ -1912,6 +1912,8 @@ export default function App() {
   const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarVenta"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarMargen"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMargenEquipos, setReporteConfigMargenEquipos] = useState(() => { try { return Number(localStorage.getItem("rpt_margenEquipos") ?? 0) || 0; } catch { return 0; } });
+  const [reporteConfigGuardando, setReporteConfigGuardando] = useState(false);
+  const [reporteConfigGuardadoOk, setReporteConfigGuardadoOk] = useState(false);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -14337,7 +14339,12 @@ export default function App() {
                           <textarea value={reporteConfigNota} onChange={e => setReporteConfigNota(e.target.value)} rows={2} placeholder="Ej: Precios válidos hasta fin de mes. Incluye mano de obra." style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box", resize: "vertical" }} />
                         </div>
 
-                        <button onClick={() => {
+                        {reporteConfigGuardadoOk && (
+                          <div style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#166534", fontWeight: 600, marginBottom: 10, textAlign: "center" }}>
+                            ✓ Configuración guardada correctamente
+                          </div>
+                        )}
+                        <button disabled={reporteConfigGuardando} onClick={() => {
                           const cfg = {
                             margenGlobal: reporteConfigMargenGlobal,
                             margenPorMat: reporteConfigMargenPorMat,
@@ -14349,15 +14356,27 @@ export default function App() {
                             mostrarMargen: reporteConfigMostrarMargen,
                             margenEquipos: reporteConfigMargenEquipos,
                           };
-                          // Guardar en Supabase
-                          if (isSupabaseConfigured) {
-                            void supabase.from("app_config").upsert({ id: "reporte_config", valor: cfg, actualizado_en: new Date().toISOString() }, { onConflict: "id" });
-                          }
-                          // Guardar también en localStorage como fallback
+                          // Guardar también en localStorage como fallback inmediato
                           try { localStorage.setItem("rpt_config", JSON.stringify(cfg)); } catch {}
-                          setReporteMargenModal(false);
-                        }} style={{ width: "100%", padding: "11px 0", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                          Guardar configuración
+                          // Guardar en Supabase con feedback
+                          if (isSupabaseConfigured) {
+                            setReporteConfigGuardando(true);
+                            setReporteConfigGuardadoOk(false);
+                            supabase.from("app_config").upsert({ id: "reporte_config", valor: cfg, actualizado_en: new Date().toISOString() }, { onConflict: "id" })
+                              .then(({ error }) => {
+                                setReporteConfigGuardando(false);
+                                if (!error) {
+                                  setReporteConfigGuardadoOk(true);
+                                  setTimeout(() => setReporteConfigGuardadoOk(false), 3000);
+                                } else {
+                                  alert("Error al guardar en Supabase: " + (error.message || JSON.stringify(error)));
+                                }
+                              });
+                          } else {
+                            setReporteMargenModal(false);
+                          }
+                        }} style={{ width: "100%", padding: "11px 0", background: reporteConfigGuardando ? "#64748b" : "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: reporteConfigGuardando ? "not-allowed" : "pointer" }}>
+                          {reporteConfigGuardando ? "Guardando..." : "Guardar configuración"}
                         </button>
                       </div>
                     </div>
