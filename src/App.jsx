@@ -7984,12 +7984,14 @@ export default function App() {
           (c) => String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
         );
         if (existente) {
+          const cajaNapLiq = String(registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "").trim();
           const actualizado = {
             ...existente,
             nombre: registroLiquidado.nombre || existente.nombre || "",
             direccion: registroLiquidado.direccion || existente.direccion || "",
             celular: registroLiquidado.celular || existente.celular || "",
             nodo: registroLiquidado.nodo || existente.nodo || "",
+            cajaNap: cajaNapLiq || existente.cajaNap || "",
             ultimaActualizacion: new Date().toLocaleString(),
           };
           clienteResultado = actualizado;
@@ -8355,12 +8357,10 @@ export default function App() {
         }
       }
 
-      // Estado inventario equipos y cliente — solo si se completó
+      // Estado inventario equipos y cliente
       const registro = { ...ordenEnLiquidacion, liquidacion, estado: "Liquidada" };
       aplicarEstadoEquiposDesdeLiquidacion(registro);
-      if (liquidacion.resultadoFinal === "Completada") {
-        void guardarClienteDesdeLiquidacion(registro);
-      }
+      void guardarClienteDesdeLiquidacion(registro);
 
       // WhatsApp
       if (!liquidacionEditandoId) void sendWhatsAppNotification({ ...ordenEnLiquidacion, _resultadoFinal: liquidacion.resultadoFinal }, "liquidacion");
@@ -9049,10 +9049,21 @@ export default function App() {
     setMikrotikConfigError("");
   };
 
-  const crearOrdenDesdeCliente = (cliente = {}) => {
+  const crearOrdenDesdeCliente = async (cliente = {}) => {
     const base = buildInitialOrder();
     const random = Math.floor(1000 + Math.random() * 9000);
     const year = new Date().getFullYear();
+    // Fetch fresco de caja_nap/puerto_nap desde Supabase
+    let cajaNapFresca = firstText(cliente.cajaNap, cliente.caja_nap);
+    let puertoNapFresco = firstText(cliente.puertoNap, cliente.puerto_nap);
+    const dniCliente = firstText(cliente.dni);
+    if (dniCliente && isSupabaseConfigured) {
+      try {
+        const { data: fresh } = await supabase.from("clientes").select("caja_nap,puerto_nap").eq("dni", dniCliente).maybeSingle();
+        if (fresh?.caja_nap) cajaNapFresca = String(fresh.caja_nap).trim();
+        if (fresh?.puerto_nap) puertoNapFresco = String(fresh.puerto_nap).trim();
+      } catch { /* usa datos en memoria */ }
+    }
     setOrdenEditandoId(null);
     setOrden({
       ...base,
@@ -9078,12 +9089,12 @@ export default function App() {
       descripcion: firstText(cliente.descripcion),
       tecnico: firstText(cliente.tecnico),
       autorOrden: firstText(cliente.autorOrden),
-      cajaNap: firstText(cliente.cajaNap),
-      puertoNap: firstText(cliente.puertoNap),
+      cajaNap: cajaNapFresca,
+      puertoNap: puertoNapFresco,
       solicitarPago: "NO",
       montoCobrar: "",
     });
-    if (firstText(cliente.cajaNap)) cajaNapDesdClienteRef.current = true;
+    if (cajaNapFresca) cajaNapDesdClienteRef.current = true;
     setVistaActiva("crear");
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
