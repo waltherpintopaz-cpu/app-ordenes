@@ -11442,8 +11442,20 @@ export default function App() {
           const enProcesoTotal = ordenesPorNodo.filter((o) => String(o.estado || "").toLowerCase().includes("proceso"));
           const urgentes = ordenesPorNodo.filter((o) => esEstadoOperativoOrden(o.estado) && String(o.prioridad || "").toLowerCase().includes("urgent"));
           const liquidadasHoy = liqPorNodo.filter((l) => {
-            const f = String(l.fecha || l.fechaLiquidacion || l.created_at || "").slice(0, 10);
-            return f === today;
+            // Intentar con created_at (ISO) primero, luego fechaLiquidacion (puede ser string local)
+            const raw = String(l.created_at || l.fecha || l.fechaLiquidacion || "").trim();
+            if (!raw) return false;
+            // Si tiene formato ISO (yyyy-mm-dd) usar slice directo
+            if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10) === today;
+            // Si es string local (ej: "6/4/2026, 1:43:40 p. m.") parsearlo
+            try {
+              const d = new Date(raw);
+              if (!isNaN(d.getTime())) {
+                const tzOffsetMs = d.getTimezoneOffset() * 60000;
+                return new Date(d.getTime() - tzOffsetMs).toISOString().slice(0, 10) === today;
+              }
+            } catch { /* */ }
+            return false;
           });
 
           // Por tipo (pendientes+en proceso)
