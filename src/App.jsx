@@ -1903,15 +1903,15 @@ export default function App() {
   const [reportePaginaCosto, setReportePaginaCosto] = useState(1);
   const [reportePaginaTecnico, setReportePaginaTecnico] = useState(1);
   const [reporteMargenModal, setReporteMargenModal] = useState(false);
-  const [reporteConfigMargenGlobal, setReporteConfigMargenGlobal] = useState(0);
-  const [reporteConfigMargenPorMat, setReporteConfigMargenPorMat] = useState({});
-  const [reporteConfigCostoInstal, setReporteConfigCostoInstal] = useState(60);
-  const [reporteConfigCostoInciden, setReporteConfigCostoInciden] = useState(25);
-  const [reporteConfigNota, setReporteConfigNota] = useState("");
-  const [reporteConfigMostrarCosto, setReporteConfigMostrarCosto] = useState(true);
-  const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(true);
-  const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(true);
-  const [reporteConfigMargenEquipos, setReporteConfigMargenEquipos] = useState(0);
+  const [reporteConfigMargenGlobal, setReporteConfigMargenGlobal] = useState(() => { try { return Number(localStorage.getItem("rpt_margenGlobal") ?? 0) || 0; } catch { return 0; } });
+  const [reporteConfigMargenPorMat, setReporteConfigMargenPorMat] = useState(() => { try { return JSON.parse(localStorage.getItem("rpt_margenPorMat") || "{}"); } catch { return {}; } });
+  const [reporteConfigCostoInstal, setReporteConfigCostoInstal] = useState(() => { try { const v = localStorage.getItem("rpt_costoInstal"); return v !== null ? Number(v) : 60; } catch { return 60; } });
+  const [reporteConfigCostoInciden, setReporteConfigCostoInciden] = useState(() => { try { const v = localStorage.getItem("rpt_costoInciden"); return v !== null ? Number(v) : 25; } catch { return 25; } });
+  const [reporteConfigNota, setReporteConfigNota] = useState(() => { try { return localStorage.getItem("rpt_nota") || ""; } catch { return ""; } });
+  const [reporteConfigMostrarCosto, setReporteConfigMostrarCosto] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarCosto"); return v === null ? true : v === "true"; } catch { return true; } });
+  const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarVenta"); return v === null ? true : v === "true"; } catch { return true; } });
+  const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarMargen"); return v === null ? true : v === "true"; } catch { return true; } });
+  const [reporteConfigMargenEquipos, setReporteConfigMargenEquipos] = useState(() => { try { return Number(localStorage.getItem("rpt_margenEquipos") ?? 0) || 0; } catch { return 0; } });
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -14296,13 +14296,13 @@ export default function App() {
                         <div style={{ background: "#f8f4ff", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #ddd6fe" }}>
                           <div style={{ fontSize: 11, fontWeight: 800, color: "#6d28d9", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Columnas a mostrar en PDF</div>
                           {[
-                            { key: "costo", label: "Precio costo", val: reporteConfigMostrarCosto, set: setReporteConfigMostrarCosto },
-                            { key: "venta", label: "Precio venta (con margen)", val: reporteConfigMostrarVenta, set: setReporteConfigMostrarVenta },
-                            { key: "margen", label: "% Margen", val: reporteConfigMostrarMargen, set: setReporteConfigMostrarMargen },
-                          ].map(({ key, label, val, set }) => (
+                            { key: "costo", label: "Precio costo", val: reporteConfigMostrarCosto, set: setReporteConfigMostrarCosto, lsKey: "rpt_mostrarCosto" },
+                            { key: "venta", label: "Precio venta (con margen)", val: reporteConfigMostrarVenta, set: setReporteConfigMostrarVenta, lsKey: "rpt_mostrarVenta" },
+                            { key: "margen", label: "% Margen", val: reporteConfigMostrarMargen, set: setReporteConfigMostrarMargen, lsKey: "rpt_mostrarMargen" },
+                          ].map(({ key, label, val, set, lsKey }) => (
                             <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #ede9fe" }}>
                               <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{label}</span>
-                              <div onClick={() => set(v => !v)} style={{ width: 40, height: 22, borderRadius: 999, background: val ? "#7c3aed" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
+                              <div onClick={() => { const nv = !val; set(nv); try { localStorage.setItem(lsKey, String(nv)); } catch {} }} style={{ width: 40, height: 22, borderRadius: 999, background: val ? "#7c3aed" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
                                 <div style={{ position: "absolute", top: 2, left: val ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.18)", transition: "left 0.2s" }} />
                               </div>
                             </div>
@@ -14315,7 +14315,20 @@ export default function App() {
                           <textarea value={reporteConfigNota} onChange={e => setReporteConfigNota(e.target.value)} rows={2} placeholder="Ej: Precios válidos hasta fin de mes. Incluye mano de obra." style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box", resize: "vertical" }} />
                         </div>
 
-                        <button onClick={() => setReporteMargenModal(false)} style={{ width: "100%", padding: "11px 0", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                        <button onClick={() => {
+                          try {
+                            localStorage.setItem("rpt_margenGlobal", String(reporteConfigMargenGlobal));
+                            localStorage.setItem("rpt_margenPorMat", JSON.stringify(reporteConfigMargenPorMat));
+                            localStorage.setItem("rpt_costoInstal", String(reporteConfigCostoInstal));
+                            localStorage.setItem("rpt_costoInciden", String(reporteConfigCostoInciden));
+                            localStorage.setItem("rpt_nota", reporteConfigNota);
+                            localStorage.setItem("rpt_mostrarCosto", String(reporteConfigMostrarCosto));
+                            localStorage.setItem("rpt_mostrarVenta", String(reporteConfigMostrarVenta));
+                            localStorage.setItem("rpt_mostrarMargen", String(reporteConfigMostrarMargen));
+                            localStorage.setItem("rpt_margenEquipos", String(reporteConfigMargenEquipos));
+                          } catch {}
+                          setReporteMargenModal(false);
+                        }} style={{ width: "100%", padding: "11px 0", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
                           Guardar configuración
                         </button>
                       </div>
