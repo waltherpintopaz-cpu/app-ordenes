@@ -3520,6 +3520,7 @@ export default function App() {
       setUsuariosSupabaseReady(true);
     } catch (error) {
       console.error("Error cargando usuarios desde Supabase:", error);
+      setUsuariosSupabaseReady(true);
     }
   };
 
