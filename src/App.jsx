@@ -9098,21 +9098,12 @@ export default function App() {
     setMikrotikConfigError("");
   };
 
-  const crearOrdenDesdeCliente = async (cliente = {}) => {
+  const crearOrdenDesdeCliente = (cliente = {}) => {
     const base = buildInitialOrder();
     const random = Math.floor(1000 + Math.random() * 9000);
     const year = new Date().getFullYear();
-    // Fetch fresco de caja_nap/puerto_nap desde Supabase
-    let cajaNapFresca = firstText(cliente.cajaNap, cliente.caja_nap);
-    let puertoNapFresco = firstText(cliente.puertoNap, cliente.puerto_nap);
-    const dniCliente = firstText(cliente.dni);
-    if (dniCliente && isSupabaseConfigured) {
-      try {
-        const { data: fresh } = await supabase.from("clientes").select("caja_nap,puerto_nap").eq("dni", dniCliente).maybeSingle();
-        if (fresh?.caja_nap) cajaNapFresca = String(fresh.caja_nap).trim();
-        if (fresh?.puerto_nap) puertoNapFresco = String(fresh.puerto_nap).trim();
-      } catch { /* usa datos en memoria */ }
-    }
+    const cajaNapFresca = firstText(cliente.cajaNap, cliente.caja_nap);
+    const puertoNapFresco = firstText(cliente.puertoNap, cliente.puerto_nap);
     setOrdenEditandoId(null);
     setOrden({
       ...base,
@@ -9148,6 +9139,23 @@ export default function App() {
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     }, 0);
+    // Actualiza caja_nap en background si hay datos más frescos en Supabase
+    const dniCliente = firstText(cliente.dni);
+    if (dniCliente && isSupabaseConfigured) {
+      void (async () => {
+        try {
+          const { data: fresh } = await supabase.from("clientes").select("caja_nap,puerto_nap").eq("dni", dniCliente).maybeSingle();
+          if (fresh?.caja_nap || fresh?.puerto_nap) {
+            setOrden(prev => ({
+              ...prev,
+              cajaNap: fresh.caja_nap ? String(fresh.caja_nap).trim() : prev.cajaNap,
+              puertoNap: fresh.puerto_nap ? String(fresh.puerto_nap).trim() : prev.puertoNap,
+            }));
+            if (fresh.caja_nap) cajaNapDesdClienteRef.current = true;
+          }
+        } catch { /* silencioso */ }
+      })();
+    }
   };
 
   const abrirEditarCliente = (cli) => {
