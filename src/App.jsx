@@ -2022,6 +2022,28 @@ export default function App() {
     return () => clearTimeout(safetyTimer);
   }, []);
 
+  // Cargar configuración de reportes desde Supabase
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void (async () => {
+      try {
+        const { data } = await supabase.from("app_config").select("valor").eq("id", "reporte_config").maybeSingle();
+        if (data?.valor && typeof data.valor === "object") {
+          const v = data.valor;
+          if (v.margenGlobal !== undefined) setReporteConfigMargenGlobal(Number(v.margenGlobal) || 0);
+          if (v.margenPorMat !== undefined) setReporteConfigMargenPorMat(v.margenPorMat || {});
+          if (v.costoInstal !== undefined) setReporteConfigCostoInstal(Number(v.costoInstal) || 60);
+          if (v.costoInciden !== undefined) setReporteConfigCostoInciden(Number(v.costoInciden) || 25);
+          if (v.nota !== undefined) setReporteConfigNota(v.nota || "");
+          if (v.mostrarCosto !== undefined) setReporteConfigMostrarCosto(v.mostrarCosto !== false);
+          if (v.mostrarVenta !== undefined) setReporteConfigMostrarVenta(v.mostrarVenta !== false);
+          if (v.mostrarMargen !== undefined) setReporteConfigMostrarMargen(v.mostrarMargen !== false);
+          if (v.margenEquipos !== undefined) setReporteConfigMargenEquipos(Number(v.margenEquipos) || 0);
+        }
+      } catch { /* usa valores por defecto */ }
+    })();
+  }, []);
+
   useEffect(() => {
     void cargarMikrotikConfigDesdeSupabase({ silent: true });
   }, []);
@@ -14316,17 +14338,23 @@ export default function App() {
                         </div>
 
                         <button onClick={() => {
-                          try {
-                            localStorage.setItem("rpt_margenGlobal", String(reporteConfigMargenGlobal));
-                            localStorage.setItem("rpt_margenPorMat", JSON.stringify(reporteConfigMargenPorMat));
-                            localStorage.setItem("rpt_costoInstal", String(reporteConfigCostoInstal));
-                            localStorage.setItem("rpt_costoInciden", String(reporteConfigCostoInciden));
-                            localStorage.setItem("rpt_nota", reporteConfigNota);
-                            localStorage.setItem("rpt_mostrarCosto", String(reporteConfigMostrarCosto));
-                            localStorage.setItem("rpt_mostrarVenta", String(reporteConfigMostrarVenta));
-                            localStorage.setItem("rpt_mostrarMargen", String(reporteConfigMostrarMargen));
-                            localStorage.setItem("rpt_margenEquipos", String(reporteConfigMargenEquipos));
-                          } catch {}
+                          const cfg = {
+                            margenGlobal: reporteConfigMargenGlobal,
+                            margenPorMat: reporteConfigMargenPorMat,
+                            costoInstal: reporteConfigCostoInstal,
+                            costoInciden: reporteConfigCostoInciden,
+                            nota: reporteConfigNota,
+                            mostrarCosto: reporteConfigMostrarCosto,
+                            mostrarVenta: reporteConfigMostrarVenta,
+                            mostrarMargen: reporteConfigMostrarMargen,
+                            margenEquipos: reporteConfigMargenEquipos,
+                          };
+                          // Guardar en Supabase
+                          if (isSupabaseConfigured) {
+                            void supabase.from("app_config").upsert({ id: "reporte_config", valor: cfg, actualizado_en: new Date().toISOString() }, { onConflict: "id" });
+                          }
+                          // Guardar también en localStorage como fallback
+                          try { localStorage.setItem("rpt_config", JSON.stringify(cfg)); } catch {}
                           setReporteMargenModal(false);
                         }} style={{ width: "100%", padding: "11px 0", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
                           Guardar configuración
