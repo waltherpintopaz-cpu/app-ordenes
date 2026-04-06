@@ -2007,6 +2007,9 @@ export default function App() {
   useEffect(() => {
     localStorage.removeItem("usuarios");
     void cargarUsuariosDesdeSupabase({ silent: true });
+    // Safety: si Supabase no responde en 12s, desbloquear el login de todas formas
+    const safetyTimer = setTimeout(() => setUsuariosSupabaseReady(true), 12000);
+    return () => clearTimeout(safetyTimer);
   }, []);
 
   useEffect(() => {
@@ -3490,13 +3493,15 @@ export default function App() {
   };
 
   const cargarUsuariosDesdeSupabase = async (opts = { silent: true }) => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) { setUsuariosSupabaseReady(true); return; }
     try {
-      let { data, error } = await supabase
+      const queryPromise = supabase
         .from(USUARIOS_TABLE)
         .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,sesion_token,ultimo_acceso")
         .order("id", { ascending: true })
         .limit(5000);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000));
+      let { data, error } = await Promise.race([queryPromise, timeoutPromise]);
       if (error && (esErrorColumnaAccesosWeb(error) || esErrorColumnaNodosWeb(error))) {
         const fallback = await supabase
           .from(USUARIOS_TABLE)
