@@ -11442,27 +11442,9 @@ export default function App() {
           const enProcesoTotal = ordenesPorNodo.filter((o) => String(o.estado || "").toLowerCase().includes("proceso"));
           const urgentes = ordenesPorNodo.filter((o) => esEstadoOperativoOrden(o.estado) && String(o.prioridad || "").toLowerCase().includes("urgent"));
           const liquidadasHoy = liqPorNodo.filter((l) => {
-            // Usar fechaLiquidacionISO primero (campo ISO confiable)
-            const iso = String(l.fechaLiquidacionISO || l.created_at || l.fecha || "").trim();
-            if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) {
-              // Convertir UTC a local para comparar
-              const d = new Date(iso);
-              if (!isNaN(d.getTime())) {
-                const tzOffsetMs = d.getTimezoneOffset() * 60000;
-                return new Date(d.getTime() - tzOffsetMs).toISOString().slice(0, 10) === today;
-              }
-            }
-            // Fallback: fechaLiquidacion es string local ("6/4/2026, 1:43:40 p. m.")
-            const rawLocal = String(l.fechaLiquidacion || "").trim();
-            if (rawLocal) {
-              try {
-                const d = new Date(rawLocal);
-                if (!isNaN(d.getTime())) {
-                  const tzOffsetMs = d.getTimezoneOffset() * 60000;
-                  return new Date(d.getTime() - tzOffsetMs).toISOString().slice(0, 10) === today;
-                }
-              } catch { /* */ }
-            }
+            // fechaLiquidacionISO ya es fecha local "yyyy-mm-dd" — comparar directo
+            const iso = String(l.fechaLiquidacionISO || "").trim();
+            if (iso) return iso === today;
             return false;
           });
 
