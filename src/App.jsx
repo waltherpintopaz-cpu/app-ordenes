@@ -1902,6 +1902,15 @@ export default function App() {
   const [reportePaginaDetEq, setReportePaginaDetEq] = useState(1);
   const [reportePaginaCosto, setReportePaginaCosto] = useState(1);
   const [reportePaginaTecnico, setReportePaginaTecnico] = useState(1);
+  const [reporteMargenModal, setReporteMargenModal] = useState(false);
+  const [reporteConfigMargenGlobal, setReporteConfigMargenGlobal] = useState(0);
+  const [reporteConfigMargenPorMat, setReporteConfigMargenPorMat] = useState({});
+  const [reporteConfigCostoInstal, setReporteConfigCostoInstal] = useState(60);
+  const [reporteConfigCostoInciden, setReporteConfigCostoInciden] = useState(25);
+  const [reporteConfigNota, setReporteConfigNota] = useState("");
+  const [reporteConfigMostrarCosto, setReporteConfigMostrarCosto] = useState(true);
+  const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(true);
+  const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(true);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -9642,13 +9651,13 @@ export default function App() {
     const incidencias = liquidacionesReporte.filter((item) =>
       String(item.tipoActuacion || "").toLowerCase().includes("inciden")
     ).length;
-    const costoActuacion = instalaciones * 60 + incidencias * 25;
+    const costoActuacion = instalaciones * reporteConfigCostoInstal + incidencias * reporteConfigCostoInciden;
     const montoCobrado = liquidacionesReporte.reduce((acc, item) => {
       const n = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
     return { instalaciones, incidencias, costoActuacion, montoCobrado };
-  }, [liquidacionesReporte]);
+  }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden]);
 
   const nodosReporte = useMemo(() => {
     return Array.from(new Set(liquidaciones.map((x) => String(x.nodo || "").trim()).filter(Boolean))).sort();
@@ -9735,7 +9744,7 @@ export default function App() {
       const tipo = String(item.tipoActuacion || "").toLowerCase();
       const esInstal = tipo.includes("instal");
       const esInciden = tipo.includes("inciden");
-      const costoAct = esInstal ? 60 : esInciden ? 25 : 0;
+      const costoAct = esInstal ? reporteConfigCostoInstal : esInciden ? reporteConfigCostoInciden : 0;
       const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
       const costoMat = mats.reduce((acc, m) => {
         const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
@@ -9746,7 +9755,7 @@ export default function App() {
       const montoCobrado = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
       return { codigo: item.codigo, nombre: item.nombre, tecnico: item.liquidacion?.tecnicoLiquida || item.tecnico || "-", nodo: item.nodo, fecha: item.fechaLiquidacion, tipoActuacion: item.tipoActuacion, costoAct, costoMat, costoTotal: costoAct + costoMat, montoCobrado };
     });
-  }, [liquidacionesReporte]);
+  }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden]);
 
   // Detalle: equipos por orden
   const reporteDetalleEquipos = useMemo(() => {
@@ -14183,6 +14192,9 @@ export default function App() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
                 <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Reportes de actuaciones</h2>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <button type="button" style={{ ...infoButton, background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => setReporteMargenModal(true)}>
+                    ⚙ Configurar reporte
+                  </button>
                   <button type="button" style={infoButton} onClick={imprimirReporteActuaciones}>
                     PDF actuaciones
                   </button>
@@ -14201,6 +14213,105 @@ export default function App() {
                   <button type="button" style={secondaryButton} onClick={imprimirAsignacionesTecnico}>
                     PDF asignaciones
                   </button>
+
+                  {/* ── Modal configuración de precios / margen ── */}
+                  {reporteMargenModal && (
+                    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto" }} onClick={() => setReporteMargenModal(false)}>
+                      <div style={{ background: "#fff", borderRadius: 18, padding: "28px 30px", width: "100%", maxWidth: 560, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                          <span style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>⚙ Configuración del reporte</span>
+                          <button onClick={() => setReporteMargenModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8" }}>✕</button>
+                        </div>
+
+                        {/* Costos de actuación */}
+                        <div style={{ background: "#f8fafc", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #e2e8f0" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Costo por actuación</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div>
+                              <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>Instalación (S/)</label>
+                              <input type="number" min="0" step="0.01" value={reporteConfigCostoInstal} onChange={e => setReporteConfigCostoInstal(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>Incidencia (S/)</label>
+                              <input type="number" min="0" step="0.01" value={reporteConfigCostoInciden} onChange={e => setReporteConfigCostoInciden(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Margen global */}
+                        <div style={{ background: "#f0fdf4", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #86efac" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Margen de precio materiales</div>
+                          <div>
+                            <label style={{ fontSize: 12, fontWeight: 600, color: "#166534", display: "block", marginBottom: 4 }}>Margen global % (aplica a todos los materiales)</label>
+                            <input type="number" min="0" max="500" step="1" value={reporteConfigMargenGlobal} onChange={e => setReporteConfigMargenGlobal(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #86efac", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                            <div style={{ fontSize: 11, color: "#16a34a", marginTop: 4 }}>
+                              Ej: costo S/10 + 40% = precio venta S/14.00
+                            </div>
+                          </div>
+                          {/* Margen por material */}
+                          {reporteMateriales.length > 0 && (
+                            <div style={{ marginTop: 14 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 8 }}>Ajuste por material (sobreescribe el global)</div>
+                              <div style={{ display: "grid", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+                                {reporteMateriales.map((mat) => {
+                                  const margenActual = reporteConfigMargenPorMat[mat.material] !== undefined ? reporteConfigMargenPorMat[mat.material] : "";
+                                  return (
+                                    <div key={mat.material} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 8, padding: "6px 10px", border: "1px solid #dcfce7" }}>
+                                      <span style={{ flex: 1, fontSize: 12, color: "#0f172a", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.material}</span>
+                                      <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" }}>S/{Number(mat.costoUnit || 0).toFixed(2)}/u</span>
+                                      <input
+                                        type="number" min="0" max="500" step="1"
+                                        placeholder={String(reporteConfigMargenGlobal)}
+                                        value={margenActual}
+                                        onChange={e => {
+                                          const val = e.target.value === "" ? undefined : Number(e.target.value);
+                                          setReporteConfigMargenPorMat(prev => {
+                                            const next = { ...prev };
+                                            if (val === undefined) delete next[mat.material];
+                                            else next[mat.material] = val;
+                                            return next;
+                                          });
+                                        }}
+                                        style={{ width: 64, padding: "4px 6px", border: "1.5px solid #86efac", borderRadius: 6, fontSize: 12, textAlign: "center" }}
+                                      />
+                                      <span style={{ fontSize: 11, color: "#64748b" }}>%</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Qué mostrar en el PDF */}
+                        <div style={{ background: "#f8f4ff", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #ddd6fe" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#6d28d9", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Columnas a mostrar en PDF</div>
+                          {[
+                            { key: "costo", label: "Precio costo", val: reporteConfigMostrarCosto, set: setReporteConfigMostrarCosto },
+                            { key: "venta", label: "Precio venta (con margen)", val: reporteConfigMostrarVenta, set: setReporteConfigMostrarVenta },
+                            { key: "margen", label: "% Margen", val: reporteConfigMostrarMargen, set: setReporteConfigMostrarMargen },
+                          ].map(({ key, label, val, set }) => (
+                            <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #ede9fe" }}>
+                              <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{label}</span>
+                              <div onClick={() => set(v => !v)} style={{ width: 40, height: 22, borderRadius: 999, background: val ? "#7c3aed" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}>
+                                <div style={{ position: "absolute", top: 2, left: val ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.18)", transition: "left 0.2s" }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Nota para el reporte */}
+                        <div style={{ marginBottom: 20 }}>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>Nota / comentario en el reporte (opcional)</label>
+                          <textarea value={reporteConfigNota} onChange={e => setReporteConfigNota(e.target.value)} rows={2} placeholder="Ej: Precios válidos hasta fin de mes. Incluye mano de obra." style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box", resize: "vertical" }} />
+                        </div>
+
+                        <button onClick={() => setReporteMargenModal(false)} style={{ width: "100%", padding: "11px 0", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                          Guardar configuración
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={formGridStyle}>
@@ -14359,51 +14470,104 @@ export default function App() {
             </div>
 
             <div style={cardStyle}>
-              <h3 style={{ ...sectionTitleStyle, marginTop: 0 }}>Materiales usados (resumen)</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                <h3 style={{ ...sectionTitleStyle, marginTop: 0, marginBottom: 0 }}>Materiales usados (resumen)</h3>
+                {reporteConfigMargenGlobal > 0 && (
+                  <span style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 700 }}>
+                    Margen global: {reporteConfigMargenGlobal}%
+                  </span>
+                )}
+              </div>
               {reporteMateriales.length === 0 ? (
                 <p style={{ color: "#6b7280", margin: 0 }}>Sin materiales para este filtro.</p>
               ) : (
-                <div style={{ display: "grid", gap: "10px" }}>
-                  {reporteMaterialesPagina.map((item, idx) => (
-                    <div
-                      key={`${item.material}-${item.unidad}-${idx}`}
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "12px",
-                        padding: "10px 12px",
-                        background: "#fafafa",
-                      }}
-                    >
-                      <div style={{ fontWeight: 700 }}>
-                        {item.material} ({item.unidad})
-                      </div>
-                      <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-                        Cantidad: {Number(item.cantidad || 0).toFixed(2)} | Costo: S/{" "}
-                        {Number(item.costo || 0).toFixed(2)} | Actuaciones: {Number(item.actuaciones || 0)}
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 600 }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase" }}>Material</th>
+                        <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase" }}>Cant.</th>
+                        {reporteConfigMostrarCosto && <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase" }}>P. Costo/u</th>}
+                        {reporteConfigMostrarCosto && <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase" }}>Costo total</th>}
+                        {reporteConfigMostrarMargen && <th style={{ textAlign: "center", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#16a34a", textTransform: "uppercase" }}>Margen %</th>}
+                        {reporteConfigMostrarVenta && <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#7c3aed", textTransform: "uppercase" }}>P. Venta/u</th>}
+                        {reporteConfigMostrarVenta && <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#7c3aed", textTransform: "uppercase" }}>Venta total</th>}
+                        <th style={{ textAlign: "right", padding: "8px 10px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase" }}>Acts.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                  {reporteMaterialesPagina.map((item, idx) => {
+                    const margenMat = reporteConfigMargenPorMat[item.material] !== undefined ? reporteConfigMargenPorMat[item.material] : reporteConfigMargenGlobal;
+                    const precioVentaUnit = Number(item.costoUnit || 0) * (1 + margenMat / 100);
+                    const precioVentaTotal = Number(item.costo || 0) * (1 + margenMat / 100);
+                    return (
+                    <tr key={`${item.material}-${item.unidad}-${idx}`} style={{ borderBottom: "1px solid #f1f5f9" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#fafbff"}
+                      onMouseLeave={e => e.currentTarget.style.background = ""}>
+                      <td style={{ padding: "9px 10px", fontWeight: 600, color: "#0f172a" }}>
+                        {item.material}
+                        <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: 5 }}>({item.unidad})</span>
+                      </td>
+                      <td style={{ padding: "9px 10px", textAlign: "right", color: "#475569" }}>{Number(item.cantidad || 0).toFixed(2)}</td>
+                      {reporteConfigMostrarCosto && <td style={{ padding: "9px 10px", textAlign: "right", color: "#475569" }}>S/ {Number(item.costoUnit || 0).toFixed(2)}</td>}
+                      {reporteConfigMostrarCosto && <td style={{ padding: "9px 10px", textAlign: "right", fontWeight: 700, color: "#0f172a" }}>S/ {Number(item.costo || 0).toFixed(2)}</td>}
+                      {reporteConfigMostrarMargen && (
+                        <td style={{ padding: "9px 10px", textAlign: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                            <input
+                              type="number" min="0" max="500" step="1"
+                              value={reporteConfigMargenPorMat[item.material] !== undefined ? reporteConfigMargenPorMat[item.material] : ""}
+                              placeholder={String(reporteConfigMargenGlobal)}
+                              onChange={e => {
+                                const val = e.target.value === "" ? undefined : Number(e.target.value);
+                                setReporteConfigMargenPorMat(prev => {
+                                  const next = { ...prev };
+                                  if (val === undefined) delete next[item.material];
+                                  else next[item.material] = val;
+                                  return next;
+                                });
+                              }}
+                              style={{ width: 56, padding: "3px 6px", border: "1.5px solid #86efac", borderRadius: 6, fontSize: 12, textAlign: "center", background: "#f0fdf4" }}
+                            />
+                            <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700 }}>%</span>
+                          </div>
+                        </td>
+                      )}
+                      {reporteConfigMostrarVenta && <td style={{ padding: "9px 10px", textAlign: "right", color: "#7c3aed", fontWeight: 600 }}>S/ {precioVentaUnit.toFixed(2)}</td>}
+                      {reporteConfigMostrarVenta && <td style={{ padding: "9px 10px", textAlign: "right", color: "#7c3aed", fontWeight: 700 }}>S/ {precioVentaTotal.toFixed(2)}</td>}
+                      <td style={{ padding: "9px 10px", textAlign: "right", color: "#94a3b8" }}>{item.actuaciones}</td>
+                    </tr>
+                    );
+                  })}
+                    </tbody>
+                    {reporteMateriales.length > 0 && (
+                      <tfoot>
+                        <tr style={{ background: "#f8fafc", borderTop: "2px solid #e2e8f0" }}>
+                          <td colSpan={2} style={{ padding: "8px 10px", fontWeight: 700, color: "#0f172a" }}>TOTAL</td>
+                          {reporteConfigMostrarCosto && <td style={{ padding: "8px 10px" }} />}
+                          {reporteConfigMostrarCosto && <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800, color: "#0f172a" }}>
+                            S/ {reporteMateriales.reduce((a, m) => a + Number(m.costo || 0), 0).toFixed(2)}
+                          </td>}
+                          {reporteConfigMostrarMargen && <td style={{ padding: "8px 10px" }} />}
+                          {reporteConfigMostrarVenta && <td style={{ padding: "8px 10px" }} />}
+                          {reporteConfigMostrarVenta && <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 800, color: "#7c3aed" }}>
+                            S/ {reporteMateriales.reduce((a, m) => {
+                              const mg = reporteConfigMargenPorMat[m.material] !== undefined ? reporteConfigMargenPorMat[m.material] : reporteConfigMargenGlobal;
+                              return a + Number(m.costo || 0) * (1 + mg / 100);
+                            }, 0).toFixed(2)}
+                          </td>}
+                          <td style={{ padding: "8px 10px" }} />
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap", marginTop: 12 }}>
                     <div style={{ fontSize: "13px", color: "#6b7280" }}>
                       Página {reportePaginaMat} de {totalPaginasMat} · {reporteMateriales.length} materiales
                     </div>
                     <div style={{ display: "flex", gap: "8px" }}>
-                      <button
-                        type="button"
-                        style={secondaryButton}
-                        onClick={() => setReportePaginaMat((p) => Math.max(1, p - 1))}
-                        disabled={reportePaginaMat <= 1}
-                      >
-                        Anterior
-                      </button>
-                      <button
-                        type="button"
-                        style={secondaryButton}
-                        onClick={() => setReportePaginaMat((p) => Math.min(totalPaginasMat, p + 1))}
-                        disabled={reportePaginaMat >= totalPaginasMat}
-                      >
-                        Siguiente
-                      </button>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaMat((p) => Math.max(1, p - 1))} disabled={reportePaginaMat <= 1}>Anterior</button>
+                      <button type="button" style={secondaryButton} onClick={() => setReportePaginaMat((p) => Math.min(totalPaginasMat, p + 1))} disabled={reportePaginaMat >= totalPaginasMat}>Siguiente</button>
                     </div>
                   </div>
                 </div>
