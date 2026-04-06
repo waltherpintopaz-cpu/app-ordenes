@@ -1911,6 +1911,7 @@ export default function App() {
   const [reporteConfigMostrarCosto, setReporteConfigMostrarCosto] = useState(true);
   const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(true);
   const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(true);
+  const [reporteConfigMargenEquipos, setReporteConfigMargenEquipos] = useState(0);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -14283,6 +14284,14 @@ export default function App() {
                           )}
                         </div>
 
+                        {/* Margen equipos */}
+                        <div style={{ background: "#eff6ff", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #bfdbfe" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Margen equipos instalados</div>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: "#1d4ed8", display: "block", marginBottom: 4 }}>Margen global equipos %</label>
+                          <input type="number" min="0" max="500" step="1" value={reporteConfigMargenEquipos} onChange={e => setReporteConfigMargenEquipos(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #bfdbfe", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                          <div style={{ fontSize: 11, color: "#2563eb", marginTop: 4 }}>Aplica a todos los equipos en la tabla de equipos por orden</div>
+                        </div>
+
                         {/* Qué mostrar en el PDF */}
                         <div style={{ background: "#f8f4ff", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #ddd6fe" }}>
                           <div style={{ fontSize: 11, fontWeight: 800, color: "#6d28d9", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Columnas a mostrar en PDF</div>
@@ -14652,25 +14661,34 @@ export default function App() {
                             <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Código QR</th>
                             <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Serial</th>
                             <th style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Acción</th>
-                            <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>Precio</th>
+                            {reporteConfigMostrarCosto && <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb" }}>P. Costo</th>}
+                            {reporteConfigMostrarMargen && reporteConfigMargenEquipos > 0 && <th style={{ textAlign: "center", padding: "4px 8px", borderBottom: "1px solid #e5e7eb", color: "#16a34a" }}>Margen %</th>}
+                            {reporteConfigMostrarVenta && reporteConfigMargenEquipos > 0 && <th style={{ textAlign: "right", padding: "4px 8px", borderBottom: "1px solid #e5e7eb", color: "#7c3aed" }}>P. Venta</th>}
                           </tr>
                         </thead>
                         <tbody>
-                          {item.equipos.map((e, ei) => (
+                          {item.equipos.map((e, ei) => {
+                            const precioVentaEq = Number(e.precioUnitario || 0) * (1 + reporteConfigMargenEquipos / 100);
+                            return (
                             <tr key={ei} style={{ borderBottom: "1px solid #f3f4f6" }}>
                               <td style={{ padding: "4px 8px" }}>{e.tipo || "-"}</td>
                               <td style={{ padding: "4px 8px" }}>{[e.marca, e.modelo].filter(Boolean).join(" ") || "-"}</td>
                               <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: "11px" }}>{e.codigo || "-"}</td>
                               <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: "11px" }}>{e.serial || "-"}</td>
                               <td style={{ padding: "4px 8px" }}>{e.accion || "-"}</td>
-                              <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {Number(e.precioUnitario || 0).toFixed(2)}</td>
+                              {reporteConfigMostrarCosto && <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {Number(e.precioUnitario || 0).toFixed(2)}</td>}
+                              {reporteConfigMostrarMargen && reporteConfigMargenEquipos > 0 && <td style={{ padding: "4px 8px", textAlign: "center", color: "#16a34a", fontWeight: 600 }}>{reporteConfigMargenEquipos}%</td>}
+                              {reporteConfigMostrarVenta && reporteConfigMargenEquipos > 0 && <td style={{ padding: "4px 8px", textAlign: "right", color: "#7c3aed", fontWeight: 700 }}>S/ {precioVentaEq.toFixed(2)}</td>}
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                         <tfoot>
                           <tr style={{ fontWeight: 700, background: "#f9fafb" }}>
-                            <td colSpan={5} style={{ padding: "4px 8px", textAlign: "right" }}>Total equipos:</td>
-                            <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {item.equipos.reduce((a, e) => a + Number(e.precioUnitario || 0), 0).toFixed(2)}</td>
+                            <td colSpan={reporteConfigMostrarCosto ? 5 : 4} style={{ padding: "4px 8px", textAlign: "right" }}>Total costo:</td>
+                            {reporteConfigMostrarCosto && <td style={{ padding: "4px 8px", textAlign: "right" }}>S/ {item.equipos.reduce((a, e) => a + Number(e.precioUnitario || 0), 0).toFixed(2)}</td>}
+                            {reporteConfigMostrarMargen && reporteConfigMargenEquipos > 0 && <td />}
+                            {reporteConfigMostrarVenta && reporteConfigMargenEquipos > 0 && <td style={{ padding: "4px 8px", textAlign: "right", color: "#7c3aed" }}>S/ {item.equipos.reduce((a, e) => a + Number(e.precioUnitario || 0) * (1 + reporteConfigMargenEquipos / 100), 0).toFixed(2)}</td>}
                           </tr>
                         </tfoot>
                       </table>
@@ -14691,7 +14709,7 @@ export default function App() {
             <div style={cardStyle}>
               <h3 style={{ ...sectionTitleStyle, marginTop: 0 }}>Costo por actuación</h3>
               <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "10px" }}>
-                Costo actuación: Instalación S/60 · Incidencia S/25 · Otros S/0. Incluye costo de materiales usados.
+                Costo actuación: Instalación S/{reporteConfigCostoInstal} · Incidencia S/{reporteConfigCostoInciden} · Otros S/0. Incluye costo de materiales usados.
               </div>
               {reporteCostoActuaciones.length === 0 ? (
                 <p style={{ color: "#6b7280", margin: 0 }}>Sin registros para este filtro.</p>
