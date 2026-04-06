@@ -708,7 +708,7 @@ const initialLiquidacion = {
   codigoEtiqueta: "",
   snOnu: "",
   parametro: "",
-  actualizarUbicacion: "NO",
+  actualizarUbicacion: "SI",
   nuevaUbicacion: "",
   cajaNap: "",
   equipos: [],
@@ -7747,8 +7747,8 @@ export default function App() {
       codigoEtiqueta: liquidacionItem.liquidacion?.codigoEtiqueta || "",
       snOnu: liquidacionItem.sn_onu || liquidacionItem.snOnu || liquidacionItem.liquidacion?.snOnu || "",
       parametro: liquidacionItem.parametro || liquidacionItem.liquidacion?.parametro || "",
-      actualizarUbicacion: "NO",
-      nuevaUbicacion: "",
+      actualizarUbicacion: "SI",
+      nuevaUbicacion: liquidacionItem.ubicacion || "",
       cajaNap: liquidacionItem.cajaNap || liquidacionItem.caja_nap || "",
       equipos: liquidacionItem.liquidacion?.equipos || [],
       equiposRecuperados: liquidacionItem.liquidacion?.equiposRecuperados || [],
@@ -7934,7 +7934,7 @@ export default function App() {
     );
   };
 
-  const registrarFotosClienteRelacionSupabase = async (dni = "", fotos = []) => {
+  const registrarFotosClienteRelacionSupabase = async (dni = "", fotos = [], liquidacionId = null, ordenId = null) => {
     const dniClean = String(dni || "").trim();
     const fotosClean = Array.from(new Set((Array.isArray(fotos) ? fotos : []).map((x) => String(x || "").trim()).filter(Boolean)));
     if (!isSupabaseConfigured || !dniClean || !fotosClean.length) return;
@@ -7959,7 +7959,12 @@ export default function App() {
       const existentes = new Set((relSel.data || []).map((r) => String(r?.foto_url || "").trim()).filter(Boolean));
       const inserts = fotosClean
         .filter((url) => !existentes.has(url))
-        .map((url) => ({ cliente_id: clienteId, foto_url: url }));
+        .map((url) => ({
+          cliente_id: clienteId,
+          foto_url: url,
+          ...(liquidacionId ? { liquidacion_id: liquidacionId } : {}),
+          ...(ordenId ? { orden_id: ordenId } : {}),
+        }));
       if (!inserts.length) return;
       const relIns = await supabase.from("cliente_fotos_liquidacion").insert(inserts);
       if (relIns.error) return;
@@ -7985,6 +7990,7 @@ export default function App() {
         );
         if (existente) {
           const cajaNapLiq = String(registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "").trim();
+          const ubicacionLiq = String(registroLiquidado.liquidacion?.actualizarUbicacion === "SI" ? registroLiquidado.liquidacion?.nuevaUbicacion : "" || registroLiquidado.ubicacion || "").trim();
           const actualizado = {
             ...existente,
             nombre: registroLiquidado.nombre || existente.nombre || "",
@@ -7992,6 +7998,7 @@ export default function App() {
             celular: registroLiquidado.celular || existente.celular || "",
             nodo: registroLiquidado.nodo || existente.nodo || "",
             cajaNap: cajaNapLiq || existente.cajaNap || "",
+            ubicacion: ubicacionLiq || existente.ubicacion || "",
             ultimaActualizacion: new Date().toLocaleString(),
           };
           clienteResultado = actualizado;
@@ -8034,6 +8041,12 @@ export default function App() {
       });
       if (isSupabaseConfigured && clienteResultado) {
         void guardarClientesEnSupabase([clienteResultado]);
+        // Guardar fotos de incidencia vinculadas al cliente con liquidacion_id como diferenciador
+        const fotosLiq = registroLiquidado.liquidacion?.fotos || [];
+        const liquidacionIdWEB = registroLiquidado.liquidacion?.id || registroLiquidado.id || null;
+        if (fotosLiq.length > 0 && liquidacionIdWEB) {
+          void registrarFotosClienteRelacionSupabase(dni, fotosLiq, liquidacionIdWEB, registroLiquidado.id);
+        }
       }
       return clienteResultado;
     }
