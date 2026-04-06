@@ -1761,6 +1761,13 @@ export default function App() {
   const [busquedaClientes, setBusquedaClientes] = useState("");
   const [busquedaClientesDraft, setBusquedaClientesDraft] = useState("");
   const [filtroEstadoCliente, setFiltroEstadoCliente] = useState("TODOS");
+  const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
+  const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
+  const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("colsClientesVisibles") || "null") || { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true }; }
+    catch { return { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true }; }
+  });
+  const [mostrarColsModal, setMostrarColsModal] = useState(false);
   const [actualizarEstadoMasivoLoading, setActualizarEstadoMasivoLoading] = useState(false);
   const [actualizarEstadoMasivoProgreso, setActualizarEstadoMasivoProgreso] = useState(null);
   const [clientesPagina, setClientesPagina] = useState(1);
@@ -2494,12 +2501,21 @@ export default function App() {
     return base.filter((c) => tieneAccesoNodoSesion(firstText(c?.nodo, c?.payload?.nodo, c?.payload?.Nodo)));
   }, [clientes, tieneAccesoNodoSesion]);
 
+  const nodosDisponiblesClientes = useMemo(() => {
+    const set = new Set();
+    clientesPorNodo.forEach((c) => { const n = String(c.nodo || "").trim(); if (n) set.add(n); });
+    return Array.from(set).sort();
+  }, [clientesPorNodo]);
+
   const clientesFiltrados = useMemo(() => {
     const q = busquedaClientes.trim().toLowerCase();
-    return clientesPorNodo.filter((c) => {
+    let lista = clientesPorNodo.filter((c) => {
       if (filtroEstadoCliente !== "TODOS") {
         const estadoNorm = c.estadoServicio || normalizarEstadoServicioCliente(c.estado || c.payload?.estado || c.payload?.Estado || "");
         if (estadoNorm !== filtroEstadoCliente) return false;
+      }
+      if (filtroNodoCliente !== "TODOS") {
+        if (String(c.nodo || "").trim() !== filtroNodoCliente) return false;
       }
       if (!q) return true;
       const equiposTexto = Array.isArray(c.equiposHistorial)
@@ -2523,17 +2539,32 @@ export default function App() {
         equiposTexto.includes(q)
       );
     });
-  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente]);
+    if (sortClientes.col) {
+      lista = [...lista].sort((a, b) => {
+        let va = "", vb = "";
+        if (sortClientes.col === "nombre") { va = String(a.nombre || ""); vb = String(b.nombre || ""); }
+        else if (sortClientes.col === "dni") { va = String(a.dni || ""); vb = String(b.dni || ""); }
+        else if (sortClientes.col === "empresa") { va = String(a.empresa || ""); vb = String(b.empresa || ""); }
+        else if (sortClientes.col === "celular") { va = String(a.celular || ""); vb = String(b.celular || ""); }
+        else if (sortClientes.col === "nodo") { va = String(a.nodo || ""); vb = String(b.nodo || ""); }
+        else if (sortClientes.col === "estado") { va = String(a.estadoServicio || a.estado || ""); vb = String(b.estadoServicio || b.estado || ""); }
+        const cmp = va.localeCompare(vb, undefined, { sensitivity: "base" });
+        return sortClientes.dir === "asc" ? cmp : -cmp;
+      });
+    }
+    return lista;
+  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente, filtroNodoCliente, sortClientes]);
 
   const conteosEstadoCliente = useMemo(() => {
-    const counts = { TODOS: clientesPorNodo.length, ACTIVO: 0, SUSPENDIDO: 0, INACTIVO: 0, DESCONOCIDO: 0 };
-    clientesPorNodo.forEach((c) => {
+    const base = filtroNodoCliente === "TODOS" ? clientesPorNodo : clientesPorNodo.filter(c => String(c.nodo || "").trim() === filtroNodoCliente);
+    const counts = { TODOS: base.length, ACTIVO: 0, SUSPENDIDO: 0, INACTIVO: 0, DESCONOCIDO: 0 };
+    base.forEach((c) => {
       const e = c.estadoServicio || normalizarEstadoServicioCliente(c.estado || c.payload?.estado || c.payload?.Estado || "");
       if (counts[e] !== undefined) counts[e]++;
       else counts.DESCONOCIDO++;
     });
     return counts;
-  }, [clientesPorNodo]);
+  }, [clientesPorNodo, filtroNodoCliente]);
 
   const diagnosticoServicioCliente = useMemo(() => {
     if (diagnosticoServicioModo !== "dni") return null;
@@ -15646,7 +15677,50 @@ export default function App() {
                   <button onClick={actualizarEstadoMasivoMikrowisp} disabled={actualizarEstadoMasivoLoading} title="Consulta Mikrowisp por DNI para actualizar estado" style={{ padding: "8px 14px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     {actualizarEstadoMasivoLoading ? `MK ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}` : "Sync MikroTik"}
                   </button>
+                  <button onClick={() => setMostrarColsModal(true)} style={{ padding: "8px 14px", background: "#f8f4ff", color: "#6d28d9", border: "1px solid #ddd6fe", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    ⊞ Columnas
+                  </button>
                 </div>
+
+                {/* ── Modal columnas visibles ── */}
+                {mostrarColsModal && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setMostrarColsModal(false)}>
+                    <div style={{ background: "#fff", borderRadius: 16, padding: "24px 28px", minWidth: 320, maxWidth: 420, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }} onClick={e => e.stopPropagation()}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                        <span style={{ fontWeight: 800, fontSize: 15, color: "#0f172a" }}>Columnas Disponibles</span>
+                        <button onClick={() => setMostrarColsModal(false)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#94a3b8" }}>✕</button>
+                      </div>
+                      <div style={{ background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 9, padding: "8px 14px", fontSize: 12, color: "#92400e", marginBottom: 16 }}>
+                        Activa o desactiva las columnas que quieres ver en la tabla.
+                      </div>
+                      {[
+                        { key: "cliente", label: "Cliente" },
+                        { key: "dni", label: "DNI" },
+                        { key: "empresa", label: "Empresa" },
+                        { key: "contacto", label: "Contacto" },
+                        { key: "nodo", label: "Nodo · Plan" },
+                        { key: "estado", label: "Estado" },
+                      ].map(({ key, label }) => (
+                        <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f1f5f9" }}>
+                          <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{label}</span>
+                          <div
+                            onClick={() => {
+                              const next = { ...colsClientesVisibles, [key]: !colsClientesVisibles[key] };
+                              setColsClientesVisibles(next);
+                              try { localStorage.setItem("colsClientesVisibles", JSON.stringify(next)); } catch {}
+                            }}
+                            style={{ width: 44, height: 24, borderRadius: 999, background: colsClientesVisibles[key] ? "#0ea5e9" : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s" }}
+                          >
+                            <div style={{ position: "absolute", top: 3, left: colsClientesVisibles[key] ? 22 : 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.18)", transition: "left 0.2s" }} />
+                          </div>
+                        </div>
+                      ))}
+                      <button onClick={() => setMostrarColsModal(false)} style={{ marginTop: 20, width: "100%", padding: "10px 0", background: "#0f172a", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                        Guardar cambios
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ── Búsqueda + filtros estado ── */}
@@ -15680,6 +15754,23 @@ export default function App() {
                 </div>
               </div>
 
+              {/* ── Filtro por nodo ── */}
+              {nodosDisponiblesClientes.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", marginRight: 4 }}>Nodo</span>
+                  {["TODOS", ...nodosDisponiblesClientes].map((n) => {
+                    const active = filtroNodoCliente === n;
+                    const count = n === "TODOS" ? clientesPorNodo.length : clientesPorNodo.filter(c => String(c.nodo || "").trim() === n).length;
+                    return (
+                      <button key={n} type="button" onClick={() => { setFiltroNodoCliente(n); setClientesPagina(1); }} style={{ padding: "6px 11px", border: "1.5px solid", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: "pointer", background: active ? "#163f86" : "#f8fafc", borderColor: active ? "#163f86" : "#e2e8f0", color: active ? "#fff" : "#475569" }}>
+                        {n === "TODOS" ? "Todos" : n}
+                        <span style={{ opacity: 0.65, fontSize: 10, marginLeft: 4 }}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* ── Stats strip ── */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 18 }}>
                 {[
@@ -15710,9 +15801,29 @@ export default function App() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
                       <thead>
                         <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #f1f5f9" }}>
-                          {["Cliente", "DNI", "Empresa", "Contacto", "Nodo · Plan", "Estado", "Acciones"].map((h, i) => (
-                            <th key={h} style={{ textAlign: i === 6 ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
-                          ))}
+                          {[
+                            { key: "cliente", label: "Cliente", sortCol: "nombre" },
+                            { key: "dni", label: "DNI", sortCol: "dni" },
+                            { key: "empresa", label: "Empresa", sortCol: "empresa" },
+                            { key: "contacto", label: "Contacto", sortCol: "celular" },
+                            { key: "nodo", label: "Nodo · Plan", sortCol: "nodo" },
+                            { key: "estado", label: "Estado", sortCol: "estado" },
+                            { key: "acciones", label: "Acciones", sortCol: null },
+                          ].filter(h => h.key === "acciones" || colsClientesVisibles[h.key]).map((h) => {
+                            const isSorted = sortClientes.col === h.sortCol;
+                            const arrow = isSorted ? (sortClientes.dir === "asc" ? " ▲" : " ▼") : (h.sortCol ? " ⇅" : "");
+                            return (
+                              <th key={h.key}
+                                onClick={() => {
+                                  if (!h.sortCol) return;
+                                  setSortClientes(prev => prev.col === h.sortCol ? { col: h.sortCol, dir: prev.dir === "asc" ? "desc" : "asc" } : { col: h.sortCol, dir: "asc" });
+                                  setClientesPagina(1);
+                                }}
+                                style={{ textAlign: h.key === "acciones" ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: isSorted ? "#163f86" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", cursor: h.sortCol ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                                {h.label}{arrow}
+                              </th>
+                            );
+                          })}
                         </tr>
                       </thead>
                       <tbody>
@@ -15723,6 +15834,7 @@ export default function App() {
                             <tr key={cliente.id || idx} style={{ borderTop: "1px solid #f8fafc", cursor: "default" }}
                               onMouseEnter={e => e.currentTarget.style.background = "#fafbff"}
                               onMouseLeave={e => e.currentTarget.style.background = ""}>
+                              {colsClientesVisibles.cliente && (
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                   <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#eff6ff", color: "#163f86", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
@@ -15742,7 +15854,11 @@ export default function App() {
                                   </div>
                                 </div>
                               </td>
+                              )}
+                              {colsClientesVisibles.dni && (
                               <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
+                              )}
+                              {colsClientesVisibles.empresa && (
                               <td style={{ padding: "11px 14px" }}>
                                 {cliente.empresa === "Americanet" ? (
                                   <img src={logoAmericanet} alt="Americanet" style={{ height: 22, maxWidth: 80, objectFit: "contain", mixBlendMode: "multiply" }} />
@@ -15752,14 +15868,21 @@ export default function App() {
                                   </span>
                                 ) : <span style={{ color: "#94a3b8", fontSize: 11 }}>-</span>}
                               </td>
+                              )}
+                              {colsClientesVisibles.contacto && (
                               <td style={{ padding: "11px 14px", color: "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
+                              )}
+                              {colsClientesVisibles.nodo && (
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{cliente.nodo || "-"}</div>
                                 <div style={{ fontSize: 11, color: "#94a3b8" }}>{cliente.velocidad || "-"}</div>
                               </td>
+                              )}
+                              {colsClientesVisibles.estado && (
                               <td style={{ padding: "11px 14px" }}>
                                 <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: estCfg.bg, color: estCfg.c, whiteSpace: "nowrap" }}>{estCfg.l}</span>
                               </td>
+                              )}
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
                                   <button onClick={() => void abrirDetalleCliente(cliente)} style={{ padding: "6px 12px", background: "#eff6ff", color: "#163f86", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Ver</button>
