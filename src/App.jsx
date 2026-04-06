@@ -675,7 +675,7 @@ function deserializeLiquidacionFromSupabase(row = {}) {
     direccion: String(row.direccion || "").trim(),
     celular: String(row.celular || "").trim(),
     nodo: String(row.nodo || "").trim(),
-    usuarioNodo: String(row.usuario_nodo || row.user_hotspot || "").trim(),
+    usuarioNodo: String(row.usuario_nodo || row.user_hotspot || payload?.user_pppoe || payload?.["UserPPoe"] || payload?.usuarioNodo || payload?.["Usuario Nodo"] || "").trim(),
     passwordUsuario: String(row.password_usuario || "").trim(),
     velocidad: String(row.velocidad || "").trim(),
     precioPlan: row.precio_plan != null ? String(row.precio_plan) : "",
@@ -4034,26 +4034,33 @@ export default function App() {
         offset += pageSize;
       }
       let mapped = all.map(deserializeLiquidacionFromSupabase);
-      // Enriquecer nodo desde ordenes para registros que no lo tienen
+      // Enriquecer nodo y usuarioNodo desde ordenes para registros que no lo tienen
       const sinNodo = mapped.filter((r) => !r.nodo);
-      if (sinNodo.length > 0) {
+      const sinUsuario = mapped.filter((r) => !r.usuarioNodo);
+      const necesitaEnriquecer = [...new Set([...sinNodo, ...sinUsuario].map((r) => r.id))].length > 0;
+      if (necesitaEnriquecer) {
         try {
-          const ordenIds = [...new Set(sinNodo.map((r) => Number(r.ordenOriginalId)).filter((x) => Number.isFinite(x) && x > 0))];
-          const codigos  = [...new Set(sinNodo.map((r) => String(r.codigo || "").trim()).filter(Boolean))];
+          const todosSinEnriquecer = mapped.filter((r) => !r.nodo || !r.usuarioNodo);
+          const ordenIds = [...new Set(todosSinEnriquecer.map((r) => Number(r.ordenOriginalId)).filter((x) => Number.isFinite(x) && x > 0))];
+          const codigos  = [...new Set(todosSinEnriquecer.map((r) => String(r.codigo || "").trim()).filter(Boolean))];
           const [byIdRes, byCodigoRes] = await Promise.all([
-            ordenIds.length ? supabase.from(ORDENES_TABLE).select("id,nodo,codigo").in("id", ordenIds) : Promise.resolve({ data: [] }),
-            codigos.length  ? supabase.from(ORDENES_TABLE).select("id,nodo,codigo").in("codigo", codigos) : Promise.resolve({ data: [] }),
+            ordenIds.length ? supabase.from(ORDENES_TABLE).select("id,nodo,codigo,usuario_nodo").in("id", ordenIds) : Promise.resolve({ data: [] }),
+            codigos.length  ? supabase.from(ORDENES_TABLE).select("id,nodo,codigo,usuario_nodo").in("codigo", codigos) : Promise.resolve({ data: [] }),
           ]);
-          const nodoMap = new Map();
+          const ordenDataMap = new Map();
           for (const row of [...(byIdRes.data || []), ...(byCodigoRes.data || [])]) {
-            if (!String(row?.nodo || "").trim()) continue;
-            if (row.id)     nodoMap.set(`id:${row.id}`, String(row.nodo).trim());
-            if (row.codigo) nodoMap.set(`cod:${row.codigo}`, String(row.nodo).trim());
+            if (row.id)     ordenDataMap.set(`id:${row.id}`, row);
+            if (row.codigo) ordenDataMap.set(`cod:${row.codigo}`, row);
           }
           mapped = mapped.map((r) => {
-            if (r.nodo) return r;
-            const nodo = nodoMap.get(`id:${r.ordenOriginalId}`) || nodoMap.get(`cod:${r.codigo}`) || "";
-            return nodo ? { ...r, nodo } : r;
+            if (r.nodo && r.usuarioNodo) return r;
+            const ord = ordenDataMap.get(`id:${r.ordenOriginalId}`) || ordenDataMap.get(`cod:${r.codigo}`);
+            if (!ord) return r;
+            return {
+              ...r,
+              nodo: r.nodo || String(ord.nodo || "").trim(),
+              usuarioNodo: r.usuarioNodo || String(ord.usuario_nodo || "").trim(),
+            };
           });
         } catch { /* silent */ }
       }
@@ -9952,7 +9959,6 @@ export default function App() {
   };
 
   const imprimirReporteMateriales = () => {
-    const totalGeneral = reporteMateriales.reduce((acc, x) => acc + Number(x.costo || 0), 0);
     const empresa = String(usuarioSesion?.empresa || "Americanet");
     const esDim = empresa.toLowerCase().includes("dim");
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
@@ -9970,18 +9976,45 @@ export default function App() {
       });
     });
     const equiposResumen = Array.from(eqMap.values()).sort((a,b) => b.total - a.total);
-    const totalEquipos = equiposResumen.reduce((a, x) => a + x.total, 0);
+
+    const margenEq = Number(reporteConfigMargenEquipos || 0);
+    const totalEquiposCosto = equiposResumen.reduce((a, x) => a + x.total, 0);
+    const totalEquiposVenta = equiposResumen.reduce((a, x) => {
+      const pu = x.precioUnit * (1 + margenEq / 100);
+      return a + pu * x.cantidad;
+    }, 0);
+
+    const totalGeneral = reporteMateriales.reduce((acc, x) => acc + Number(x.costo || 0), 0);
+    const totalGeneralVenta = reporteMateriales.reduce((acc, item) => {
+      const nombre = String(item.material || "").trim();
+      const margen = Number(reporteConfigMargenPorMat?.[nombre] ?? reporteConfigMargenGlobal ?? 0);
+      const pu = Number(item.costoUnit || 0);
+      const cant = Number(item.cantidad || 0);
+      return acc + pu * (1 + margen / 100) * cant;
+    }, 0);
+
+    const mostrarCosto = reporteConfigMostrarCosto;
+    const mostrarVenta = reporteConfigMostrarVenta;
+    const mostrarMargen = reporteConfigMostrarMargen;
+
     const rows = reporteMateriales.map((item, idx) => {
       const cant = Number(item.cantidad || 0);
       const costo = Number(item.costo || 0);
       const pu = Number(item.costoUnit || 0);
+      const nombre = String(item.material || "").trim();
+      const margen = Number(reporteConfigMargenPorMat?.[nombre] ?? reporteConfigMargenGlobal ?? 0);
+      const puVenta = pu * (1 + margen / 100);
+      const totalVenta = puVenta * cant;
       const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
       return `<tr style="background:${bg}">
         <td style="padding:9px 12px;font-size:12px;color:#374151">${idx + 1}</td>
         <td style="padding:9px 12px;font-size:12px;color:#111827;font-weight:500">${escHtml(item.material)}</td>
         <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">${Number.isFinite(cant) ? (Number.isInteger(cant) ? cant : cant.toFixed(3)) : 0}</td>
-        <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">S/ ${pu.toFixed(2)}</td>
-        <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#111827">S/ ${costo.toFixed(2)}</td>
+        ${mostrarCosto ? `<td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">S/ ${pu.toFixed(2)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#374151">S/ ${costo.toFixed(2)}</td>` : ""}
+        ${mostrarMargen ? `<td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">${margen > 0 ? margen + "%" : "-"}</td>` : ""}
+        ${mostrarVenta ? `<td style="padding:9px 12px;font-size:12px;text-align:right;color:#059669;font-weight:600">S/ ${puVenta.toFixed(2)}</td>
+        <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#15803d">S/ ${totalVenta.toFixed(2)}</td>` : ""}
       </tr>`;
     }).join("");
 
@@ -10029,7 +10062,8 @@ export default function App() {
     ${reporteTecnico !== "TODOS" ? `<div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(reporteTecnico)}</span></div>` : ""}
     <div class="info-item"><span class="info-label">Materiales</span><span class="info-value">${reporteMateriales.length} productos</span></div>
     <div class="info-item"><span class="info-label">Equipos</span><span class="info-value">${equiposResumen.length} tipos</span></div>
-    <div class="info-item"><span class="info-label">Total general</span><span class="info-value" style="color:#15803d">S/ ${(totalGeneral + totalEquipos).toFixed(2)}</span></div>
+    ${mostrarCosto ? `<div class="info-item"><span class="info-label">Costo total</span><span class="info-value" style="color:#6b7280">S/ ${(totalGeneral + totalEquiposCosto).toFixed(2)}</span></div>` : ""}
+    ${mostrarVenta ? `<div class="info-item"><span class="info-label">Venta total</span><span class="info-value" style="color:#15803d">S/ ${(totalGeneralVenta + totalEquiposVenta).toFixed(2)}</span></div>` : ""}
   </div>
 
   <p style="font-size:13px;font-weight:700;color:${accentColor};margin-bottom:10px;margin-top:4px">Materiales consumidos</p>
@@ -10038,16 +10072,18 @@ export default function App() {
       <tr>
         <th style="width:36px;text-align:center">#</th>
         <th>Producto</th>
-        <th style="text-align:right;width:100px">Cantidad</th>
-        <th style="text-align:right;width:110px">P.U. (S/.)</th>
-        <th style="text-align:right;width:110px">Total (S/.)</th>
+        <th style="text-align:right;width:80px">Cantidad</th>
+        ${mostrarCosto ? `<th style="text-align:right;width:100px">P.U. Costo</th><th style="text-align:right;width:110px">Total Costo</th>` : ""}
+        ${mostrarMargen ? `<th style="text-align:right;width:70px">Margen</th>` : ""}
+        ${mostrarVenta ? `<th style="text-align:right;width:100px">P.U. Venta</th><th style="text-align:right;width:110px">Total Venta</th>` : ""}
       </tr>
     </thead>
     <tbody>${rows}</tbody>
     <tfoot>
       <tr>
-        <td colspan="4" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Subtotal materiales:</td>
-        <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalGeneral.toFixed(2)}</td>
+        <td colspan="${2 + (mostrarCosto ? 2 : 0) + (mostrarMargen ? 1 : 0) + (mostrarVenta ? 1 : 0)}" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Subtotal materiales:</td>
+        ${mostrarVenta ? `<td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalGeneralVenta.toFixed(2)}</td>` : ""}
+        ${mostrarCosto && !mostrarVenta ? `<td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#374151">S/ ${totalGeneral.toFixed(2)}</td>` : ""}
       </tr>
     </tfoot>
   </table>
@@ -10060,39 +10096,226 @@ export default function App() {
         <th style="width:36px;text-align:center">#</th>
         <th>Tipo</th>
         <th>Marca / Modelo</th>
-        <th style="text-align:right;width:90px">Cantidad</th>
-        <th style="text-align:right;width:110px">P.U. (S/.)</th>
-        <th style="text-align:right;width:110px">Total (S/.)</th>
+        <th style="text-align:right;width:80px">Cantidad</th>
+        ${mostrarCosto ? `<th style="text-align:right;width:100px">P.U. Costo</th><th style="text-align:right;width:110px">Total Costo</th>` : ""}
+        ${mostrarMargen && margenEq > 0 ? `<th style="text-align:right;width:70px">Margen</th>` : ""}
+        ${mostrarVenta ? `<th style="text-align:right;width:100px">P.U. Venta</th><th style="text-align:right;width:110px">Total Venta</th>` : ""}
       </tr>
     </thead>
     <tbody>
       ${equiposResumen.map((e, idx) => {
         const bg = idx % 2 === 0 ? "#ffffff" : "#f8fafc";
+        const puVenta = e.precioUnit * (1 + margenEq / 100);
+        const tventa = puVenta * e.cantidad;
         return `<tr style="background:${bg}">
           <td style="padding:9px 12px;font-size:12px;color:#374151;text-align:center">${idx + 1}</td>
           <td style="padding:9px 12px;font-size:12px;color:#111827;font-weight:500">${escHtml(e.tipo)}</td>
           <td style="padding:9px 12px;font-size:12px;color:#374151">${escHtml([e.marca, e.modelo].filter(Boolean).join(" ") || "-")}</td>
           <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">${e.cantidad}</td>
-          <td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">S/ ${e.precioUnit.toFixed(2)}</td>
-          <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#111827">S/ ${e.total.toFixed(2)}</td>
+          ${mostrarCosto ? `<td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">S/ ${e.precioUnit.toFixed(2)}</td>
+          <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#374151">S/ ${e.total.toFixed(2)}</td>` : ""}
+          ${mostrarMargen && margenEq > 0 ? `<td style="padding:9px 12px;font-size:12px;text-align:right;color:#374151">${margenEq}%</td>` : ""}
+          ${mostrarVenta ? `<td style="padding:9px 12px;font-size:12px;text-align:right;color:#059669;font-weight:600">S/ ${puVenta.toFixed(2)}</td>
+          <td style="padding:9px 12px;font-size:12px;text-align:right;font-weight:600;color:#15803d">S/ ${tventa.toFixed(2)}</td>` : ""}
         </tr>`;
       }).join("")}
     </tbody>
     <tfoot>
       <tr>
-        <td colspan="5" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Subtotal equipos:</td>
-        <td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalEquipos.toFixed(2)}</td>
+        <td colspan="${3 + (mostrarCosto ? 2 : 0) + (mostrarMargen && margenEq > 0 ? 1 : 0) + (mostrarVenta ? 1 : 0)}" style="text-align:right;padding:11px 12px;font-size:13px;font-weight:700;color:#15803d">Subtotal equipos:</td>
+        ${mostrarVenta ? `<td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#15803d">S/ ${totalEquiposVenta.toFixed(2)}</td>` : ""}
+        ${mostrarCosto && !mostrarVenta ? `<td style="text-align:right;padding:11px 12px;font-size:14px;font-weight:800;color:#374151">S/ ${totalEquiposCosto.toFixed(2)}</td>` : ""}
       </tr>
     </tfoot>
   </table>` : ""}
 
-  <div style="margin-top:16px;background:#f0fdf4;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
+  <div style="margin-top:16px;background:#f0fdf4;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
     <span style="font-size:14px;font-weight:700;color:#15803d">TOTAL GENERAL (Materiales + Equipos)</span>
-    <span style="font-size:18px;font-weight:800;color:#15803d">S/ ${(totalGeneral + totalEquipos).toFixed(2)}</span>
+    <div style="display:flex;gap:24px;align-items:center">
+      ${mostrarCosto ? `<span style="font-size:13px;color:#6b7280">Costo: <b style="color:#374151">S/ ${(totalGeneral + totalEquiposCosto).toFixed(2)}</b></span>` : ""}
+      ${mostrarVenta ? `<span style="font-size:18px;font-weight:800;color:#15803d">Venta: S/ ${(totalGeneralVenta + totalEquiposVenta).toFixed(2)}</span>` : ""}
+    </div>
   </div>
 
   <div class="footer">
     <span>${escHtml(empresa)} — Reporte de materiales y equipos</span>
+    <span>Pág. 1</span>
+  </div>
+</body>
+</html>`;
+    imprimirHtmlMismaPestana(html);
+  };
+
+  const imprimirReporteDetalladoActuaciones = () => {
+    const empresa = String(usuarioSesion?.empresa || "Americanet");
+    const esDim = empresa.toLowerCase().includes("dim");
+    const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
+    const accentColor = "#c2500a";
+    const margenEq = Number(reporteConfigMargenEquipos || 0);
+
+    // Acumuladores globales
+    let sumPagoRecibido = 0;
+    let sumMatVenta = 0;
+    let sumEqVenta = 0;
+    let sumActuacion = 0;
+
+    const rows = liquidacionesReporte.map((item, idx) => {
+      const monto = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+      const usuario = String(item.usuarioNodo || "").trim() || "-";
+      const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
+      const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
+
+      // Fecha corta dd/mm/yyyy
+      const fechaISO = item.fechaLiquidacionISO || "";
+      let fechaCorta = fechaISO;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(fechaISO)) {
+        const [y, m, d] = fechaISO.split("-");
+        fechaCorta = `${d}/${m}/${y}`;
+      }
+
+      // Materiales
+      let matDetalle = "";
+      let matVenta = 0;
+      mats.forEach((m) => {
+        const nombre = String(m?.material || m?.nombre || "?");
+        const cant = Number(m?.cantidad ?? 0);
+        const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+        const margen = Number(reporteConfigMargenPorMat?.[nombre] ?? reporteConfigMargenGlobal ?? 0);
+        matVenta += cu * (1 + margen / 100) * cant;
+        matDetalle += `${escHtml(nombre)} x${cant}<br/>`;
+      });
+
+      // Equipos
+      let eqDetalle = "";
+      let eqVenta = 0;
+      eqs.forEach((e) => {
+        const pu = Number(e?.precioUnitario ?? 0);
+        const puV = pu * (1 + margenEq / 100);
+        eqVenta += puV;
+        const desc = [e?.tipo, e?.marca, e?.modelo].filter(Boolean).join(" ");
+        eqDetalle += `${escHtml(desc || "Equipo")}<br/>`;
+      });
+
+      // Costo actuación
+      const tipo = String(item.tipoActuacion || "").toLowerCase();
+      const costoAct = tipo.includes("instal") ? Number(reporteConfigCostoInstal || 0)
+        : tipo.includes("inciden") ? Number(reporteConfigCostoInciden || 0) : 0;
+
+      sumPagoRecibido += monto;
+      sumMatVenta += matVenta;
+      sumEqVenta += eqVenta;
+      sumActuacion += costoAct;
+
+      const bg = idx % 2 === 0 ? "#ffffff" : "#fff7f0";
+      return `<tr style="background:${bg};vertical-align:top">
+        <td style="padding:7px 8px;font-size:11px;color:#9ca3af;text-align:center">${idx + 1}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151;white-space:nowrap">${escHtml(fechaCorta)}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151">${escHtml(item.tipoActuacion || "-")}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151">${escHtml(usuario)}</td>
+        <td style="padding:7px 8px;font-size:11px;text-align:right;color:#059669;font-weight:600">S/ ${monto.toFixed(2)}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151">${matDetalle || "-"}</td>
+        <td style="padding:7px 8px;font-size:11px;text-align:right;color:#15803d;font-weight:600">${matVenta > 0 ? "S/ " + matVenta.toFixed(2) : "-"}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151">${eqDetalle || "-"}</td>
+        <td style="padding:7px 8px;font-size:11px;text-align:right;color:#1d4ed8;font-weight:600">${eqVenta > 0 ? "S/ " + eqVenta.toFixed(2) : "-"}</td>
+        <td style="padding:7px 8px;font-size:11px;text-align:right;color:#7c3aed;font-weight:600">${costoAct > 0 ? "S/ " + costoAct.toFixed(2) : "-"}</td>
+      </tr>`;
+    }).join("");
+
+    const totalACobrar = sumMatVenta + sumEqVenta + sumActuacion - sumPagoRecibido;
+
+    const filtroTecnico = reporteTecnico !== "TODOS" ? reporteTecnico : "Todos";
+    const filtroNodo = reporteNodo !== "TODOS" ? reporteNodo : "Todos";
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Reporte Detallado Actuaciones</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff;padding:24px;font-size:12px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:14px;border-bottom:3px solid ${accentColor}}
+    .header-left img{height:48px;object-fit:contain}
+    .header-right{text-align:right}
+    .doc-title{font-size:18px;font-weight:700;color:${accentColor};margin-bottom:4px}
+    .doc-sub{font-size:11px;color:#6b7280}
+    .info-bar{display:flex;gap:16px;background:#fff7f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;flex-wrap:wrap;border:1px solid #fed7aa}
+    .info-item{display:flex;flex-direction:column;gap:2px}
+    .info-label{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+    .info-value{font-size:12px;color:#1e293b;font-weight:600}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    thead tr{background:${accentColor};color:#fff}
+    thead th{padding:8px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
+    thead th.r{text-align:right}
+    tbody tr{border-bottom:1px solid #f1f5f9}
+    tfoot tr{background:#fff7f0;border-top:2px solid ${accentColor}}
+    tfoot td{padding:8px;font-size:11px;font-weight:700;color:${accentColor};text-align:right}
+    .resumen{margin-top:20px;border:2px solid ${accentColor};border-radius:10px;overflow:hidden}
+    .resumen-title{background:${accentColor};color:#fff;padding:10px 16px;font-size:13px;font-weight:800}
+    .resumen-row{display:flex;justify-content:space-between;padding:8px 16px;border-bottom:1px solid #fed7aa;font-size:13px}
+    .resumen-row:last-child{border-bottom:none}
+    .resumen-total{display:flex;justify-content:space-between;padding:12px 16px;background:#fff7f0;font-size:15px;font-weight:800;color:${accentColor}}
+    .resumen-neg{color:#dc2626}
+    .footer{margin-top:16px;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:8px}
+    @media print{body{padding:12px}table{font-size:10px}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left"><img src="${logoSrc}" alt="${escHtml(empresa)}"/></div>
+    <div class="header-right">
+      <div class="doc-title">Reporte Detallado de Actuaciones</div>
+      <div class="doc-sub">Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+    </div>
+  </div>
+
+  <div class="info-bar">
+    <div class="info-item"><span class="info-label">Periodo</span><span class="info-value">${escHtml(reporteDesde || "-")} — ${escHtml(reporteHasta || "-")}</span></div>
+    <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(filtroTecnico)}</span></div>
+    <div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(filtroNodo)}</span></div>
+    <div class="info-item"><span class="info-label">Actuaciones</span><span class="info-value">${liquidacionesReporte.length}</span></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:28px;text-align:center">#</th>
+        <th>Fecha</th>
+        <th>Tipo</th>
+        <th>Usuario</th>
+        <th class="r">Pago Rec.</th>
+        <th>Materiales</th>
+        <th class="r">Mat. Venta</th>
+        <th>Equipos</th>
+        <th class="r">Eq. Venta</th>
+        <th class="r">Actuación</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align:left;color:#374151;font-weight:600">TOTALES</td>
+        <td style="color:#059669">S/ ${sumPagoRecibido.toFixed(2)}</td>
+        <td></td>
+        <td style="color:#15803d">S/ ${sumMatVenta.toFixed(2)}</td>
+        <td></td>
+        <td style="color:#1d4ed8">S/ ${sumEqVenta.toFixed(2)}</td>
+        <td style="color:#7c3aed">S/ ${sumActuacion.toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="resumen" style="margin-top:24px">
+    <div class="resumen-title">Resumen de cobro</div>
+    <div class="resumen-row"><span>Materiales (venta)</span><span style="color:#15803d;font-weight:700">S/ ${sumMatVenta.toFixed(2)}</span></div>
+    <div class="resumen-row"><span>Equipos (venta)</span><span style="color:#1d4ed8;font-weight:700">S/ ${sumEqVenta.toFixed(2)}</span></div>
+    <div class="resumen-row"><span>Precio actuaciones</span><span style="color:#7c3aed;font-weight:700">S/ ${sumActuacion.toFixed(2)}</span></div>
+    <div class="resumen-row"><span class="resumen-neg">— Pago recibido</span><span class="resumen-neg" style="font-weight:700">- S/ ${sumPagoRecibido.toFixed(2)}</span></div>
+    <div class="resumen-total"><span>TOTAL A COBRAR</span><span>S/ ${totalACobrar.toFixed(2)}</span></div>
+  </div>
+
+  <div class="footer">
+    <span>${escHtml(empresa)} — Reporte detallado de actuaciones</span>
     <span>Pág. 1</span>
   </div>
 </body>
@@ -14225,11 +14448,14 @@ export default function App() {
                   <button type="button" style={infoButton} onClick={imprimirReporteActuaciones}>
                     PDF actuaciones
                   </button>
+                  <button type="button" style={{ ...infoButton, background: "#c2500a", borderColor: "#c2500a" }} onClick={imprimirReporteDetalladoActuaciones}>
+                    PDF detallado
+                  </button>
                   <button type="button" style={secondaryButton} onClick={exportarCsvActuaciones}>
                     CSV actuaciones
                   </button>
                   <button type="button" style={secondaryButton} onClick={imprimirReporteMateriales}>
-                    PDF materiales
+                    PDF materiales + precios
                   </button>
                   <button type="button" style={secondaryButton} onClick={imprimirDetalleMateriales}>
                     PDF detalle materiales
