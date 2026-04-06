@@ -1764,8 +1764,8 @@ export default function App() {
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("colsClientesVisibles") || "null") || { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true }; }
-    catch { return { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true }; }
+    try { return JSON.parse(localStorage.getItem("colsClientesVisibles") || "null") || { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, usuarioPppoe: false, registrado: false }; }
+    catch { return { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, usuarioPppoe: false, registrado: false }; }
   });
   const [mostrarColsModal, setMostrarColsModal] = useState(false);
   const [actualizarEstadoMasivoLoading, setActualizarEstadoMasivoLoading] = useState(false);
@@ -2548,6 +2548,8 @@ export default function App() {
         else if (sortClientes.col === "celular") { va = String(a.celular || ""); vb = String(b.celular || ""); }
         else if (sortClientes.col === "nodo") { va = String(a.nodo || ""); vb = String(b.nodo || ""); }
         else if (sortClientes.col === "estado") { va = String(a.estadoServicio || a.estado || ""); vb = String(b.estadoServicio || b.estado || ""); }
+        else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
+        else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
         const cmp = va.localeCompare(vb, undefined, { sensitivity: "base" });
         return sortClientes.dir === "asc" ? cmp : -cmp;
       });
@@ -15700,6 +15702,8 @@ export default function App() {
                         { key: "contacto", label: "Contacto" },
                         { key: "nodo", label: "Nodo · Plan" },
                         { key: "estado", label: "Estado" },
+                        { key: "usuarioPppoe", label: "Usuario PPPoE" },
+                        { key: "registrado", label: "Registrado" },
                       ].map(({ key, label }) => (
                         <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f1f5f9" }}>
                           <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{label}</span>
@@ -15808,6 +15812,8 @@ export default function App() {
                             { key: "contacto", label: "Contacto", sortCol: "celular" },
                             { key: "nodo", label: "Nodo · Plan", sortCol: "nodo" },
                             { key: "estado", label: "Estado", sortCol: "estado" },
+                            { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
+                            { key: "registrado", label: "Registrado", sortCol: "registrado" },
                             { key: "acciones", label: "Acciones", sortCol: null },
                           ].filter(h => h.key === "acciones" || colsClientesVisibles[h.key]).map((h) => {
                             const isSorted = sortClientes.col === h.sortCol;
@@ -15882,6 +15888,12 @@ export default function App() {
                               <td style={{ padding: "11px 14px" }}>
                                 <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: estCfg.bg, color: estCfg.c, whiteSpace: "nowrap" }}>{estCfg.l}</span>
                               </td>
+                              )}
+                              {colsClientesVisibles.usuarioPppoe && (
+                              <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.usuarioNodo || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              )}
+                              {colsClientesVisibles.registrado && (
+                              <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
