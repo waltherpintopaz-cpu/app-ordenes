@@ -77,24 +77,14 @@ const loadGoogleMapsSdk = () => {
   return window.__gmapsPromise;
 };
 
-// SVG icono caja NAP para Google Maps
-const napBoxSvg = (color = "#0284c7", selected = false) => {
-  const size = selected ? 28 : 20;
-  const stroke = selected ? "#F97316" : "#fff";
-  const sw = selected ? 2 : 1;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 8}" viewBox="0 0 28 36">
-      <rect x="2" y="2" width="24" height="22" rx="3" fill="${color}" stroke="${stroke}" stroke-width="${sw}"/>
-      <line x1="7" y1="7" x2="21" y2="7" stroke="${stroke}" stroke-width="1.2" opacity="0.7"/>
-      <line x1="7" y1="11" x2="21" y2="11" stroke="${stroke}" stroke-width="1.2" opacity="0.7"/>
-      <line x1="7" y1="15" x2="21" y2="15" stroke="${stroke}" stroke-width="1.2" opacity="0.7"/>
-      <circle cx="8" cy="21" r="2" fill="#22c55e"/>
-      <circle cx="13" cy="21" r="2" fill="#22c55e"/>
-      <circle cx="18" cy="21" r="2" fill="#6b7280"/>
-      <circle cx="23" cy="21" r="2" fill="#6b7280"/>
-      <polygon points="14,24 10,32 18,32" fill="${selected ? "#F97316" : "#64748b"}"/>
-    </svg>
-  `)}`;
+// SVG icono caja NAP — replica exacta del componente NapCajaPin de la app mobile
+const napBoxSvg = (portColor = "#0284c7", selected = false) => {
+  const W = selected ? 28 : 22;
+  const H = selected ? 40 : 32;
+  const borderColor = selected ? "#F97316" : "#64748b";
+  const triColor = selected ? "#F97316" : "#64748b";
+  const sw = selected ? 2 : 0.8;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40"><rect x="3" y="0.5" width="22" height="33" rx="3" fill="#cfd8dc" stroke="${borderColor}" stroke-width="${sw}"/><rect x="0" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="0" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><line x1="6" y1="7" x2="22" y2="7" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="11" x2="22" y2="11" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="15" x2="22" y2="15" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="19" x2="22" y2="19" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="23" x2="22" y2="23" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="30" r="1.5" fill="${portColor}"/><circle cx="10" cy="30" r="1.5" fill="${portColor}"/><circle cx="13" cy="30" r="1.5" fill="${portColor}"/><circle cx="16" cy="30" r="1.5" fill="${portColor}"/><circle cx="19" cy="30" r="1.5" fill="#64748b"/><circle cx="22" cy="30" r="1.5" fill="#64748b"/><polygon points="14,34 9,40 19,40" fill="${triColor}"/></svg>`)}`;
 };
 
 export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos = [], ordenesFallback = [] }) {
@@ -348,7 +338,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         const m = new maps.Marker({
           map,
           position: { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) },
-          icon: { url: napBoxSvg(color, isSelected), scaledSize: new maps.Size(isSelected ? 28 : 20, isSelected ? 36 : 28), anchor: new maps.Point(isSelected ? 14 : 10, isSelected ? 36 : 28) },
+          icon: { url: napBoxSvg(color, isSelected), scaledSize: new maps.Size(isSelected ? 28 : 22, isSelected ? 40 : 32), anchor: new maps.Point(isSelected ? 14 : 11, isSelected ? 40 : 32) },
           title: `Caja ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
           zIndex: isSelected ? 20 : 2,
         });
