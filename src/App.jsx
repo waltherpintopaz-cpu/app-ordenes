@@ -8456,7 +8456,7 @@ export default function App() {
       // Estado inventario equipos y cliente
       const registro = { ...ordenEnLiquidacion, liquidacion, estado: "Liquidada" };
       aplicarEstadoEquiposDesdeLiquidacion(registro);
-      void guardarClienteDesdeLiquidacion(registro);
+      if (esCompletada) void guardarClienteDesdeLiquidacion(registro);
 
       // WhatsApp
       if (!liquidacionEditandoId) void sendWhatsAppNotification({ ...ordenEnLiquidacion, _resultadoFinal: liquidacion.resultadoFinal }, "liquidacion");
