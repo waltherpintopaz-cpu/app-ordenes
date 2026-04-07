@@ -257,7 +257,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     if (!showCajas) return [];
     if (!miUbicacion) return cajasFiltradas;
     return cajasFiltradas.filter((c) =>
-      haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 4
+      haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 2
     );
   }, [cajasFiltradas, showCajas, miUbicacion]);
 
@@ -285,11 +285,12 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         });
         mapRef.current.addListener("dragstart", () => { shouldAutoFrameRef.current = false; });
         mapRef.current.addListener("zoom_changed", () => { shouldAutoFrameRef.current = false; });
-        // Click derecho / long press = mover marcador de ubicación
-        mapRef.current.addListener("rightclick", (e) => {
+        // Clic en el mapa = mover marcador de ubicación
+        mapRef.current.addListener("click", (e) => {
           const lat = e.latLng.lat();
           const lng = e.latLng.lng();
           setMiUbicacion({ lat, lng });
+          shouldAutoFrameRef.current = false;
         });
         setTimeout(() => {
           try { maps.event.trigger(mapRef.current, "resize"); mapRef.current.panTo(DEFAULT_CENTER); } catch { }
@@ -602,7 +603,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
             </div>
           )}
           <div style={{ position: "absolute", bottom: 12, right: 12, fontSize: 10, color: "#94a3b8", background: "#ffffffcc", borderRadius: 6, padding: "3px 8px" }}>
-            Clic derecho para mover marcador de ubicación
+            Clic en el mapa para mover el marcador
           </div>
         </div>
 
