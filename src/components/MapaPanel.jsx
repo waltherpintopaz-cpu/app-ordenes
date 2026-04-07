@@ -485,6 +485,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     const coords = parseCoords(ubicacion);
     const payload = { sector, nodo, ubicacion: ubicacion || "SIN_UBICACION", lat: coords?.lat || null, lng: coords?.lng || null };
     if (codigo) payload.codigo = codigo;
+    if (cajaEditorMode === "create") payload.ctoid = `CTOID-${Date.now()}-${Math.floor(Math.random() * 9999).toString().padStart(4, "0")}`;
     setSavingCaja(true);
     try {
       if (cajaEditorMode === "edit" && editingCajaRef) {
