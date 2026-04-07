@@ -250,17 +250,17 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const cajasNear20 = useMemo(() => cajasNearAll.slice(0, NEAR_TOP), [cajasNearAll]);
   const cajasNear5 = useMemo(() => cajasNearAll.slice(0, NEAR_LINES), [cajasNearAll]);
 
-  // Solo mostrar cajas que estén dentro del radio de alguna orden filtrada
-  const cajasProximasAOrdenes = useMemo(() => {
+  // Cajas a mostrar: dentro del radio GPS + cajas de la orden seleccionada
+  const cajasAMostrar = useMemo(() => {
     if (!showCajas) return [];
-    if (ordenesFiltradas.length === 0) return [];
-    return cajasFiltradas.filter((caja) =>
-      ordenesFiltradas.some((orden) =>
-        orden.coords &&
-        haversineM(orden.coords.lat, orden.coords.lng, Number(caja.coords.lat), Number(caja.coords.lng)) <= RADIO_CAJA_ORDEN
-      )
-    );
-  }, [cajasFiltradas, ordenesFiltradas, showCajas]);
+    const base = miUbicacion
+      ? cajasFiltradas.filter((c) => haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 3.5)
+      : cajasFiltradas;
+    // Incluir también las 5 cajas de la orden seleccionada aunque estén fuera del radio GPS
+    const uidSet = new Set(base.map((c) => c.uid));
+    const extra = cajasNearOrden5.filter((c) => !uidSet.has(c.uid));
+    return extra.length > 0 ? [...base, ...extra] : base;
+  }, [cajasFiltradas, showCajas, miUbicacion, cajasNearOrden5]);
 
   // 5 cajas más cercanas a la orden seleccionada (para polilíneas al hacer clic)
   const cajasNearOrden5 = useMemo(() => {
@@ -354,7 +354,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     });
 
     if (showCajas) {
-      cajasProximasAOrdenes.slice(0, RENDER_CAJAS).forEach((caja) => {
+      cajasAMostrar.slice(0, RENDER_CAJAS).forEach((caja) => {
         const isSelected = selectedTipo === "caja" && String(selectedId) === String(caja.uid);
         const nearOrden = cajasNearOrden5.some((c) => String(c.uid) === String(caja.uid));
         const cap = Number(caja?.capacidad || 0);
@@ -438,7 +438,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       shouldAutoFrameRef.current = false;
     }
     return () => limpiarMarkers();
-  }, [limpiarMarkers, ordenesFiltradas, cajasProximasAOrdenes, cajasNearOrden5, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
+  }, [limpiarMarkers, ordenesFiltradas, cajasAMostrar, cajasNearOrden5, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
 
   // Auto-frame al cambiar filtro
   useEffect(() => { shouldAutoFrameRef.current = true; }, [filtroNodo, busqueda, showCajas]);
