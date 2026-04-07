@@ -125,6 +125,10 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [cajaForm, setCajaForm] = useState({ codigo: "", sector: "", nodo: "", ubicacion: "", ctoid: "" });
   const [savingCaja, setSavingCaja] = useState(false);
   const [editingCajaRef, setEditingCajaRef] = useState(null);
+  const [fotoNapFile, setFotoNapFile] = useState(null);
+  const [fotoParamFile, setFotoParamFile] = useState(null);
+  const [fotoNapPreview, setFotoNapPreview] = useState("");
+  const [fotoParamPreview, setFotoParamPreview] = useState("");
 
   const mapCanvasRef = useRef(null);
   const mapRef = useRef(null);
@@ -475,6 +479,15 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=driving`, "_blank", "noopener,noreferrer");
   };
 
+  const subirFotoCaja = async (file, ctoid, tipo) => {
+    const ext = String(file.name || "").split(".").pop().toLowerCase() || "jpg";
+    const path = `cajas/${ctoid}/${tipo}.${ext}`;
+    const { error } = await supabase.storage.from("nap-fotos").upload(path, file, { upsert: true, contentType: file.type });
+    if (error) throw new Error(`No se pudo subir foto ${tipo}: ${error.message}`);
+    const { data } = supabase.storage.from("nap-fotos").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
   const guardarCaja = async () => {
     if (savingCaja || !isSupabaseConfigured) return;
     const codigo = String(cajaForm.codigo || "").trim();
@@ -483,9 +496,17 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     const ubicacion = String(cajaForm.ubicacion || "").trim();
     if (!nodo) { alert("Selecciona el nodo."); return; }
     const coords = parseCoords(ubicacion);
+    const ctoid = cajaEditorMode === "create" ? Date.now() : (editingCajaRef?.ctoid || editingCajaRef?.id || Date.now());
     const payload = { sector, nodo, ubicacion: ubicacion || "SIN_UBICACION", lat: coords?.lat || null, lng: coords?.lng || null };
     if (codigo) payload.codigo = codigo;
-    if (cajaEditorMode === "create") payload.ctoid = Date.now();
+    if (cajaEditorMode === "create") payload.ctoid = ctoid;
+    // Subir fotos si hay archivos nuevos
+    if (fotoNapFile) {
+      try { payload.photo_nap_url = await subirFotoCaja(fotoNapFile, ctoid, "nap"); } catch (e) { alert(String(e.message)); return; }
+    }
+    if (fotoParamFile) {
+      try { payload.photo_parametro_url = await subirFotoCaja(fotoParamFile, ctoid, "parametro"); } catch (e) { alert(String(e.message)); return; }
+    }
     setSavingCaja(true);
     try {
       if (cajaEditorMode === "edit" && editingCajaRef) {
@@ -502,6 +523,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       }
       setShowCajaEditor(false);
       setCajaForm({ codigo: "", sector: "", nodo: "", ubicacion: "", ctoid: "" });
+      setFotoNapFile(null); setFotoParamFile(null); setFotoNapPreview(""); setFotoParamPreview("");
       await cargar();
     } catch (e) {
       alert(String(e?.message || "No se pudo guardar la caja."));
@@ -823,8 +845,38 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                 📍 Usar mi ubicación GPS
               </button>
             )}
+            {/* Fotos */}
+            {[
+              { label: "Foto NAP", file: fotoNapFile, preview: fotoNapPreview, existing: cajaEditorMode === "edit" ? editingCajaRef?.photo_nap_url : "", setFile: setFotoNapFile, setPreview: setFotoNapPreview },
+              { label: "Foto Parámetro", file: fotoParamFile, preview: fotoParamPreview, existing: cajaEditorMode === "edit" ? editingCajaRef?.photo_parametro_url : "", setFile: setFotoParamFile, setPreview: setFotoParamPreview },
+            ].map(({ label, file, preview, existing, setFile, setPreview }) => (
+              <div key={label} style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 6 }}>{label}</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {(preview || existing) && (
+                    <img src={preview || existing} alt={label}
+                      style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: "1.5px solid #e2e8f0", cursor: "zoom-in" }}
+                      onClick={() => window.open(preview || existing, "_blank")} />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", padding: "8px 12px", background: "#f1f5f9", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: "pointer", fontSize: 12, color: "#374151", textAlign: "center" }}>
+                      {file ? `✅ ${file.name}` : (existing ? "🔄 Cambiar foto" : "📷 Seleccionar foto")}
+                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        setFile(f);
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setPreview(String(ev.target?.result || ""));
+                        reader.readAsDataURL(f);
+                      }} />
+                    </label>
+                    {file && <button style={{ marginTop: 4, fontSize: 11, color: "#dc2626", background: "none", border: "none", cursor: "pointer" }} onClick={() => { setFile(null); setPreview(""); }}>✕ Quitar</button>}
+                  </div>
+                </div>
+              </div>
+            ))}
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button style={{ ...btnStyle(false, "#6b7280"), flex: 1 }} onClick={() => setShowCajaEditor(false)}>Cancelar</button>
+              <button style={{ ...btnStyle(false, "#6b7280"), flex: 1 }} onClick={() => { setShowCajaEditor(false); setFotoNapFile(null); setFotoParamFile(null); setFotoNapPreview(""); setFotoParamPreview(""); }}>Cancelar</button>
               <button style={{ ...btnStyle(true, "#1a3a6b"), flex: 1 }} onClick={guardarCaja} disabled={savingCaja}>
                 {savingCaja ? "Guardando..." : "Guardar"}
               </button>
