@@ -250,18 +250,6 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const cajasNear20 = useMemo(() => cajasNearAll.slice(0, NEAR_TOP), [cajasNearAll]);
   const cajasNear5 = useMemo(() => cajasNearAll.slice(0, NEAR_LINES), [cajasNearAll]);
 
-  // Cajas a mostrar: dentro del radio GPS + cajas de la orden seleccionada
-  const cajasAMostrar = useMemo(() => {
-    if (!showCajas) return [];
-    const base = miUbicacion
-      ? cajasFiltradas.filter((c) => haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 3.5)
-      : cajasFiltradas;
-    // Incluir también las 5 cajas de la orden seleccionada aunque estén fuera del radio GPS
-    const uidSet = new Set(base.map((c) => c.uid));
-    const extra = cajasNearOrden5.filter((c) => !uidSet.has(c.uid));
-    return extra.length > 0 ? [...base, ...extra] : base;
-  }, [cajasFiltradas, showCajas, miUbicacion, cajasNearOrden5]);
-
   // 5 cajas más cercanas a la orden seleccionada (para polilíneas al hacer clic)
   const cajasNearOrden5 = useMemo(() => {
     if (selectedTipo !== "orden" || !selectedId) return [];
@@ -273,6 +261,18 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       .sort((a, b) => a.dist - b.dist)
       .slice(0, NEAR_LINES);
   }, [selectedTipo, selectedId, ordenesFiltradas, cajasFiltradas]);
+
+  // Cajas a mostrar: dentro del radio GPS + cajas de la orden seleccionada
+  const cajasAMostrar = useMemo(() => {
+    if (!showCajas) return [];
+    const base = miUbicacion
+      ? cajasFiltradas.filter((c) => haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 3.5)
+      : cajasFiltradas;
+    // Incluir también las 5 cajas de la orden seleccionada aunque estén fuera del radio GPS
+    const uidSet = new Set(base.map((c) => c.uid));
+    const extra = cajasNearOrden5.filter((c) => !uidSet.has(c.uid));
+    return extra.length > 0 ? [...base, ...extra] : base;
+  }, [cajasFiltradas, showCajas, miUbicacion, cajasNearOrden5]);
 
   const detalle = useMemo(() => {
     if (!selectedId) return null;
