@@ -129,6 +129,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [fotoParamFile, setFotoParamFile] = useState(null);
   const [fotoNapPreview, setFotoNapPreview] = useState("");
   const [fotoParamPreview, setFotoParamPreview] = useState("");
+  const [lightboxUrl, setLightboxUrl] = useState("");
 
   const mapCanvasRef = useRef(null);
   const mapRef = useRef(null);
@@ -682,16 +683,19 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                   </div>
                   {detalle.ubicacion && <div style={{ fontSize: 11, color: "#374151", marginBottom: 6 }}>📍 {detalle.ubicacion}</div>}
                   {/* Fotos */}
-                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                    {detalle.photo_nap_url && (
-                      <img src={detalle.photo_nap_url} alt="NAP" onClick={() => window.open(detalle.photo_nap_url, "_blank")}
-                        style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 6, border: "1.5px solid #fed7aa", cursor: "zoom-in" }} />
-                    )}
-                    {detalle.photo_parametro_url && (
-                      <img src={detalle.photo_parametro_url} alt="Parámetro" onClick={() => window.open(detalle.photo_parametro_url, "_blank")}
-                        style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 6, border: "1.5px solid #fed7aa", cursor: "zoom-in" }} />
-                    )}
-                  </div>
+                  {(detalle.photo_nap_url || detalle.photo_parametro_url) && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 4 }}>Fotos — clic para ampliar</div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {[{ url: detalle.photo_nap_url, label: "NAP" }, { url: detalle.photo_parametro_url, label: "Parámetro" }].filter(f => f.url).map(({ url, label }) => (
+                          <div key={label} style={{ position: "relative", cursor: "zoom-in" }} onClick={() => setLightboxUrl(url)}>
+                            <img src={url} alt={label} style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: "2px solid #fed7aa", display: "block" }} />
+                            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#0007", color: "#fff", fontSize: 9, textAlign: "center", borderRadius: "0 0 6px 6px", padding: "2px 0" }}>{label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button style={btnStyle(false, "#1a3a6b")} onClick={() => llegar(detalle)}>🧭 Llegar</button>
                     <button style={btnStyle(false, "#F97316")} onClick={() => { setSimCajaSelUid(String(detalle.uid)); }}>
@@ -882,6 +886,14 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Lightbox fotos ── */}
+      {lightboxUrl && (
+        <div onClick={() => setLightboxUrl("")} style={{ position: "fixed", inset: 0, background: "#000c", zIndex: 20000, display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-out" }}>
+          <img src={lightboxUrl} alt="Foto" style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 10, boxShadow: "0 8px 40px #000a", objectFit: "contain" }} />
+          <button onClick={() => setLightboxUrl("")} style={{ position: "absolute", top: 16, right: 20, background: "#fff2", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
       )}
     </div>
