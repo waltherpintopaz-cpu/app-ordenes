@@ -1859,6 +1859,9 @@ export default function App() {
   const [clienteSenal, setClienteSenal] = useState(null);      // { rxOnuDbm, oltRxOntDbm, estado, fecha }
   const [clienteSenalLoading, setClienteSenalLoading] = useState(false);
   const [clienteSenalError, setClienteSenalError] = useState("");
+  const [pendSenalData, setPendSenalData] = useState({});   // { [ordenId]: { rx, tx, estado } }
+  const [pendSenalLoading, setPendSenalLoading] = useState({});
+  const [pendSenalError, setPendSenalError] = useState({});
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
   const [formEditarCliente, setFormEditarCliente] = useState({});
   const [guardandoCliente, setGuardandoCliente] = useState(false);
@@ -3196,6 +3199,32 @@ export default function App() {
       setClienteSenalError(String(e?.message || "Error al consultar señal."));
     } finally {
       setClienteSenalLoading(false);
+    }
+  };
+
+  const SMART_OLT_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
+
+  const consultarSenalOrdenWeb = async (item) => {
+    const id = item?.id;
+    if (!id) return;
+    const sn = String(item?.snOnu || item?.sn_onu || "").trim();
+    if (!sn) { setPendSenalError(p => ({ ...p, [id]: "Sin SN ONU en la orden." })); return; }
+    setPendSenalLoading(p => ({ ...p, [id]: true }));
+    setPendSenalError(p => ({ ...p, [id]: "" }));
+    setPendSenalData(p => ({ ...p, [id]: null }));
+    try {
+      const res = await fetch(OLT_SIGNAL_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sn_onu: sn }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.error) throw new Error(json?.error || "Error al consultar señal.");
+      setPendSenalData(p => ({ ...p, [id]: { rx: json.rx, tx: json.tx, estado: json.estado || "OK", fecha: json.queried_at } }));
+    } catch (e) {
+      setPendSenalError(p => ({ ...p, [id]: String(e?.message || "Error al consultar señal.") }));
+    } finally {
+      setPendSenalLoading(p => ({ ...p, [id]: false }));
     }
   };
 
@@ -12642,9 +12671,25 @@ export default function App() {
                           <button onClick={async () => { if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; } setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Ver</button>
                           {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
                           {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
+                          {SMART_OLT_NODOS.includes(String(item?.nodo || "")) && item?.snOnu && (
+                            <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                              📡 {pendSenalLoading[item.id] ? "..." : pendSenalData[item.id] ? `${pendSenalData[item.id].rx} dBm` : "Señal"}
+                            </button>
+                          )}
                           {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
                           {puedeEliminarOrden && !bloqueadoPorNodo && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
                         </div>
+                        {/* Resultado señal SmartOLT */}
+                        {(pendSenalData[item.id] || pendSenalError[item.id]) && (
+                          <div style={{ padding: "4px 14px 6px", fontSize: 11 }}>
+                            {pendSenalError[item.id] && <span style={{ color: "#dc2626" }}>⚠ {pendSenalError[item.id]}</span>}
+                            {pendSenalData[item.id] && (
+                              <span style={{ color: "#1d4ed8", fontWeight: 600 }}>
+                                📡 RX ONU: {pendSenalData[item.id].rx} dBm · TX: {pendSenalData[item.id].tx} dBm
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* ── Fila inferior: info + contacto ── */}
