@@ -16537,7 +16537,7 @@ export default function App() {
               )}
 
               {/* ── Señal ONU ── */}
-              {cli.snOnu && (
+              {cli.snOnu && SMART_OLT_NODOS.includes(String(cli.nodo || "")) && (
                 <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.08em" }}>📶 Señal ONU — {cli.snOnu}</span>
