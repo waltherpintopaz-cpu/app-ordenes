@@ -227,6 +227,14 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
 
   useEffect(() => { obtenerGPS(); }, []); // eslint-disable-line
 
+  // Cuando el mapa termina de cargar, centrar en la ubicación GPS si ya está disponible
+  useEffect(() => {
+    if (mapReady && miUbicacion && mapRef.current) {
+      mapRef.current.panTo({ lat: miUbicacion.lat, lng: miUbicacion.lng });
+      mapRef.current.setZoom(16);
+    }
+  }, [mapReady]); // eslint-disable-line
+
   // Limpiar selección al cambiar ubicación
   useEffect(() => { setSimCajaSelUid(""); setClientesCaja([]); }, [miUbicacion]);
 
