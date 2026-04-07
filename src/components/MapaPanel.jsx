@@ -12,6 +12,7 @@ const RENDER_ORDENES = 90;
 const RENDER_CAJAS = 140;
 const NEAR_TOP = 20;
 const NEAR_LINES = 5;
+const RADIO_CAJA_ORDEN = 400; // metros — radio para mostrar cajas cercanas a cada orden
 
 const parseCoords = (value = "") => {
   const raw = String(value || "").trim();
@@ -249,6 +250,30 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const cajasNear20 = useMemo(() => cajasNearAll.slice(0, NEAR_TOP), [cajasNearAll]);
   const cajasNear5 = useMemo(() => cajasNearAll.slice(0, NEAR_LINES), [cajasNearAll]);
 
+  // Solo mostrar cajas que estén dentro del radio de alguna orden filtrada
+  const cajasProximasAOrdenes = useMemo(() => {
+    if (!showCajas) return [];
+    if (ordenesFiltradas.length === 0) return [];
+    return cajasFiltradas.filter((caja) =>
+      ordenesFiltradas.some((orden) =>
+        orden.coords &&
+        haversineM(orden.coords.lat, orden.coords.lng, Number(caja.coords.lat), Number(caja.coords.lng)) <= RADIO_CAJA_ORDEN
+      )
+    );
+  }, [cajasFiltradas, ordenesFiltradas, showCajas]);
+
+  // 5 cajas más cercanas a la orden seleccionada (para polilíneas al hacer clic)
+  const cajasNearOrden5 = useMemo(() => {
+    if (selectedTipo !== "orden" || !selectedId) return [];
+    const orden = ordenesFiltradas.find((r) => String(r.id) === String(selectedId));
+    if (!orden?.coords) return [];
+    return cajasFiltradas
+      .filter((c) => c.coords?.lat && c.coords?.lng)
+      .map((c) => ({ ...c, dist: haversineM(orden.coords.lat, orden.coords.lng, Number(c.coords.lat), Number(c.coords.lng)) }))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, NEAR_LINES);
+  }, [selectedTipo, selectedId, ordenesFiltradas, cajasFiltradas]);
+
   const detalle = useMemo(() => {
     if (!selectedId) return null;
     if (selectedTipo === "caja") return cajasFiltradas.find((r) => String(r.uid) === String(selectedId)) || null;
@@ -329,18 +354,19 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     });
 
     if (showCajas) {
-      cajasFiltradas.slice(0, RENDER_CAJAS).forEach((caja) => {
+      cajasProximasAOrdenes.slice(0, RENDER_CAJAS).forEach((caja) => {
         const isSelected = selectedTipo === "caja" && String(selectedId) === String(caja.uid);
+        const nearOrden = cajasNearOrden5.some((c) => String(c.uid) === String(caja.uid));
         const cap = Number(caja?.capacidad || 0);
         const ocp = Number(caja?.puertos_ocupados || 0);
         const llena = cap > 0 && ocp >= cap;
-        const color = llena ? "#dc2626" : isSelected ? "#F97316" : "#0284c7";
+        const color = llena ? "#dc2626" : (isSelected || nearOrden) ? "#F97316" : "#0284c7";
         const m = new maps.Marker({
           map,
           position: { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) },
-          icon: { url: napBoxSvg(color, isSelected), scaledSize: new maps.Size(isSelected ? 28 : 22, isSelected ? 40 : 32), anchor: new maps.Point(isSelected ? 14 : 11, isSelected ? 40 : 32) },
+          icon: { url: napBoxSvg(color, isSelected || nearOrden), scaledSize: new maps.Size((isSelected || nearOrden) ? 28 : 22, (isSelected || nearOrden) ? 40 : 32), anchor: new maps.Point((isSelected || nearOrden) ? 14 : 11, (isSelected || nearOrden) ? 40 : 32) },
           title: `Caja ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
-          zIndex: isSelected ? 20 : 2,
+          zIndex: isSelected ? 20 : nearOrden ? 10 : 2,
         });
         m.addListener("click", () => { setSelectedTipo("caja"); setSelectedId(String(caja.uid || "")); setTab("cajas"); shouldAutoFrameRef.current = false; });
         markersRef.current.push(m);
@@ -370,17 +396,36 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         fillColor: "#2563eb", fillOpacity: 0.12,
         strokeColor: "#2563eb", strokeOpacity: 0.3, strokeWeight: 1,
       });
-      // Líneas a las 5 cajas más cercanas
-      cajasNear5.forEach((caja, i) => {
-        const opacity = 0.7 - i * 0.1;
-        const line = new maps.Polyline({
-          map,
-          path: [{ lat: miUbicacion.lat, lng: miUbicacion.lng }, { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) }],
-          geodesic: true,
-          strokeColor: "#F97316", strokeOpacity: Math.max(0.2, opacity), strokeWeight: 1.5,
+      // Líneas desde GPS a las 5 cajas más cercanas (solo si no hay orden seleccionada)
+      if (cajasNearOrden5.length === 0) {
+        cajasNear5.forEach((caja, i) => {
+          const opacity = 0.7 - i * 0.1;
+          const line = new maps.Polyline({
+            map,
+            path: [{ lat: miUbicacion.lat, lng: miUbicacion.lng }, { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) }],
+            geodesic: true,
+            strokeColor: "#F97316", strokeOpacity: Math.max(0.2, opacity), strokeWeight: 1.5,
+          });
+          polylinesRef.current.push(line);
         });
-        polylinesRef.current.push(line);
-      });
+      }
+    }
+
+    // Polilíneas desde la orden seleccionada a sus 5 cajas más cercanas
+    if (cajasNearOrden5.length > 0) {
+      const orden = ordenesFiltradas.find((r) => String(r.id) === String(selectedId));
+      if (orden?.coords) {
+        cajasNearOrden5.forEach((caja, i) => {
+          const opacity = 0.75 - i * 0.1;
+          const line = new maps.Polyline({
+            map,
+            path: [{ lat: Number(orden.coords.lat), lng: Number(orden.coords.lng) }, { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) }],
+            geodesic: true,
+            strokeColor: "#1a3a6b", strokeOpacity: Math.max(0.2, opacity), strokeWeight: 2,
+          });
+          polylinesRef.current.push(line);
+        });
+      }
     }
 
     if (shouldAutoFrameRef.current && points.length > 0) {
@@ -393,7 +438,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       shouldAutoFrameRef.current = false;
     }
     return () => limpiarMarkers();
-  }, [limpiarMarkers, ordenesFiltradas, cajasFiltradas, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
+  }, [limpiarMarkers, ordenesFiltradas, cajasProximasAOrdenes, cajasNearOrden5, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
 
   // Auto-frame al cambiar filtro
   useEffect(() => { shouldAutoFrameRef.current = true; }, [filtroNodo, busqueda, showCajas]);
