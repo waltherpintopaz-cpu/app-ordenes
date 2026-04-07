@@ -291,7 +291,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         });
         setTimeout(() => {
           try { maps.event.trigger(mapRef.current, "resize"); mapRef.current.panTo(DEFAULT_CENTER); } catch { }
-        }, 120);
+        }, 300);
       } else {
         mapRef.current.setMapTypeId(mapType);
         try { maps.event.trigger(mapRef.current, "resize"); } catch { }
@@ -482,10 +482,11 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12,
     background: active ? color : "#e2e8f0", color: active ? "#fff" : "#374151",
   });
+  const MAP_H = fullScreen ? "calc(100vh - 110px)" : 580;
   const mapContainerStyle = {
-    display: "flex", flex: 1, overflow: "hidden", height: fullScreen ? "calc(100vh - 110px)" : 580,
+    display: "flex", flex: 1, overflow: "hidden", height: MAP_H,
   };
-  const mapCanvasStyle = { flex: 1, minWidth: 0, height: "100%" };
+  const mapCanvasStyle = { flex: 1, minWidth: 0, height: MAP_H, position: "relative" };
   const sidebarStyle = {
     width: 300, minWidth: 280, height: "100%", overflowY: "auto", background: "#fff",
     borderLeft: "1px solid #e2e8f0", display: "flex", flexDirection: "column",
@@ -547,7 +548,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       <div style={mapContainerStyle}>
         {/* Mapa */}
         <div style={mapCanvasStyle}>
-          <div ref={mapCanvasRef} style={{ width: "100%", height: "100%" }} />
+          <div ref={mapCanvasRef} style={{ width: "100%", height: MAP_H }} />
           {!mapReady && !mapError && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", fontSize: 14, color: "#6b7280" }}>
               Cargando mapa...
