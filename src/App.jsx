@@ -3172,13 +3172,12 @@ export default function App() {
     setClienteSenalError("");
     setClienteSenal(null);
     try {
-      const body = cli.oltIp && cli.pon && cli.onuId != null
-        ? { olt_ip: cli.oltIp, pon: cli.pon, onu_id: cli.onuId }
-        : { sn_onu: cli.snOnu };
+      const sn = String(cli.snOnu || "").trim();
+      if (!sn) throw new Error("Cliente sin SN ONU.");
       const res = await fetch(OLT_SIGNAL_API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ sn_onu: sn }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json?.error) throw new Error(json?.error || "Error al consultar señal.");
