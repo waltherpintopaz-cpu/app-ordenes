@@ -106,6 +106,8 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [fullScreen, setFullScreen] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [miUbicacion, setMiUbicacion] = useState(null); // { lat, lng }
+  const [busquedaUbicacion, setBusquedaUbicacion] = useState("");
+  const [geocodingLoading, setGeocodingLoading] = useState(false);
   const [simCajaSelUid, setSimCajaSelUid] = useState("");
   const [clientesCaja, setClientesCaja] = useState([]);
   const [clientesCajaLoading, setClientesCajaLoading] = useState(false);
@@ -250,29 +252,14 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const cajasNear20 = useMemo(() => cajasNearAll.slice(0, NEAR_TOP), [cajasNearAll]);
   const cajasNear5 = useMemo(() => cajasNearAll.slice(0, NEAR_LINES), [cajasNearAll]);
 
-  // 5 cajas más cercanas a la orden seleccionada (para polilíneas al hacer clic)
-  const cajasNearOrden5 = useMemo(() => {
-    if (selectedTipo !== "orden" || !selectedId) return [];
-    const orden = ordenesFiltradas.find((r) => String(r.id) === String(selectedId));
-    if (!orden?.coords) return [];
-    return cajasFiltradas
-      .filter((c) => c.coords?.lat && c.coords?.lng)
-      .map((c) => ({ ...c, dist: haversineM(orden.coords.lat, orden.coords.lng, Number(c.coords.lat), Number(c.coords.lng)) }))
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, NEAR_LINES);
-  }, [selectedTipo, selectedId, ordenesFiltradas, cajasFiltradas]);
-
-  // Cajas a mostrar: dentro del radio GPS + cajas de la orden seleccionada
-  const cajasAMostrar = useMemo(() => {
+  // Cajas visibles: solo las que están dentro del radio del marcador de ubicación
+  const cajasVisibles = useMemo(() => {
     if (!showCajas) return [];
-    const base = miUbicacion
-      ? cajasFiltradas.filter((c) => haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 3.5)
-      : cajasFiltradas;
-    // Incluir también las 5 cajas de la orden seleccionada aunque estén fuera del radio GPS
-    const uidSet = new Set(base.map((c) => c.uid));
-    const extra = cajasNearOrden5.filter((c) => !uidSet.has(c.uid));
-    return extra.length > 0 ? [...base, ...extra] : base;
-  }, [cajasFiltradas, showCajas, miUbicacion, cajasNearOrden5]);
+    if (!miUbicacion) return cajasFiltradas;
+    return cajasFiltradas.filter((c) =>
+      haversineM(miUbicacion.lat, miUbicacion.lng, Number(c.coords.lat), Number(c.coords.lng)) <= RADIO_CAJA_ORDEN * 4
+    );
+  }, [cajasFiltradas, showCajas, miUbicacion]);
 
   const detalle = useMemo(() => {
     if (!selectedId) return null;
@@ -354,19 +341,18 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     });
 
     if (showCajas) {
-      cajasAMostrar.slice(0, RENDER_CAJAS).forEach((caja) => {
+      cajasVisibles.slice(0, RENDER_CAJAS).forEach((caja) => {
         const isSelected = selectedTipo === "caja" && String(selectedId) === String(caja.uid);
-        const nearOrden = cajasNearOrden5.some((c) => String(c.uid) === String(caja.uid));
         const cap = Number(caja?.capacidad || 0);
         const ocp = Number(caja?.puertos_ocupados || 0);
         const llena = cap > 0 && ocp >= cap;
-        const color = llena ? "#dc2626" : (isSelected || nearOrden) ? "#F97316" : "#0284c7";
+        const color = llena ? "#dc2626" : isSelected ? "#F97316" : "#0284c7";
         const m = new maps.Marker({
           map,
           position: { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) },
-          icon: { url: napBoxSvg(color, isSelected || nearOrden), scaledSize: new maps.Size((isSelected || nearOrden) ? 28 : 22, (isSelected || nearOrden) ? 40 : 32), anchor: new maps.Point((isSelected || nearOrden) ? 14 : 11, (isSelected || nearOrden) ? 40 : 32) },
+          icon: { url: napBoxSvg(color, isSelected), scaledSize: new maps.Size(isSelected ? 28 : 22, isSelected ? 40 : 32), anchor: new maps.Point(isSelected ? 14 : 11, isSelected ? 40 : 32) },
           title: `Caja ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
-          zIndex: isSelected ? 20 : nearOrden ? 10 : 2,
+          zIndex: isSelected ? 20 : 2,
         });
         m.addListener("click", () => { setSelectedTipo("caja"); setSelectedId(String(caja.uid || "")); setTab("cajas"); shouldAutoFrameRef.current = false; });
         markersRef.current.push(m);
@@ -396,36 +382,17 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         fillColor: "#2563eb", fillOpacity: 0.12,
         strokeColor: "#2563eb", strokeOpacity: 0.3, strokeWeight: 1,
       });
-      // Líneas desde GPS a las 5 cajas más cercanas (solo si no hay orden seleccionada)
-      if (cajasNearOrden5.length === 0) {
-        cajasNear5.forEach((caja, i) => {
-          const opacity = 0.7 - i * 0.1;
-          const line = new maps.Polyline({
-            map,
-            path: [{ lat: miUbicacion.lat, lng: miUbicacion.lng }, { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) }],
-            geodesic: true,
-            strokeColor: "#F97316", strokeOpacity: Math.max(0.2, opacity), strokeWeight: 1.5,
-          });
-          polylinesRef.current.push(line);
+      // Líneas desde marcador de ubicación a las 5 cajas más cercanas
+      cajasNear5.forEach((caja, i) => {
+        const opacity = 0.7 - i * 0.1;
+        const line = new maps.Polyline({
+          map,
+          path: [{ lat: miUbicacion.lat, lng: miUbicacion.lng }, { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) }],
+          geodesic: true,
+          strokeColor: "#F97316", strokeOpacity: Math.max(0.2, opacity), strokeWeight: 1.5,
         });
-      }
-    }
-
-    // Polilíneas desde la orden seleccionada a sus 5 cajas más cercanas
-    if (cajasNearOrden5.length > 0) {
-      const orden = ordenesFiltradas.find((r) => String(r.id) === String(selectedId));
-      if (orden?.coords) {
-        cajasNearOrden5.forEach((caja, i) => {
-          const opacity = 0.75 - i * 0.1;
-          const line = new maps.Polyline({
-            map,
-            path: [{ lat: Number(orden.coords.lat), lng: Number(orden.coords.lng) }, { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) }],
-            geodesic: true,
-            strokeColor: "#1a3a6b", strokeOpacity: Math.max(0.2, opacity), strokeWeight: 2,
-          });
-          polylinesRef.current.push(line);
-        });
-      }
+        polylinesRef.current.push(line);
+      });
     }
 
     if (shouldAutoFrameRef.current && points.length > 0) {
@@ -438,7 +405,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       shouldAutoFrameRef.current = false;
     }
     return () => limpiarMarkers();
-  }, [limpiarMarkers, ordenesFiltradas, cajasAMostrar, cajasNearOrden5, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
+  }, [limpiarMarkers, ordenesFiltradas, cajasVisibles, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
 
   // Auto-frame al cambiar filtro
   useEffect(() => { shouldAutoFrameRef.current = true; }, [filtroNodo, busqueda, showCajas]);
@@ -454,6 +421,26 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       .then(({ data }) => { setClientesCaja(Array.isArray(data) ? data : []); setClientesCajaLoading(false); })
       .catch(() => setClientesCajaLoading(false));
   }, [simCajaSelUid, cajasFiltradas]);
+
+  const buscarUbicacion = useCallback(() => {
+    const q = String(busquedaUbicacion || "").trim();
+    if (!q || !mapsRef.current) return;
+    setGeocodingLoading(true);
+    const geocoder = new mapsRef.current.Geocoder();
+    geocoder.geocode({ address: q }, (results, status) => {
+      setGeocodingLoading(false);
+      if (status === "OK" && results[0]) {
+        const loc = results[0].geometry.location;
+        const lat = loc.lat();
+        const lng = loc.lng();
+        setMiUbicacion({ lat, lng });
+        shouldAutoFrameRef.current = false;
+        if (mapRef.current) { mapRef.current.panTo({ lat, lng }); mapRef.current.setZoom(16); }
+      } else {
+        setError("No se encontró la ubicación ingresada.");
+      }
+    });
+  }, [busquedaUbicacion]);
 
   const centrar = (item, tipo) => {
     if (!item?.coords || !mapRef.current) return;
@@ -572,6 +559,31 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         <span style={{ fontSize: 11, color: "#6b7280" }}>{ordenesFiltradas.length} órd · {cajasFiltradas.length} cajas</span>
       </div>
 
+      {/* ── Buscador de ubicación ── */}
+      <div style={{ display: "flex", gap: 8, padding: "8px 12px", background: "#eef2ff", borderBottom: "1px solid #c7d2fe", alignItems: "center" }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#3730a3", whiteSpace: "nowrap" }}>📍 Ubicación:</span>
+        <input
+          value={busquedaUbicacion}
+          onChange={(e) => setBusquedaUbicacion(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && buscarUbicacion()}
+          placeholder="Escribe una dirección o lugar..."
+          style={{ flex: 1, padding: "6px 10px", borderRadius: 8, border: "1px solid #a5b4fc", fontSize: 12 }}
+        />
+        <button
+          style={{ ...btnStyle(false, "#4f46e5"), background: "#4f46e5", color: "#fff", padding: "6px 14px" }}
+          onClick={buscarUbicacion}
+          disabled={geocodingLoading || !busquedaUbicacion.trim()}
+        >
+          {geocodingLoading ? "⌛" : "Ir"}
+        </button>
+        {miUbicacion && (
+          <span style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+            {miUbicacion.lat.toFixed(4)}, {miUbicacion.lng.toFixed(4)}
+            {cajasNear5[0] && <> · {cajasNear5[0].codigo} a {formatDist(cajasNear5[0].dist)}</>}
+          </span>
+        )}
+      </div>
+
       {/* ── Alertas ── */}
       {(error || warning || mapError) && (
         <div style={{ padding: "6px 12px", background: "#fef3c7", color: "#92400e", fontSize: 11, borderBottom: "1px solid #fde68a" }}>
@@ -587,12 +599,6 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           {!mapReady && !mapError && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", fontSize: 14, color: "#6b7280" }}>
               Cargando mapa...
-            </div>
-          )}
-          {miUbicacion && (
-            <div style={{ position: "absolute", bottom: 12, left: 12, background: "#2563ebdd", color: "#fff", borderRadius: 8, padding: "4px 10px", fontSize: 11, fontWeight: 600, pointerEvents: "none" }}>
-              📍 {miUbicacion.lat.toFixed(5)}, {miUbicacion.lng.toFixed(5)}
-              {cajasNear5[0] && <span> · Caja más cercana: {formatDist(cajasNear5[0].dist)}</span>}
             </div>
           )}
           <div style={{ position: "absolute", bottom: 12, right: 12, fontSize: 10, color: "#94a3b8", background: "#ffffffcc", borderRadius: 6, padding: "3px 8px" }}>
