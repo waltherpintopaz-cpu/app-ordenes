@@ -54,6 +54,14 @@ const haversineM = (lat1, lng1, lat2, lng2) => {
 
 const formatDist = (m) => m < 1000 ? `${Math.round(m)}m` : `${(m / 1000).toFixed(1)}km`;
 
+const generarCodigoCaja = () => {
+  const letras = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const parte1 = String(Math.floor(Math.random() * 99) + 1).padStart(2, "0");
+  const parte2 = String(Math.floor(Math.random() * 999) + 1).padStart(3, "0");
+  const sufijo = letras[Math.floor(Math.random() * letras.length)];
+  return `NAP-${parte1}-${parte2}${sufijo}`;
+};
+
 const loadGoogleMapsSdk = () => {
   if (typeof window === "undefined") return Promise.reject(new Error("Sin navegador."));
   if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error("Sin token Google Maps."));
@@ -702,7 +710,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
             <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ fontSize: 11, color: "#6b7280" }}>{cajasFiltradas.length} cajas</span>
-                <button style={{ ...btnStyle(false, "#1a3a6b"), padding: "4px 10px", fontSize: 11 }} onClick={() => { setCajaEditorMode("create"); setEditingCajaRef(null); setCajaForm({ codigo: "", sector: "", nodo: "", ubicacion: miUbicacion ? `${miUbicacion.lat}, ${miUbicacion.lng}` : "", ctoid: "" }); setShowCajaEditor(true); }}>
+                <button style={{ ...btnStyle(false, "#1a3a6b"), padding: "4px 10px", fontSize: 11 }} onClick={() => { setCajaEditorMode("create"); setEditingCajaRef(null); setCajaForm({ codigo: generarCodigoCaja(), sector: "", nodo: "", ubicacion: miUbicacion ? `${miUbicacion.lat.toFixed(7)}, ${miUbicacion.lng.toFixed(7)}` : "", ctoid: "" }); setShowCajaEditor(true); }}>
                   + Nueva caja
                 </button>
               </div>
