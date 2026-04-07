@@ -501,12 +501,12 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     const payload = { sector, nodo, ubicacion: ubicacion || "SIN_UBICACION", lat: coords?.lat || null, lng: coords?.lng || null };
     if (codigo) payload.codigo = codigo;
     if (cajaEditorMode === "create") payload.ctoid = ctoid;
-    // Subir fotos si hay archivos nuevos
+    // Subir fotos si hay archivos nuevos — guardar en photo_nap y photo_parametro (columnas de nap_cajas)
     if (fotoNapFile) {
-      try { payload.photo_nap_url = await subirFotoCaja(fotoNapFile, ctoid, "nap"); } catch (e) { alert(String(e.message)); return; }
+      try { const url = await subirFotoCaja(fotoNapFile, ctoid, "nap"); payload.photo_nap = url; payload.photo_nap_url = url; } catch (e) { alert(String(e.message)); return; }
     }
     if (fotoParamFile) {
-      try { payload.photo_parametro_url = await subirFotoCaja(fotoParamFile, ctoid, "parametro"); } catch (e) { alert(String(e.message)); return; }
+      try { const url = await subirFotoCaja(fotoParamFile, ctoid, "parametro"); payload.photo_parametro = url; payload.photo_parametro_url = url; } catch (e) { alert(String(e.message)); return; }
     }
     setSavingCaja(true);
     try {
