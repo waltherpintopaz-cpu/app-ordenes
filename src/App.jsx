@@ -2591,6 +2591,7 @@ export default function App() {
         else if (sortClientes.col === "celular") { va = String(a.celular || ""); vb = String(b.celular || ""); }
         else if (sortClientes.col === "nodo") { va = String(a.nodo || ""); vb = String(b.nodo || ""); }
         else if (sortClientes.col === "estado") { va = String(a.estadoServicio || a.estado || ""); vb = String(b.estadoServicio || b.estado || ""); }
+        else if (sortClientes.col === "snOnu") { va = String(a.snOnu || ""); vb = String(b.snOnu || ""); }
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
         const cmp = va.localeCompare(vb, undefined, { sensitivity: "base" });
