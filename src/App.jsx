@@ -9276,7 +9276,7 @@ export default function App() {
         empresa: f.empresa.trim(),
         contacto: f.contacto.trim(),
         velocidad: f.velocidad.trim(),
-        precioPlan: f.precioPlan.trim(),
+        precioPlan: String(f.precioPlan ?? "").trim(),
         nodo: f.nodo.trim(),
         usuarioNodo: f.usuarioNodo.trim(),
         passwordUsuario: f.passwordUsuario.trim(),
