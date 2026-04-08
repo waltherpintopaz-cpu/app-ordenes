@@ -1865,6 +1865,9 @@ export default function App() {
   const [pendSenalData, setPendSenalData] = useState({});   // { [ordenId]: { rx, tx, estado } }
   const [pendSenalLoading, setPendSenalLoading] = useState({});
   const [pendSenalError, setPendSenalError] = useState({});
+  const [cliSenalData, setCliSenalData] = useState({});     // { [clienteId]: { rx, tx } }
+  const [cliSenalLoading, setCliSenalLoading] = useState({});
+  const [cliSenalError, setCliSenalError] = useState({});
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
   const [formEditarCliente, setFormEditarCliente] = useState({});
   const [guardandoCliente, setGuardandoCliente] = useState(false);
@@ -3203,6 +3206,34 @@ export default function App() {
       setClienteSenalError(String(e?.message || "Error al consultar señal."));
     } finally {
       setClienteSenalLoading(false);
+    }
+  };
+
+  const consultarSenalClienteTabla = async (cli) => {
+    const id = cli?.id;
+    if (!id) return;
+    const sn = String(cli.snOnu || "").trim();
+    if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
+    if (!SMART_OLT_TOKEN) { setCliSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
+    setCliSenalLoading(p => ({ ...p, [id]: true }));
+    setCliSenalError(p => ({ ...p, [id]: "" }));
+    setCliSenalData(p => ({ ...p, [id]: null }));
+    try {
+      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
+      const res = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+      const base =
+        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+        (Array.isArray(json?.response) ? json.response[0] : null) ||
+        (json?.response && typeof json.response === "object" ? json.response : null) || json;
+      const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
+      const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
+      setCliSenalData(p => ({ ...p, [id]: { rx, tx } }));
+    } catch (e) {
+      setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
+    } finally {
+      setCliSenalLoading(p => ({ ...p, [id]: false }));
     }
   };
 
@@ -16489,6 +16520,23 @@ export default function App() {
                                   )}
                                   {puedeGestionarSuspensionClientes && clienteEstaSuspendidoMikrotik(cliente) && (
                                     <button onClick={() => void ejecutarAccionMikrotikCliente(cliente, "activar")} disabled={clienteMikrotikAccionLoading === "activar"} title="Activar" style={{ padding: "6px 9px", background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>▶</button>
+                                  )}
+                                  {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                                      <button
+                                        onClick={() => void consultarSenalClienteTabla(cliente)}
+                                        disabled={!!cliSenalLoading[cliente.id]}
+                                        style={{ padding: "6px 10px", background: cliSenalData[cliente.id] ? "#eff6ff" : "#f0fdf4", border: `1px solid ${cliSenalData[cliente.id] ? "#93c5fd" : "#86efac"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, color: cliSenalData[cliente.id] ? "#1d4ed8" : "#166534", cursor: "pointer", whiteSpace: "nowrap" }}
+                                      >
+                                        {cliSenalLoading[cliente.id] ? "..." : cliSenalData[cliente.id] ? `📡 ${cliSenalData[cliente.id].rx} dBm` : "📡 Señal"}
+                                      </button>
+                                      {cliSenalData[cliente.id] && (
+                                        <span style={{ fontSize: 10, color: "#1d4ed8", fontWeight: 600 }}>TX: {cliSenalData[cliente.id].tx}</span>
+                                      )}
+                                      {cliSenalError[cliente.id] && (
+                                        <span style={{ fontSize: 10, color: "#dc2626" }}>⚠ {cliSenalError[cliente.id]}</span>
+                                      )}
+                                    </div>
                                   )}
                                   <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 11px", background: "#163f86", color: "#fff", border: "none", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
                                   {esAdminSesion && (
