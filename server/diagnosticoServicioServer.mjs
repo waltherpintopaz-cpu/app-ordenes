@@ -558,12 +558,15 @@ const proxySmartOltRequest = async (req) => {
   };
   if (incomingType) headers["Content-Type"] = incomingType;
 
+  console.log(`[SmartOLT proxy] ${req.method} ${targetUrl}`);
   const response = await fetch(targetUrl, {
     method: req.method || "GET",
     headers,
     body: rawBody.length ? rawBody : undefined,
   });
+  console.log(`[SmartOLT proxy] response ${response.status}`);
   const json = await readProxyJsonResponse(response, `Smart OLT ${targetPath || "/"}`);
+  if (!response.ok) json._proxyTargetUrl = targetUrl;
   return { status: response.status, json };
 };
 

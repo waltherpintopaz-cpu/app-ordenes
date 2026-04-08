@@ -3171,20 +3171,13 @@ export default function App() {
     };
   };
 
-  // SmartOLT almacena ZTE SNs con colon: ZTEG:D4EE620A
-  const normalizarSnSmartOlt = (sn) => {
-    const s = String(sn || "").trim().toUpperCase();
-    if (/^ZTEG[A-F0-9]{8}$/.test(s)) return `ZTEG:${s.slice(4)}`;
-    return String(sn || "").trim();
-  };
-
   const consultarSenalCliente = async (cli) => {
     if (!cli?.snOnu) return;
     setClienteSenalLoading(true);
     setClienteSenalError("");
     setClienteSenal(null);
     try {
-      const sn = normalizarSnSmartOlt(cli.snOnu);
+      const sn = String(cli.snOnu || "").trim();
       if (!sn) throw new Error("Cliente sin SN ONU.");
       if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
       const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
@@ -3217,7 +3210,7 @@ export default function App() {
   const consultarSenalClienteTabla = async (cli) => {
     const id = cli?.id;
     if (!id) return;
-    const sn = normalizarSnSmartOlt(cli.snOnu);
+    const sn = String(cli.snOnu || "").trim();
     if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
     if (!SMART_OLT_TOKEN) { setCliSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setCliSenalLoading(p => ({ ...p, [id]: true }));
@@ -3227,7 +3220,7 @@ export default function App() {
       const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
       const res = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+      if (!res.ok || json?.status !== true) throw new Error(json?._proxyTargetUrl ? `SmartOLT HTTP ${res.status} → ${json._proxyTargetUrl}` : json?.message || `SmartOLT HTTP ${res.status}`);
       const base =
         (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
         (Array.isArray(json?.response) ? json.response[0] : null) ||
@@ -3247,7 +3240,7 @@ export default function App() {
   const consultarSenalOrdenWeb = async (item) => {
     const id = item?.id;
     if (!id) return;
-    const sn = normalizarSnSmartOlt(item?.snOnu || item?.sn_onu);
+    const sn = String(item?.snOnu || item?.sn_onu || "").trim();
     if (!sn) { setPendSenalError(p => ({ ...p, [id]: "Sin SN ONU en la orden." })); return; }
     if (!SMART_OLT_TOKEN) { setPendSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setPendSenalLoading(p => ({ ...p, [id]: true }));
