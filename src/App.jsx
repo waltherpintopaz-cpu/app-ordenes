@@ -8135,8 +8135,10 @@ export default function App() {
           velocidad: registroLiquidado.velocidad || "",
           precioPlan: registroLiquidado.precioPlan || "",
           nodo: registroLiquidado.nodo || "",
-          usuarioNodo: "",
-          passwordUsuario: "",
+          usuarioNodo: registroLiquidado.usuarioNodo || "",
+          passwordUsuario: registroLiquidado.passwordUsuario || "",
+          snOnu: registroLiquidado.liquidacion?.snOnu || registroLiquidado.snOnu || "",
+          cajaNap: String(registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "").trim(),
           ubicacion: registroLiquidado.ubicacion || "",
           descripcion: registroLiquidado.descripcion || "",
           fotoFachada: registroLiquidado.fotoFachada || "",
@@ -8149,12 +8151,39 @@ export default function App() {
           equiposHistorial: [],
           origenRegistro: "incidencia",
         };
-        clienteResultado = nuevo;
+        clienteResultado = { ...nuevo, _esNuevo: true };
         return [nuevo, ...prev];
       });
       if (isSupabaseConfigured && clienteResultado) {
-        void guardarClientesEnSupabase([clienteResultado]);
-        // Guardar fotos de incidencia vinculadas al cliente con liquidacion_id como diferenciador
+        const esNuevo = clienteResultado._esNuevo;
+        if (esNuevo) {
+          // INSERT directo sin id (columna IDENTITY auto-generada)
+          const { _esNuevo: _omit, id: _id, ...payloadInsert } = clienteResultado;
+          void supabase.from(CLIENTES_TABLE).insert([{
+            dni: payloadInsert.dni,
+            nombre: String(payloadInsert.nombre || ""),
+            direccion: String(payloadInsert.direccion || ""),
+            celular: String(payloadInsert.celular || ""),
+            email: String(payloadInsert.email || ""),
+            contacto: String(payloadInsert.contacto || ""),
+            empresa: String(payloadInsert.empresa || ""),
+            velocidad: String(payloadInsert.velocidad || ""),
+            precio_plan: payloadInsert.precioPlan !== "" ? Number(payloadInsert.precioPlan) || null : null,
+            nodo: String(payloadInsert.nodo || ""),
+            usuario_nodo: String(payloadInsert.usuarioNodo || ""),
+            password_usuario: String(payloadInsert.passwordUsuario || ""),
+            sn_onu: String(payloadInsert.snOnu || ""),
+            caja_nap: String(payloadInsert.cajaNap || "").trim() || null,
+            ubicacion: String(payloadInsert.ubicacion || ""),
+            descripcion: String(payloadInsert.descripcion || ""),
+            tecnico: String(payloadInsert.tecnico || ""),
+            origen_registro: "incidencia",
+            fecha_registro: new Date().toISOString(),
+            ultima_actualizacion: new Date().toISOString(),
+          }]);
+        } else {
+          void guardarClientesEnSupabase([clienteResultado]);
+        }
         const fotosLiq = registroLiquidado.liquidacion?.fotos || [];
         const liquidacionIdWEB = registroLiquidado.liquidacion?.id || registroLiquidado.id || null;
         if (fotosLiq.length > 0 && liquidacionIdWEB) {
