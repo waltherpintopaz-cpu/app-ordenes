@@ -3178,25 +3178,26 @@ export default function App() {
     try {
       const sn = String(cli.snOnu || "").trim();
       if (!sn) throw new Error("Cliente sin SN ONU.");
-      const res = await fetch(OLT_SIGNAL_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sn_onu: sn }),
+      if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
+      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" },
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.error) throw new Error(json?.error || "Error al consultar señal.");
-      setClienteSenal({ rx: json.rx, tx: json.tx, queried_at: json.queried_at });
-      // Update local state + Supabase
-      setClienteSeleccionado(prev => prev ? {
-        ...prev,
-        rxSignal: json.rx, txSignal: json.tx,
-        oltIp: json.olt_ip, pon: json.pon, onuId: json.onu_id,
-        signalUpdatedAt: json.queried_at,
-      } : prev);
+      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+      const base =
+        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+        (Array.isArray(json?.response) ? json.response[0] : null) ||
+        (json?.response && typeof json.response === "object" ? json.response : null) ||
+        json;
+      const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
+      const tx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
+      const now = new Date().toISOString();
+      setClienteSenal({ rx: String(rx), tx: String(tx), queried_at: now });
+      setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: String(rx), txSignal: String(tx), signalUpdatedAt: now } : prev);
       await supabase.from("clientes").update({
-        rx_signal: json.rx, tx_signal: json.tx,
-        olt_ip: json.olt_ip, pon: json.pon, onu_id: json.onu_id,
-        signal_updated_at: json.queried_at,
+        rx_signal: String(rx), tx_signal: String(tx), signal_updated_at: now,
       }).eq("id", cli.id);
     } catch (e) {
       setClienteSenalError(String(e?.message || "Error al consultar señal."));
