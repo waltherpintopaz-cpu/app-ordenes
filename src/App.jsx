@@ -691,6 +691,9 @@ function deserializeLiquidacionFromSupabase(row = {}) {
       montoCobrado: row.monto_cobrado ?? row.monto ?? "",
       medioPago: String(row.medio_pago || row.metodo_pago || "").trim(),
       codigoEtiqueta: String(row.codigo_etiqueta || row.cable_rg6_codigo_etiqueta || "").trim(),
+      snOnu: String(row.sn_onu_liquidacion || row.sn_onu || "").trim(),
+      cajaNap: String(row.caja_nap || "").trim(),
+      parametro: String(row.parametro || "").trim(),
       equipos,
       materiales,
       fotos,
@@ -18900,12 +18903,17 @@ export default function App() {
               {detalleLiquidacionTab === "liquidacion" ? (
                 <div style={{ display: "grid", gap: "8px", marginTop: "16px" }}>
                   <div><strong>Técnico que liquida:</strong> {liquidacionSeleccionada.liquidacion?.tecnicoLiquida || "-"}</div>
-                  <div><strong>Código etiqueta:</strong> {liquidacionSeleccionada.liquidacion?.codigoEtiqueta || "-"}</div>
                   <div><strong>Resultado final:</strong> {liquidacionSeleccionada.liquidacion?.resultadoFinal || "-"}</div>
                   <div><strong>Observación final:</strong> {liquidacionSeleccionada.liquidacion?.observacionFinal || "-"}</div>
                   <div><strong>Cobro realizado:</strong> {liquidacionSeleccionada.liquidacion?.cobroRealizado || "-"}</div>
-                  <div><strong>Monto cobrado:</strong> {liquidacionSeleccionada.liquidacion?.montoCobrado || "-"}</div>
+                  <div><strong>Monto cobrado:</strong> S/ {Number(liquidacionSeleccionada.liquidacion?.montoCobrado || 0).toFixed(2)}</div>
                   <div><strong>Medio de pago:</strong> {liquidacionSeleccionada.liquidacion?.medioPago || "-"}</div>
+                  <div><strong>Código etiqueta:</strong> {liquidacionSeleccionada.liquidacion?.codigoEtiqueta || "-"}</div>
+                  <div><strong>SN ONU:</strong> {liquidacionSeleccionada.liquidacion?.snOnu || "-"}</div>
+                  <div><strong>Caja NAP:</strong> {liquidacionSeleccionada.liquidacion?.cajaNap || "-"}</div>
+                  {liquidacionSeleccionada.liquidacion?.parametro && (
+                    <div><strong>Parámetro:</strong> {liquidacionSeleccionada.liquidacion.parametro}</div>
+                  )}
                   <div><strong>Fecha liquidación:</strong> {liquidacionSeleccionada.fechaLiquidacion}</div>
                 </div>
               ) : null}
