@@ -12879,6 +12879,19 @@ export default function App() {
                             Editar
                           </button>
                         )}
+                        {esAdminSesion && (
+                          <button
+                            onClick={() => {
+                              if (!window.confirm(`¿Restaurar cliente "${item.nombre}" (${item.dni}) desde esta liquidación?`)) return;
+                              void guardarClienteDesdeLiquidacion({ ...item, liquidacion: item.liquidacion || {} }, { isEditing: false });
+                              alert("Cliente enviado a base de datos.");
+                            }}
+                            style={{ padding: "7px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#166534", cursor: "pointer" }}
+                            title="Restaurar cliente en base de datos (solo admin)"
+                          >
+                            + Cliente
+                          </button>
+                        )}
                         {puedeEliminarLiquidacion && (
                           <button onClick={() => eliminarLiquidacion(item)} style={{ ...dangerButton, padding: "7px 12px", fontSize: 12 }}>
                             ✕
