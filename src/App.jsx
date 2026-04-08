@@ -3171,7 +3171,12 @@ export default function App() {
     };
   };
 
-  const OLT_SIGNAL_API = "http://185.173.110.145:3001/api/signal";
+  // SmartOLT almacena ZTE SNs con colon: ZTEG:D4EE620A
+  const normalizarSnSmartOlt = (sn) => {
+    const s = String(sn || "").trim().toUpperCase();
+    if (/^ZTEG[A-F0-9]{8}$/.test(s)) return `ZTEG:${s.slice(4)}`;
+    return String(sn || "").trim();
+  };
 
   const consultarSenalCliente = async (cli) => {
     if (!cli?.snOnu) return;
@@ -3179,7 +3184,7 @@ export default function App() {
     setClienteSenalError("");
     setClienteSenal(null);
     try {
-      const sn = String(cli.snOnu || "").trim();
+      const sn = normalizarSnSmartOlt(cli.snOnu);
       if (!sn) throw new Error("Cliente sin SN ONU.");
       if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
       const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
@@ -3212,7 +3217,7 @@ export default function App() {
   const consultarSenalClienteTabla = async (cli) => {
     const id = cli?.id;
     if (!id) return;
-    const sn = String(cli.snOnu || "").trim();
+    const sn = normalizarSnSmartOlt(cli.snOnu);
     if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
     if (!SMART_OLT_TOKEN) { setCliSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setCliSenalLoading(p => ({ ...p, [id]: true }));
@@ -3242,20 +3247,24 @@ export default function App() {
   const consultarSenalOrdenWeb = async (item) => {
     const id = item?.id;
     if (!id) return;
-    const sn = String(item?.snOnu || item?.sn_onu || "").trim();
+    const sn = normalizarSnSmartOlt(item?.snOnu || item?.sn_onu);
     if (!sn) { setPendSenalError(p => ({ ...p, [id]: "Sin SN ONU en la orden." })); return; }
+    if (!SMART_OLT_TOKEN) { setPendSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setPendSenalLoading(p => ({ ...p, [id]: true }));
     setPendSenalError(p => ({ ...p, [id]: "" }));
     setPendSenalData(p => ({ ...p, [id]: null }));
     try {
-      const res = await fetch(OLT_SIGNAL_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sn_onu: sn }),
-      });
+      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
+      const res = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.error) throw new Error(json?.error || "Error al consultar señal.");
-      setPendSenalData(p => ({ ...p, [id]: { rx: json.rx, tx: json.tx, estado: json.estado || "OK", fecha: json.queried_at } }));
+      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+      const base =
+        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+        (Array.isArray(json?.response) ? json.response[0] : null) ||
+        (json?.response && typeof json.response === "object" ? json.response : null) || json;
+      const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
+      const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
+      setPendSenalData(p => ({ ...p, [id]: { rx, tx } }));
     } catch (e) {
       setPendSenalError(p => ({ ...p, [id]: String(e?.message || "Error al consultar señal.") }));
     } finally {
