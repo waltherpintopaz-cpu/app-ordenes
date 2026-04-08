@@ -8084,7 +8084,7 @@ export default function App() {
     }
   };
 
-  const guardarClienteDesdeLiquidacion = async (registroLiquidado) => {
+  const guardarClienteDesdeLiquidacion = async (registroLiquidado, { isEditing = false } = {}) => {
     if (!registroLiquidado) return;
 
     const dni = String(registroLiquidado.dni || "").trim();
@@ -8232,15 +8232,18 @@ export default function App() {
 
     // Cada instalación = nuevo servicio independiente (no fusionar por DNI)
     // Solo actualizar si ya existe un registro con el mismo codigo de orden (re-liquidación)
+    const codigoOrdenBusq = String(registroLiquidado.codigo || "").trim();
     let clienteResultado = null;
     setClientes((prev) => {
       const existenteMismaOrden = prev.find((c) =>
         Array.isArray(c.historialInstalaciones) &&
-        c.historialInstalaciones.some((h) => h.id === historialItem.id)
-      );
+        c.historialInstalaciones.some((h) => h.id === historialItem.id || (codigoOrdenBusq && h.codigoOrden === codigoOrdenBusq))
+      ) || (isEditing ? prev.find((c) => String(c.dni || "").trim() === dni && (
+        !codigoOrdenBusq || (Array.isArray(c.historialInstalaciones) && c.historialInstalaciones.some((h) => h.codigoOrden === codigoOrdenBusq))
+      )) : null);
 
       if (existenteMismaOrden) {
-        // Re-liquidación de la misma orden → actualizar registro existente
+        // Re-liquidación / edición de la misma orden → actualizar registro existente
         const actualizado = {
           ...existenteMismaOrden,
           nombre: registroLiquidado.nombre || existenteMismaOrden.nombre || "",
@@ -8260,6 +8263,8 @@ export default function App() {
         return prev.map((c) => c.id === existenteMismaOrden.id ? actualizado : c);
       }
 
+      // Si estamos editando y no se encontró el cliente, no crear duplicado
+      if (isEditing) return prev;
       // Nueva instalación → nuevo registro con código N0X-XXXX
       clienteResultado = nuevoCliente;
       return [nuevoCliente, ...prev];
@@ -8487,7 +8492,7 @@ export default function App() {
       // Estado inventario equipos y cliente
       const registro = { ...ordenEnLiquidacion, liquidacion, estado: "Liquidada" };
       aplicarEstadoEquiposDesdeLiquidacion(registro);
-      if (esCompletada) void guardarClienteDesdeLiquidacion(registro);
+      if (esCompletada) void guardarClienteDesdeLiquidacion(registro, { isEditing: !!liquidacionEditandoId });
 
       // WhatsApp
       if (!liquidacionEditandoId) void sendWhatsAppNotification({ ...ordenEnLiquidacion, _resultadoFinal: liquidacion.resultadoFinal }, "liquidacion");
