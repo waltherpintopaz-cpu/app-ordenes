@@ -4037,7 +4037,7 @@ export default function App() {
       };
 
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at,en_mikrowisp"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,payload,updated_at");
