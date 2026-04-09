@@ -1871,6 +1871,7 @@ export default function App() {
   const [mikrowisp_loading, setMikrowispLoading] = useState({});  // { [clienteId]: bool }
   const [mikrowisp_ok, setMikrowispOk] = useState({});            // { [clienteId]: bool } — ya agregado esta sesión
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
+  const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
   const [formEditarCliente, setFormEditarCliente] = useState({});
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [fotoZoomSrc, setFotoZoomSrc] = useState("");
@@ -9435,6 +9436,53 @@ export default function App() {
     }
   };
 
+  const abrirNuevoCliente = () => {
+    setFormEditarCliente({ nombre: "", dni: "", direccion: "", celular: "", email: "", empresa: "", contacto: "", velocidad: "", precioPlan: "", nodo: "", usuarioNodo: "", passwordUsuario: "", snOnu: "", codigoEtiqueta: "", codigoCliente: "", estadoServicio: "ACTIVO", cajaNap: "", puertoNap: "", descripcion: "" });
+    setModalNuevoCliente(true);
+  };
+
+  const guardarNuevoCliente = async () => {
+    const f = formEditarCliente;
+    if (!f.nombre?.trim()) return alert("El nombre es obligatorio.");
+    if (!f.dni?.trim()) return alert("El DNI es obligatorio.");
+    setGuardandoCliente(true);
+    try {
+      const nuevo = {
+        nombre: f.nombre.trim(),
+        dni: f.dni.trim(),
+        direccion: f.direccion.trim(),
+        celular: f.celular.trim(),
+        email: f.email.trim(),
+        empresa: f.empresa.trim(),
+        contacto: f.contacto.trim(),
+        velocidad: f.velocidad.trim(),
+        precioPlan: String(f.precioPlan ?? "").trim(),
+        nodo: f.nodo.trim(),
+        usuarioNodo: f.usuarioNodo.trim(),
+        passwordUsuario: f.passwordUsuario.trim(),
+        snOnu: f.snOnu.trim(),
+        codigoEtiqueta: f.codigoEtiqueta.trim(),
+        codigoCliente: f.codigoCliente.trim(),
+        estadoServicio: f.estadoServicio || "ACTIVO",
+        cajaNap: f.cajaNap.trim(),
+        puertoNap: f.puertoNap.trim(),
+        descripcion: f.descripcion.trim(),
+        fechaRegistro: new Date().toISOString(),
+        ultimaActualizacion: new Date().toISOString(),
+      };
+      const row = serializarClienteParaSupabase(nuevo);
+      const { data, error } = await supabase.from(CLIENTES_TABLE).insert([row]).select().single();
+      if (error) throw error;
+      const insertado = deserializarClienteSupabase(data || { ...row, id: Date.now() });
+      setClientes(prev => [insertado, ...prev]);
+      setModalNuevoCliente(false);
+    } catch (e) {
+      alert("Error al crear cliente: " + (e?.message || "desconocido"));
+    } finally {
+      setGuardandoCliente(false);
+    }
+  };
+
   const eliminarCliente = async (cliente = {}) => {
     if (!esAdminSesion) {
       alert("Solo un administrador puede eliminar clientes.");
@@ -16349,6 +16397,9 @@ export default function App() {
                   <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {esAdminSesion && (
+                    <button onClick={abrirNuevoCliente} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Nuevo cliente</button>
+                  )}
                   <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Recargar
                   </button>
@@ -17055,6 +17106,79 @@ export default function App() {
                   <button onClick={() => setModalEditarCliente(false)} style={{ padding: "9px 20px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>Cancelar</button>
                   <button onClick={() => void guardarEdicionCliente()} disabled={guardandoCliente} style={{ padding: "9px 22px", background: guardandoCliente ? "#93c5fd" : "#2563eb", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", cursor: guardandoCliente ? "wait" : "pointer" }}>
                     {guardandoCliente ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Modal nuevo cliente ── */}
+        {modalNuevoCliente && esAdminSesion && (() => {
+          const f = formEditarCliente;
+          const set = (k, v) => setFormEditarCliente(prev => ({ ...prev, [k]: v }));
+          const inp = { width: "100%", padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box" };
+          const lbl = { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 4 };
+          const grp = (label, key) => (
+            <div>
+              <label style={lbl}>{label}</label>
+              <input value={f[key] || ""} onChange={e => set(key, e.target.value)} style={inp} placeholder={label} />
+            </div>
+          );
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+              <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 700, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.25)" }}>
+                <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>Nuevo cliente</div>
+                  <button onClick={() => setModalNuevoCliente(false)} style={{ background: "none", border: "none", fontSize: 20, color: "#94a3b8", cursor: "pointer" }}>✕</button>
+                </div>
+                <div style={{ padding: "20px 24px", display: "grid", gap: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Datos personales</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                      {grp("Nombre *", "nombre")}
+                      {grp("DNI *", "dni")}
+                      {grp("Dirección", "direccion")}
+                      {grp("Celular", "celular")}
+                      {grp("Email", "email")}
+                      {grp("Empresa", "empresa")}
+                      {grp("Contacto", "contacto")}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Servicio</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                      {grp("Código abonado", "codigoCliente")}
+                      {grp("Plan / velocidad", "velocidad")}
+                      {grp("Precio plan", "precioPlan")}
+                      {grp("Nodo", "nodo")}
+                      {grp("Usuario PPPoE", "usuarioNodo")}
+                      {grp("Contraseña PPPoE", "passwordUsuario")}
+                      {grp("SN ONU", "snOnu")}
+                      <div>
+                        <label style={lbl}>Estado</label>
+                        <select value={f.estadoServicio || "ACTIVO"} onChange={e => set("estadoServicio", e.target.value)} style={inp}>
+                          {["ACTIVO","SUSPENDIDO","INACTIVO","DESCONOCIDO"].map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#c2410c", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>NAP</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+                      {grp("Caja NAP", "cajaNap")}
+                      {grp("Puerto NAP", "puertoNap")}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lbl}>Descripción / Observación</label>
+                    <textarea value={f.descripcion || ""} onChange={e => set("descripcion", e.target.value)} rows={3} style={{ ...inp, resize: "vertical" }} />
+                  </div>
+                </div>
+                <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setModalNuevoCliente(false)} style={{ padding: "9px 20px", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "#475569", cursor: "pointer" }}>Cancelar</button>
+                  <button onClick={() => void guardarNuevoCliente()} disabled={guardandoCliente} style={{ padding: "9px 22px", background: guardandoCliente ? "#93c5fd" : "#2563eb", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", cursor: guardandoCliente ? "wait" : "pointer" }}>
+                    {guardandoCliente ? "Guardando..." : "Crear cliente"}
                   </button>
                 </div>
               </div>
