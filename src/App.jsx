@@ -16717,7 +16717,7 @@ export default function App() {
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
                   {MIKROWISP_NODOS.includes(String(cli.nodo || "")) && esAdminSesion && (() => {
                     const id = String(cli.id || cli.dni || "");
-                    const yaAgregado = mikrowisp_ok[id];
+                    const yaAgregado = cli.en_mikrowisp || mikrowisp_ok[id];
                     const cargando = mikrowisp_loading[id];
                     return (
                       <button
