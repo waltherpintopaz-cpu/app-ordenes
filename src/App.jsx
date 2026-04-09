@@ -2744,7 +2744,7 @@ export default function App() {
     const id = String(cliente.id || cliente.dni || "").trim();
     const dni = String(cliente.dni || "").replace(/\D/g, "").trim();
     if (!dni) return window.alert("El cliente no tiene DNI registrado.");
-    if (mikrowisp_ok[id]) return window.alert("Este cliente ya fue agregado a Mikrowisp en esta sesión.");
+    if (cliente.en_mikrowisp || mikrowisp_ok[id]) return window.alert("Este cliente ya está registrado en Mikrowisp.");
 
     setMikrowispLoading((p) => ({ ...p, [id]: true }));
     try {
@@ -2775,6 +2775,10 @@ export default function App() {
         throw new Error(add.json?.mensaje || add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
       setMikrowispOk((p) => ({ ...p, [id]: true }));
+      if (isSupabaseConfigured && cliente.id) {
+        await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cliente.id);
+        setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, en_mikrowisp: true } : c));
+      }
       window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a Mikrowisp correctamente.`);
     } catch (e) {
       window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
@@ -16602,7 +16606,7 @@ export default function App() {
                                   <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 11px", background: "#163f86", color: "#fff", border: "none", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
                                   {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
                                     const id = String(cliente.id || cliente.dni || "");
-                                    const yaAgregado = mikrowisp_ok[id];
+                                    const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
                                     const cargando = mikrowisp_loading[id];
                                     return (
                                       <button
