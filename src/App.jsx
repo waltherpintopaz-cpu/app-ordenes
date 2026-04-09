@@ -2771,6 +2771,7 @@ export default function App() {
         direccion_principal: String(cliente.direccion || "").trim(),
       };
       const add = await mkFetch("NewUser", payload);
+      window.alert(`[DEBUG]\nEnviado: ${add.json?._debug?.formBody}\n\nRespuesta raw: ${add.json?._debug?.rawResp}`);
       if (!add.ok || add.json?.success === false || add.json?.error) {
         throw new Error(add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }

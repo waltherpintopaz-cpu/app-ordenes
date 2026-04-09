@@ -568,10 +568,9 @@ const proxyMikrowispNewUser = async (req) => {
     body: formBody,
   });
   const rawResp = await response.text();
-  console.log(`[MK NewUser] HTTP ${response.status} raw: ${rawResp}`);
   let json = {};
-  try { json = rawResp.trim() ? JSON.parse(rawResp) : {}; } catch { json = { _raw: rawResp }; }
-  return { status: response.status, json };
+  try { json = rawResp.trim() ? JSON.parse(rawResp) : { _raw: "(empty)" }; } catch { json = { _raw: rawResp }; }
+  return { status: response.status, json, _debug: { formBody, rawResp } };
 };
 
 const proxySmartOltRequest = async (req) => {
@@ -643,7 +642,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp/NewUser") {
       const result = await proxyMikrowispNewUser(req);
-      writeJson(res, result.status, result.json);
+      writeJson(res, result.status, { ...result.json, _debug: result._debug });
       return;
     }
 
