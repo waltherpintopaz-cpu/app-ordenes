@@ -2728,9 +2728,9 @@ export default function App() {
 
   const MIKROWISP_NODOS = ["Nod_01", "Nod_03"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-  // Siempre usar el proxy del servidor propio (evita CORS en prod y dev)
+  const MIKROWISP_BASE = "https://americanet.club/api/v1";
   const mkFetch = async (endpoint, body) => {
-    const res = await fetch(`/api/mikrowisp/${endpoint}`, {
+    const res = await fetch(`${MIKROWISP_BASE}/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: MIKROWISP_TOKEN, ...body }),
