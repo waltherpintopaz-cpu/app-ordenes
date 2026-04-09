@@ -2728,8 +2728,10 @@ export default function App() {
 
   const MIKROWISP_NODOS = ["Nod_01", "Nod_03"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+  const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").replace(/\/$/, "");
   const mkFetch = async (endpoint, body) => {
-    const res = await fetch(`/api/mikrowisp/${endpoint}`, {
+    const url = DIAGNO_BASE ? `${DIAGNO_BASE}/api/mikrowisp/${endpoint}` : `/api/mikrowisp/${endpoint}`;
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: MIKROWISP_TOKEN, ...body }),
