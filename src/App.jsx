@@ -16846,8 +16846,8 @@ export default function App() {
                   {infoRow("Técnico", cli.tecnico)}
                   {infoRow("Autor", cli.autorOrden)}
                   {infoRow("Descripción", cli.descripcion)}
-                  {infoRow("Registrado", cli.fechaRegistro)}
-                  {infoRow("Últ. actualización", cli.ultimaActualizacion)}
+                  {infoRow("Registrado", cli.fechaRegistro ? formatFechaFlexible(cli.fechaRegistro) : "")}
+                  {infoRow("Últ. actualización", cli.ultimaActualizacion ? formatFechaFlexible(cli.ultimaActualizacion) : "")}
                 </div>
 
                 {/* Ubicación — mapa */}
