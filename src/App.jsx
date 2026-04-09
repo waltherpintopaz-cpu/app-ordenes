@@ -1868,6 +1868,8 @@ export default function App() {
   const [cliSenalData, setCliSenalData] = useState({});     // { [clienteId]: { rx, tx } }
   const [cliSenalLoading, setCliSenalLoading] = useState({});
   const [cliSenalError, setCliSenalError] = useState({});
+  const [mikrowisp_loading, setMikrowispLoading] = useState({});  // { [clienteId]: bool }
+  const [mikrowisp_ok, setMikrowispOk] = useState({});            // { [clienteId]: bool } — ya agregado esta sesión
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
   const [formEditarCliente, setFormEditarCliente] = useState({});
   const [guardandoCliente, setGuardandoCliente] = useState(false);
@@ -2722,6 +2724,64 @@ export default function App() {
       return;
     }
     window.alert("Clientes locales eliminados.");
+  };
+
+  const MIKROWISP_NODOS = ["Nod_01", "Nod_03"];
+  const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+  const MIKROWISP_BASE = "https://americanet.club/api/v1";
+
+  const agregarClienteMikrowisp = async (cliente) => {
+    const id = String(cliente.id || cliente.dni || "").trim();
+    const dni = String(cliente.dni || "").replace(/\D/g, "").trim();
+    if (!dni) return window.alert("El cliente no tiene DNI registrado.");
+    if (mikrowisp_ok[id]) return window.alert("Este cliente ya fue agregado a Mikrowisp en esta sesión.");
+
+    setMikrowispLoading((p) => ({ ...p, [id]: true }));
+    try {
+      // 1. Verificar si ya existe en Mikrowisp
+      const checkRes = await fetch(`${MIKROWISP_BASE}/GetClientsDetails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: MIKROWISP_TOKEN, cedula: dni }),
+      });
+      const checkBody = await checkRes.json().catch(() => ({}));
+      const existe = checkBody?.success !== false && (
+        checkBody?.data?.cedula || checkBody?.cedula ||
+        (Array.isArray(checkBody?.data) && checkBody.data.length > 0) ||
+        checkBody?.id || checkBody?.data?.id
+      );
+      if (existe) {
+        setMikrowispOk((p) => ({ ...p, [id]: true }));
+        window.alert(`⚠ El cliente ${cliente.nombre || dni} ya existe en Mikrowisp (cédula: ${dni}). No se duplicará.`);
+        return;
+      }
+
+      // 2. Agregar a Mikrowisp
+      const payload = {
+        token: MIKROWISP_TOKEN,
+        nombre: String(cliente.nombre || "").trim(),
+        cedula: dni,
+        correo: String(cliente.email || "").trim(),
+        telefono: "",
+        movil: String(cliente.celular || "").trim(),
+        direccion_principal: String(cliente.direccion || "").trim(),
+      };
+      const addRes = await fetch(`${MIKROWISP_BASE}/NewUser`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const addBody = await addRes.json().catch(() => ({}));
+      if (!addRes.ok || addBody?.success === false || addBody?.error) {
+        throw new Error(addBody?.message || addBody?.error || `HTTP ${addRes.status}`);
+      }
+      setMikrowispOk((p) => ({ ...p, [id]: true }));
+      window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado exitosamente a Mikrowisp.`);
+    } catch (e) {
+      window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
+    } finally {
+      setMikrowispLoading((p) => ({ ...p, [id]: false }));
+    }
   };
 
   const actualizarEstadoMasivoMikrowisp = async () => {
@@ -16541,6 +16601,21 @@ export default function App() {
                                     </div>
                                   )}
                                   <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 11px", background: "#163f86", color: "#fff", border: "none", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
+                                  {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
+                                    const id = String(cliente.id || cliente.dni || "");
+                                    const yaAgregado = mikrowisp_ok[id];
+                                    const cargando = mikrowisp_loading[id];
+                                    return (
+                                      <button
+                                        onClick={() => void agregarClienteMikrowisp(cliente)}
+                                        disabled={cargando || yaAgregado}
+                                        title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar a Mikrowisp"}
+                                        style={{ padding: "6px 9px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", color: yaAgregado ? "#16a34a" : "#92400e", border: `1px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer", whiteSpace: "nowrap" }}
+                                      >
+                                        {cargando ? "..." : yaAgregado ? "✓ MW" : "MW+"}
+                                      </button>
+                                    );
+                                  })()}
                                   {esAdminSesion && (
                                     <button onClick={() => void eliminarCliente(cliente)} title="Eliminar" style={{ padding: "6px 8px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, fontSize: 11, cursor: "pointer" }}>✕</button>
                                   )}
@@ -16632,6 +16707,21 @@ export default function App() {
                     <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
+                  {MIKROWISP_NODOS.includes(String(cli.nodo || "")) && esAdminSesion && (() => {
+                    const id = String(cli.id || cli.dni || "");
+                    const yaAgregado = mikrowisp_ok[id];
+                    const cargando = mikrowisp_loading[id];
+                    return (
+                      <button
+                        onClick={() => void agregarClienteMikrowisp(cli)}
+                        disabled={cargando || yaAgregado}
+                        title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar cliente a Mikrowisp"}
+                        style={{ padding: "8px 15px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", border: `1.5px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 10, color: yaAgregado ? "#16a34a" : "#92400e", fontSize: 12, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer" }}
+                      >
+                        {cargando ? "Agregando..." : yaAgregado ? "✓ En Mikrowisp" : "Mikrowisp +"}
+                      </button>
+                    );
+                  })()}
                   {esAdminSesion && <button onClick={() => abrirEditarCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>}
                   {esAdminSesion && <button onClick={() => void eliminarCliente(cli)} style={{ padding: "8px 13px", background: "#dc2626", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Eliminar</button>}
                   <button onClick={() => setVistaActiva("clientes")} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
