@@ -5789,3 +5789,116 @@ body:not([data-theme="dark"]) .menu-subitem.active {
   color: #fef4e3 !important;
   box-shadow: inset 3px 0 0 #f2a325 !important;
 }
+
+/* ── Rendición Panel ── */
+.rend-panel { display: flex; flex-direction: column; gap: 14px; }
+
+.rend-filtros-card {
+  background: #fff; border: 1px solid #E2E8F0; border-radius: 12px;
+  padding: 18px; box-shadow: 0 1px 6px rgba(10,46,95,0.06);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.rend-filtros-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.rend-filtros-title { font-size: 14px; font-weight: 800; color: #1E293B; }
+.rend-limpiar-btn {
+  background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626;
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.rend-limpiar-btn:hover { background: #FEE2E2; }
+
+.rend-label { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+
+.rend-nodo-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rend-chip {
+  padding: 6px 14px; border-radius: 8px; border: 1.5px solid #E2E8F0;
+  background: #F8FAFC; font-size: 12px; font-weight: 700; color: #64748B; cursor: pointer;
+  transition: all 0.15s;
+}
+.rend-chip:hover { border-color: #93C5FD; background: #EFF6FF; color: #1E4F9C; }
+.rend-chip.active { border-color: #1E4F9C; background: #EFF6FF; color: #1E4F9C; }
+
+.rend-fechas-row { display: flex; gap: 10px; }
+.rend-fecha-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.rend-fecha-label { font-size: 10px; font-weight: 600; color: #94A3B8; }
+.rend-date-input {
+  border: 1.5px solid #E2E8F0; border-radius: 8px; padding: 8px 10px;
+  font-size: 13px; color: #374151; background: #F8FAFC; width: 100%;
+}
+.rend-date-input:focus { border-color: #1E4F9C; background: #EFF6FF; outline: none; }
+
+.rend-quick-btns { display: flex; gap: 8px; }
+.rend-quick-btn {
+  flex: 1; padding: 7px 4px; border-radius: 8px; border: 1px solid #E2E8F0;
+  background: #F8FAFC; font-size: 12px; font-weight: 700; color: #475569; cursor: pointer;
+}
+.rend-quick-btn:hover { background: #EFF6FF; border-color: #93C5FD; color: #1E4F9C; }
+
+.rend-action-row { display: flex; gap: 8px; margin-top: 4px; }
+.rend-buscar-btn { flex: 1; }
+.rend-pdf-btn {
+  background: #FEF2F2; border: 1.5px solid #FECACA; color: #DC2626;
+  border-radius: 8px; padding: 9px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
+  transition: background 0.15s;
+}
+.rend-pdf-btn:hover { background: #FEE2E2; }
+.rend-pdf-btn:disabled { opacity: 0.6; cursor: default; }
+
+.rend-empty { text-align: center; padding: 36px; color: #94A3B8; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rend-empty p { font-size: 14px; font-weight: 600; }
+
+.rend-stats-row { display: flex; gap: 10px; }
+.rend-stat-card {
+  flex: 1; background: #fff; border: 1px solid #E2E8F0; border-radius: 10px;
+  padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.rend-stat-card.warn { border-color: #FED7AA; background: #FFF7ED; }
+.rend-stat-num { font-size: 26px; font-weight: 900; color: #1E4F9C; }
+.rend-stat-card.warn .rend-stat-num { color: #D97706; }
+.rend-stat-label { font-size: 11px; font-weight: 600; color: #94A3B8; }
+.rend-stat-card.warn .rend-stat-label { color: #D97706; }
+
+.rend-tipos-card {
+  background: #fff; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px;
+}
+.rend-section-label { font-size: 12px; font-weight: 800; color: #1E293B; margin-bottom: 8px; }
+.rend-tipos-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.rend-tipo-badge {
+  background: #EFF6FF; border-radius: 6px; padding: 4px 10px;
+  font-size: 12px; color: #1E4F9C;
+}
+
+.rend-nodo-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; overflow: hidden; }
+.rend-nodo-card.warn { border-color: #FED7AA; }
+
+.rend-nodo-header {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; background: #F8FAFC; border: none; border-bottom: 1px solid #F1F5F9;
+  cursor: pointer; text-align: left;
+}
+.rend-nodo-header:hover { background: #EFF6FF; }
+.rend-nodo-header.warn { background: #FFF7ED; border-bottom-color: #FED7AA; }
+.rend-nodo-header.warn:hover { background: #FEF3C7; }
+.rend-nodo-header-left { display: flex; align-items: center; gap: 10px; }
+.rend-nodo-header-right { display: flex; align-items: center; gap: 8px; }
+.rend-nodo-icon {
+  width: 28px; height: 28px; border-radius: 7px; background: #DBEAFE;
+  display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.rend-nodo-icon.warn { background: #FED7AA; }
+.rend-nodo-title { display: block; font-size: 13px; font-weight: 800; color: #1E293B; }
+.rend-nodo-header.warn .rend-nodo-title { color: #92400E; }
+.rend-nodo-sub { display: block; font-size: 11px; color: #94A3B8; margin-top: 1px; }
+.rend-nodo-badge {
+  background: #DBEAFE; color: #1E4F9C; font-weight: 800; font-size: 12px;
+  padding: 3px 10px; border-radius: 20px;
+}
+.rend-nodo-badge.warn { background: #FED7AA; color: #92400E; }
+
+.rend-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rend-table th {
+  background: #1E4F9C; color: #fff; font-size: 11px; font-weight: 700;
+  padding: 8px 10px; text-align: left;
+}
+.rend-table td { padding: 7px 10px; color: #374151; border-bottom: 1px solid #F1F5F9; vertical-align: top; }
+.rend-table tr.rend-row-alt td { background: #F8FAFC; }
+.rend-mono { font-family: monospace; font-size: 11px; }

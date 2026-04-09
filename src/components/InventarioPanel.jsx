@@ -560,7 +560,7 @@ function InventoryPhotoThumb(props) {
 export default function InventarioPanel({ initialTab = "catalogo", sessionUser = null }) {
   const esTecnico = initialTab === "stockTecnico" || norm(sessionUser?.rol) === "tecnico";
   const tabs = useMemo(() => {
-    return esTecnico ? ["stockTecnico", "movimientos", "recogidos"] : ["registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes"];
+    return esTecnico ? ["stockTecnico", "movimientos", "recogidos"] : ["registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes", "rendicion"];
   }, [esTecnico]);
   const [tab, setTab] = useState(() => {
     const base = String(initialTab || "").trim();
@@ -647,6 +647,14 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   const [equiposRecogidos, setEquiposRecogidos] = useState([]);
   const [cargandoRecogidos, setCargandoRecogidos] = useState(false);
   const esAdmin = norm(sessionUser?.rol) === "administrador";
+  // ── Rendición ──
+  const [rendicionNodo, setRendicionNodo] = useState("");
+  const [rendicionDesde, setRendicionDesde] = useState("");
+  const [rendicionHasta, setRendicionHasta] = useState("");
+  const [rendicionDatos, setRendicionDatos] = useState([]);
+  const [rendicionCargando, setRendicionCargando] = useState(false);
+  const [rendicionGenerandoPdf, setRendicionGenerandoPdf] = useState(false);
+  const [rendicionNodosExpandidos, setRendicionNodosExpandidos] = useState({});
   const almacenesActivos = useMemo(
     () => (almacenes || []).filter((a) => a?.activo),
     [almacenes]
@@ -1170,6 +1178,149 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       setCargandoRecogidos(false);
     }
   }, [sessionUser?.nombre, sessionUser?.username]);
+
+  const cargarRendicion = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    setRendicionCargando(true);
+    try {
+      let q = supabase
+        .from("stock_tecnico")
+        .select("id,tipo,marca,serial,nodo,nombre_cliente,tecnico_recupera,ingresado_almacen,fecha_ingreso,ingresado_por,created_at,orden_codigo")
+        .eq("ingresado_almacen", true)
+        .order("fecha_ingreso", { ascending: false });
+      if (rendicionNodo) q = q.eq("nodo", rendicionNodo);
+      if (rendicionDesde) q = q.gte("fecha_ingreso", rendicionDesde);
+      if (rendicionHasta) q = q.lte("fecha_ingreso", rendicionHasta + "T23:59:59");
+      const { data, error: err } = await q.limit(500);
+      if (err) throw err;
+      setRendicionDatos(Array.isArray(data) ? data : []);
+    } catch (e) {
+      window.alert("Error al cargar rendición: " + (e?.message || ""));
+    } finally {
+      setRendicionCargando(false);
+    }
+  }, [rendicionNodo, rendicionDesde, rendicionHasta]);
+
+  const generarPdfRendicion = useCallback(() => {
+    if (!rendicionDatos.length) return;
+    setRendicionGenerandoPdf(true);
+    try {
+      const ahora = new Date();
+      const fmtDate = (d) => d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
+      const fmtYmd = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      };
+      const filtroTexto = [
+        rendicionNodo ? `Nodo: ${rendicionNodo}` : "Todos los nodos",
+        rendicionDesde || rendicionHasta
+          ? `Fechas: ${rendicionDesde || "—"} → ${rendicionHasta || "hoy"}`
+          : "Sin filtro de fecha"
+      ].join("  |  ");
+      const porNodo = rendicionDatos.reduce((acc, e) => {
+        const k = e.nodo || "__sin_nodo__"; if (!acc[k]) acc[k] = []; acc[k].push(e); return acc;
+      }, {});
+      const porTipo = rendicionDatos.reduce((acc, e) => {
+        const t = e.tipo || "Sin tipo"; acc[t] = (acc[t] || 0) + 1; return acc;
+      }, {});
+      const sinNodo = rendicionDatos.filter(e => !e.nodo).length;
+      const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const tipoBadges = Object.entries(porTipo).sort((a, b) => b[1] - a[1])
+        .map(([t, c]) => `<span class="tipo-badge"><strong>${c}</strong> ${esc(t)}</span>`).join("");
+      const nodosOrdenados = Object.entries(porNodo).sort(([a], [b]) =>
+        a === "__sin_nodo__" ? 1 : b === "__sin_nodo__" ? -1 : a.localeCompare(b)
+      );
+      const filasNodos = nodosOrdenados.map(([nodoKey, items]) => {
+        const esSinNodo = nodoKey === "__sin_nodo__";
+        const filas = items.map((eq, i) => `
+          <tr class="${i % 2 === 0 ? "row-even" : "row-odd"}">
+            <td>${esc(eq.tipo || "-")}${eq.marca ? ` · ${esc(eq.marca)}` : ""}</td>
+            <td>${esc(eq.serial || "-")}</td>
+            <td>${esc(eq.nombre_cliente || "-")}</td>
+            <td>${esc(eq.orden_codigo || "-")}</td>
+            <td>${esc(eq.tecnico_recupera || "-")}</td>
+            <td>${eq.fecha_ingreso ? String(eq.fecha_ingreso).slice(0, 10) : "-"}</td>
+            <td>${esc(eq.ingresado_por || "-")}</td>
+          </tr>`).join("");
+        return `
+          <div class="nodo-section">
+            <div class="nodo-header ${esSinNodo ? "nodo-warn" : ""}">
+              <span class="nodo-title">${esSinNodo ? "⚠ Sin nodo asignado" : esc(nodoKey)}</span>
+              <span class="nodo-badge">${items.length} equipo${items.length !== 1 ? "s" : ""}</span>
+            </div>
+            <table>
+              <thead><tr>
+                <th>Tipo / Marca</th><th>Serial</th><th>Cliente</th>
+                <th>Orden</th><th>Técnico</th><th>Fecha ingreso</th><th>Ingresado por</th>
+              </tr></thead>
+              <tbody>${filas}</tbody>
+            </table>
+          </div>`;
+      }).join("");
+      const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Rendición ${fmtYmd(ahora)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:11px;color:#1E293B;padding:24px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #1E4F9C}
+.company{font-size:18px;font-weight:900;color:#1E4F9C}
+.report-title{font-size:13px;font-weight:700;color:#374151;margin-top:4px}
+.header-right{text-align:right;color:#64748B;font-size:10px;line-height:1.6}
+.filtro-bar{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:8px 12px;margin-bottom:16px;font-size:10px;color:#1E4F9C;font-weight:600}
+.stats-row{display:flex;gap:10px;margin-bottom:16px}
+.stat-card{flex:1;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px;text-align:center}
+.stat-num{font-size:22px;font-weight:900;color:#1E4F9C}
+.stat-label{font-size:9px;color:#94A3B8;font-weight:600;margin-top:2px}
+.stat-warn .stat-num{color:#D97706}
+.tipos-section{background:#fff;border:1px solid #E2E8F0;border-radius:6px;padding:10px 12px;margin-bottom:16px}
+.section-label{font-size:10px;font-weight:800;color:#1E293B;margin-bottom:8px}
+.tipo-badge{display:inline-block;background:#EFF6FF;border-radius:4px;padding:3px 8px;margin:2px;font-size:10px;color:#1E4F9C}
+.nodo-section{margin-bottom:18px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden}
+.nodo-header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0}
+.nodo-warn{background:#FFF7ED;border-bottom-color:#FED7AA}
+.nodo-title{font-size:12px;font-weight:800;color:#1E293B}
+.nodo-warn .nodo-title{color:#92400E}
+.nodo-badge{background:#DBEAFE;color:#1E4F9C;font-weight:800;font-size:10px;padding:2px 8px;border-radius:12px}
+.nodo-warn .nodo-badge{background:#FED7AA;color:#92400E}
+table{width:100%;border-collapse:collapse}
+th{background:#1E4F9C;color:#fff;font-size:9px;font-weight:700;padding:6px 8px;text-align:left}
+td{padding:5px 8px;font-size:10px;color:#374151;border-bottom:1px solid #F1F5F9;vertical-align:top}
+.row-odd td{background:#F8FAFC}
+.footer{margin-top:24px;padding-top:12px;border-top:1px solid #E2E8F0;text-align:center;color:#94A3B8;font-size:9px}
+@media print{body{padding:12px}}
+</style></head><body>
+<div class="header">
+  <div><div class="company">Americanet</div><div class="report-title">Reporte de Rendición — Equipos Recuperados</div></div>
+  <div class="header-right">
+    <div><strong>Generado:</strong> ${fmtDate(ahora)}</div>
+    <div><strong>Hora:</strong> ${ahora.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}</div>
+    <div style="margin-top:4px"><strong>Por:</strong> ${esc(sessionUser?.nombre || sessionUser?.username || "Administrador")}</div>
+  </div>
+</div>
+<div class="filtro-bar">Filtros aplicados: ${esc(filtroTexto)}</div>
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-num">${rendicionDatos.length}</div><div class="stat-label">Total equipos</div></div>
+  <div class="stat-card"><div class="stat-num">${Object.keys(porNodo).filter(k => k !== "__sin_nodo__").length}</div><div class="stat-label">Nodos</div></div>
+  <div class="stat-card ${sinNodo > 0 ? "stat-warn" : ""}"><div class="stat-num">${sinNodo}</div><div class="stat-label">Sin nodo</div></div>
+</div>
+<div class="tipos-section"><div class="section-label">Por tipo de equipo</div>${tipoBadges}</div>
+${filasNodos}
+<div class="footer">Reporte generado automáticamente · Americanet · ${fmtDate(ahora)}</div>
+</body></html>`;
+      const win = window.open("", "_blank", "width=900,height=700");
+      if (!win) { window.alert("Permite ventanas emergentes para generar el PDF."); return; }
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); }, 400);
+    } catch (e) {
+      window.alert("Error al generar PDF: " + (e?.message || ""));
+    } finally {
+      setRendicionGenerandoPdf(false);
+    }
+  }, [rendicionDatos, rendicionNodo, rendicionDesde, rendicionHasta, sessionUser]);
 
   useEffect(() => {
     if (!esTecnico) return;
@@ -3426,6 +3577,15 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
           >
             Kardex
           </button>
+          {esAdmin ? (
+            <button
+              type="button"
+              className={tab === "rendicion" ? "inv-pill active" : "inv-pill"}
+              onClick={() => setTab("rendicion")}
+            >
+              Rendición
+            </button>
+          ) : null}
         </div>
       ) : null}
 	      {mostrarBuscadoresGenerales ? (
@@ -4712,6 +4872,196 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
 
       {scanEqReg ? <QRScanner onDetected={(value) => { const qr = String(value || "").trim(); setEqForm((p) => ({ ...p, codigo: qr })); const valid = validarQrRegistro(qr); setQrRegistroMsg(valid.text); setScanEqReg(false); }} onClose={() => setScanEqReg(false)} /> : null}
       {scanEqAsig ? <QRScanner onDetected={(value) => { agregarEquipoAsignacionPorCodigo(String(value || "").trim()); setScanEqAsig(false); }} onClose={() => setScanEqAsig(false)} /> : null}
+
+      {/* ── Rendición por Nodo ── */}
+      {tab === "rendicion" && esAdmin ? (
+        <div className="rend-panel">
+          {/* Filtros */}
+          <div className="rend-filtros-card">
+            <div className="rend-filtros-header">
+              <span className="rend-filtros-title">Filtros</span>
+              {(rendicionNodo || rendicionDesde || rendicionHasta) ? (
+                <button type="button" className="rend-limpiar-btn" onClick={() => { setRendicionNodo(""); setRendicionDesde(""); setRendicionHasta(""); }}>
+                  ✕ Limpiar
+                </button>
+              ) : null}
+            </div>
+
+            <label className="rend-label">Nodo</label>
+            <div className="rend-nodo-chips">
+              {["", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"].map((n) => {
+                const active = n === "" ? !rendicionNodo : rendicionNodo === n;
+                return (
+                  <button
+                    key={n || "__todos__"}
+                    type="button"
+                    className={`rend-chip${active ? " active" : ""}`}
+                    onClick={() => setRendicionNodo(n === "" ? "" : (rendicionNodo === n ? "" : n))}
+                  >
+                    {n || "Todos"}
+                  </button>
+                );
+              })}
+            </div>
+
+            <label className="rend-label">Rango de fechas</label>
+            <div className="rend-fechas-row">
+              <div className="rend-fecha-field">
+                <span className="rend-fecha-label">Desde</span>
+                <input
+                  type="date"
+                  className="rend-date-input"
+                  value={rendicionDesde}
+                  onChange={(e) => setRendicionDesde(e.target.value)}
+                />
+              </div>
+              <div className="rend-fecha-field">
+                <span className="rend-fecha-label">Hasta</span>
+                <input
+                  type="date"
+                  className="rend-date-input"
+                  value={rendicionHasta}
+                  onChange={(e) => setRendicionHasta(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="rend-quick-btns">
+              {[
+                { label: "Hoy", fn: () => { const t = new Date(); const y = t.getFullYear(), m = String(t.getMonth()+1).padStart(2,"0"), d = String(t.getDate()).padStart(2,"0"); const ymd = `${y}-${m}-${d}`; setRendicionDesde(ymd); setRendicionHasta(ymd); } },
+                { label: "Esta semana", fn: () => { const now = new Date(); const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1); const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; setRendicionDesde(fmt(mon)); setRendicionHasta(fmt(now)); } },
+                { label: "Este mes", fn: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; setRendicionDesde(fmt(first)); setRendicionHasta(fmt(now)); } },
+              ].map(({ label, fn }) => (
+                <button key={label} type="button" className="rend-quick-btn" onClick={fn}>{label}</button>
+              ))}
+            </div>
+
+            <div className="rend-action-row">
+              <button
+                type="button"
+                className="primary-btn rend-buscar-btn"
+                onClick={() => void cargarRendicion()}
+                disabled={rendicionCargando}
+              >
+                {rendicionCargando ? "Buscando..." : "🔍 Buscar"}
+              </button>
+              {rendicionDatos.length > 0 ? (
+                <button
+                  type="button"
+                  className="rend-pdf-btn"
+                  onClick={generarPdfRendicion}
+                  disabled={rendicionGenerandoPdf}
+                >
+                  {rendicionGenerandoPdf ? "Generando..." : "📄 PDF"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Resultados */}
+          {rendicionCargando ? (
+            <p className="panel-meta" style={{ textAlign: "center", padding: "24px" }}>Cargando rendición...</p>
+          ) : rendicionDatos.length === 0 ? (
+            <div className="rend-empty">
+              <span style={{ fontSize: "32px" }}>🗂️</span>
+              <p>Sin equipos ingresados con los filtros seleccionados</p>
+            </div>
+          ) : (
+            <>
+              {/* Stats */}
+              {(() => {
+                const porNodo = rendicionDatos.reduce((acc, e) => { const k = e.nodo || "__sin_nodo__"; if (!acc[k]) acc[k] = []; acc[k].push(e); return acc; }, {});
+                const porTipo = rendicionDatos.reduce((acc, e) => { const t = e.tipo || "Sin tipo"; acc[t] = (acc[t]||0)+1; return acc; }, {});
+                const sinNodo = rendicionDatos.filter(e => !e.nodo).length;
+                return (
+                  <>
+                    <div className="rend-stats-row">
+                      <div className="rend-stat-card">
+                        <span className="rend-stat-num">{rendicionDatos.length}</span>
+                        <span className="rend-stat-label">Total equipos</span>
+                      </div>
+                      <div className="rend-stat-card">
+                        <span className="rend-stat-num">{Object.keys(porNodo).filter(k => k !== "__sin_nodo__").length}</span>
+                        <span className="rend-stat-label">Nodos</span>
+                      </div>
+                      <div className={`rend-stat-card${sinNodo > 0 ? " warn" : ""}`}>
+                        <span className="rend-stat-num">{sinNodo}</span>
+                        <span className="rend-stat-label">Sin nodo</span>
+                      </div>
+                    </div>
+
+                    <div className="rend-tipos-card">
+                      <p className="rend-section-label">Por tipo de equipo</p>
+                      <div className="rend-tipos-badges">
+                        {Object.entries(porTipo).sort((a,b) => b[1]-a[1]).map(([t, c]) => (
+                          <span key={t} className="rend-tipo-badge"><strong>{c}</strong> {t}</span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {Object.entries(porNodo)
+                      .sort(([a],[b]) => a === "__sin_nodo__" ? 1 : b === "__sin_nodo__" ? -1 : a.localeCompare(b))
+                      .map(([nodoKey, items]) => {
+                        const esSinNodo = nodoKey === "__sin_nodo__";
+                        const expandido = rendicionNodosExpandidos[nodoKey] !== false;
+                        const porTipoNodo = items.reduce((acc, e) => { const t = e.tipo||"Sin tipo"; acc[t]=(acc[t]||0)+1; return acc; }, {});
+                        return (
+                          <div key={nodoKey} className={`rend-nodo-card${esSinNodo ? " warn" : ""}`}>
+                            <button
+                              type="button"
+                              className={`rend-nodo-header${esSinNodo ? " warn" : ""}`}
+                              onClick={() => setRendicionNodosExpandidos(prev => ({ ...prev, [nodoKey]: !expandido }))}
+                            >
+                              <div className="rend-nodo-header-left">
+                                <span className={`rend-nodo-icon${esSinNodo ? " warn" : ""}`}>{esSinNodo ? "⚠" : "📍"}</span>
+                                <div>
+                                  <span className="rend-nodo-title">{esSinNodo ? "Sin nodo asignado" : nodoKey}</span>
+                                  <span className="rend-nodo-sub">{Object.entries(porTipoNodo).map(([t,c]) => `${c} ${t}`).join(" · ")}</span>
+                                </div>
+                              </div>
+                              <div className="rend-nodo-header-right">
+                                <span className={`rend-nodo-badge${esSinNodo ? " warn" : ""}`}>{items.length}</span>
+                                <span style={{ color: "#94A3B8", fontSize: "12px" }}>{expandido ? "▲" : "▼"}</span>
+                              </div>
+                            </button>
+                            {expandido ? (
+                              <table className="rend-table">
+                                <thead>
+                                  <tr>
+                                    <th>Tipo / Marca</th>
+                                    <th>Serial</th>
+                                    <th>Cliente</th>
+                                    <th>Orden</th>
+                                    <th>Técnico</th>
+                                    <th>Fecha</th>
+                                    <th>Ingresado por</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {items.map((eq, i) => (
+                                    <tr key={eq.id} className={i % 2 === 0 ? "" : "rend-row-alt"}>
+                                      <td><strong>{eq.tipo || "-"}</strong>{eq.marca ? ` · ${eq.marca}` : ""}</td>
+                                      <td className="rend-mono">{eq.serial || "-"}</td>
+                                      <td>{eq.nombre_cliente || "-"}</td>
+                                      <td className="rend-mono">{eq.orden_codigo || "-"}</td>
+                                      <td>{eq.tecnico_recupera || "-"}</td>
+                                      <td>{eq.fecha_ingreso ? String(eq.fecha_ingreso).slice(0, 10) : "-"}</td>
+                                      <td>{eq.ingresado_por || "-"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                  </>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }
