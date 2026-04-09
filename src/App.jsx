@@ -9471,7 +9471,8 @@ export default function App() {
         ultimaActualizacion: new Date().toISOString(),
       };
       const row = serializarClienteParaSupabase(nuevo);
-      const { data, error } = await supabase.from(CLIENTES_TABLE).insert([row]).select().single();
+      const { id: _dropId, ...rowSinId } = row;
+      const { data, error } = await supabase.from(CLIENTES_TABLE).insert([rowSinId]).select().single();
       if (error) throw error;
       const insertado = deserializarClienteSupabase(data || { ...row, id: Date.now() });
       setClientes(prev => [insertado, ...prev]);
