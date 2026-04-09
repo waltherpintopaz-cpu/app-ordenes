@@ -529,15 +529,16 @@ const readProxyJsonResponse = async (response, context = "API proxy") => {
 
 const mikrowisp = async (path, fields) => {
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, path);
-  const body = new URLSearchParams({ token: MIKROWISP_TOKEN, ...fields }).toString();
+  const bodyJson = JSON.stringify({ token: MIKROWISP_TOKEN, ...fields });
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body,
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: bodyJson,
+    redirect: "follow",
   });
   const text = await response.text();
   let json = {};
-  try { json = text.trim() ? JSON.parse(text) : {}; } catch { json = { _raw: text }; }
+  try { json = text.trim() ? JSON.parse(text) : { _empty: true, _redirected: response.redirected, _finalUrl: response.url }; } catch { json = { _raw: text.slice(0, 300) }; }
   return { status: response.status, json };
 };
 
