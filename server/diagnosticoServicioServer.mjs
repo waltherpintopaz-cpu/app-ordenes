@@ -527,35 +527,44 @@ const readProxyJsonResponse = async (response, context = "API proxy") => {
   }
 };
 
+const jsonBodyToFormEncoded = (rawBody) => {
+  try {
+    const parsed = JSON.parse(rawBody.toString());
+    return new URLSearchParams(parsed).toString();
+  } catch {
+    return rawBody.toString();
+  }
+};
+
 const proxyMikrowispGetClientDetails = async (req) => {
-  const contentType = String(req.headers["content-type"] || "application/json").trim() || "application/json";
   const rawBody = await readRawBody(req);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
+  const formBody = jsonBodyToFormEncoded(rawBody);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Accept: "application/json",
-      "Content-Type": contentType,
+      "Content-Type": "application/x-www-form-urlencoded",
       token: MIKROWISP_TOKEN,
     },
-    body: rawBody.length ? rawBody : undefined,
+    body: formBody,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp GetClientsDetails");
   return { status: response.status, json };
 };
 
 const proxyMikrowispNewUser = async (req) => {
-  const contentType = String(req.headers["content-type"] || "application/json").trim() || "application/json";
   const rawBody = await readRawBody(req);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
+  const formBody = jsonBodyToFormEncoded(rawBody);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Accept: "application/json",
-      "Content-Type": contentType,
+      "Content-Type": "application/x-www-form-urlencoded",
       token: MIKROWISP_TOKEN,
     },
-    body: rawBody.length ? rawBody : undefined,
+    body: formBody,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp NewUser");
   return { status: response.status, json };
