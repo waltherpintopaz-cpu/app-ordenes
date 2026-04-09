@@ -544,6 +544,23 @@ const proxyMikrowispGetClientDetails = async (req) => {
   return { status: response.status, json };
 };
 
+const proxyMikrowispNewUser = async (req) => {
+  const contentType = String(req.headers["content-type"] || "application/json").trim() || "application/json";
+  const rawBody = await readRawBody(req);
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": contentType,
+      token: MIKROWISP_TOKEN,
+    },
+    body: rawBody.length ? rawBody : undefined,
+  });
+  const json = await readProxyJsonResponse(response, "Mikrowisp NewUser");
+  return { status: response.status, json };
+};
+
 const proxySmartOltRequest = async (req) => {
   const url = new URL(req.url || "", "http://localhost");
   const targetPath = url.pathname.replace(/^\/api\/smartolt/, "");
@@ -607,6 +624,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp/GetClientsDetails") {
       const result = await proxyMikrowispGetClientDetails(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mikrowisp/NewUser") {
+      const result = await proxyMikrowispNewUser(req);
       writeJson(res, result.status, result.json);
       return;
     }

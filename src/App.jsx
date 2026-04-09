@@ -2728,7 +2728,16 @@ export default function App() {
 
   const MIKROWISP_NODOS = ["Nod_01", "Nod_03"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-  const MIKROWISP_BASE = "https://americanet.club/api/v1";
+  // Siempre usar el proxy del servidor propio (evita CORS en prod y dev)
+  const mkFetch = async (endpoint, body) => {
+    const res = await fetch(`/api/mikrowisp/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: MIKROWISP_TOKEN, ...body }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, json };
+  };
 
   const agregarClienteMikrowisp = async (cliente) => {
     const id = String(cliente.id || cliente.dni || "").trim();
@@ -2739,41 +2748,30 @@ export default function App() {
     setMikrowispLoading((p) => ({ ...p, [id]: true }));
     try {
       // 1. Verificar si ya existe en Mikrowisp
-      const checkRes = await fetch(`${MIKROWISP_BASE}/GetClientsDetails`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: MIKROWISP_TOKEN, cedula: dni }),
-      });
-      const checkBody = await checkRes.json().catch(() => ({}));
-      const existe = checkBody?.success !== false && (
-        checkBody?.data?.cedula || checkBody?.cedula ||
-        (Array.isArray(checkBody?.data) && checkBody.data.length > 0) ||
-        checkBody?.id || checkBody?.data?.id
+      const check = await mkFetch("GetClientsDetails", { cedula: dni });
+      const b = check.json;
+      const existe = b?.success !== false && (
+        b?.data?.cedula || b?.cedula ||
+        (Array.isArray(b?.data) && b.data.length > 0) ||
+        b?.id || b?.data?.id
       );
       if (existe) {
         setMikrowispOk((p) => ({ ...p, [id]: true }));
-        window.alert(`⚠ El cliente ${cliente.nombre || dni} ya existe en Mikrowisp (cédula: ${dni}). No se duplicará.`);
+        window.alert(`⚠ El cliente "${cliente.nombre || dni}" ya existe en Mikrowisp (cédula: ${dni}). No se duplicará.`);
         return;
       }
 
       // 2. Agregar a Mikrowisp
-      const payload = {
-        token: MIKROWISP_TOKEN,
+      const add = await mkFetch("NewUser", {
         nombre: String(cliente.nombre || "").trim(),
         cedula: dni,
         correo: String(cliente.email || "").trim(),
         telefono: "",
         movil: String(cliente.celular || "").trim(),
         direccion_principal: String(cliente.direccion || "").trim(),
-      };
-      const addRes = await fetch(`${MIKROWISP_BASE}/NewUser`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
       });
-      const addBody = await addRes.json().catch(() => ({}));
-      if (!addRes.ok || addBody?.success === false || addBody?.error) {
-        throw new Error(addBody?.message || addBody?.error || `HTTP ${addRes.status}`);
+      if (!add.ok || add.json?.success === false || add.json?.error) {
+        throw new Error(add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
       setMikrowispOk((p) => ({ ...p, [id]: true }));
       window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado exitosamente a Mikrowisp.`);
