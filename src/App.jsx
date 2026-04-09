@@ -2767,6 +2767,7 @@ export default function App() {
         direccion_principal: String(cliente.direccion || "").trim(),
       };
       const add = await mkFetch("NewUser", payload);
+      window.alert(`Mikrowisp resp: ${JSON.stringify(add.json)}`);
       if (add.json?.estado !== "exito") {
         throw new Error(add.json?.mensaje || add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
