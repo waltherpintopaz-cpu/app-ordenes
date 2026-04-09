@@ -2750,11 +2750,7 @@ export default function App() {
       // 1. Verificar si ya existe en Mikrowisp
       const check = await mkFetch("GetClientsDetails", { cedula: dni });
       const b = check.json;
-      const existe = b?.success !== false && (
-        b?.data?.cedula || b?.cedula ||
-        (Array.isArray(b?.data) && b.data.length > 0) ||
-        b?.id || b?.data?.id
-      );
+      const existe = b?.estado === "exito" && (b?.idcliente || b?.data?.idcliente || b?.cedula || b?.data?.cedula);
       if (existe) {
         setMikrowispOk((p) => ({ ...p, [id]: true }));
         window.alert(`⚠ El cliente "${cliente.nombre || dni}" ya existe en Mikrowisp (cédula: ${dni}). No se duplicará.`);
@@ -2771,12 +2767,11 @@ export default function App() {
         direccion_principal: String(cliente.direccion || "").trim(),
       };
       const add = await mkFetch("NewUser", payload);
-      window.alert(`[DEBUG]\nEnviado: ${add.json?._debug?.formBody}\n\nRespuesta raw: ${add.json?._debug?.rawResp}`);
-      if (!add.ok || add.json?.success === false || add.json?.error) {
-        throw new Error(add.json?.message || add.json?.error || `HTTP ${add.status}`);
+      if (add.json?.estado !== "exito") {
+        throw new Error(add.json?.mensaje || add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
       setMikrowispOk((p) => ({ ...p, [id]: true }));
-      window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado exitosamente a Mikrowisp.`);
+      window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a Mikrowisp correctamente.`);
     } catch (e) {
       window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
     } finally {

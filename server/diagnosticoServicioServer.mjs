@@ -527,27 +527,13 @@ const readProxyJsonResponse = async (response, context = "API proxy") => {
   }
 };
 
-const jsonBodyToFormEncoded = (rawBody) => {
-  try {
-    const parsed = JSON.parse(rawBody.toString());
-    return new URLSearchParams(parsed).toString();
-  } catch {
-    return rawBody.toString();
-  }
-};
-
 const proxyMikrowispGetClientDetails = async (req) => {
   const rawBody = await readRawBody(req);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
-  const formBody = jsonBodyToFormEncoded(rawBody);
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      token: MIKROWISP_TOKEN,
-    },
-    body: formBody,
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: rawBody.length ? rawBody : undefined,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp GetClientsDetails");
   return { status: response.status, json };
@@ -556,21 +542,13 @@ const proxyMikrowispGetClientDetails = async (req) => {
 const proxyMikrowispNewUser = async (req) => {
   const rawBody = await readRawBody(req);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
-  const formBody = jsonBodyToFormEncoded(rawBody);
-  console.log(`[MK NewUser] form body: ${formBody}`);
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      token: MIKROWISP_TOKEN,
-    },
-    body: formBody,
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: rawBody.length ? rawBody : undefined,
   });
-  const rawResp = await response.text();
-  let json = {};
-  try { json = rawResp.trim() ? JSON.parse(rawResp) : { _raw: "(empty)" }; } catch { json = { _raw: rawResp }; }
-  return { status: response.status, json, _debug: { formBody, rawResp } };
+  const json = await readProxyJsonResponse(response, "Mikrowisp NewUser");
+  return { status: response.status, json };
 };
 
 const proxySmartOltRequest = async (req) => {
@@ -642,7 +620,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp/NewUser") {
       const result = await proxyMikrowispNewUser(req);
-      writeJson(res, result.status, { ...result.json, _debug: result._debug });
+      writeJson(res, result.status, result.json);
       return;
     }
 
