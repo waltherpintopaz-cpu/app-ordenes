@@ -557,6 +557,7 @@ const proxyMikrowispNewUser = async (req) => {
   const rawBody = await readRawBody(req);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
   const formBody = jsonBodyToFormEncoded(rawBody);
+  console.log(`[MK NewUser] form body: ${formBody}`);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -566,7 +567,10 @@ const proxyMikrowispNewUser = async (req) => {
     },
     body: formBody,
   });
-  const json = await readProxyJsonResponse(response, "Mikrowisp NewUser");
+  const rawResp = await response.text();
+  console.log(`[MK NewUser] HTTP ${response.status} raw: ${rawResp}`);
+  let json = {};
+  try { json = rawResp.trim() ? JSON.parse(rawResp) : {}; } catch { json = { _raw: rawResp }; }
   return { status: response.status, json };
 };
 
