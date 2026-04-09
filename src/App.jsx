@@ -16669,10 +16669,15 @@ export default function App() {
           const est = String(cli.estadoServicio || "DESCONOCIDO").toUpperCase();
           const estCfg = { ACTIVO: { c: "#16a34a", bg: "#dcfce7", l: "Activo" }, SUSPENDIDO: { c: "#dc2626", bg: "#fee2e2", l: "Suspendido" }, INACTIVO: { c: "#6b7280", bg: "#f3f4f6", l: "Inactivo" }, DESCONOCIDO: { c: "#d97706", bg: "#fef3c7", l: "Desc." } }[est] || { c: "#6b7280", bg: "#f3f4f6", l: est };
           const initials = String(cli.nombre || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
-          const infoRow = (label, value, mono) => value ? (
+          const copyText = (text) => { navigator.clipboard?.writeText(String(text || "")).catch(() => {}); };
+          const infoRow = (label, value, mono, copyable) => value ? (
             <div style={{ display: "flex", gap: 10, padding: "8px 0", borderBottom: "1px solid #f8fafc", alignItems: "flex-start" }}>
               <span style={{ fontSize: 11, color: "#94a3b8", minWidth: 136, fontWeight: 600, flexShrink: 0, paddingTop: 1 }}>{label}</span>
-              <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500, fontFamily: mono ? "monospace" : undefined, wordBreak: "break-all" }}>{value}</span>
+              <span
+                onClick={copyable ? () => copyText(value) : undefined}
+                title={copyable ? "Clic para copiar" : undefined}
+                style={{ fontSize: 13, color: copyable ? "#2563eb" : "#0f172a", fontWeight: 500, fontFamily: mono ? "monospace" : undefined, wordBreak: "break-all", cursor: copyable ? "pointer" : undefined }}
+              >{value}</span>
             </div>
           ) : null;
           const cardDet = { background: "#fff", borderRadius: 16, border: "1px solid #e8edf5", boxShadow: "0 2px 12px rgba(15,23,42,0.04)", padding: "20px 24px" };
@@ -16802,7 +16807,7 @@ export default function App() {
                 <div style={cardDet}>
                   <span style={secLabel}>Datos personales</span>
                   {infoRow("Nombre", cli.nombre)}
-                  {infoRow("DNI", cli.dni, true)}
+                  {infoRow("DNI", cli.dni, true, true)}
                   {infoRow("Dirección", cli.direccion)}
                   {infoRow("Celular", cli.celular)}
                   {infoRow("Email", cli.email)}
@@ -16817,8 +16822,8 @@ export default function App() {
                   {infoRow("Plan", cli.velocidad)}
                   {infoRow("Precio", cli.precioPlan)}
                   {infoRow("Nodo", cli.nodo)}
-                  {infoRow("Usuario PPPoE", cli.usuarioNodo, true)}
-                  {infoRow("Contraseña", cli.passwordUsuario, true)}
+                  {infoRow("Usuario PPPoE", cli.usuarioNodo, true, true)}
+                  {infoRow("Contraseña", cli.passwordUsuario, true, true)}
                   {infoRow("Cód. etiqueta", cli.codigoEtiqueta)}
                   {infoRow("SN ONU", cli.snOnu, true)}
                 </div>
@@ -16863,7 +16868,7 @@ export default function App() {
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #e8edf5" }}>
                         <span style={secLabel}>Ubicación</span>
                         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>{lat.toFixed(6)}, {lng.toFixed(6)}</span>
+                          <span onClick={() => copyText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)} title="Clic para copiar coordenadas" style={{ fontSize: 11, color: "#2563eb", fontFamily: "monospace", cursor: "pointer" }}>{lat.toFixed(6)}, {lng.toFixed(6)}</span>
                           <a href={gmUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 7, padding: "3px 10px", textDecoration: "none" }}>Ver en Google Maps</a>
                         </div>
                       </div>
