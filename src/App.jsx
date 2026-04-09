@@ -2762,16 +2762,15 @@ export default function App() {
       }
 
       // 2. Agregar a Mikrowisp
-      const add = await mkFetch("NewUser", {
+      const payload = {
         nombre: String(cliente.nombre || "").trim(),
         cedula: dni,
         correo: String(cliente.email || "").trim(),
         telefono: "",
         movil: String(cliente.celular || "").trim(),
         direccion_principal: String(cliente.direccion || "").trim(),
-      });
-      // Debug: mostrar respuesta real de Mikrowisp para diagnosticar
-      window.alert(`[DEBUG] HTTP ${add.status}\n${JSON.stringify(add.json, null, 2)}`);
+      };
+      const add = await mkFetch("NewUser", payload);
       if (!add.ok || add.json?.success === false || add.json?.error) {
         throw new Error(add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
