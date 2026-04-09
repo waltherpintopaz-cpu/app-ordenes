@@ -697,6 +697,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && req.url === "/api/mikrowisp/test") {
+      try {
+        const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
+        const testBody = { token: MIKROWISP_TOKEN, nombre: "Test Usuario", cedula: "00000001", correo: "test@test.com", telefono: "", movil: "000000000", direccion_principal: "Test" };
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(testBody),
+        });
+        const rawResp = await response.text();
+        writeJson(res, 200, { endpoint, httpStatus: response.status, rawResp, tokenUsed: MIKROWISP_TOKEN.slice(0, 8) + "..." });
+      } catch (e) {
+        writeJson(res, 200, { error: e.message });
+      }
+      return;
+    }
+
     writeJson(res, 404, { ok: false, error: "Ruta no encontrada." });
   } catch (error) {
     console.error("Diagnostico servicio error:", error);
