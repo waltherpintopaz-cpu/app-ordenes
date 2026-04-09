@@ -2768,7 +2768,9 @@ export default function App() {
         direccion_principal: String(cliente.direccion || "").trim(),
       };
       const add = await mkFetch("NewUser", payload);
-      window.alert(`URL: ${DIAGNO_BASE ? DIAGNO_BASE+"/api/mikrowisp/NewUser" : "/api/mikrowisp/NewUser"}\n\nENVIADO:\n${JSON.stringify({token:MIKROWISP_TOKEN,...payload},null,2)}\n\nRESPUESTA HTTP ${add.status}:\n${JSON.stringify(add.json,null,2)}`);
+      if (add.json?.estado === "error") {
+        throw new Error(add.json?.mensaje || `HTTP ${add.status}`);
+      }
       if (!add.ok) {
         throw new Error(add.json?.mensaje || add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
