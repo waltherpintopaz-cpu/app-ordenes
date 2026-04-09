@@ -697,7 +697,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "GET" && req.url === "/api/mikrowisp/test") {
+    if (req.method === "POST" && req.url === "/api/mikrowisp/test") {
       try {
         const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
         const testBody = { token: MIKROWISP_TOKEN, nombre: "Test Usuario", cedula: "00000001", correo: "test@test.com", telefono: "", movil: "000000000", direccion_principal: "Test" };
