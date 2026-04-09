@@ -527,30 +527,28 @@ const readProxyJsonResponse = async (response, context = "API proxy") => {
   }
 };
 
-const mikrowisp = async (path, fields) => {
-  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, path);
-  const bodyJson = JSON.stringify({ token: MIKROWISP_TOKEN, ...fields });
+const proxyMikrowispGetClientDetails = async (req) => {
+  const rawBody = await readRawBody(req);
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: bodyJson,
-    redirect: "follow",
+    body: rawBody.length ? rawBody : undefined,
   });
-  const text = await response.text();
-  let json = {};
-  try { json = text.trim() ? JSON.parse(text) : { _empty: true, _redirected: response.redirected, _finalUrl: response.url }; } catch { json = { _raw: text.slice(0, 300) }; }
+  const json = await readProxyJsonResponse(response, "Mikrowisp GetClientsDetails");
   return { status: response.status, json };
 };
 
-const proxyMikrowispGetClientDetails = async (req) => {
-  const data = await readJsonBody(req);
-  return mikrowisp("/GetClientsDetails", { cedula: String(data?.cedula || "") });
-};
-
 const proxyMikrowispNewUser = async (req) => {
-  const data = await readJsonBody(req);
-  const { token: _t, ...fields } = data;
-  return mikrowisp("/NewUser", fields);
+  const rawBody = await readRawBody(req);
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: rawBody.length ? rawBody : undefined,
+  });
+  const json = await readProxyJsonResponse(response, "Mikrowisp NewUser");
+  return { status: response.status, json };
 };
 
 const proxySmartOltRequest = async (req) => {
