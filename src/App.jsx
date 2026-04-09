@@ -2728,7 +2728,7 @@ export default function App() {
 
   const MIKROWISP_NODOS = ["Nod_01", "Nod_03"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-  const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").replace(/\/$/, "");
+  const DIAGNO_BASE = (import.meta.env.DEV ? "" : "https://amnet-diagno.0lthka.easypanel.host");
   const mkFetch = async (endpoint, body) => {
     const url = DIAGNO_BASE ? `${DIAGNO_BASE}/api/mikrowisp/${endpoint}` : `/api/mikrowisp/${endpoint}`;
     const res = await fetch(url, {
