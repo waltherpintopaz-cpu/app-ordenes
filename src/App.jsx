@@ -180,7 +180,7 @@ const PERMISOS_MENU_POR_ROL_WEB = {
 // Solo recordatorios se garantiza siempre — todo lo demás es flexible
 const MENU_ITEMS_GARANTIZADOS_POR_ROL = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["recordatorios"],
+  Gestora: ["recordatorios", "reportes"],
   Tecnico: ["recordatorios"],
   Almacen: ["recordatorios"],
 };
