@@ -9848,6 +9848,13 @@ export default function App() {
     const q = reporteBusqueda.trim().toLowerCase();
     return liquidaciones
       .filter((item) => fechaDentroDeRango(item.fechaLiquidacionISO || item.fechaLiquidacion, reporteDesde, reporteHasta))
+      .filter((item) => {
+        // Filtrar por nodos asignados al usuario (solo si es Gestora con nodos específicos)
+        if (esGestorSesion && nodosAccesoGestoraSet.size > 0) {
+          return nodosAccesoGestoraSet.has(normalizeNodoKey(String(item.nodo || "")));
+        }
+        return true;
+      })
       .filter((item) => (reporteNodo === "TODOS" ? true : String(item.nodo || "") === reporteNodo))
       .filter((item) =>
         reporteTecnico === "TODOS"
@@ -14687,9 +14694,11 @@ export default function App() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
                 <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Reportes de actuaciones</h2>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <button type="button" style={{ ...infoButton, background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => setReporteMargenModal(true)}>
-                    ⚙ Configurar reporte
-                  </button>
+                  {esAdminSesion && (
+                    <button type="button" style={{ ...infoButton, background: "#7c3aed", borderColor: "#7c3aed" }} onClick={() => setReporteMargenModal(true)}>
+                      ⚙ Configurar reporte
+                    </button>
+                  )}
                   <button type="button" style={infoButton} onClick={imprimirReporteActuaciones}>
                     PDF actuaciones
                   </button>
