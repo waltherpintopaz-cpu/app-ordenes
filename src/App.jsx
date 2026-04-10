@@ -14699,9 +14699,6 @@ export default function App() {
                       ⚙ Configurar reporte
                     </button>
                   )}
-                  <button type="button" style={infoButton} onClick={imprimirReporteActuaciones}>
-                    PDF actuaciones
-                  </button>
                   <button type="button" style={{ ...infoButton, background: "#c2500a", borderColor: "#c2500a" }} onClick={imprimirReporteDetalladoActuaciones}>
                     PDF detallado
                   </button>
@@ -14710,9 +14707,6 @@ export default function App() {
                   </button>
                   <button type="button" style={secondaryButton} onClick={imprimirReporteMateriales}>
                     PDF materiales + precios
-                  </button>
-                  <button type="button" style={secondaryButton} onClick={imprimirDetalleMateriales}>
-                    PDF detalle materiales
                   </button>
                   <button type="button" style={secondaryButton} onClick={exportarCsvMateriales}>
                     CSV materiales
