@@ -9390,6 +9390,8 @@ export default function App() {
       cajaNap: cli.cajaNap || "",
       puertoNap: cli.puertoNap || "",
       descripcion: cli.descripcion || "",
+      ubicacion: cli.ubicacion || "",
+      fotoFachada: cli.fotoFachada || "",
     });
     setModalEditarCliente(true);
   };
@@ -9420,6 +9422,8 @@ export default function App() {
         cajaNap: f.cajaNap.trim(),
         puertoNap: f.puertoNap.trim(),
         descripcion: f.descripcion.trim(),
+        ubicacion: f.ubicacion.trim(),
+        fotoFachada: f.fotoFachada.trim(),
         ultimaActualizacion: new Date().toISOString(),
       };
       const row = serializarClienteParaSupabase(updated);
@@ -17100,6 +17104,24 @@ export default function App() {
                   <div>
                     <label style={lbl}>Descripción / Observación</label>
                     <textarea value={f.descripcion || ""} onChange={e => set("descripcion", e.target.value)} rows={3} style={{ ...inp, resize: "vertical" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#0891b2", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Ubicación y foto</div>
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div>
+                        <label style={lbl}>Coordenadas GPS (lat, lng)</label>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input value={f.ubicacion || ""} onChange={e => set("ubicacion", e.target.value)} style={{ ...inp, flex: 1 }} placeholder="-16.438490, -71.598208" />
+                          <button type="button" onClick={() => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(pos => set("ubicacion", `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`), () => alert("No se pudo obtener ubicación")); } }} style={{ padding: "8px 12px", background: "#0891b2", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>📍 Mi ubicación</button>
+                        </div>
+                        {f.ubicacion && (() => { const parts = f.ubicacion.split(",").map(s => parseFloat(s.trim())); if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) { return <a href={`https://www.google.com/maps?q=${parts[0]},${parts[1]}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#2563eb", marginTop: 4, display: "inline-block" }}>Ver en Google Maps</a>; } return null; })()}
+                      </div>
+                      <div>
+                        <label style={lbl}>URL foto fachada</label>
+                        <input value={f.fotoFachada || ""} onChange={e => set("fotoFachada", e.target.value)} style={inp} placeholder="https://..." />
+                        {f.fotoFachada && <img src={f.fotoFachada} alt="fachada" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 160, borderRadius: 8, objectFit: "cover", border: "1px solid #e2e8f0" }} onError={e => { e.target.style.display = "none"; }} />}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 {/* Footer */}
