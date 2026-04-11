@@ -1773,6 +1773,7 @@ export default function App() {
   const [mostrarColsModal, setMostrarColsModal] = useState(false);
   const [actualizarEstadoMasivoLoading, setActualizarEstadoMasivoLoading] = useState(false);
   const [actualizarEstadoMasivoProgreso, setActualizarEstadoMasivoProgreso] = useState(null);
+  const [syncCajasNapLoading, setSyncCajasNapLoading] = useState(false);
   const [clientesPagina, setClientesPagina] = useState(1);
   const [usuariosSupabaseReady, setUsuariosSupabaseReady] = useState(false);
   const [usuariosSupabaseSaving, setUsuariosSupabaseSaving] = useState(false);
@@ -9440,6 +9441,64 @@ export default function App() {
     }
   };
 
+  const sincronizarCajasNapDesdeHistorial = async () => {
+    if (!isSupabaseConfigured) return;
+    const ok = window.confirm("Esto actualizará la caja NAP de cada cliente con la más reciente de su historial de liquidaciones. ¿Continuar?");
+    if (!ok) return;
+    setSyncCajasNapLoading(true);
+    try {
+      // 1. Traer todas las liquidaciones con caja_nap y dni, ordenadas de más nueva a más vieja
+      const pageSize = 1000;
+      let offset = 0;
+      const all = [];
+      while (true) {
+        const { data, error } = await supabase
+          .from("liquidaciones")
+          .select("dni,caja_nap,id")
+          .not("caja_nap", "is", null)
+          .neq("caja_nap", "")
+          .order("id", { ascending: false })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        const chunk = Array.isArray(data) ? data : [];
+        all.push(...chunk);
+        if (chunk.length < pageSize) break;
+        offset += pageSize;
+      }
+      // 2. Por cada DNI, tomar la caja_nap más reciente (primer resultado ya que está ordenado desc)
+      const cajasPorDni = new Map();
+      for (const row of all) {
+        const dni = String(row.dni || "").trim();
+        const caja = String(row.caja_nap || "").trim();
+        if (dni && caja && !cajasPorDni.has(dni)) {
+          cajasPorDni.set(dni, caja);
+        }
+      }
+      if (cajasPorDni.size === 0) {
+        window.alert("No se encontraron liquidaciones con caja NAP registrada.");
+        return;
+      }
+      // 3. Actualizar clientes en Supabase
+      let actualizados = 0;
+      for (const [dni, cajaNap] of cajasPorDni) {
+        const { error } = await supabase
+          .from(CLIENTES_TABLE)
+          .update({ caja_nap: cajaNap, ultima_actualizacion: new Date().toISOString() })
+          .eq("dni", dni);
+        if (!error) {
+          actualizados++;
+          // Actualizar estado local
+          setClientes(prev => prev.map(c => String(c.dni || "") === dni ? { ...c, cajaNap } : c));
+        }
+      }
+      window.alert(`✅ Sync completado. Se actualizaron ${actualizados} clientes con su caja NAP más reciente.`);
+    } catch (e) {
+      window.alert("Error al sincronizar: " + (e?.message || String(e)));
+    } finally {
+      setSyncCajasNapLoading(false);
+    }
+  };
+
   const abrirNuevoCliente = () => {
     setFormEditarCliente({ nombre: "", dni: "", direccion: "", celular: "", email: "", empresa: "", contacto: "", velocidad: "", precioPlan: "", nodo: "", usuarioNodo: "", passwordUsuario: "", snOnu: "", codigoEtiqueta: "", codigoCliente: "", estadoServicio: "ACTIVO", cajaNap: "", puertoNap: "", descripcion: "" });
     setModalNuevoCliente(true);
@@ -16407,6 +16466,11 @@ export default function App() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {esAdminSesion && (
                     <button onClick={abrirNuevoCliente} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Nuevo cliente</button>
+                  )}
+                  {esAdminSesion && (
+                    <button onClick={sincronizarCajasNapDesdeHistorial} disabled={syncCajasNapLoading} title="Actualiza la caja NAP de cada cliente con la más reciente de su historial" style={{ padding: "8px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #7dd3fc", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: syncCajasNapLoading ? "wait" : "pointer" }}>
+                      {syncCajasNapLoading ? "Sincronizando..." : "Sync Cajas NAP"}
+                    </button>
                   )}
                   <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Recargar
