@@ -817,7 +817,15 @@ function formatFechaFlexible(value = "") {
     if (!Number.isNaN(d.getTime())) return d.toLocaleString("es-PE");
   }
   const iso = new Date(raw);
-  if (!Number.isNaN(iso.getTime())) return iso.toLocaleString("es-PE");
+  if (!Number.isNaN(iso.getTime())) {
+    const d = iso;
+    const dia = String(d.getDate()).padStart(2, "0");
+    const mes = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][d.getMonth()];
+    const anio = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${dia} ${mes}. ${anio}, ${hh}:${mm}`;
+  }
   return raw;
 }
 
