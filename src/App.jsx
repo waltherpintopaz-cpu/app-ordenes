@@ -1748,8 +1748,9 @@ export default function App() {
   const [usuarios, setUsuarios] = useState([]);
 
   const [clientes, setClientes] = useState(() => {
-    const guardados = readLocalJson("clientes", []);
-    return guardados ? asegurarCredencialesUsuarios(guardados) : [];
+    // No usar localStorage para clientes — demasiados registros, se carga desde Supabase
+    try { localStorage.removeItem("clientes"); } catch (_) {}
+    return [];
   });
 
   const [equiposCatalogo, setEquiposCatalogo] = useState(() => {
@@ -2085,9 +2086,8 @@ export default function App() {
     try { localStorage.setItem("sessionIdleMinutes", String(sessionIdleMinutes)); } catch (e) { console.warn("localStorage quota: sessionIdleMinutes", e); }
   }, [sessionIdleMinutes]);
 
-  useEffect(() => {
-    try { localStorage.setItem("clientes", JSON.stringify(clientes)); } catch (e) { console.warn("localStorage quota: clientes", e); }
-  }, [clientes]);
+  // No persistir clientes en localStorage — 2000+ registros JSON bloquean el hilo principal
+  // Los clientes se cargan desde Supabase al iniciar
 
   useEffect(() => {
     void cargarClientesDesdeSupabase({ silent: true });
@@ -4039,7 +4039,7 @@ export default function App() {
       };
 
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,fotos_liquidacion,historial_instalaciones,equipos_historial,payload,updated_at,en_mikrowisp"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,payload,updated_at,en_mikrowisp,estado_servicio,caja_nap"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,payload,updated_at");
