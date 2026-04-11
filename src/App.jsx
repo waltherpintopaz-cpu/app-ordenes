@@ -1775,6 +1775,8 @@ export default function App() {
   const [actualizarEstadoMasivoLoading, setActualizarEstadoMasivoLoading] = useState(false);
   const [actualizarEstadoMasivoProgreso, setActualizarEstadoMasivoProgreso] = useState(null);
   const [syncCajasNapLoading, setSyncCajasNapLoading] = useState(false);
+  const [syncEquiposAppsheetLoading, setSyncEquiposAppsheetLoading] = useState(false);
+  const [syncEquiposAppsheetInfo, setSyncEquiposAppsheetInfo] = useState("");
   const [clientesPagina, setClientesPagina] = useState(1);
   const [usuariosSupabaseReady, setUsuariosSupabaseReady] = useState(false);
   const [usuariosSupabaseSaving, setUsuariosSupabaseSaving] = useState(false);
@@ -2959,37 +2961,36 @@ export default function App() {
       if (!dni) return;
       setClienteEquiposLoading(true);
       try {
-        // 1. Buscar liquidaciones del cliente
-        const { data: liqs } = await supabase
-          .from("liquidaciones")
-          .select("id,codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final")
-          .eq("dni", dni)
-          .order("fecha_liquidacion", { ascending: false });
-        if (!liqs?.length) return;
+        // 1. Buscar liquidaciones del cliente y equipos appsheet en paralelo
+        const [liqsRes, appsheetRes] = await Promise.all([
+          supabase.from("liquidaciones").select("id,codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final").eq("dni", dni).order("fecha_liquidacion", { ascending: false }),
+          supabase.from("liquidacion_equipos").select("id,liquidacion_id,tipo,marca,modelo,serial,codigo,accion,origen,foto_url,precio_unitario,appsheet_id").eq("cliente_dni", dni).is("liquidacion_id", null),
+        ]);
+        const liqs = liqsRes.data || [];
+        const equiposAppsheet = appsheetRes.data || [];
 
-        const liqIds = liqs.map(l => l.id);
+        // 2. Traer equipos de liquidaciones
+        let equiposLiq = [];
+        if (liqs.length) {
+          const liqIds = liqs.map(l => l.id);
+          const { data } = await supabase.from("liquidacion_equipos").select("id,liquidacion_id,tipo,marca,modelo,serial,codigo,accion,origen,foto_url,precio_unitario").in("liquidacion_id", liqIds);
+          equiposLiq = data || [];
+        }
 
-        // 2. Traer equipos de esas liquidaciones
-        const { data: equipos } = await supabase
-          .from("liquidacion_equipos")
-          .select("id,liquidacion_id,tipo,marca,modelo,serial,codigo,accion")
-          .in("liquidacion_id", liqIds);
-        if (!equipos?.length) return;
+        const todosEquipos = [...equiposLiq, ...equiposAppsheet];
+        if (!todosEquipos.length) return;
 
         // 3. Cruzar con equipos_catalogo para foto_referencia y precio
-        const codigos = [...new Set(equipos.map(e => e.codigo).filter(Boolean))];
+        const codigos = [...new Set(todosEquipos.map(e => e.codigo).filter(Boolean))];
         let catalogoMap = {};
         if (codigos.length) {
-          const { data: catalogo } = await supabase
-            .from("equipos_catalogo")
-            .select("codigo_qr,foto_referencia,precio_unitario,marca,modelo")
-            .in("codigo_qr", codigos);
+          const { data: catalogo } = await supabase.from("equipos_catalogo").select("codigo_qr,foto_referencia,precio_unitario,marca,modelo").in("codigo_qr", codigos);
           (catalogo || []).forEach(c => { catalogoMap[c.codigo_qr] = c; });
         }
 
         // 4. Combinar todo
         const liqMap = Object.fromEntries(liqs.map(l => [l.id, l]));
-        const enriquecidos = equipos.map(eq => {
+        const enriquecidos = todosEquipos.map(eq => {
           const liq = liqMap[eq.liquidacion_id] || {};
           const cat = catalogoMap[eq.codigo] || {};
           return {
@@ -3000,8 +3001,9 @@ export default function App() {
             serial: eq.serial || "",
             codigo: eq.codigo || "",
             accion: eq.accion || "",
-            fotoReferencia: cat.foto_referencia || "",
-            precioUnitario: cat.precio_unitario || null,
+            origen: eq.origen || "liquidacion",
+            fotoReferencia: cat.foto_referencia || eq.foto_url || "",
+            precioUnitario: eq.precio_unitario || cat.precio_unitario || null,
             codigoOrden: liq.codigo || "",
             tipoActuacion: liq.tipo_actuacion || "",
             fechaLiquidacion: liq.fecha_liquidacion || "",
@@ -9557,6 +9559,92 @@ export default function App() {
       window.alert("Error al sincronizar: " + (e?.message || String(e)));
     } finally {
       setSyncCajasNapLoading(false);
+    }
+  };
+
+  const sincronizarEquiposDesdeAppsheet = async () => {
+    if (!isSupabaseConfigured) return;
+    const ok = window.confirm("Esto importará los equipos del historial AppSheet a cada cliente. Solo se insertan equipos nuevos (no duplica). ¿Continuar?");
+    if (!ok) return;
+    setSyncEquiposAppsheetLoading(true);
+    setSyncEquiposAppsheetInfo("Cargando historial AppSheet...");
+    try {
+      // 1. Traer toda la tabla historial_appsheet_onus
+      const pageSize = 1000;
+      let offset = 0;
+      const allOnus = [];
+      while (true) {
+        const { data, error } = await supabase
+          .from(HIST_APPSHEET_TABLE)
+          .select("id_onu,id_register,producto,producto_codigo,marca,modelo,estado,dni,nombre_cliente,fecha_asignacion,fecha_liquidacion,tecnico_asignado_codigo,foto_etiqueta_url,foto02_url,precio_unitario,usuario_pppoe,nodo,empresa")
+          .not("dni", "is", null)
+          .neq("dni", "")
+          .order("id", { ascending: false })
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        const chunk = Array.isArray(data) ? data : [];
+        allOnus.push(...chunk);
+        if (chunk.length < pageSize) break;
+        offset += pageSize;
+      }
+      if (!allOnus.length) {
+        window.alert("No se encontraron equipos en el historial AppSheet.");
+        return;
+      }
+      setSyncEquiposAppsheetInfo(`Procesando ${allOnus.length} equipos...`);
+
+      // 2. Traer appsheet_ids ya existentes para evitar duplicados
+      const { data: existentes } = await supabase
+        .from("liquidacion_equipos")
+        .select("appsheet_id")
+        .not("appsheet_id", "is", null);
+      const existentesSet = new Set((existentes || []).map(e => String(e.appsheet_id)));
+
+      // 3. Construir filas a insertar
+      const filas = [];
+      for (const onu of allOnus) {
+        const appsheetId = String(onu.id_onu || onu.id_register || "").trim();
+        if (!appsheetId || existentesSet.has(appsheetId)) continue;
+        const estadoRaw = String(onu.estado || "").toLowerCase();
+        const accion = estadoRaw.includes("retir") || estadoRaw.includes("recuper") || estadoRaw.includes("devuel")
+          ? "Retirado" : "Instalado";
+        filas.push({
+          liquidacion_id: null,
+          cliente_dni: String(onu.dni || "").trim(),
+          tipo: String(onu.producto || "ONU/Equipo").trim(),
+          marca: String(onu.marca || "").trim(),
+          modelo: String(onu.modelo || "").trim(),
+          serial: String(onu.id_onu || "").trim(),
+          codigo: String(onu.producto_codigo || "").trim(),
+          accion,
+          origen: "appsheet",
+          appsheet_id: appsheetId,
+          foto_url: String(onu.foto_etiqueta_url || onu.foto02_url || "").trim() || null,
+          precio_unitario: Number.isFinite(Number(onu.precio_unitario)) ? Number(onu.precio_unitario) : null,
+        });
+      }
+
+      if (!filas.length) {
+        window.alert("Todos los equipos del historial AppSheet ya estaban importados.");
+        return;
+      }
+
+      // 4. Insertar en chunks de 200
+      let insertados = 0;
+      for (let i = 0; i < filas.length; i += 200) {
+        const chunk = filas.slice(i, i + 200);
+        const { error } = await supabase.from("liquidacion_equipos").insert(chunk);
+        if (!error) insertados += chunk.length;
+        setSyncEquiposAppsheetInfo(`Insertando... ${Math.min(i + 200, filas.length)}/${filas.length}`);
+      }
+
+      setSyncEquiposAppsheetInfo("");
+      window.alert(`✅ Sync completado. Se importaron ${insertados} equipos desde AppSheet.`);
+    } catch (e) {
+      window.alert("Error al sincronizar equipos: " + (e?.message || String(e)));
+      setSyncEquiposAppsheetInfo("");
+    } finally {
+      setSyncEquiposAppsheetLoading(false);
     }
   };
 
@@ -16533,6 +16621,11 @@ export default function App() {
                       {syncCajasNapLoading ? "Sincronizando..." : "Sync Cajas NAP"}
                     </button>
                   )}
+                  {esAdminSesion && (
+                    <button onClick={sincronizarEquiposDesdeAppsheet} disabled={syncEquiposAppsheetLoading} title="Importa equipos del historial AppSheet a cada cliente (solo una vez, no duplica)" style={{ padding: "8px 14px", background: "#fdf4ff", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: syncEquiposAppsheetLoading ? "wait" : "pointer" }}>
+                      {syncEquiposAppsheetLoading ? (syncEquiposAppsheetInfo || "Importando...") : "Sync Equipos AppSheet"}
+                    </button>
+                  )}
                   <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Recargar
                   </button>
@@ -17136,6 +17229,7 @@ export default function App() {
                             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
                               <span style={{ fontSize: 10, fontWeight: 800, background: "#eff6ff", color: "#163f86", padding: "2px 8px", borderRadius: 6 }}>{eq.tipo || "Equipo"}</span>
                               {eq.accion && <span style={{ fontSize: 10, fontWeight: 700, background: eq.accion.toLowerCase().includes("retir") ? "#fee2e2" : "#dcfce7", color: eq.accion.toLowerCase().includes("retir") ? "#dc2626" : "#16a34a", padding: "2px 8px", borderRadius: 6 }}>{eq.accion}</span>}
+                              {eq.origen === "appsheet" && <span style={{ fontSize: 9, fontWeight: 700, background: "#fef3c7", color: "#92400e", padding: "2px 7px", borderRadius: 6 }}>AppSheet</span>}
                             </div>
                             <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{[eq.marca, eq.modelo].filter(Boolean).join(" ") || "-"}</div>
                             {eq.serial && <div style={{ fontSize: 11, fontFamily: "monospace", color: "#475569", marginTop: 4, background: "#f1f5f9", borderRadius: 6, padding: "3px 7px", display: "inline-block" }}>S/N: {eq.serial}</div>}
