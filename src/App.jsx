@@ -2561,6 +2561,11 @@ export default function App() {
 
   const clientesFiltrados = useMemo(() => {
     const q = busquedaClientes.trim().toLowerCase();
+    const words = q ? q.split(/\s+/).filter(Boolean) : [];
+    const matchWords = (value) => {
+      const v = String(value || "").toLowerCase();
+      return words.every(w => v.includes(w));
+    };
     let lista = clientesPorNodo.filter((c) => {
       if (filtroEstadoCliente !== "TODOS") {
         const estadoNorm = c.estadoServicio || normalizarEstadoServicioCliente(c.estado || c.payload?.estado || c.payload?.Estado || "");
@@ -2570,26 +2575,9 @@ export default function App() {
         if (String(c.nodo || "").trim() !== filtroNodoCliente) return false;
       }
       if (!q) return true;
-      const equiposTexto = Array.isArray(c.equiposHistorial)
-        ? c.equiposHistorial
-            .map((e) => `${e.tipo} ${e.codigo} ${e.serial} ${e.marca} ${e.modelo}`)
-            .join(" ")
-            .toLowerCase()
-        : "";
-      return (
-        safeIncludes(c.codigoCliente, q) ||
-        safeIncludes(c.dni, q) ||
-        safeIncludes(c.nombre, q) ||
-        safeIncludes(c.celular, q) ||
-        safeIncludes(c.direccion, q) ||
-        safeIncludes(c.usuarioNodo, q) ||
-        safeIncludes(c.nodo, q) ||
-        safeIncludes(c.empresa, q) ||
-        safeIncludes(c.estado, q) ||
-        safeIncludes(c.velocidad, q) ||
-        safeIncludes(c.codigoEtiqueta, q) ||
-        equiposTexto.includes(q)
-      );
+      // Búsqueda por palabras sueltas (cualquier orden)
+      const texto = [c.codigoCliente, c.dni, c.nombre, c.celular, c.direccion, c.usuarioNodo, c.nodo, c.empresa, c.estado, c.velocidad, c.codigoEtiqueta].join(" ");
+      return matchWords(texto);
     });
     if (sortClientes.col) {
       lista = [...lista].sort((a, b) => {
