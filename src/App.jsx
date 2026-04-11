@@ -2963,18 +2963,23 @@ export default function App() {
     if (!isSupabaseConfigured) return;
 
     try {
-      // Fetch fresco: caja_nap y puerto_nap pueden haber cambiado desde el mapa
+      // Fetch fresco con campos pesados que no se cargan en el listado
       const dniCliente = String(cliente.dni || "").trim();
       if (dniCliente) {
         const { data: fresh } = await supabase
           .from("clientes")
-          .select("caja_nap,puerto_nap")
+          .select("caja_nap,puerto_nap,payload,fotos_liquidacion,historial_instalaciones,equipos_historial")
           .eq("dni", dniCliente)
           .maybeSingle();
         if (fresh) {
+          const p = fresh.payload && typeof fresh.payload === "object" ? fresh.payload : null;
           const patch = {
             cajaNap: String(fresh.caja_nap || "").trim(),
             puertoNap: String(fresh.puerto_nap || "").trim(),
+            fotosLiquidacion: Array.isArray(fresh.fotos_liquidacion) ? fresh.fotos_liquidacion : [],
+            historialInstalaciones: Array.isArray(fresh.historial_instalaciones) ? fresh.historial_instalaciones : [],
+            equiposHistorial: Array.isArray(fresh.equipos_historial) ? fresh.equipos_historial : [],
+            ...(p ? p : {}),
           };
           setClienteSeleccionado(prev => prev ? { ...prev, ...patch } : prev);
           setClientes(prev => (Array.isArray(prev) ? prev : []).map(item =>
@@ -4038,11 +4043,13 @@ export default function App() {
         return { data: all, error: null };
       };
 
+      // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
+      // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,payload,updated_at,en_mikrowisp,estado_servicio,caja_nap"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,estado_servicio,caja_nap"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
-        const fallback = await fetchAll("id,dni,nombre,payload,updated_at");
+        const fallback = await fetchAll("id,dni,nombre,updated_at");
         data = fallback.data;
         error = fallback.error;
       }
