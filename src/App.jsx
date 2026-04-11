@@ -810,6 +810,12 @@ function formatFechaFlexible(value = "") {
     const d = new Date(yyyy, mm, dd, hh, mi, ss);
     if (!Number.isNaN(d.getTime())) return d.toLocaleString("es-PE");
   }
+  // Formato DD/MM/YYYY o DD/MM/YYYY HH:MM (formato peruano)
+  const ddmmyyyy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})([\s,T](\d{2}:\d{2}(:\d{2})?))?/);
+  if (ddmmyyyy) {
+    const d = new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2].padStart(2,"0")}-${ddmmyyyy[1].padStart(2,"0")}${ddmmyyyy[5] ? "T" + ddmmyyyy[5] : ""}`);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString("es-PE");
+  }
   const iso = new Date(raw);
   if (!Number.isNaN(iso.getTime())) return iso.toLocaleString("es-PE");
   return raw;
@@ -16887,7 +16893,7 @@ export default function App() {
                               <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.usuarioNodo || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               {colsClientesVisibles.registrado && (
-                              <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? (() => { try { return new Date(cliente.fechaRegistro).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" }); } catch { return cliente.fechaRegistro; } })() : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
