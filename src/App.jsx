@@ -16887,7 +16887,7 @@ export default function App() {
                               <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.usuarioNodo || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               {colsClientesVisibles.registrado && (
-                              <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? (() => { try { return new Date(cliente.fechaRegistro).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" }); } catch { return cliente.fechaRegistro; } })() : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
