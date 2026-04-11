@@ -2990,9 +2990,10 @@ export default function App() {
 
         // 4. Combinar todo
         const liqMap = Object.fromEntries(liqs.map(l => [l.id, l]));
-        const enriquecidos = todosEquipos.map(eq => {
+        const mapped = todosEquipos.map(eq => {
           const liq = liqMap[eq.liquidacion_id] || {};
           const cat = catalogoMap[eq.codigo] || {};
+          const fechaStr = liq.fecha_liquidacion || "";
           return {
             id: eq.id,
             tipo: eq.tipo || "",
@@ -3006,10 +3007,45 @@ export default function App() {
             precioUnitario: eq.precio_unitario || cat.precio_unitario || null,
             codigoOrden: liq.codigo || "",
             tipoActuacion: liq.tipo_actuacion || "",
-            fechaLiquidacion: liq.fecha_liquidacion || "",
+            fechaLiquidacion: fechaStr,
             tecnico: liq.tecnico_liquida || "",
             resultado: liq.resultado_final || "",
+            _fechaTs: fechaStr ? new Date(fechaStr).getTime() : 0,
           };
+        });
+
+        // 5. Agrupar por serial → codigo → independiente; estado = acción más reciente
+        const esRetirado = (accion) => /retir|recuper|devuel/i.test(String(accion || ""));
+        const grupos = new Map(); // clave → [entradas ordenadas desc]
+        const sinClave = [];
+        for (const eq of mapped) {
+          const clave = eq.serial ? `sn:${eq.serial}` : eq.codigo ? `qr:${eq.codigo}` : null;
+          if (!clave) { sinClave.push(eq); continue; }
+          if (!grupos.has(clave)) grupos.set(clave, []);
+          grupos.get(clave).push(eq);
+        }
+
+        const enriquecidos = [];
+        for (const [, entradas] of grupos) {
+          const sorted = [...entradas].sort((a, b) => b._fechaTs - a._fechaTs);
+          const ultima = sorted[0];
+          const primera = sorted[sorted.length - 1];
+          enriquecidos.push({
+            ...ultima,
+            estadoActual: esRetirado(ultima.accion) ? "recuperado" : "activo",
+            fechaInstalacion: primera._fechaTs !== ultima._fechaTs ? primera.fechaLiquidacion : "",
+            tecnicoInstalacion: primera._fechaTs !== ultima._fechaTs ? primera.tecnico : "",
+            codigoOrdenInstalacion: primera._fechaTs !== ultima._fechaTs ? primera.codigoOrden : "",
+          });
+        }
+        for (const eq of sinClave) {
+          enriquecidos.push({ ...eq, estadoActual: esRetirado(eq.accion) ? "recuperado" : "activo", fechaInstalacion: "", tecnicoInstalacion: "", codigoOrdenInstalacion: "" });
+        }
+
+        // Activos primero, recuperados al final; dentro de cada grupo por fecha desc
+        enriquecidos.sort((a, b) => {
+          if (a.estadoActual !== b.estadoActual) return a.estadoActual === "activo" ? -1 : 1;
+          return b._fechaTs - a._fechaTs;
         });
 
         setClienteEquiposDetalle(enriquecidos);
@@ -17204,50 +17240,77 @@ export default function App() {
                 </div>
               )}
 
-              {/* ── Equipos instalados ── */}
-              {(clienteEquiposLoading || clienteEquiposDetalle.length > 0) && (
-                <div style={cardDet}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                    <span style={{ ...secLabel, marginBottom: 0 }}>Equipos instalados</span>
-                    {clienteEquiposLoading && <span style={{ fontSize: 11, color: "#94a3b8" }}>Cargando...</span>}
-                    {!clienteEquiposLoading && <span style={{ fontSize: 11, color: "#64748b", background: "#f1f5f9", borderRadius: 999, padding: "2px 9px", fontWeight: 700 }}>{clienteEquiposDetalle.length}</span>}
-                  </div>
-                  {!clienteEquiposLoading && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
-                      {clienteEquiposDetalle.map((eq, idx) => (
-                        <div key={eq.id || idx} style={{ background: "#f8fafc", borderRadius: 14, border: "1px solid #e8edf5", overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
-                          {/* Foto referencia */}
-                          {eq.fotoReferencia ? (
-                            <button onClick={() => abrirFotoZoom(eq.fotoReferencia, `${eq.marca} ${eq.modelo}`)} style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in", width: "100%", display: "block" }}>
-                              <img src={eq.fotoReferencia} alt={eq.modelo} style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
-                            </button>
+              {/* ── Equipos ── */}
+              {(clienteEquiposLoading || clienteEquiposDetalle.length > 0) && (() => {
+                const activos = clienteEquiposDetalle.filter(e => e.estadoActual === "activo");
+                const recuperados = clienteEquiposDetalle.filter(e => e.estadoActual === "recuperado");
+                const fmtFecha = (f) => { try { return f ? new Date(f).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" }) : ""; } catch { return f || ""; } };
+                const tarjeta = (eq, idx) => {
+                  const esRec = eq.estadoActual === "recuperado";
+                  return (
+                    <div key={eq.id || idx} style={{ background: esRec ? "#fff5f5" : "#f8fafc", borderRadius: 14, border: `1px solid ${esRec ? "#fecaca" : "#e8edf5"}`, overflow: "hidden", boxShadow: "0 1px 4px rgba(15,23,42,0.04)" }}>
+                      {eq.fotoReferencia ? (
+                        <button onClick={() => abrirFotoZoom(eq.fotoReferencia, `${eq.marca} ${eq.modelo}`)} style={{ background: "none", border: "none", padding: 0, cursor: "zoom-in", width: "100%", display: "block" }}>
+                          <img src={eq.fotoReferencia} alt={eq.modelo} style={{ width: "100%", height: 130, objectFit: "cover", display: "block", filter: esRec ? "grayscale(40%)" : "none" }} />
+                        </button>
+                      ) : (
+                        <div style={{ width: "100%", height: 80, background: esRec ? "linear-gradient(135deg,#fee2e2,#fecaca)" : "linear-gradient(135deg,#f1f5f9,#e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{esRec ? "🔄" : "📦"}</div>
+                      )}
+                      <div style={{ padding: "11px 13px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, background: "#eff6ff", color: "#163f86", padding: "2px 7px", borderRadius: 6 }}>{eq.tipo || "Equipo"}</span>
+                          <span style={{ fontSize: 10, fontWeight: 800, background: esRec ? "#fee2e2" : "#dcfce7", color: esRec ? "#dc2626" : "#16a34a", padding: "2px 7px", borderRadius: 6 }}>{esRec ? "🔴 Recuperado" : "🟢 Activo"}</span>
+                          {eq.origen === "appsheet" && <span style={{ fontSize: 9, fontWeight: 700, background: "#fef3c7", color: "#92400e", padding: "2px 6px", borderRadius: 6 }}>AppSheet</span>}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{[eq.marca, eq.modelo].filter(Boolean).join(" ") || "-"}</div>
+                        {eq.serial && <div style={{ fontSize: 11, fontFamily: "monospace", color: "#475569", marginTop: 4, background: "#f1f5f9", borderRadius: 6, padding: "3px 7px", display: "inline-block" }}>S/N: {eq.serial}</div>}
+                        {eq.codigo && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3 }}>QR: {eq.codigo}</div>}
+                        {eq.precioUnitario != null && <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", marginTop: 3 }}>S/ {Number(eq.precioUnitario).toFixed(2)}</div>}
+                        <div style={{ marginTop: 9, paddingTop: 7, borderTop: `1px solid ${esRec ? "#fecaca" : "#f1f5f9"}` }}>
+                          {esRec ? (
+                            <>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: "#dc2626", marginBottom: 2 }}>Recuperado</div>
+                              {eq.fechaLiquidacion && <div style={{ fontSize: 10, color: "#64748b" }}>{fmtFecha(eq.fechaLiquidacion)} · {eq.tecnico || "-"}</div>}
+                              {eq.codigoOrden && <div style={{ fontSize: 10, color: "#64748b" }}>Orden: <span style={{ fontWeight: 700, color: "#163f86" }}>{eq.codigoOrden}</span></div>}
+                              {eq.fechaInstalacion && (
+                                <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px dashed #fecaca" }}>
+                                  <div style={{ fontSize: 10, color: "#94a3b8" }}>Instalado originalmente:</div>
+                                  <div style={{ fontSize: 10, color: "#64748b" }}>{fmtFecha(eq.fechaInstalacion)} · {eq.tecnicoInstalacion || "-"}</div>
+                                  {eq.codigoOrdenInstalacion && <div style={{ fontSize: 10, color: "#64748b" }}>Orden: <span style={{ fontWeight: 700, color: "#163f86" }}>{eq.codigoOrdenInstalacion}</span></div>}
+                                </div>
+                              )}
+                            </>
                           ) : (
-                            <div style={{ width: "100%", height: 90, background: "linear-gradient(135deg,#f1f5f9,#e2e8f0)", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 28 }}>📦</div>
-                          )}
-                          {/* Datos */}
-                          <div style={{ padding: "12px 14px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 10, fontWeight: 800, background: "#eff6ff", color: "#163f86", padding: "2px 8px", borderRadius: 6 }}>{eq.tipo || "Equipo"}</span>
-                              {eq.accion && <span style={{ fontSize: 10, fontWeight: 700, background: eq.accion.toLowerCase().includes("retir") ? "#fee2e2" : "#dcfce7", color: eq.accion.toLowerCase().includes("retir") ? "#dc2626" : "#16a34a", padding: "2px 8px", borderRadius: 6 }}>{eq.accion}</span>}
-                              {eq.origen === "appsheet" && <span style={{ fontSize: 9, fontWeight: 700, background: "#fef3c7", color: "#92400e", padding: "2px 7px", borderRadius: 6 }}>AppSheet</span>}
-                            </div>
-                            <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{[eq.marca, eq.modelo].filter(Boolean).join(" ") || "-"}</div>
-                            {eq.serial && <div style={{ fontSize: 11, fontFamily: "monospace", color: "#475569", marginTop: 4, background: "#f1f5f9", borderRadius: 6, padding: "3px 7px", display: "inline-block" }}>S/N: {eq.serial}</div>}
-                            {eq.codigo && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>QR: {eq.codigo}</div>}
-                            {eq.precioUnitario != null && <div style={{ fontSize: 11, fontWeight: 700, color: "#16a34a", marginTop: 4 }}>S/ {Number(eq.precioUnitario).toFixed(2)}</div>}
-                            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
+                            <>
                               {eq.codigoOrden && <div style={{ fontSize: 10, color: "#64748b" }}>Orden: <span style={{ fontWeight: 700, color: "#163f86" }}>{eq.codigoOrden}</span></div>}
                               {eq.tipoActuacion && <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>{eq.tipoActuacion}</div>}
-                              {eq.fechaLiquidacion && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{new Date(eq.fechaLiquidacion).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}</div>}
+                              {eq.fechaLiquidacion && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{fmtFecha(eq.fechaLiquidacion)}</div>}
                               {eq.tecnico && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 1 }}>Técnico: {eq.tecnico}</div>}
-                            </div>
-                          </div>
+                            </>
+                          )}
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
+                  );
+                };
+                return (
+                  <div style={cardDet}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                      <span style={{ ...secLabel, marginBottom: 0 }}>Equipos</span>
+                      {clienteEquiposLoading && <span style={{ fontSize: 11, color: "#94a3b8" }}>Cargando...</span>}
+                      {!clienteEquiposLoading && <>
+                        <span style={{ fontSize: 11, color: "#16a34a", background: "#dcfce7", borderRadius: 999, padding: "2px 9px", fontWeight: 700 }}>🟢 Activos: {activos.length}</span>
+                        {recuperados.length > 0 && <span style={{ fontSize: 11, color: "#dc2626", background: "#fee2e2", borderRadius: 999, padding: "2px 9px", fontWeight: 700 }}>🔴 Recuperados: {recuperados.length}</span>}
+                      </>}
+                    </div>
+                    {!clienteEquiposLoading && (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))", gap: 12 }}>
+                        {clienteEquiposDetalle.map((eq, idx) => tarjeta(eq, idx))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}
