@@ -9576,7 +9576,7 @@ export default function App() {
       while (true) {
         const { data, error } = await supabase
           .from(HIST_APPSHEET_TABLE)
-          .select("id_onu,id_register,producto,producto_codigo,marca,modelo,estado,dni,nombre_cliente,fecha_asignacion,fecha_liquidacion,tecnico_asignado_codigo,foto_etiqueta_url,foto02_url,precio_unitario,usuario_pppoe,nodo,empresa")
+          .select("id,id_onu,id_register,producto,producto_codigo,marca,modelo,estado,dni,nombre_cliente,fecha_asignacion,fecha_liquidacion,tecnico_asignado_codigo,foto_etiqueta_url,foto02_url,precio_unitario,usuario_pppoe,nodo,empresa")
           .not("dni", "is", null)
           .neq("dni", "")
           .order("id", { ascending: false })
@@ -9603,7 +9603,7 @@ export default function App() {
       // 3. Construir filas a insertar
       const filas = [];
       for (const onu of allOnus) {
-        const appsheetId = String(onu.id_onu || onu.id_register || "").trim();
+        const appsheetId = String(onu.id_onu || onu.id_register || onu.id || "").trim();
         if (!appsheetId || existentesSet.has(appsheetId)) continue;
         const estadoRaw = String(onu.estado || "").toLowerCase();
         const accion = estadoRaw.includes("retir") || estadoRaw.includes("recuper") || estadoRaw.includes("devuel")
