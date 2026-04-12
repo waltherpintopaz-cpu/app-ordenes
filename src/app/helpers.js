@@ -165,7 +165,19 @@ export function parseCoords(value) {
 export function fechaDentroDeRango(fecha, desde, hasta) {
   if (!fecha) return true;
 
-  const fechaBase = String(fecha).slice(0, 10);
+  const raw = String(fecha).trim();
+  let fechaBase;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    fechaBase = raw;
+  } else {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) {
+      fechaBase = raw.slice(0, 10);
+    } else {
+      const p = (n) => String(n).padStart(2, "0");
+      fechaBase = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }
+  }
 
   if (desde && fechaBase < desde) return false;
   if (hasta && fechaBase > hasta) return false;
