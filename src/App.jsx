@@ -9462,6 +9462,7 @@ export default function App() {
       montoCobrar: "",
     });
     if (cajaNapFresca) cajaNapDesdClienteRef.current = true;
+    setClienteEnDB(true);
     setVistaActiva("crear");
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
