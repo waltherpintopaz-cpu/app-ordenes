@@ -373,6 +373,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
       strokeWeight: 1.5,
       fillColor: "rgba(30,79,156,0.06)",
       fillOpacity: 1,
+      clickable: false,
       zIndex: 1,
     });
 
@@ -555,6 +556,11 @@ export default function CoberturaPanel({ onCrearOrden }) {
   // ── Panel derecho (info) ───────────────────────────────────────────────────
   const infoPanel = (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
+      {/* Buscador sticky — siempre visible al top del panel */}
+      <div style={{ position: "sticky", top: 0, zIndex: 10, background: "#fff", paddingBottom: 4, marginBottom: -4 }}>
+        {searchBar}
+      </div>
+
       {error && (
         <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", color: "#dc2626", fontSize: 13 }}>
           {error}
@@ -670,11 +676,6 @@ export default function CoberturaPanel({ onCrearOrden }) {
 
       {/* ── Columna derecha: PANEL DE INFO ── */}
       <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", gap: 0, borderLeft: "1.5px solid #e2e8f0", background: "#fff", overflow: "hidden" }}>
-        {/* Header */}
-        <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>Consultar cobertura</div>
-          {searchBar}
-        </div>
         {/* Contenido scrollable */}
         <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
           {infoPanel}
