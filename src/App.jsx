@@ -14,6 +14,7 @@ import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import LogsPanel from "./components/LogsPanel";
+import CoberturaPanel from "./components/CoberturaPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -165,6 +166,7 @@ const MENU_VISTAS_WEB = [
   { key: "clientes", label: "Clientes" },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "nap", label: "Cajas NAP" },
+  { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
   { key: "logs", label: "Logs" },
 ];
@@ -172,7 +174,7 @@ const MENU_VISTAS_WEB = [
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "whatsapp", "recordatorios"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "whatsapp", "recordatorios"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
 };
@@ -237,6 +239,7 @@ const MENU_ICON_PATHS = {
   clientes: "M4 6H20V18H4V6ZM8 10H16M8 14H13",
   whatsapp: "M21 11.5C21 16.747 16.747 21 11.5 21C9.83 21 8.255 20.578 6.888 19.835L3 21L4.165 17.112C3.422 15.745 3 14.17 3 12.5C3 7.253 7.253 3 12.5 3C16.747 3 20.322 5.526 21 11.5ZM9 10H8V14H9V10ZM13 10H12C11.448 10 11 10.448 11 11V13C11 13.552 11.448 14 12 14H13C13.552 14 14 13.552 14 13V11C14 10.448 13.552 10 13 10ZM17 10H15V14H16V12.5H17V10Z",
   nap: "M12 2L4 6V12C4 15.31 7.58 19.2 12 21C16.42 19.2 20 15.31 20 12V6L12 2ZM10 17L6 13L7.41 11.59L10 14.17L16.59 7.58L18 9L10 17Z",
+  cobertura: "M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01",
 };
 
 const HIST_APPSHEET_SUBMENU_ICON_PATHS = {
@@ -17004,6 +17007,20 @@ export default function App() {
 
         {vistaActiva === "nap" && (
           <NapPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
+        )}
+
+        {vistaActiva === "cobertura" && (
+          <CoberturaPanel
+            onCrearOrden={({ ubicacion, cajaNap, nodo }) => {
+              setOrden((prev) => ({
+                ...prev,
+                ubicacion: ubicacion || prev.ubicacion,
+                cajaNap: cajaNap || prev.cajaNap,
+                nodo: nodo || prev.nodo,
+              }));
+              setVistaActiva("crear");
+            }}
+          />
         )}
 
         {vistaActiva === "recordatorios" && (
