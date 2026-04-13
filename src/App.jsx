@@ -1906,6 +1906,7 @@ export default function App() {
   const [busquedaPendientes, setBusquedaPendientes] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("TODOS");
   const [filtroTipoOrden, setFiltroTipoOrden] = useState("TODOS");
+  const [filtroNodoPendientes, setFiltroNodoPendientes] = useState("TODOS");
   const [calendarioFecha, setCalendarioFecha] = useState(() => todayIsoLocal());
   const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
@@ -10078,6 +10079,10 @@ export default function App() {
       lista = lista.filter((o) => String(o.orden || "").toUpperCase().includes("RECUPERACION"));
     }
 
+    if (filtroNodoPendientes !== "TODOS") {
+      lista = lista.filter((o) => String(o.nodo || "").trim() === filtroNodoPendientes);
+    }
+
     lista = lista.sort((a, b) =>
       String(a.tecnico || "").localeCompare(String(b.tecnico || ""))
     );
@@ -10098,7 +10103,7 @@ export default function App() {
         safeIncludes(item.tipoActuacion, q)
       );
     });
-  }, [ordenes, busquedaPendientes, filtroTecnico, filtroTipoOrden]);
+  }, [ordenes, busquedaPendientes, filtroTecnico, filtroTipoOrden, filtroNodoPendientes]);
 
   const liquidacionesFiltradas = useMemo(() => {
     const q = busquedaHistorial.trim().toLowerCase();
@@ -13080,6 +13085,12 @@ export default function App() {
                   <option value="TODOS">Todos los técnicos</option>
                   <option value="SIN">Sin técnico</option>
                   {tecnicosActivos.map((tec) => <option key={tec.id} value={tec.nombre}>{tec.nombre}</option>)}
+                </select>
+                <select style={{ ...inputStyle, maxWidth: "160px" }} value={filtroNodoPendientes} onChange={(e) => setFiltroNodoPendientes(e.target.value)}>
+                  <option value="TODOS">Todos los nodos</option>
+                  {[...new Set(ordenes.filter(o => esEstadoOperativoOrden(o?.estado) && o.nodo).map(o => String(o.nodo).trim()).filter(Boolean))].sort().map(nodo => (
+                    <option key={nodo} value={nodo}>{nodo}</option>
+                  ))}
                 </select>
                 <input style={{ ...inputStyle, maxWidth: "400px" }} value={busquedaPendientes} onChange={(e) => setBusquedaPendientes(e.target.value)} placeholder="Buscar por código, DNI, cliente..." />
               </div>
