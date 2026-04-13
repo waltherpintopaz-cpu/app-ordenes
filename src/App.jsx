@@ -3726,7 +3726,8 @@ export default function App() {
       accesosHistorialAppsheet: row.accesos_menu,
       accesosDiagnosticoServicio: row.accesos_menu,
       nodosAcceso: row.nodos_acceso,
-      sesion_token: row.sesion_token || null,
+      sesion_token_web: row.sesion_token_web || null,
+      sesion_token_mobile: row.sesion_token_mobile || null,
       ultimo_acceso: row.ultimo_acceso || null,
     });
 
@@ -3780,7 +3781,7 @@ export default function App() {
   const cerrarSesionRemota = async (userId) => {
     if (!window.confirm("¿Cerrar la sesión activa de este usuario? Será desconectado automáticamente.")) return;
     try {
-      await supabase.from(USUARIOS_TABLE).update({ sesion_token: null, forzar_logout: true }).eq("id", userId);
+      await supabase.from(USUARIOS_TABLE).update({ sesion_token_web: null, sesion_token_mobile: null, forzar_logout: true }).eq("id", userId);
       await cargarUsuariosDesdeSupabase({ silent: true });
       window.alert("Sesión cerrada. El usuario será redirigido al login en breve.");
     } catch {
@@ -3793,7 +3794,7 @@ export default function App() {
     try {
       const queryPromise = supabase
         .from(USUARIOS_TABLE)
-        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,sesion_token,ultimo_acceso")
+        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,sesion_token_web,sesion_token_mobile,ultimo_acceso")
         .order("id", { ascending: true })
         .limit(5000);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000));
@@ -4808,7 +4809,7 @@ export default function App() {
     // Generar token de sesión y registrar acceso
     const token = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
     try {
-      await supabase.from(USUARIOS_TABLE).update({ sesion_token: token, ultimo_acceso: new Date().toISOString() }).eq("id", encontrado.supabaseId ?? encontrado.id);
+      await supabase.from(USUARIOS_TABLE).update({ sesion_token_web: token, ultimo_acceso: new Date().toISOString() }).eq("id", encontrado.supabaseId ?? encontrado.id);
     } catch { /* no bloquear login */ }
     localStorage.setItem("sesionToken", token);
     // Sincronizar usuario actualizado al estado local
@@ -4847,9 +4848,9 @@ export default function App() {
     let cancelled = false;
     const verificarSesion = async () => {
       try {
-        let res = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token, forzar_logout").eq("id", usuarioSesionId).maybeSingle();
+        let res = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token_web, forzar_logout").eq("id", usuarioSesionId).maybeSingle();
         if (res.error && String(res.error?.message || "").toLowerCase().includes("forzar_logout")) {
-          res = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token").eq("id", usuarioSesionId).maybeSingle();
+          res = await supabase.from(USUARIOS_TABLE).select("activo, sesion_token_web").eq("id", usuarioSesionId).maybeSingle();
         }
         const { data } = res;
         if (cancelled || !data) return;
@@ -4871,7 +4872,7 @@ export default function App() {
           return;
         }
         const tokenLocal = localStorage.getItem("sesionToken");
-        if (tokenLocal && data.sesion_token && data.sesion_token !== tokenLocal) {
+        if (tokenLocal && data.sesion_token_web && data.sesion_token_web !== tokenLocal) {
           if (sessionIdleTimeoutRef.current) { window.clearTimeout(sessionIdleTimeoutRef.current); sessionIdleTimeoutRef.current = null; }
           localStorage.removeItem("sesionToken");
           setUsuarioSesionId(null);
@@ -16412,7 +16413,8 @@ export default function App() {
                                     {usuario.activo
                                       ? <span style={{ color: "#16A34A", fontSize: 11, fontWeight: 600 }}>Activo</span>
                                       : <span style={{ color: "#DC2626", fontSize: 11, fontWeight: 600 }}>Inactivo</span>}
-                                    {usuario.sesion_token && <span style={{ color: "#16A34A", fontSize: 11, fontWeight: 600 }}>• En línea</span>}
+                                    {usuario.sesion_token_web && <span style={{ color: "#16A34A", fontSize: 11, fontWeight: 600 }}>• Web</span>}
+                                    {usuario.sesion_token_mobile && <span style={{ color: "#0284c7", fontSize: 11, fontWeight: 600 }}>• Móvil</span>}
                                   </div>
                                   <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
                                     <span>{usuario.username || "-"}</span>
@@ -16445,7 +16447,7 @@ export default function App() {
                                     style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", color: usuario.activo ? "#6B7280" : "#16A34A", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
                                     {usuario.activo ? "Desactivar" : "Activar"}
                                   </button>
-                                  {esAdminSesion && usuario.sesion_token && (
+                                  {esAdminSesion && (usuario.sesion_token_web || usuario.sesion_token_mobile) && (
                                     <button onClick={() => cerrarSesionRemota(usuario.id)}
                                       style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #DDD6FE", background: "#F5F3FF", color: "#7C3AED", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
                                       Cerrar sesión
