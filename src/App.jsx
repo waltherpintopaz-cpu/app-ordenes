@@ -3906,6 +3906,8 @@ export default function App() {
       fotosLiquidacion: Array.isArray(row.fotos_liquidacion) ? row.fotos_liquidacion : [],
       historialInstalaciones: Array.isArray(row.historial_instalaciones) ? row.historial_instalaciones : [],
       equiposHistorial: Array.isArray(row.equipos_historial) ? row.equipos_historial : [],
+      mikrotikSuspensionIp: row.mikrotik_suspension_ip || "",
+      mikrotikUltimaAccion: row.mikrotik_ultima_accion || "",
       ...signalFields,
     };
   };
@@ -4165,7 +4167,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,estado_servicio,caja_nap"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
