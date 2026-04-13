@@ -349,44 +349,6 @@ export default function CoberturaPanel({ onCrearOrden }) {
     }, 80);
   }, [fullscreen]); // eslint-disable-line
 
-  // ── Overlay de pulso CSS (HTML puro sobre el mapa) ────────────────────────
-  class PulseOverlay extends window.google?.maps?.OverlayView {
-    constructor(position, maps) {
-      super();
-      this.position = position;
-      this._maps = maps;
-      this.div = null;
-    }
-    onAdd() {
-      const div = document.createElement("div");
-      div.style.cssText = "position:absolute;width:0;height:0;overflow:visible;pointer-events:none;";
-      const ring1 = document.createElement("div");
-      ring1.style.cssText = `position:absolute;width:40px;height:40px;border-radius:50%;border:2px solid rgba(29,78,216,0.6);background:rgba(29,78,216,0.15);transform-origin:center;left:-20px;top:-20px;`;
-      ring1.className = "cob-pulse-ring1";
-      const ring2 = document.createElement("div");
-      ring2.style.cssText = `position:absolute;width:40px;height:40px;border-radius:50%;border:2px solid rgba(29,78,216,0.45);background:rgba(29,78,216,0.1);transform-origin:center;left:-20px;top:-20px;`;
-      ring2.className = "cob-pulse-ring2";
-      div.appendChild(ring1);
-      div.appendChild(ring2);
-      this.div = div;
-      this.getPanes().overlayMouseTarget.appendChild(div);
-    }
-    draw() {
-      if (!this.div) return;
-      const proj = this.getProjection();
-      if (!proj) return;
-      const pt = proj.fromLatLngToDivPixel(this.position);
-      if (!pt) return;
-      this.div.style.left = `${pt.x}px`;
-      this.div.style.top = `${pt.y}px`;
-    }
-    onRemove() {
-      if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
-      this.div = null;
-    }
-    setPosition(pos) { this.position = pos; this.draw(); }
-  }
-
   // ── Actualizar overlays cuando cambia ubicacion o cajasEnRadio ───────────
   useEffect(() => {
     if (!mapReady || !mapRef.current || !mapsRef.current) return;
@@ -414,9 +376,43 @@ export default function CoberturaPanel({ onCrearOrden }) {
       zIndex: 1,
     });
 
-    // Pulso CSS overlay
-    if (window.google?.maps?.OverlayView) {
-      const overlay = new PulseOverlay(new maps.LatLng(ubicacion.lat, ubicacion.lng), maps);
+    // Pulso CSS overlay — clase definida aquí adentro donde maps ya está disponible
+    if (maps.OverlayView) {
+      class PulseOverlay extends maps.OverlayView {
+        constructor(position) {
+          super();
+          this.position = position;
+          this.div = null;
+        }
+        onAdd() {
+          const div = document.createElement("div");
+          div.style.cssText = "position:absolute;width:0;height:0;overflow:visible;pointer-events:none;";
+          const ring1 = document.createElement("div");
+          ring1.style.cssText = "position:absolute;width:40px;height:40px;border-radius:50%;border:2px solid rgba(29,78,216,0.6);background:rgba(29,78,216,0.15);transform-origin:center;left:-20px;top:-20px;";
+          ring1.className = "cob-pulse-ring1";
+          const ring2 = document.createElement("div");
+          ring2.style.cssText = "position:absolute;width:40px;height:40px;border-radius:50%;border:2px solid rgba(29,78,216,0.45);background:rgba(29,78,216,0.1);transform-origin:center;left:-20px;top:-20px;";
+          ring2.className = "cob-pulse-ring2";
+          div.appendChild(ring1);
+          div.appendChild(ring2);
+          this.div = div;
+          this.getPanes().overlayMouseTarget.appendChild(div);
+        }
+        draw() {
+          if (!this.div) return;
+          const proj = this.getProjection();
+          if (!proj) return;
+          const pt = proj.fromLatLngToDivPixel(this.position);
+          if (!pt) return;
+          this.div.style.left = `${pt.x}px`;
+          this.div.style.top = `${pt.y}px`;
+        }
+        onRemove() {
+          if (this.div?.parentNode) this.div.parentNode.removeChild(this.div);
+          this.div = null;
+        }
+      }
+      const overlay = new PulseOverlay(new maps.LatLng(ubicacion.lat, ubicacion.lng));
       overlay.setMap(mapRef.current);
       pulseOverlayRef.current = overlay;
     }
