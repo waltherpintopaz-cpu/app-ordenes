@@ -1628,6 +1628,7 @@ export default function App() {
   const [orden, setOrden] = useState(buildInitialOrder());
   const [ordenEditandoId, setOrdenEditandoId] = useState(null);
   const [buscandoDni, setBuscandoDni] = useState(false);
+  const [clienteEnDB, setClienteEnDB] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
   const [enviarWhatsappOrden, setEnviarWhatsappOrden] = useState(true);
   const [vistaActiva, setVistaActiva] = useState(() => {
@@ -7658,6 +7659,7 @@ export default function App() {
       }
 
       if (clienteInterno) {
+        setClienteEnDB(true);
         // Verificar si hay múltiples servicios para este DNI
         const { data: todosServicios } = await supabase
           .from("clientes")
@@ -7938,6 +7940,7 @@ export default function App() {
     setOrden(buildInitialOrder());
     setFotosClienteDni([]);
     setEnviarWhatsappOrden(true);
+    setClienteEnDB(false);
     setVistaActiva("pendientes");
   };
 
@@ -12499,7 +12502,7 @@ export default function App() {
                   <div>
                     <label style={labelStyle}>DNI</label>
                     <div style={{ display: "flex", gap: "8px" }}>
-                      <input style={inputStyle} value={orden.dni} onChange={(e) => handleChange("dni", e.target.value)} placeholder="Ingrese DNI" maxLength={8} />
+                      <input style={inputStyle} value={orden.dni} onChange={(e) => { handleChange("dni", e.target.value); setClienteEnDB(false); }} placeholder="Ingrese DNI" maxLength={8} />
                       <button
                         onClick={buscarDni}
                         style={lupaButtonStyle}
@@ -12660,19 +12663,23 @@ export default function App() {
                       </div>
                     </>
                   )}
-                  <div>
-                    <label style={labelStyle}>SN ONU</label>
-                    <input style={inputStyle} value={orden.snOnu} onChange={(e) => handleChange("snOnu", e.target.value)} placeholder="Serial ONU" />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Código de etiqueta</label>
-                    <input
-                      style={inputStyle}
-                      value={orden.codigoEtiqueta || ""}
-                      onChange={(e) => handleChange("codigoEtiqueta", e.target.value)}
-                      placeholder="Etiqueta del cliente (auto desde cliente)"
-                    />
-                  </div>
+                  {clienteEnDB && (
+                    <>
+                      <div>
+                        <label style={labelStyle}>SN ONU</label>
+                        <input style={inputStyle} value={orden.snOnu} onChange={(e) => handleChange("snOnu", e.target.value)} placeholder="Serial ONU" />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Código de etiqueta</label>
+                        <input
+                          style={inputStyle}
+                          value={orden.codigoEtiqueta || ""}
+                          onChange={(e) => handleChange("codigoEtiqueta", e.target.value)}
+                          placeholder="Etiqueta del cliente (auto desde cliente)"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
