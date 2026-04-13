@@ -3878,6 +3878,8 @@ export default function App() {
         empresa: row.empresa || p.empresa || "",
         codigoAbonado: row.codigo_abonado || p.codigoAbonado || "",
         estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
+        mikrotikSuspensionIp: row.mikrotik_suspension_ip || p.mikrotikSuspensionIp || "",
+        mikrotikUltimaAccion: row.mikrotik_ultima_accion || p.mikrotikUltimaAccion || "",
         ...signalFields,
       };
     }
