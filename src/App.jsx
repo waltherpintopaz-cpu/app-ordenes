@@ -2616,7 +2616,7 @@ export default function App() {
       });
     }
     return lista;
-  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente, filtroNodoCliente, sortClientes]);
+  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente, filtroNodoCliente, sortClientes, filtroSuspendidosMk]);
 
   const conteosEstadoCliente = useMemo(() => {
     const base = filtroNodoCliente === "TODOS" ? clientesPorNodo : clientesPorNodo.filter(c => String(c.nodo || "").trim() === filtroNodoCliente);
