@@ -518,84 +518,85 @@ export default function CoberturaPanel({ onCrearOrden }) {
     </div>
   );
 
-  return (
-    <div style={{ display: "grid", gap: 18, maxWidth: 900, margin: "0 auto" }}>
-      {/* ── Buscador de dirección ── */}
-      <div style={{ position: "relative" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "8px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-          <input
-            value={searchQ}
-            onChange={e => onSearchChange(e.target.value)}
-            placeholder="Buscar dirección, distrito, zona..."
-            style={{ flex: 1, border: "none", outline: "none", fontSize: 14, color: "#1e293b", background: "transparent" }}
-            onKeyDown={e => { if (e.key === "Enter" && searchQ.trim().length >= 3) onSearchChange(searchQ); }}
-          />
-          {searchLoading && <Spinner size={16} />}
-          {searchQ.length > 0 && !searchLoading && (
-            <button onClick={() => { setSearchQ(""); setSearchRes([]); setShowSearchRes(false); }} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, color: "#94a3b8", fontSize: 18, lineHeight: 1 }}>×</button>
-          )}
-        </div>
-        {showSearchRes && searchRes.length > 0 && (
-          <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 999, overflow: "hidden" }}>
-            {searchRes.map((item, i) => (
-              <button key={i} onClick={() => elegirResultado(item)}
-                style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "none", padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "#374151", borderBottom: i < searchRes.length - 1 ? "1px solid #f1f5f9" : "none" }}
-                onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                onMouseLeave={e => e.currentTarget.style.background = "none"}
-              >
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>{item.display_name?.split(",")[0]}</div>
-                <div style={{ color: "#94a3b8", fontSize: 11 }}>{item.display_name}</div>
-              </button>
-            ))}
-          </div>
+  // ── Buscador ─────────────────────────────────────────────────────────────
+  const searchBar = (
+    <div style={{ position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input
+          value={searchQ}
+          onChange={e => onSearchChange(e.target.value)}
+          placeholder="Buscar dirección, distrito, zona..."
+          style={{ flex: 1, border: "none", outline: "none", fontSize: 14, color: "#1e293b", background: "transparent" }}
+          onKeyDown={e => { if (e.key === "Enter" && searchQ.trim().length >= 3) onSearchChange(searchQ); }}
+        />
+        {searchLoading && <Spinner size={15} />}
+        {searchQ.length > 0 && !searchLoading && (
+          <button onClick={() => { setSearchQ(""); setSearchRes([]); setShowSearchRes(false); }} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, color: "#94a3b8", fontSize: 18, lineHeight: 1 }}>×</button>
         )}
       </div>
-
-      {/* ── Mapa principal ── */}
-      {!fullscreen && mapContainer(420, mapCanvasRef)}
-
-      {/* ── Modal fullscreen ── */}
-      {fullscreen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000", display: "flex", flexDirection: "column" }}>
-          {mapContainer("100%", mapCanvasFullRef)}
+      {showSearchRes && searchRes.length > 0 && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", zIndex: 999, overflow: "hidden" }}>
+          {searchRes.map((item, i) => (
+            <button key={i} onClick={() => elegirResultado(item)}
+              style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "none", padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "#374151", borderBottom: i < searchRes.length - 1 ? "1px solid #f1f5f9" : "none" }}
+              onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+              onMouseLeave={e => e.currentTarget.style.background = "none"}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>{item.display_name?.split(",")[0]}</div>
+              <div style={{ color: "#94a3b8", fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.display_name}</div>
+            </button>
+          ))}
         </div>
       )}
+    </div>
+  );
 
+  // ── Panel derecho (info) ───────────────────────────────────────────────────
+  const infoPanel = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
       {error && (
         <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "10px 14px", color: "#dc2626", fontSize: 13 }}>
           {error}
         </div>
       )}
-
       {cargando && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: 13 }}>
-          <Spinner size={15} /> Cargando cajas NAP...
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#64748b", fontSize: 13, padding: "4px 0" }}>
+          <Spinner size={14} /> Cargando cajas NAP...
         </div>
       )}
 
-      {/* ── Banner de cobertura ── */}
+      {/* Banner cobertura */}
       {coverageBanner()}
 
-      {/* ── Nodo detectado ── */}
+      {/* Nodo detectado */}
       {nodoDetectado && (
         <div style={{ background: nodoColores.bg, border: `1.5px solid ${nodoColores.border}`, borderRadius: 12, padding: "14px 18px" }}>
-          <div style={{ fontSize: 11, color: nodoColores.text, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Nodo asignado</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: nodoColores.text }}>{nodoDetectado}</div>
+          <div style={{ fontSize: 10, color: nodoColores.text, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Nodo asignado</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: nodoColores.text, lineHeight: 1 }}>{nodoDetectado}</div>
           {cajaMejor && (
-            <div style={{ fontSize: 12, color: nodoColores.text, marginTop: 4, opacity: 0.8 }}>
-              Caja sugerida: {cajaMejor.codigo} · {formatDist(cajaMejor.distancia)}
+            <div style={{ fontSize: 12, color: nodoColores.text, marginTop: 6, opacity: 0.85 }}>
+              Caja sugerida: <b>{cajaMejor.codigo}</b> · {formatDist(cajaMejor.distancia)}
               {cajaMejor.capacidad > 0 && ` · ${cajaMejor.libres}/${cajaMejor.capacidad} libres`}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Lista de cajas cercanas ── */}
+      {/* Botón crear orden */}
+      {cajaMejor && (
+        <button onClick={handleCrearOrden}
+          style={{ background: "linear-gradient(135deg,#1d4ed8,#2563eb)", color: "#fff", border: "none", borderRadius: 12, padding: "13px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 12px rgba(29,78,216,0.3)", flexShrink: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Crear orden · {cajaMejor.codigo} · {nodoDetectado}
+        </button>
+      )}
+
+      {/* Lista de cajas */}
       {ubicacion && cajasEnRadio.length > 0 && (
-        <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 14 }}>Cajas NAP cercanas</span>
+        <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
+          <div style={{ padding: "11px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 13 }}>Cajas NAP cercanas</span>
             <span style={{ fontSize: 12, color: "#64748b" }}>{cajasEnRadio.length} en 500 m</span>
           </div>
           {cajasVista.map((c, idx) => {
@@ -605,36 +606,31 @@ export default function CoberturaPanel({ onCrearOrden }) {
             const portColor = c.llena ? "#dc2626" : portPct >= 75 ? "#ea580c" : "#16a34a";
             return (
               <div key={c.id} onClick={() => setCajaSeleccionada(prev => prev?.id === c.id ? null : { ...c })}
-                style={{ padding: "12px 16px", borderBottom: idx < cajasVista.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer", background: isSel ? "#fff7ed" : "#fff", display: "flex", gap: 12, alignItems: "center", transition: "background 0.15s" }}
+                style={{ padding: "10px 14px", borderBottom: idx < cajasVista.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer", background: isSel ? "#fff7ed" : "#fff", display: "flex", gap: 10, alignItems: "center", transition: "background 0.15s" }}
                 onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "#f8fafc"; }}
                 onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "#fff"; }}
               >
-                {/* Ícono caja */}
-                <div style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <img src={napBoxSvg(portColor, isSel, c.llena)} width={isSel ? 22 : 18} height={isSel ? 31 : 26} alt="" />
+                <div style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <img src={napBoxSvg(portColor, isSel, c.llena)} width={isSel ? 20 : 16} height={isSel ? 29 : 23} alt="" />
                 </div>
-                {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: isSel ? "#f97316" : "#1e293b" }}>{c.codigo}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: nc.text, background: nc.bg, border: `1px solid ${nc.border}`, borderRadius: 6, padding: "1px 7px" }}>{c.nodo}</span>
-                    {idx === 0 && !cajaSeleccionada && <span style={{ fontSize: 10, fontWeight: 700, color: "#15803d", background: "#dcfce7", borderRadius: 6, padding: "1px 7px" }}>Mejor</span>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: isSel ? "#f97316" : "#1e293b" }}>{c.codigo}</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: nc.text, background: nc.bg, border: `1px solid ${nc.border}`, borderRadius: 5, padding: "1px 6px" }}>{c.nodo}</span>
+                    {idx === 0 && !cajaSeleccionada && <span style={{ fontSize: 10, fontWeight: 700, color: "#15803d", background: "#dcfce7", borderRadius: 5, padding: "1px 6px" }}>Mejor</span>}
                   </div>
-                  <div style={{ display: "flex", gap: 10, fontSize: 12, color: "#64748b" }}>
+                  <div style={{ display: "flex", gap: 8, fontSize: 11, color: "#64748b" }}>
                     <span>{formatDist(c.distancia)}</span>
                     {c.sector && <span>· {c.sector}</span>}
-                    {c.capacidad > 0 && (
-                      <span style={{ color: portColor, fontWeight: 600 }}>· {c.libres}/{c.capacidad} libres</span>
-                    )}
+                    {c.capacidad > 0 && <span style={{ color: portColor, fontWeight: 600 }}>· {c.libres}/{c.capacidad} libres</span>}
                   </div>
                 </div>
-                {/* Barra de ocupación */}
                 {c.capacidad > 0 && (
-                  <div style={{ width: 40, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                    <div style={{ width: 36, height: 5, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${portPct}%`, background: portColor, borderRadius: 3 }} />
+                  <div style={{ width: 36, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                    <div style={{ width: 32, height: 4, borderRadius: 2, background: "#e2e8f0", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${portPct}%`, background: portColor, borderRadius: 2 }} />
                     </div>
-                    <span style={{ fontSize: 10, color: portColor, fontWeight: 600 }}>{portPct}%</span>
+                    <span style={{ fontSize: 10, color: portColor, fontWeight: 700 }}>{portPct}%</span>
                   </div>
                 )}
               </div>
@@ -642,7 +638,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
           })}
           {cajasEnRadio.length > LISTA_INICIAL && (
             <button onClick={() => setListaExpandida(v => !v)}
-              style={{ width: "100%", padding: "10px 16px", border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 13, color: "#1d4ed8", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              style={{ width: "100%", padding: "9px 14px", border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 12, color: "#1d4ed8", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
               {listaExpandida ? "▲ Ver menos" : `▼ Ver ${cajasEnRadio.length - LISTA_INICIAL} más`}
             </button>
           )}
@@ -650,18 +646,46 @@ export default function CoberturaPanel({ onCrearOrden }) {
       )}
 
       {ubicacion && cajasEnRadio.length === 0 && !cargando && (
-        <div style={{ textAlign: "center", color: "#64748b", fontSize: 14, padding: "20px 0" }}>
+        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "24px 0" }}>
           Sin cajas NAP en 500 m de radio
         </div>
       )}
 
-      {/* ── Botón Crear orden ── */}
-      {cajaMejor && (
-        <button onClick={handleCrearOrden}
-          style={{ background: "linear-gradient(135deg, #1d4ed8, #2563eb)", color: "#fff", border: "none", borderRadius: 12, padding: "14px 24px", fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 12px rgba(29,78,216,0.3)" }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          Crear orden · {cajaMejor.codigo} · {nodoDetectado}
-        </button>
+      {!ubicacion && !cargando && (
+        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 13, padding: "32px 16px", lineHeight: 1.6 }}>
+          Usa el buscador, el GPS o haz clic en el mapa para establecer la ubicación del cliente
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    /* Layout desktop: mapa izquierda (flex), panel derecha (380px fijo) */
+    <div style={{ display: "flex", gap: 0, height: "calc(100vh - 110px)", minHeight: 500, overflow: "hidden", borderRadius: 14, border: "1.5px solid #e2e8f0", background: "#f8fafc", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+
+      {/* ── Columna izquierda: MAPA ── */}
+      <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
+        {!fullscreen && mapContainer("100%", mapCanvasRef)}
+      </div>
+
+      {/* ── Columna derecha: PANEL DE INFO ── */}
+      <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", gap: 0, borderLeft: "1.5px solid #e2e8f0", background: "#fff", overflow: "hidden" }}>
+        {/* Header */}
+        <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#1e293b", marginBottom: 10 }}>Consultar cobertura</div>
+          {searchBar}
+        </div>
+        {/* Contenido scrollable */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+          {infoPanel}
+        </div>
+      </div>
+
+      {/* ── Fullscreen modal ── */}
+      {fullscreen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#000" }}>
+          {mapContainer("100%", mapCanvasFullRef)}
+        </div>
       )}
 
       {/* ── Modal link/coords ── */}
