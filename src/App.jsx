@@ -1982,13 +1982,12 @@ export default function App() {
   const mostrarCamposPlan =
     orden.tipoActuacion === "Instalacion Internet" ||
     orden.tipoActuacion === "Instalacion Internet y Cable";
-  const mostrarCamposUsuario = orden.generarUsuario === "SI";
+  const mostrarCamposUsuario = true;
   const hasText = (v) => Boolean(String(v || "").trim());
   const checklistCrearOrden = [
     // Paso 1: Datos de la orden
     { key: "empresa", ok: hasText(orden.empresa), label: "Empresa" },
     { key: "codigo", ok: hasText(orden.codigo), label: "Código" },
-    { key: "generarUsuario", ok: hasText(orden.generarUsuario), label: "Generar usuario" },
     { key: "orden", ok: hasText(orden.orden), label: "Orden" },
     { key: "tipoActuacion", ok: hasText(orden.tipoActuacion), label: "Tipo actuación" },
     { key: "fechaActuacion", ok: hasText(orden.fechaActuacion), label: "Fecha" },
@@ -12427,14 +12426,6 @@ export default function App() {
                   <div>
                     <label style={labelStyle}>Código</label>
                     <input style={inputStyle} value={orden.codigo} onChange={(e) => handleChange("codigo", e.target.value)} placeholder="ORD-0001-2026" />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>Generar usuario</label>
-                    <select style={inputStyle} value={orden.generarUsuario} onChange={(e) => handleChange("generarUsuario", e.target.value)}>
-                      <option>SI</option>
-                      <option>NO</option>
-                    </select>
                   </div>
 
                   <div>
