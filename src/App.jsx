@@ -3522,18 +3522,31 @@ export default function App() {
       const json = await ejecutarDiagnosticoServicioActionRequest(accionLabel, payload);
       const result = json?.result || {};
       const estadoCliente = accion === "suspender" ? "Suspendido" : "Activo";
+      const estadoServicioNuevo = accion === "suspender" ? "SUSPENDIDO" : "ACTIVO";
       aplicarEstadoMikrotikEnCliente(cliente, {
         estado: estadoCliente,
+        estadoServicio: estadoServicioNuevo,
         mikrotikSuspensionIp: accion === "suspender" ? result?.ip || "" : "",
         mikrotikSuspensionFecha: new Date().toISOString(),
         mikrotikSuspensionRouter: result?.router?.nombre || "",
         mikrotikUltimaAccion: accionLabel,
       });
+      // Persistir en Supabase
+      if (isSupabaseConfigured && cliente?.id) {
+        supabase.from("clientes").update({
+          estado_servicio: estadoServicioNuevo,
+          mikrotik_suspension_ip: accion === "suspender" ? result?.ip || "" : "",
+          mikrotik_ultima_accion: accionLabel,
+        }).eq("id", cliente.id).then(({ error }) => {
+          if (error) console.warn("No se pudo persistir estado MikroTik en Supabase:", error.message);
+        });
+      }
       const accionInfo = String(result?.message || `Acción ${accionLabel} ejecutada correctamente.`);
       if (clienteDiagnosticoRapido) {
         await abrirDiagnosticoRapidoCliente({
           ...cliente,
           estado: estadoCliente,
+          estadoServicio: estadoServicioNuevo,
           mikrotikSuspensionIp: accion === "suspender" ? result?.ip || "" : "",
         });
       }
