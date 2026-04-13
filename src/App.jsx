@@ -1780,6 +1780,7 @@ export default function App() {
   const [busquedaClientes, setBusquedaClientes] = useState("");
   const [busquedaClientesDraft, setBusquedaClientesDraft] = useState("");
   const [filtroEstadoCliente, setFiltroEstadoCliente] = useState("TODOS");
+  const [filtroSuspendidosMk, setFiltroSuspendidosMk] = useState(false);
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
@@ -2583,6 +2584,9 @@ export default function App() {
       return words.every(w => v.includes(w));
     };
     let lista = clientesPorNodo.filter((c) => {
+      if (filtroSuspendidosMk) {
+        if (!String(c.mikrotikUltimaAccion || "").toLowerCase().includes("suspender") && !String(c.mikrotikSuspensionIp || "").trim()) return false;
+      }
       if (filtroEstadoCliente !== "TODOS") {
         const estadoNorm = c.estadoServicio || normalizarEstadoServicioCliente(c.estado || c.payload?.estado || c.payload?.Estado || "");
         if (estadoNorm !== filtroEstadoCliente) return false;
@@ -16773,6 +16777,9 @@ export default function App() {
                       </button>
                     );
                   })}
+                  <button type="button" onClick={() => setFiltroSuspendidosMk(v => !v)} style={{ padding: "7px 12px", border: "1.5px solid", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: filtroSuspendidosMk ? "#dc2626" : "#f8fafc", borderColor: filtroSuspendidosMk ? "#dc2626" : "#e2e8f0", color: filtroSuspendidosMk ? "#fff" : "#475569" }}>
+                    ⏸ MikroTik
+                  </button>
                 </div>
               </div>
 
