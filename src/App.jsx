@@ -2115,6 +2115,26 @@ export default function App() {
     void cargarClientesDesdeSupabase({ silent: true });
   }, []);
 
+  // Realtime: refleja cambios de estado_servicio hechos desde la app mobile u otro usuario
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const channel = supabase
+      .channel("clientes-estado-web")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "clientes" }, (payload) => {
+        const nuevo = payload.new;
+        if (!nuevo?.id || !nuevo?.estado_servicio) return;
+        setClientes((prev) =>
+          prev.map((c) =>
+            String(c.id) === String(nuevo.id)
+              ? { ...c, estadoServicio: nuevo.estado_servicio, estado_servicio: nuevo.estado_servicio, mikrotikSuspensionIp: nuevo.mikrotik_suspension_ip ?? c.mikrotikSuspensionIp, mikrotikUltimaAccion: nuevo.mikrotik_ultima_accion ?? c.mikrotikUltimaAccion }
+              : c
+          )
+        );
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     if (!clientesSupabaseReady) return;
