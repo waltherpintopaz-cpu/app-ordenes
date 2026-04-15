@@ -12729,7 +12729,20 @@ export default function App() {
 
                   <div>
                     <label style={labelStyle}>Celular</label>
-                    <input style={inputStyle} value={orden.celular} onChange={(e) => handleChange("celular", e.target.value)} placeholder="999999999" />
+                    <input
+                      style={inputStyle}
+                      value={orden.celular}
+                      onChange={(e) => handleChange("celular", e.target.value)}
+                      onBlur={(e) => {
+                        const raw = e.target.value.replace(/\D/g, "");
+                        if (!raw) return;
+                        const formatted = raw.startsWith("51") ? raw : `51${raw}`;
+                        handleChange("celular", formatted);
+                        // auto-completar contacto si está vacío
+                        if (!orden.contacto) handleChange("contacto", `${formatted}@c.us`);
+                      }}
+                      placeholder="999999999"
+                    />
                   </div>
 
                   <div>
@@ -12739,7 +12752,18 @@ export default function App() {
 
                   <div style={fullWidth}>
                     <label style={labelStyle}>Contacto</label>
-                    <input style={inputStyle} value={orden.contacto} onChange={(e) => handleChange("contacto", e.target.value)} placeholder="51999999999@c.us" />
+                    <input
+                      style={inputStyle}
+                      value={orden.contacto}
+                      onChange={(e) => handleChange("contacto", e.target.value)}
+                      onBlur={(e) => {
+                        const raw = e.target.value.replace(/\D/g, "");
+                        if (!raw || e.target.value.includes("@")) return;
+                        const formatted = raw.startsWith("51") ? raw : `51${raw}`;
+                        handleChange("contacto", `${formatted}@c.us`);
+                      }}
+                      placeholder="51999999999@c.us"
+                    />
                   </div>
                 </div>
               </div>
