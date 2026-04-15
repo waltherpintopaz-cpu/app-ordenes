@@ -9631,7 +9631,7 @@ export default function App() {
     const rawFmt = raw && !raw.startsWith("51") ? `51${raw}` : raw;
     // Validar: número peruano válido = 11 dígitos (51 + 9). Si es más largo, es basura.
     const celularFormateado = rawFmt.length <= 11 ? rawFmt : "";
-    const contactoFinal = contactoOverride || firstText(cliente.contacto) || "";
+    const contactoFinal = contactoOverride ?? "";
     setOrdenEditandoId(null);
     setOrden({
       ...base,
@@ -9711,7 +9711,9 @@ export default function App() {
     const preselect = numeros[0] || (rawCel.length >= 9 ? `51${rawCel.slice(-9)}` : "");
     setModalSelCelular({ cliente, numeros });
     setSelCelularPrincipal(preselect);
-    setSelCelularContacto("");
+    setSelCelularContacto(numeros[1] || ""); // auto-seleccionar segundo número como contacto
+    setSelManualPrincipal(false);
+    setSelManualContacto(false);
   };
 
   const abrirEditarCliente = (cli) => {
