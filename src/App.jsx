@@ -1818,6 +1818,9 @@ export default function App() {
   const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
+  const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
+  const [liqCliData, setLiqCliData] = useState([]);
+  const [liqCliLoading, setLiqCliLoading] = useState(false);
   const [importCsvLoading, setImportCsvLoading] = useState(false);
   const [importCsvInfo, setImportCsvInfo] = useState("");
   const [clientesSupabaseReady, setClientesSupabaseReady] = useState(false);
@@ -2923,6 +2926,22 @@ export default function App() {
       else window.alert(`Error al guardar: ${msg}`);
     } catch (e) { window.alert(e.message); }
     finally { setMkwCliLoading((p) => ({ ...p, [cid]: false })); }
+  };
+
+  const abrirLiquidacionCliente = async (cliente) => {
+    setModalLiqCliente(cliente);
+    setLiqCliData([]);
+    setLiqCliLoading(true);
+    try {
+      const dni = String(cliente.dni || "").trim();
+      const { data } = await supabase
+        .from("liquidaciones")
+        .select("codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,medio_pago,cobro_realizado")
+        .eq("dni", dni)
+        .order("fecha_liquidacion", { ascending: false });
+      setLiqCliData(data || []);
+    } catch (_) {}
+    finally { setLiqCliLoading(false); }
   };
 
   const mkwSincronizarMasivo = async () => {
@@ -17321,7 +17340,7 @@ export default function App() {
                     <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
-                  {MIKROWISP_NODOS.includes(String(cli.nodo || "")) && esAdminSesion && (() => {
+                  {MIKROWISP_NODOS.includes(String(cli.nodo || "")) && (() => {
                     const id = String(cli.id || cli.dni || "");
                     const yaAgregado = cli.en_mikrowisp || mikrowisp_ok[id];
                     const cargando = mikrowisp_loading[id];
@@ -17336,6 +17355,11 @@ export default function App() {
                       </button>
                     );
                   })()}
+                  {cli.dni && (
+                    <button onClick={() => void abrirLiquidacionCliente(cli)} style={{ padding: "8px 15px", background: "#faf5ff", border: "1.5px solid #d8b4fe", borderRadius: 10, color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      📋 Liquidación
+                    </button>
+                  )}
                   {esAdminSesion && <button onClick={() => abrirEditarCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>}
                   {esAdminSesion && <button onClick={() => void eliminarCliente(cli)} style={{ padding: "8px 13px", background: "#dc2626", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Eliminar</button>}
                   <button onClick={() => setVistaActiva("clientes")} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
@@ -17607,6 +17631,75 @@ export default function App() {
             </div>
           );
         })()}
+
+        {/* ── Modal liquidación de instalación ── */}
+        {modalLiqCliente && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalLiqCliente(null)}>
+            <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 560, maxHeight: "85vh", overflow: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.25)" }} onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div style={{ background: "linear-gradient(135deg,#7c3aed,#6d28d9)", borderRadius: "20px 20px 0 0", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ color: "#fff", fontWeight: 800, fontSize: 15 }}>📋 Liquidación de instalación</div>
+                  <div style={{ color: "#ddd6fe", fontSize: 12, marginTop: 2 }}>{modalLiqCliente.nombre}</div>
+                </div>
+                <button onClick={() => setModalLiqCliente(null)} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: "pointer", fontWeight: 700 }}>×</button>
+              </div>
+              {/* Plan info */}
+              <div style={{ padding: "16px 24px", borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Plan contratado</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ background: "#faf5ff", borderRadius: 10, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>VELOCIDAD</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#7c3aed" }}>{modalLiqCliente.velocidad || "—"}</div>
+                  </div>
+                  <div style={{ background: "#f0fdf4", borderRadius: 10, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>PRECIO PLAN</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#16a34a" }}>S/ {modalLiqCliente.precio_plan || "—"}</div>
+                  </div>
+                </div>
+              </div>
+              {/* Liquidaciones */}
+              <div style={{ padding: "16px 24px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Historial de pagos</div>
+                {liqCliLoading ? (
+                  <div style={{ textAlign: "center", padding: 24, color: "#94a3b8" }}>Cargando...</div>
+                ) : liqCliData.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: 24, color: "#94a3b8", fontSize: 13 }}>Sin liquidaciones registradas</div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {liqCliData.map((liq, i) => (
+                      <div key={i} style={{ background: "#f8fafc", borderRadius: 12, padding: "12px 16px", border: "1px solid #e2e8f0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#163f86" }}>{liq.codigo || "—"}</span>
+                          <span style={{ fontSize: 10, background: liq.resultado_final === "Completada" ? "#dcfce7" : "#fef3c7", color: liq.resultado_final === "Completada" ? "#16a34a" : "#92400e", padding: "2px 8px", borderRadius: 6, fontWeight: 700 }}>{liq.resultado_final || "—"}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700 }}>MONTO COBRADO</div>
+                            <div style={{ fontWeight: 800, color: "#16a34a", fontSize: 14 }}>S/ {liq.monto_cobrado ?? "—"}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700 }}>FORMA DE PAGO</div>
+                            <div style={{ fontWeight: 700, color: "#0f172a" }}>{liq.medio_pago || "—"}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700 }}>COBRO</div>
+                            <div style={{ fontWeight: 700, color: liq.cobro_realizado === "SI" ? "#16a34a" : "#dc2626" }}>{liq.cobro_realizado || "—"}</div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11, color: "#64748b" }}>
+                          <span>Tipo: {liq.tipo_actuacion || "—"}</span>
+                          <span>Técnico: {liq.tecnico_liquida || "—"}</span>
+                          {liq.fecha_liquidacion && <span>{new Date(liq.fecha_liquidacion).toLocaleDateString("es-PE")}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Modal editar cliente (admin) ── */}
         {modalEditarCliente && esAdminSesion && (() => {
