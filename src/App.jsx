@@ -1819,6 +1819,8 @@ export default function App() {
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
+  const [modalSelCelular, setModalSelCelular] = useState(null); // { cliente, numeros: [] }
+  const [celularManualSel, setCelularManualSel] = useState("");
   const [liqCliData, setLiqCliData] = useState([]);
   const [liqCliLoading, setLiqCliLoading] = useState(false);
   const [importCsvLoading, setImportCsvLoading] = useState(false);
@@ -9615,12 +9617,16 @@ export default function App() {
     setMikrotikConfigError("");
   };
 
-  const crearOrdenDesdeCliente = (cliente = {}) => {
+  const _ejecutarCrearOrdenDesdeCliente = (cliente = {}, celularOverride = null) => {
     const base = buildInitialOrder();
     const random = Math.floor(1000 + Math.random() * 9000);
     const year = new Date().getFullYear();
     const cajaNapFresca = firstText(cliente.cajaNap, cliente.caja_nap);
     const puertoNapFresco = firstText(cliente.puertoNap, cliente.puerto_nap);
+    const celularFinal = celularOverride || firstText(cliente.celular);
+    const raw = celularFinal.replace(/\D/g, "");
+    const celularFormateado = raw && !raw.startsWith("51") ? `51${raw}` : raw;
+    const contactoFinal = celularFormateado ? `${celularFormateado}@c.us` : firstText(cliente.contacto);
     setOrdenEditandoId(null);
     setOrden({
       ...base,
@@ -9632,9 +9638,9 @@ export default function App() {
       dni: firstText(cliente.dni),
       nombre: firstText(cliente.nombre),
       direccion: firstText(cliente.direccion),
-      celular: firstText(cliente.celular),
+      celular: celularFormateado || firstText(cliente.celular),
       email: firstText(cliente.email),
-      contacto: firstText(cliente.contacto),
+      contacto: contactoFinal,
       velocidad: firstText(cliente.velocidad),
       precioPlan: firstText(cliente.precioPlan),
       nodo: firstText(cliente.nodo),
@@ -9673,6 +9679,30 @@ export default function App() {
           }
         } catch { /* silencioso */ }
       })();
+    }
+  };
+
+  const crearOrdenDesdeCliente = async (cliente = {}) => {
+    // Recopilar todos los números únicos del cliente
+    const numeros = [];
+    const agregar = (n) => {
+      const raw = String(n || "").replace(/\D/g, "").trim();
+      if (!raw || raw.length < 7) return;
+      const fmt = raw.startsWith("51") ? raw : `51${raw}`;
+      if (!numeros.includes(fmt)) numeros.push(fmt);
+    };
+    agregar(cliente.celular);
+    // Buscar números adicionales en mikrowisp_clientes
+    if (isSupabaseConfigured && cliente.dni) {
+      try {
+        const { data } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("cedula", String(cliente.dni).trim()).maybeSingle();
+        if (data?.telefonos) data.telefonos.split(",").forEach(agregar);
+      } catch { /* silencioso */ }
+    }
+    if (numeros.length <= 1) {
+      _ejecutarCrearOrdenDesdeCliente(cliente, numeros[0] || null);
+    } else {
+      setModalSelCelular({ cliente, numeros });
     }
   };
 
@@ -17667,6 +17697,51 @@ export default function App() {
                   </div>
                 );
               })()}
+            </div>
+          );
+        })()}
+
+        {/* ── Modal selector de celular al crear orden ── */}
+        {modalSelCelular && (() => {
+          const confirmar = (num) => {
+            setModalSelCelular(null);
+            setCelularManualSel("");
+            _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, num);
+          };
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalSelCelular(null)}>
+              <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 400, boxShadow: "0 20px 50px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+                <div style={{ background: "linear-gradient(135deg,#f97316,#ea580c)", padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>Seleccionar número</div>
+                    <div style={{ color: "#fed7aa", fontSize: 11, marginTop: 2 }}>{modalSelCelular.cliente.nombre}</div>
+                  </div>
+                  <button onClick={() => setModalSelCelular(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: "pointer", fontWeight: 700 }}>×</button>
+                </div>
+                <div style={{ padding: "16px 20px" }}>
+                  <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>Elige el número de contacto para esta orden:</p>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {modalSelCelular.numeros.map((num) => (
+                      <button key={num} onClick={() => confirmar(num)} style={{ padding: "10px 16px", background: "#fff7ed", border: "1.5px solid #fed7aa", borderRadius: 10, color: "#c2410c", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
+                        📱 {num}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 14, borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
+                    <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 8px" }}>O ingresa un número manualmente:</p>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        value={celularManualSel}
+                        onChange={e => setCelularManualSel(e.target.value)}
+                        placeholder="989521677"
+                        style={{ flex: 1, padding: "8px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none" }}
+                        onKeyDown={e => e.key === "Enter" && celularManualSel.trim() && confirmar(celularManualSel.trim())}
+                      />
+                      <button onClick={() => celularManualSel.trim() && confirmar(celularManualSel.trim())} style={{ padding: "8px 14px", background: "#f97316", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Usar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           );
         })()}
