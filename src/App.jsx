@@ -7885,6 +7885,18 @@ export default function App() {
           codigoEtiqueta: clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
         }));
         if (clienteInterno.caja_nap) cajaNapDesdClienteRef.current = true;
+        // Mostrar selector de número si tiene múltiples celulares
+        const numsSel = [];
+        const agregarSel = (n) => { const r = String(n||"").replace(/\D/g,"").trim(); if(!r||r.length<7) return; const f=r.startsWith("51")?r:`51${r}`; if(f.length<=11&&!numsSel.includes(f)) numsSel.push(f); };
+        String(clienteInterno.celular||"").split(",").forEach(agregarSel);
+        if (isSupabaseConfigured) {
+          try { const {data:mkw} = await supabase.from("mikrowisp_clientes").select("telefonos").eq("cedula",dni).maybeSingle(); if(mkw?.telefonos) mkw.telefonos.split(",").forEach(agregarSel); } catch {}
+        }
+        if (numsSel.length > 0) {
+          setSelCelularPrincipal(numsSel[0]); setSelCelularContacto(numsSel[1]||"");
+          setSelManualPrincipal(false); setSelManualContacto(false);
+          setModalSelCelular({ cliente: clienteInterno, numeros: numsSel, updateOnly: true });
+        }
         // Cargar todas las fotos del cliente
         const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
         const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
@@ -17724,7 +17736,13 @@ export default function App() {
             setModalSelCelular(null);
             setSelCelularPrincipal(""); setSelCelularContacto("");
             setSelManualPrincipal(false); setSelManualContacto(false);
-            _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, principal, contacto || null);
+            if (modalSelCelular.updateOnly) {
+              // Solo actualizar campos en la orden actual
+              handleChange("celular", principal);
+              handleChange("contacto", contacto);
+            } else {
+              _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, principal, contacto || null);
+            }
           };
           const chip = (num, isSelected, onSelect) => (
             <button key={num} onClick={() => onSelect(isSelected ? "" : num)}
