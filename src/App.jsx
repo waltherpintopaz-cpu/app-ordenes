@@ -2866,7 +2866,8 @@ export default function App() {
 
   const mkwConsultarCedula = async (cedula) => {
     const { ok, status, json } = await mkFetch("GetInvoices", { cedula: String(cedula).trim() });
-    if (!ok && status !== 200) throw new Error(`HTTP ${status}`);
+    if (status === 404) throw new Error("Cédula no encontrada en MikroWisp");
+    if (!ok) throw new Error(json?.mensaje || `Error HTTP ${status}`);
     if (json.estado !== "exito" || !Array.isArray(json.datos) || json.datos.length === 0)
       throw new Error(json.mensaje || "Sin resultados para esa cédula");
     return json.datos;
