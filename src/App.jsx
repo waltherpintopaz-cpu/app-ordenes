@@ -1820,7 +1820,8 @@ export default function App() {
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
   const [modalSelCelular, setModalSelCelular] = useState(null); // { cliente, numeros: [] }
-  const [celularManualSel, setCelularManualSel] = useState("");
+  const [selCelularPrincipal, setSelCelularPrincipal] = useState("");
+  const [selCelularContacto, setSelCelularContacto] = useState("");
   const [liqCliData, setLiqCliData] = useState([]);
   const [liqCliLoading, setLiqCliLoading] = useState(false);
   const [importCsvLoading, setImportCsvLoading] = useState(false);
@@ -9617,7 +9618,7 @@ export default function App() {
     setMikrotikConfigError("");
   };
 
-  const _ejecutarCrearOrdenDesdeCliente = (cliente = {}, celularOverride = null) => {
+  const _ejecutarCrearOrdenDesdeCliente = (cliente = {}, celularOverride = null, contactoOverride = null) => {
     const base = buildInitialOrder();
     const random = Math.floor(1000 + Math.random() * 9000);
     const year = new Date().getFullYear();
@@ -9626,7 +9627,7 @@ export default function App() {
     const celularFinal = celularOverride || firstText(cliente.celular);
     const raw = celularFinal.replace(/\D/g, "");
     const celularFormateado = raw && !raw.startsWith("51") ? `51${raw}` : raw;
-    const contactoFinal = celularFormateado ? `${celularFormateado}@c.us` : firstText(cliente.contacto);
+    const contactoFinal = contactoOverride || (celularFormateado ? `${celularFormateado}@c.us` : firstText(cliente.contacto));
     setOrdenEditandoId(null);
     setOrden({
       ...base,
@@ -17703,30 +17704,52 @@ export default function App() {
 
         {/* ── Modal selector de celular al crear orden ── */}
         {modalSelCelular && (() => {
-          const confirmar = (num) => {
+          const numeros = modalSelCelular.numeros;
+          const confirmar = () => {
+            if (!selCelularPrincipal) return;
             setModalSelCelular(null);
-            setCelularManualSel("");
-            _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, num);
+            const raw = selCelularContacto.replace(/\D/g, "");
+            const contacto = raw ? (raw.startsWith("51") ? raw : `51${raw}`) : "";
+            _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, selCelularPrincipal, contacto || null);
+            setSelCelularPrincipal(""); setSelCelularContacto("");
           };
+          const btnNum = (num, selected, onSelect) => (
+            <button key={num} onClick={() => onSelect(selected === num ? "" : num)}
+              style={{ padding: "9px 14px", background: selected === num ? "#fff7ed" : "#f8fafc", border: `1.5px solid ${selected === num ? "#f97316" : "#e2e8f0"}`, borderRadius: 10, color: selected === num ? "#c2410c" : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14 }}>{selected === num ? "✓" : "📱"}</span> {num}
+            </button>
+          );
           return (
             <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalSelCelular(null)}>
-              <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 400, boxShadow: "0 20px 50px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+              <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 420, boxShadow: "0 20px 50px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
                 <div style={{ background: "linear-gradient(135deg,#f97316,#ea580c)", padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>Seleccionar número</div>
+                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>Seleccionar números</div>
                     <div style={{ color: "#fed7aa", fontSize: 11, marginTop: 2 }}>{modalSelCelular.cliente.nombre}</div>
                   </div>
                   <button onClick={() => setModalSelCelular(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: "pointer", fontWeight: 700 }}>×</button>
                 </div>
-                <div style={{ padding: "16px 20px" }}>
-                  <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 12px" }}>Elige el número de contacto para esta orden:</p>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {modalSelCelular.numeros.map((num) => (
-                      <button key={num} onClick={() => confirmar(num)} style={{ padding: "10px 16px", background: "#fff7ed", border: "1.5px solid #fed7aa", borderRadius: 10, color: "#c2410c", fontSize: 13, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
-                        📱 {num}
-                      </button>
-                    ))}
+                <div style={{ padding: "16px 20px", display: "grid", gap: 16 }}>
+                  {/* Celular principal */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#f97316", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Celular principal *</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {numeros.map(num => btnNum(num, selCelularPrincipal, setSelCelularPrincipal))}
+                    </div>
                   </div>
+                  {/* Contacto adicional */}
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contacto adicional (opcional)</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {numeros.filter(n => n !== selCelularPrincipal).map(num => btnNum(num, selCelularContacto, setSelCelularContacto))}
+                    </div>
+                    {numeros.filter(n => n !== selCelularPrincipal).length === 0 && (
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>No hay otros números disponibles</div>
+                    )}
+                  </div>
+                  <button onClick={confirmar} disabled={!selCelularPrincipal} style={{ padding: "11px", background: selCelularPrincipal ? "#f97316" : "#e2e8f0", color: selCelularPrincipal ? "#fff" : "#94a3b8", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: selCelularPrincipal ? "pointer" : "default" }}>
+                    Crear orden
+                  </button>
                 </div>
               </div>
             </div>
