@@ -1816,6 +1816,8 @@ export default function App() {
   const [mkwError, setMkwError] = useState("");
   const [mkwMasivoLoading, setMkwMasivoLoading] = useState(false);
   const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
+  const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
+  const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [importCsvLoading, setImportCsvLoading] = useState(false);
   const [importCsvInfo, setImportCsvInfo] = useState("");
   const [clientesSupabaseReady, setClientesSupabaseReady] = useState(false);
@@ -2906,6 +2908,21 @@ export default function App() {
       else setMkwError(msg);
     } catch (e) { setMkwError(e.message); }
     finally { setMkwBuscando(false); }
+  };
+
+  const mkwSincronizarCliente = async (cliente) => {
+    const dni = String(cliente.dni || "").replace(/\D/g, "").trim();
+    if (!dni) return window.alert("El cliente no tiene DNI registrado.");
+    const cid = String(cliente.id || dni);
+    setMkwCliLoading((p) => ({ ...p, [cid]: true }));
+    setMkwCliOk((p) => ({ ...p, [cid]: false }));
+    try {
+      const datos = await mkwConsultarCedula(dni);
+      const { ok, msg } = await mkwUpsert(datos);
+      if (ok) setMkwCliOk((p) => ({ ...p, [cid]: true }));
+      else window.alert(`Error al guardar: ${msg}`);
+    } catch (e) { window.alert(e.message); }
+    finally { setMkwCliLoading((p) => ({ ...p, [cid]: false })); }
   };
 
   const mkwSincronizarMasivo = async () => {
@@ -17176,6 +17193,21 @@ export default function App() {
                                         style={{ padding: "6px 9px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", color: yaAgregado ? "#16a34a" : "#92400e", border: `1px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer", whiteSpace: "nowrap" }}
                                       >
                                         {cargando ? "..." : yaAgregado ? "✓ MW" : "MW+"}
+                                      </button>
+                                    );
+                                  })()}
+                                  {esAdminSesion && cliente.dni && (() => {
+                                    const cid = String(cliente.id || cliente.dni || "");
+                                    const cargando = mkwCliLoading[cid];
+                                    const sincOk = mkwCliOk[cid];
+                                    return (
+                                      <button
+                                        onClick={() => void mkwSincronizarCliente(cliente)}
+                                        disabled={cargando}
+                                        title="Sincronizar con MikroWisp"
+                                        style={{ padding: "6px 9px", background: sincOk ? "#f0fdf4" : "#f0f9ff", color: sincOk ? "#16a34a" : "#0369a1", border: `1px solid ${sincOk ? "#86efac" : "#bae6fd"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: cargando ? "wait" : "pointer", whiteSpace: "nowrap" }}
+                                      >
+                                        {cargando ? "⏳" : sincOk ? "✓ MW" : "📱 MW"}
                                       </button>
                                     );
                                   })()}
