@@ -9626,7 +9626,9 @@ export default function App() {
     const puertoNapFresco = firstText(cliente.puertoNap, cliente.puerto_nap);
     const celularFinal = celularOverride || firstText(cliente.celular);
     const raw = celularFinal.replace(/\D/g, "");
-    const celularFormateado = raw && !raw.startsWith("51") ? `51${raw}` : raw;
+    const rawFmt = raw && !raw.startsWith("51") ? `51${raw}` : raw;
+    // Validar: número peruano válido = 11 dígitos (51 + 9). Si es más largo, es basura.
+    const celularFormateado = rawFmt.length <= 11 ? rawFmt : "";
     const contactoFinal = contactoOverride || (celularFormateado ? `${celularFormateado}@c.us` : firstText(cliente.contacto));
     setOrdenEditandoId(null);
     setOrden({
@@ -9690,6 +9692,8 @@ export default function App() {
       const raw = String(n || "").replace(/\D/g, "").trim();
       if (!raw || raw.length < 7) return;
       const fmt = raw.startsWith("51") ? raw : `51${raw}`;
+      // Solo números válidos: 51 + 9 dígitos = 11 dígitos máximo
+      if (fmt.length > 11) return;
       if (!numeros.includes(fmt)) numeros.push(fmt);
     };
     agregar(cliente.celular);
