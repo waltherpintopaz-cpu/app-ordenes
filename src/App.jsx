@@ -2832,8 +2832,7 @@ export default function App() {
   };
 
   // ── MikroWisp: consulta por cédula y guarda en mikrowisp_clientes ──
-  const MKW_URL   = "https://americanet.club/api/v1/GetInvoices";
-  const MKW_TOKEN = "Smx2SVdkbUZIdjlCUlkxdFo1cUNMQT09";
+  const MKW_PROXY = "https://vgwbqbzpjlbkmxtfghdm.supabase.co/functions/v1/mikrowisp-proxy";
 
   const mkwUpsert = async (datos) => {
     // datos puede ser un objeto o array — tomamos el primero con movil
@@ -2866,10 +2865,10 @@ export default function App() {
   };
 
   const mkwConsultarCedula = async (cedula) => {
-    const res = await fetch(MKW_URL, {
+    const res = await fetch(MKW_PROXY, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: MKW_TOKEN, cedula: String(cedula).trim() }),
+      body: JSON.stringify({ cedula: String(cedula).trim() }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
