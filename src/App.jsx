@@ -1808,6 +1808,14 @@ export default function App() {
   const [clientesSyncLoading, setClientesSyncLoading] = useState(false);
   const [clientesSyncInfo, setClientesSyncInfo] = useState("");
   const [clientesSyncError, setClientesSyncError] = useState("");
+  // ── MikroWisp sync ──
+  const [mkwPanelAbierto, setMkwPanelAbierto] = useState(false);
+  const [mkwCedula, setMkwCedula] = useState("");
+  const [mkwBuscando, setMkwBuscando] = useState(false);
+  const [mkwResultado, setMkwResultado] = useState(null);
+  const [mkwError, setMkwError] = useState("");
+  const [mkwMasivoLoading, setMkwMasivoLoading] = useState(false);
+  const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
   const [importCsvLoading, setImportCsvLoading] = useState(false);
   const [importCsvInfo, setImportCsvInfo] = useState("");
   const [clientesSupabaseReady, setClientesSupabaseReady] = useState(false);
@@ -2821,6 +2829,101 @@ export default function App() {
     } finally {
       setMikrowispLoading((p) => ({ ...p, [id]: false }));
     }
+  };
+
+  // ── MikroWisp: consulta por cédula y guarda en mikrowisp_clientes ──
+  const MKW_URL   = "https://americanet.club/api/v1/GetInvoices";
+  const MKW_TOKEN = "Smx2SVdkbUZIdjlCUlkxdFo1cUNMQT09";
+
+  const mkwUpsert = async (datos) => {
+    // datos puede ser un objeto o array — tomamos el primero con movil
+    const d = Array.isArray(datos) ? datos[0] : datos;
+    if (!d?.id) return { ok: false, msg: "Sin id en respuesta" };
+    const movil = String(d.movil || "").trim();
+    const nodo = d.servicios?.[0]?.nodo ?? null;
+    const { data: existing } = await supabase
+      .from("mikrowisp_clientes")
+      .select("telefonos")
+      .eq("mikrowisp_id", d.id)
+      .maybeSingle();
+    let telefonos = movil;
+    if (existing) {
+      const actuales = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
+      if (movil && !actuales.includes(movil)) actuales.push(movil);
+      telefonos = actuales.join(",");
+    }
+    const row = {
+      mikrowisp_id: d.id,
+      cedula:       String(d.cedula || "").trim(),
+      nombre:       String(d.nombre || "").trim(),
+      telefonos,
+      estado:       String(d.estado || "").trim(),
+      nodo:         nodo ? Number(nodo) : null,
+      updated_at:   new Date().toISOString(),
+    };
+    const { error } = await supabase.from("mikrowisp_clientes").upsert(row, { onConflict: "mikrowisp_id" });
+    return { ok: !error, msg: error?.message || "OK", row };
+  };
+
+  const mkwConsultarCedula = async (cedula) => {
+    const res = await fetch(MKW_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: MKW_TOKEN, cedula: String(cedula).trim() }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.estado !== "exito" || !Array.isArray(json.datos) || json.datos.length === 0)
+      throw new Error(json.mensaje || "Sin resultados para esa cédula");
+    return json.datos;
+  };
+
+  const mkwBuscarIndividual = async () => {
+    const cedula = mkwCedula.trim();
+    if (!cedula) return;
+    setMkwBuscando(true); setMkwError(""); setMkwResultado(null);
+    try {
+      const datos = await mkwConsultarCedula(cedula);
+      setMkwResultado(datos[0]);
+    } catch (e) {
+      setMkwError(e.message);
+    } finally {
+      setMkwBuscando(false);
+    }
+  };
+
+  const mkwGuardarResultado = async () => {
+    if (!mkwResultado) return;
+    setMkwBuscando(true);
+    try {
+      const { ok, msg } = await mkwUpsert([mkwResultado]);
+      if (ok) { setMkwResultado(null); setMkwCedula(""); setMkwError("✓ Guardado correctamente"); }
+      else setMkwError(msg);
+    } catch (e) { setMkwError(e.message); }
+    finally { setMkwBuscando(false); }
+  };
+
+  const mkwSincronizarMasivo = async () => {
+    if (!esAdminSesion) return;
+    const clientesConDni = clientes.filter(c => String(c?.dni || "").trim().length >= 5);
+    if (clientesConDni.length === 0) { setMkwMasivoInfo("No hay clientes con DNI registrado."); return; }
+    setMkwMasivoLoading(true);
+    let ok = 0, err = 0, nuevo = 0;
+    for (let i = 0; i < clientesConDni.length; i++) {
+      const c = clientesConDni[i];
+      setMkwMasivoInfo(`Consultando ${i + 1}/${clientesConDni.length} — ${c.nombre || c.dni}...`);
+      try {
+        const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""));
+        const { data: prev } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id).maybeSingle();
+        const res = await mkwUpsert(datos);
+        if (res.ok) { ok++; if (!prev) nuevo++; }
+        else err++;
+      } catch (_) { err++; }
+      // pequeña pausa para no saturar la API
+      await new Promise(r => setTimeout(r, 300));
+    }
+    setMkwMasivoLoading(false);
+    setMkwMasivoInfo(`✓ Listo — ${ok} guardados (${nuevo} nuevos), ${err} errores de ${clientesConDni.length} clientes.`);
   };
 
   const actualizarEstadoMasivoMikrowisp = async () => {
@@ -16741,6 +16844,11 @@ export default function App() {
                   <button onClick={() => setMostrarColsModal(true)} style={{ padding: "8px 14px", background: "#f8f4ff", color: "#6d28d9", border: "1px solid #ddd6fe", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     ⊞ Columnas
                   </button>
+                  {esAdminSesion && (
+                    <button onClick={() => { setMkwPanelAbierto(v => !v); setMkwError(""); setMkwResultado(null); }} style={{ padding: "8px 14px", background: mkwPanelAbierto ? "#0f172a" : "#f0f9ff", color: mkwPanelAbierto ? "#fff" : "#0369a1", border: "1px solid #7dd3fc", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      📱 MikroWisp
+                    </button>
+                  )}
                 </div>
 
                 {/* ── Modal columnas visibles ── */}
@@ -16786,6 +16894,67 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {/* ── Panel MikroWisp Sync ── */}
+              {esAdminSesion && mkwPanelAbierto && (
+                <div style={{ background: "#f0f9ff", border: "1px solid #7dd3fc", borderRadius: 14, padding: "18px 20px", marginBottom: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                    <div>
+                      <span style={{ fontWeight: 800, fontSize: 14, color: "#0369a1" }}>📱 Sincronización MikroWisp</span>
+                      <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>Consulta por cédula y guarda en <code>mikrowisp_clientes</code> para n8n</p>
+                    </div>
+                    <button onClick={() => setMkwPanelAbierto(false)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#94a3b8" }}>✕</button>
+                  </div>
+
+                  {/* Individual */}
+                  <div style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", marginBottom: 12, border: "1px solid #e0f2fe" }}>
+                    <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 12, color: "#0f172a" }}>Consulta individual por cédula</p>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        value={mkwCedula}
+                        onChange={e => { setMkwCedula(e.target.value); setMkwResultado(null); setMkwError(""); }}
+                        onKeyDown={e => e.key === "Enter" && mkwBuscarIndividual()}
+                        placeholder="Ingresa la cédula / DNI"
+                        style={{ flex: 1, padding: "8px 12px", border: "1.5px solid #bae6fd", borderRadius: 8, fontSize: 13, outline: "none" }}
+                      />
+                      <button onClick={mkwBuscarIndividual} disabled={mkwBuscando || !mkwCedula.trim()} style={{ padding: "8px 16px", background: "#0369a1", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        {mkwBuscando ? "Buscando..." : "Consultar"}
+                      </button>
+                    </div>
+                    {/* Resultado preview */}
+                    {mkwResultado && (
+                      <div style={{ marginTop: 12, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "12px 14px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", fontSize: 12, color: "#166534", marginBottom: 10 }}>
+                          <span><b>ID:</b> {mkwResultado.id}</span>
+                          <span><b>Nombre:</b> {mkwResultado.nombre}</span>
+                          <span><b>Cédula:</b> {mkwResultado.cedula}</span>
+                          <span><b>Móvil:</b> {mkwResultado.movil || "—"}</span>
+                          <span><b>Estado:</b> {mkwResultado.estado}</span>
+                          <span><b>Nodo:</b> {mkwResultado.servicios?.[0]?.nodo ?? "—"}</span>
+                        </div>
+                        <button onClick={mkwGuardarResultado} disabled={mkwBuscando} style={{ padding: "7px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          ✓ Guardar en Supabase
+                        </button>
+                      </div>
+                    )}
+                    {mkwError && (
+                      <p style={{ margin: "8px 0 0", fontSize: 12, color: mkwError.startsWith("✓") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{mkwError}</p>
+                    )}
+                  </div>
+
+                  {/* Masivo */}
+                  <div style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", border: "1px solid #e0f2fe" }}>
+                    <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 12, color: "#0f172a" }}>Sincronización masiva</p>
+                    <p style={{ margin: "0 0 10px", fontSize: 11, color: "#64748b" }}>Consulta MikroWisp por el DNI de cada cliente registrado en tu sistema ({clientes.filter(c => String(c?.dni || "").trim().length >= 5).length} con DNI)</p>
+                    <button onClick={mkwSincronizarMasivo} disabled={mkwMasivoLoading} style={{ padding: "8px 18px", background: mkwMasivoLoading ? "#94a3b8" : "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: mkwMasivoLoading ? "wait" : "pointer" }}>
+                      {mkwMasivoLoading ? "⏳ Sincronizando..." : "🔄 Sincronizar todos"}
+                    </button>
+                    {mkwMasivoInfo && (
+                      <p style={{ margin: "8px 0 0", fontSize: 12, color: mkwMasivoInfo.startsWith("✓") ? "#16a34a" : "#0369a1", fontWeight: 600 }}>{mkwMasivoInfo}</p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* ── Búsqueda + filtros estado ── */}
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
