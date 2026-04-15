@@ -9696,7 +9696,7 @@ export default function App() {
       if (fmt.length > 11) return;
       if (!numeros.includes(fmt)) numeros.push(fmt);
     };
-    agregar(cliente.celular);
+    String(cliente.celular || "").split(",").forEach(agregar);
     // Buscar números adicionales en mikrowisp_clientes
     if (isSupabaseConfigured && cliente.dni) {
       try {
