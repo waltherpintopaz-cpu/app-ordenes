@@ -9629,7 +9629,7 @@ export default function App() {
     const rawFmt = raw && !raw.startsWith("51") ? `51${raw}` : raw;
     // Validar: número peruano válido = 11 dígitos (51 + 9). Si es más largo, es basura.
     const celularFormateado = rawFmt.length <= 11 ? rawFmt : "";
-    const contactoFinal = contactoOverride || (celularFormateado ? `${celularFormateado}@c.us` : firstText(cliente.contacto));
+    const contactoFinal = contactoOverride || firstText(cliente.contacto) || "";
     setOrdenEditandoId(null);
     setOrden({
       ...base,
@@ -9704,11 +9704,9 @@ export default function App() {
         if (data?.telefonos) data.telefonos.split(",").forEach(agregar);
       } catch { /* silencioso */ }
     }
-    if (numeros.length <= 1) {
-      _ejecutarCrearOrdenDesdeCliente(cliente, numeros[0] || null);
-    } else {
-      setModalSelCelular({ cliente, numeros });
-    }
+    setModalSelCelular({ cliente, numeros });
+    setSelCelularPrincipal(numeros[0] || "");
+    setSelCelularContacto("");
   };
 
   const abrirEditarCliente = (cli) => {
@@ -12774,7 +12772,7 @@ export default function App() {
                         const formatted = raw.startsWith("51") ? raw : `51${raw}`;
                         handleChange("celular", formatted);
                         // auto-completar contacto si está vacío
-                        if (!orden.contacto) handleChange("contacto", `${formatted}@c.us`);
+                        if (!orden.contacto) handleChange("contacto", formatted);
                       }}
                       placeholder="999999999"
                     />
