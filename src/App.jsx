@@ -17727,19 +17727,6 @@ export default function App() {
                       </button>
                     ))}
                   </div>
-                  <div style={{ marginTop: 14, borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
-                    <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 8px" }}>O ingresa un número manualmente:</p>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <input
-                        value={celularManualSel}
-                        onChange={e => setCelularManualSel(e.target.value)}
-                        placeholder="989521677"
-                        style={{ flex: 1, padding: "8px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, outline: "none" }}
-                        onKeyDown={e => e.key === "Enter" && celularManualSel.trim() && confirmar(celularManualSel.trim())}
-                      />
-                      <button onClick={() => celularManualSel.trim() && confirmar(celularManualSel.trim())} style={{ padding: "8px 14px", background: "#f97316", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Usar</button>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
