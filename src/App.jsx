@@ -2865,12 +2865,22 @@ export default function App() {
   };
 
   const mkwConsultarCedula = async (cedula) => {
-    const { ok, status, json } = await mkFetch("GetInvoices", { cedula: String(cedula).trim() });
+    const { ok, status, json } = await mkFetch("GetClientsDetails", { cedula: String(cedula).trim() });
     if (status === 404) throw new Error("Cédula no encontrada en MikroWisp");
     if (!ok) throw new Error(json?.mensaje || `Error HTTP ${status}`);
-    if (json.estado !== "exito" || !Array.isArray(json.datos) || json.datos.length === 0)
-      throw new Error(json.mensaje || "Sin resultados para esa cédula");
-    return json.datos;
+    if (json.estado !== "exito") throw new Error(json.mensaje || "Sin resultados para esa cédula");
+    // Normalizar respuesta plana de GetClientsDetails al formato que espera mkwUpsert
+    const raw = json.datos?.[0] ?? json.data ?? json;
+    const d = {
+      id:       raw.idcliente ?? raw.id,
+      cedula:   raw.cedula ?? String(cedula).trim(),
+      nombre:   raw.nombre ?? raw.name ?? "",
+      movil:    raw.movil ?? raw.telefono ?? "",
+      estado:   raw.estado ?? "",
+      servicios: raw.servicios ?? [],
+    };
+    if (!d.id) throw new Error("MikroWisp no devolvió idcliente");
+    return [d];
   };
 
   const mkwBuscarIndividual = async () => {
