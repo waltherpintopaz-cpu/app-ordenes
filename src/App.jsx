@@ -17709,23 +17709,38 @@ export default function App() {
         {/* ── Modal selector de celular al crear orden ── */}
         {modalSelCelular && (() => {
           const numeros = modalSelCelular.numeros;
+          const fmt51 = (v) => { const r = String(v).replace(/\D/g, ""); return r.startsWith("51") ? r : r ? `51${r}` : ""; };
+          const celPrinc = selCelularPrincipal || "";
+          const celCont  = selCelularContacto  || "";
           const confirmar = () => {
-            if (!selCelularPrincipal) return;
+            const principal = fmt51(celPrinc);
+            if (!principal || principal.length < 11) return;
+            const contacto = celCont ? fmt51(celCont) : "";
             setModalSelCelular(null);
-            const raw = selCelularContacto.replace(/\D/g, "");
-            const contacto = raw ? (raw.startsWith("51") ? raw : `51${raw}`) : "";
-            _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, selCelularPrincipal, contacto || null);
             setSelCelularPrincipal(""); setSelCelularContacto("");
+            _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, principal, contacto || null);
           };
-          const btnNum = (num, selected, onSelect) => (
-            <button key={num} onClick={() => onSelect(selected === num ? "" : num)}
-              style={{ padding: "9px 14px", background: selected === num ? "#fff7ed" : "#f8fafc", border: `1.5px solid ${selected === num ? "#f97316" : "#e2e8f0"}`, borderRadius: 10, color: selected === num ? "#c2410c" : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14 }}>{selected === num ? "✓" : "📱"}</span> {num}
+          const chip = (num, isSelected, onToggle, color) => (
+            <button key={num} onClick={() => onToggle(isSelected ? "" : num)}
+              style={{ padding: "9px 14px", background: isSelected ? "#fff7ed" : "#f8fafc", border: `1.5px solid ${isSelected ? color : "#e2e8f0"}`, borderRadius: 10, color: isSelected ? color : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
+              <span>{isSelected ? "✓" : "📱"}</span> {num}
             </button>
           );
+          const inputManual = (label, value, onChange, color) => (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, marginBottom: 4 }}>O escribe manualmente:</div>
+              <div style={{ display: "flex", alignItems: "center", border: `1.5px solid ${value && fmt51(value).length >= 11 ? color : "#e2e8f0"}`, borderRadius: 8, overflow: "hidden" }}>
+                <span style={{ padding: "8px 10px", background: "#f1f5f9", fontSize: 12, fontWeight: 800, color: "#475569", borderRight: "1px solid #e2e8f0" }}>+51</span>
+                <input value={value.replace(/^51/, "")} onChange={e => onChange(`51${e.target.value.replace(/\D/g, "")}`)}
+                  placeholder="9XXXXXXXX" maxLength={9}
+                  style={{ flex: 1, padding: "8px 10px", border: "none", outline: "none", fontSize: 13 }} />
+              </div>
+            </div>
+          );
+          const principalValido = fmt51(celPrinc).length === 11;
           return (
             <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalSelCelular(null)}>
-              <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 420, boxShadow: "0 20px 50px rgba(0,0,0,0.2)", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+              <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 420, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
                 <div style={{ background: "linear-gradient(135deg,#f97316,#ea580c)", padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>Seleccionar números</div>
@@ -17733,26 +17748,27 @@ export default function App() {
                   </div>
                   <button onClick={() => setModalSelCelular(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: "pointer", fontWeight: 700 }}>×</button>
                 </div>
-                <div style={{ padding: "16px 20px", display: "grid", gap: 16 }}>
+                <div style={{ padding: "18px 20px", display: "grid", gap: 18 }}>
                   {/* Celular principal */}
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "#f97316", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Celular principal *</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#f97316", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>📱 Celular principal *</div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      {numeros.map(num => btnNum(num, selCelularPrincipal, setSelCelularPrincipal))}
+                      {numeros.map(num => chip(num, celPrinc === num, setSelCelularPrincipal, "#f97316"))}
                     </div>
+                    {inputManual("celular", celPrinc.startsWith("51") && !numeros.includes(celPrinc) ? celPrinc : "", (v) => setSelCelularPrincipal(v), "#f97316")}
                   </div>
-                  {/* Contacto adicional */}
+                  {/* Contacto */}
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Contacto adicional (opcional)</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#0369a1", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>📋 Contacto adicional (opcional)</div>
                     <div style={{ display: "grid", gap: 6 }}>
-                      {numeros.filter(n => n !== selCelularPrincipal).map(num => btnNum(num, selCelularContacto, setSelCelularContacto))}
+                      {numeros.filter(n => n !== celPrinc).map(num => chip(num, celCont === num, setSelCelularContacto, "#0369a1"))}
+                      {numeros.filter(n => n !== celPrinc).length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>—</div>}
                     </div>
-                    {numeros.filter(n => n !== selCelularPrincipal).length === 0 && (
-                      <div style={{ fontSize: 12, color: "#94a3b8" }}>No hay otros números disponibles</div>
-                    )}
+                    {inputManual("contacto", celCont.startsWith("51") && !numeros.includes(celCont) ? celCont : "", (v) => setSelCelularContacto(v), "#0369a1")}
                   </div>
-                  <button onClick={confirmar} disabled={!selCelularPrincipal} style={{ padding: "11px", background: selCelularPrincipal ? "#f97316" : "#e2e8f0", color: selCelularPrincipal ? "#fff" : "#94a3b8", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: selCelularPrincipal ? "pointer" : "default" }}>
-                    Crear orden
+                  <button onClick={confirmar} disabled={!principalValido}
+                    style={{ padding: "12px", background: principalValido ? "#f97316" : "#e2e8f0", color: principalValido ? "#fff" : "#94a3b8", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: principalValido ? "pointer" : "default" }}>
+                    {principalValido ? "Crear orden →" : "Selecciona un celular principal"}
                   </button>
                 </div>
               </div>
