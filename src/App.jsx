@@ -2832,7 +2832,7 @@ export default function App() {
   };
 
   // ── MikroWisp: consulta por cédula y guarda en mikrowisp_clientes ──
-  const MKW_PROXY = "https://vgwbqbzpjlbkmxtfghdm.supabase.co/functions/v1/mikrowisp-proxy";
+  // Reutiliza el proxy diagno ya existente (mismo que agregarClienteMikrowisp)
 
   const mkwUpsert = async (datos) => {
     // datos puede ser un objeto o array — tomamos el primero con movil
@@ -2865,13 +2865,8 @@ export default function App() {
   };
 
   const mkwConsultarCedula = async (cedula) => {
-    const res = await fetch(MKW_PROXY, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cedula: String(cedula).trim() }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
+    const { ok, status, json } = await mkFetch("GetInvoices", { cedula: String(cedula).trim() });
+    if (!ok && status !== 200) throw new Error(`HTTP ${status}`);
     if (json.estado !== "exito" || !Array.isArray(json.datos) || json.datos.length === 0)
       throw new Error(json.mensaje || "Sin resultados para esa cédula");
     return json.datos;
