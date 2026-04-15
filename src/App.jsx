@@ -1822,6 +1822,8 @@ export default function App() {
   const [modalSelCelular, setModalSelCelular] = useState(null); // { cliente, numeros: [] }
   const [selCelularPrincipal, setSelCelularPrincipal] = useState("");
   const [selCelularContacto, setSelCelularContacto] = useState("");
+  const [selManualPrincipal, setSelManualPrincipal] = useState(false);
+  const [selManualContacto, setSelManualContacto] = useState(false);
   const [liqCliData, setLiqCliData] = useState([]);
   const [liqCliLoading, setLiqCliLoading] = useState(false);
   const [importCsvLoading, setImportCsvLoading] = useState(false);
@@ -17719,56 +17721,73 @@ export default function App() {
             const contacto = celCont ? fmt51(celCont) : "";
             setModalSelCelular(null);
             setSelCelularPrincipal(""); setSelCelularContacto("");
+            setSelManualPrincipal(false); setSelManualContacto(false);
             _ejecutarCrearOrdenDesdeCliente(modalSelCelular.cliente, principal, contacto || null);
           };
-          const chip = (num, isSelected, onToggle, color) => (
-            <button key={num} onClick={() => onToggle(isSelected ? "" : num)}
-              style={{ padding: "9px 14px", background: isSelected ? "#fff7ed" : "#f8fafc", border: `1.5px solid ${isSelected ? color : "#e2e8f0"}`, borderRadius: 10, color: isSelected ? color : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>{isSelected ? "✓" : "📱"}</span> {num}
+          const chip = (num, isSelected, onSelect) => (
+            <button key={num} onClick={() => onSelect(isSelected ? "" : num)}
+              style={{ padding: "12px 16px", background: isSelected ? "#fff7ed" : "#f8fafc", border: `2px solid ${isSelected ? "#f97316" : "#e2e8f0"}`, borderRadius: 12, color: isSelected ? "#c2410c" : "#374151", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "all 0.15s" }}>
+              <span style={{ width: 22, height: 22, borderRadius: "50%", background: isSelected ? "#f97316" : "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, color: isSelected ? "#fff" : "#94a3b8", fontWeight: 800, flexShrink: 0 }}>{isSelected ? "✓" : "📱"}</span>
+              {num}
             </button>
-          );
-          const inputManual = (label, value, onChange, color) => (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, marginBottom: 4 }}>O escribe manualmente:</div>
-              <div style={{ display: "flex", alignItems: "center", border: `1.5px solid ${value && fmt51(value).length >= 11 ? color : "#e2e8f0"}`, borderRadius: 8, overflow: "hidden" }}>
-                <span style={{ padding: "8px 10px", background: "#f1f5f9", fontSize: 12, fontWeight: 800, color: "#475569", borderRight: "1px solid #e2e8f0" }}>+51</span>
-                <input value={value.replace(/^51/, "")} onChange={e => onChange(`51${e.target.value.replace(/\D/g, "")}`)}
-                  placeholder="9XXXXXXXX" maxLength={9}
-                  style={{ flex: 1, padding: "8px 10px", border: "none", outline: "none", fontSize: 13 }} />
-              </div>
-            </div>
           );
           const principalValido = fmt51(celPrinc).length === 11;
           return (
-            <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalSelCelular(null)}>
-              <div style={{ background: "#fff", borderRadius: 18, width: "100%", maxWidth: 420, maxHeight: "90vh", overflow: "auto", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
-                <div style={{ background: "linear-gradient(135deg,#f97316,#ea580c)", padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalSelCelular(null)}>
+              <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 400, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.25)" }} onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div style={{ background: "linear-gradient(135deg,#f97316,#ea580c)", padding: "20px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>Seleccionar números</div>
-                    <div style={{ color: "#fed7aa", fontSize: 11, marginTop: 2 }}>{modalSelCelular.cliente.nombre}</div>
+                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 15 }}>📱 Seleccionar número</div>
+                    <div style={{ color: "#fed7aa", fontSize: 12, marginTop: 2 }}>{modalSelCelular.cliente.nombre}</div>
                   </div>
-                  <button onClick={() => setModalSelCelular(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 30, height: 30, fontSize: 16, cursor: "pointer", fontWeight: 700 }}>×</button>
+                  <button onClick={() => setModalSelCelular(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: "pointer", fontWeight: 700 }}>×</button>
                 </div>
-                <div style={{ padding: "18px 20px", display: "grid", gap: 18 }}>
+                <div style={{ padding: "20px 20px", display: "grid", gap: 20 }}>
                   {/* Celular principal */}
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "#f97316", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>📱 Celular principal *</div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {numeros.map(num => chip(num, celPrinc === num, setSelCelularPrincipal, "#f97316"))}
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#f97316", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Celular principal *</div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {numeros.map(num => chip(num, celPrinc === num, (v) => { setSelCelularPrincipal(v); setSelManualPrincipal(false); }))}
                     </div>
-                    {inputManual("celular", !numeros.includes(celPrinc) ? celPrinc : "", (v) => setSelCelularPrincipal(v), "#f97316")}
+                    {/* Toggle manual */}
+                    {!selManualPrincipal ? (
+                      <button onClick={() => { setSelManualPrincipal(true); setSelCelularPrincipal(""); }} style={{ marginTop: 10, background: "none", border: "none", color: "#94a3b8", fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                        Usar otro número
+                      </button>
+                    ) : (
+                      <div style={{ marginTop: 10, display: "flex", alignItems: "center", border: "2px solid #f97316", borderRadius: 10, overflow: "hidden" }}>
+                        <span style={{ padding: "10px 12px", background: "#fff7ed", fontSize: 13, fontWeight: 800, color: "#f97316", borderRight: "1px solid #fed7aa" }}>+51</span>
+                        <input autoFocus value={celPrinc.replace(/^51/, "")} onChange={e => setSelCelularPrincipal(`51${e.target.value.replace(/\D/g, "")}`)}
+                          placeholder="9XXXXXXXX" maxLength={9} style={{ flex: 1, padding: "10px 12px", border: "none", outline: "none", fontSize: 14, fontWeight: 600 }} />
+                      </div>
+                    )}
                   </div>
-                  {/* Contacto */}
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: "#0369a1", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>📋 Contacto adicional (opcional)</div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {numeros.filter(n => n !== celPrinc).map(num => chip(num, celCont === num, setSelCelularContacto, "#0369a1"))}
-                      {numeros.filter(n => n !== celPrinc).length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>—</div>}
+
+                  {/* Contacto adicional */}
+                  <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Contacto adicional <span style={{ fontWeight: 500, textTransform: "none", color: "#94a3b8" }}>(opcional)</span></div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {numeros.filter(n => n !== celPrinc).map(num => chip(num, celCont === num, (v) => { setSelCelularContacto(v); setSelManualContacto(false); }))}
+                      {numeros.filter(n => n !== celPrinc).length === 0 && !selManualContacto && (
+                        <div style={{ fontSize: 12, color: "#cbd5e1" }}>—</div>
+                      )}
                     </div>
-                    {inputManual("contacto", !numeros.includes(celCont) ? celCont : "", (v) => setSelCelularContacto(v), "#0369a1")}
+                    {!selManualContacto ? (
+                      <button onClick={() => { setSelManualContacto(true); setSelCelularContacto(""); }} style={{ marginTop: 8, background: "none", border: "none", color: "#94a3b8", fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                        Agregar otro número
+                      </button>
+                    ) : (
+                      <div style={{ marginTop: 10, display: "flex", alignItems: "center", border: "2px solid #0369a1", borderRadius: 10, overflow: "hidden" }}>
+                        <span style={{ padding: "10px 12px", background: "#f0f9ff", fontSize: 13, fontWeight: 800, color: "#0369a1", borderRight: "1px solid #bae6fd" }}>+51</span>
+                        <input autoFocus value={celCont.replace(/^51/, "")} onChange={e => setSelCelularContacto(`51${e.target.value.replace(/\D/g, "")}`)}
+                          placeholder="9XXXXXXXX" maxLength={9} style={{ flex: 1, padding: "10px 12px", border: "none", outline: "none", fontSize: 14, fontWeight: 600 }} />
+                      </div>
+                    )}
                   </div>
+
                   <button onClick={confirmar} disabled={!principalValido}
-                    style={{ padding: "12px", background: principalValido ? "#f97316" : "#e2e8f0", color: principalValido ? "#fff" : "#94a3b8", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: principalValido ? "pointer" : "default" }}>
+                    style={{ padding: "13px", background: principalValido ? "#f97316" : "#e2e8f0", color: principalValido ? "#fff" : "#94a3b8", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: principalValido ? "pointer" : "default" }}>
                     {principalValido ? "Crear orden →" : "Selecciona un celular principal"}
                   </button>
                 </div>
