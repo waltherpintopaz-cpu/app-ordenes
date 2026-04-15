@@ -17355,6 +17355,21 @@ export default function App() {
                       </button>
                     );
                   })()}
+                  {esAdminSesion && cli.dni && (() => {
+                    const cid = String(cli.id || cli.dni || "");
+                    const cargando = mkwCliLoading[cid];
+                    const sincOk = mkwCliOk[cid];
+                    return (
+                      <button
+                        onClick={() => void mkwSincronizarCliente(cli)}
+                        disabled={cargando}
+                        title="Sincronizar con MikroWisp"
+                        style={{ padding: "8px 15px", background: sincOk ? "#f0fdf4" : "#f0f9ff", color: sincOk ? "#16a34a" : "#0369a1", border: `1.5px solid ${sincOk ? "#86efac" : "#bae6fd"}`, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: cargando ? "wait" : "pointer" }}
+                      >
+                        {cargando ? "⏳ Sincronizando..." : sincOk ? "✓ MW Sincronizado" : "📱 Sync MW"}
+                      </button>
+                    );
+                  })()}
                   {cli.dni && (
                     <button onClick={() => void abrirLiquidacionCliente(cli)} style={{ padding: "8px 15px", background: "#faf5ff", border: "1.5px solid #d8b4fe", borderRadius: 10, color: "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                       📋 Liquidación
