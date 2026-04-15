@@ -9704,8 +9704,11 @@ export default function App() {
         if (data?.telefonos) data.telefonos.split(",").forEach(agregar);
       } catch { /* silencioso */ }
     }
+    // Pre-llenar con primer número válido o los primeros 9 dígitos del celular del cliente
+    const rawCel = String(cliente.celular || "").replace(/\D/g, "");
+    const preselect = numeros[0] || (rawCel.length >= 9 ? `51${rawCel.slice(-9)}` : "");
     setModalSelCelular({ cliente, numeros });
-    setSelCelularPrincipal(numeros[0] || "");
+    setSelCelularPrincipal(preselect);
     setSelCelularContacto("");
   };
 
@@ -17753,7 +17756,7 @@ export default function App() {
                     <div style={{ display: "grid", gap: 6 }}>
                       {numeros.map(num => chip(num, celPrinc === num, setSelCelularPrincipal, "#f97316"))}
                     </div>
-                    {inputManual("celular", celPrinc.startsWith("51") && !numeros.includes(celPrinc) ? celPrinc : "", (v) => setSelCelularPrincipal(v), "#f97316")}
+                    {inputManual("celular", !numeros.includes(celPrinc) ? celPrinc : "", (v) => setSelCelularPrincipal(v), "#f97316")}
                   </div>
                   {/* Contacto */}
                   <div>
@@ -17762,7 +17765,7 @@ export default function App() {
                       {numeros.filter(n => n !== celPrinc).map(num => chip(num, celCont === num, setSelCelularContacto, "#0369a1"))}
                       {numeros.filter(n => n !== celPrinc).length === 0 && <div style={{ fontSize: 12, color: "#94a3b8" }}>—</div>}
                     </div>
-                    {inputManual("contacto", celCont.startsWith("51") && !numeros.includes(celCont) ? celCont : "", (v) => setSelCelularContacto(v), "#0369a1")}
+                    {inputManual("contacto", !numeros.includes(celCont) ? celCont : "", (v) => setSelCelularContacto(v), "#0369a1")}
                   </div>
                   <button onClick={confirmar} disabled={!principalValido}
                     style={{ padding: "12px", background: principalValido ? "#f97316" : "#e2e8f0", color: principalValido ? "#fff" : "#94a3b8", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: principalValido ? "pointer" : "default" }}>
