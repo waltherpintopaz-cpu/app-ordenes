@@ -1,1 +1,0 @@
-﻿-- rollback solicitado: script multi-almacen deshabilitado
