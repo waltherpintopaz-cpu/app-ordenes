@@ -7822,18 +7822,10 @@ export default function App() {
       const dniTimeout = setTimeout(() => dniController.abort(), 10000);
       let response;
       try {
-        response = await fetch("https://api.consultasperu.com/api/v1/query", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          signal: dniController.signal,
-          body: JSON.stringify({
-            token: "dcda84257b21983f0416885996aafc25e1e48793389fc8f26800b28421cee626",
-            type_document: "dni",
-            document_number: dni,
-          }),
-        });
+        response = await fetch(
+          `https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx`,
+          { method: "GET", signal: dniController.signal }
+        );
       } finally {
         clearTimeout(dniTimeout);
       }
@@ -7901,11 +7893,10 @@ export default function App() {
         const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
         const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
         setFotosClienteDni(todasFotos);
-      } else if (result.success && result.data) {
+      } else if (result.estado && result.resultado) {
         setOrden((prev) => ({
           ...prev,
-          nombre: result.data.full_name || "",
-          direccion: result.data.address || "",
+          nombre: result.resultado.nombre_completo || "",
         }));
       } else {
         alert("No se encontraron datos para ese DNI");
