@@ -1829,6 +1829,8 @@ export default function App() {
   const [mkwMasivoSobreescribir, setMkwMasivoSobreescribir] = useState(false);
   const [mkwIndividualNodo, setMkwIndividualNodo] = useState("americanet");
   const [mkwMasivoErrores, setMkwMasivoErrores] = useState([]);
+  const [mkwLimpiandoDup, setMkwLimpiandoDup] = useState(false);
+  const [mkwLimpiezaInfo, setMkwLimpiezaInfo] = useState("");
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
@@ -2911,7 +2913,9 @@ export default function App() {
       if (existing) {
         const actualesRaw = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
         const actuales = esNod04 ? actualesRaw.map(normalizarTelefono51) : actualesRaw;
-        if (movil && !actuales.includes(movil)) actuales.push(movil);
+        // movil puede tener múltiples números separados por coma — agregar cada uno individualmente
+        const nuevos = movil.split(",").map(t => t.trim()).filter(Boolean);
+        nuevos.forEach(n => { if (!actuales.includes(n)) actuales.push(n); });
         telefonos = actuales.join(",");
       }
     }
@@ -3039,6 +3043,23 @@ export default function App() {
     setMkwMasivoLoading(false);
     setMkwMasivoErrores(errList);
     setMkwMasivoInfo(`✓ Listo — ${ok} guardados (${nuevo} nuevos), ${err} errores de ${base.length} clientes.`);
+  };
+
+  const mkwLimpiarDuplicados = async () => {
+    setMkwLimpiandoDup(true); setMkwLimpiezaInfo("Leyendo registros...");
+    const { data: rows } = await supabase.from("mikrowisp_clientes").select("mikrowisp_id,telefonos");
+    if (!rows?.length) { setMkwLimpiezaInfo("No hay registros."); setMkwLimpiandoDup(false); return; }
+    let fixed = 0;
+    for (const row of rows) {
+      const nums = String(row.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
+      const unicos = [...new Set(nums)];
+      if (unicos.length !== nums.length) {
+        await supabase.from("mikrowisp_clientes").update({ telefonos: unicos.join(",") }).eq("mikrowisp_id", row.mikrowisp_id);
+        fixed++;
+      }
+    }
+    setMkwLimpiezaInfo(`✓ Listo — ${fixed} registros corregidos de ${rows.length} totales.`);
+    setMkwLimpiandoDup(false);
   };
 
   const actualizarEstadoMasivoMikrowisp = async () => {
@@ -17179,6 +17200,19 @@ export default function App() {
                         </div>
                       </div>
                     )}
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #e0f2fe" }}>
+                      <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: "#475569" }}>🧹 Limpiar duplicados en BD</p>
+                      <p style={{ margin: "0 0 8px", fontSize: 11, color: "#94a3b8" }}>Elimina números repetidos en todos los registros de mikrowisp_clientes.</p>
+                      <button onClick={mkwLimpiarDuplicados} disabled={mkwLimpiandoDup}
+                        style={{ padding: "6px 14px", background: mkwLimpiandoDup ? "#94a3b8" : "#dc2626",
+                          color: "#fff", border: "none", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                          cursor: mkwLimpiandoDup ? "wait" : "pointer" }}>
+                        {mkwLimpiandoDup ? "⏳ Limpiando..." : "🧹 Limpiar duplicados"}
+                      </button>
+                      {mkwLimpiezaInfo && (
+                        <p style={{ margin: "6px 0 0", fontSize: 11, fontWeight: 600, color: mkwLimpiezaInfo.startsWith("✓") ? "#16a34a" : "#0369a1" }}>{mkwLimpiezaInfo}</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
