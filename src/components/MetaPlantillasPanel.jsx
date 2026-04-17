@@ -43,8 +43,6 @@ export default function MetaPlantillasPanel() {
     americanet_phone_id: "", americanet_phone_label: "",
     dim_phone_id: "", dim_phone_label: "",
   });
-  const [phones, setPhones] = useState([]);
-  const [loadingPhones, setLoadingPhones] = useState(false);
   const [savingCfg, setSavingCfg] = useState(false);
   const [cfgMsg, setCfgMsg] = useState("");
 
@@ -63,22 +61,6 @@ export default function MetaPlantillasPanel() {
     supabase.from("meta_wa_config").select("*").eq("id", 1).maybeSingle()
       .then(({ data }) => { if (data) setCfg(data); });
   }, []);
-
-  /* ── Cargar números desde Meta ── */
-  const cargarNumeros = async () => {
-    if (!cfg.waba_id || !cfg.access_token) return setCfgMsg("Ingresa WABA ID y Token primero.");
-    setLoadingPhones(true); setCfgMsg("");
-    try {
-      const res = await fetch(
-        `${META_BASE}/${cfg.waba_id}/phone_numbers?fields=id,display_phone_number,verified_name&access_token=${cfg.access_token}`
-      );
-      const json = await res.json();
-      if (json.error) throw new Error(json.error.message);
-      setPhones(json.data || []);
-      if (!json.data?.length) setCfgMsg("No se encontraron números en esta cuenta.");
-    } catch (e) { setCfgMsg("Error: " + e.message); }
-    finally { setLoadingPhones(false); }
-  };
 
   /* ── Guardar config ── */
   const guardarConfig = async () => {
@@ -226,49 +208,33 @@ export default function MetaPlantillasPanel() {
               <label style={{ ...lbl, marginTop: 10 }}>Access Token (permanente)</label>
               <input value={cfg.access_token} onChange={e => setCfg(c => ({ ...c, access_token: e.target.value }))}
                 placeholder="EAABxxxx..." style={{ ...inp, fontFamily: "monospace", fontSize: 11 }} />
-              <button onClick={cargarNumeros} disabled={loadingPhones}
-                style={{ ...btn("#0369a1"), marginTop: 12 }}>
-                {loadingPhones ? "Cargando..." : "📱 Cargar números disponibles"}
-              </button>
             </div>
 
-            {/* Selección de números por empresa */}
-            {phones.length > 0 && (
-              <>
-                {[
-                  { key: "americanet", label: "Americanet", color: "#0369a1", phoneIdKey: "americanet_phone_id", phoneLblKey: "americanet_phone_label" },
-                  { key: "dim",        label: "DIM",        color: "#7c3aed", phoneIdKey: "dim_phone_id",        phoneLblKey: "dim_phone_label" },
-                ].map(emp => (
-                  <div key={emp.key} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px",
-                    border: `1.5px solid ${emp.color}22` }}>
-                    <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: emp.color }}>
-                      📲 Número para {emp.label}
-                    </p>
-                    <select value={cfg[emp.phoneIdKey]}
-                      onChange={e => {
-                        const sel = phones.find(p => p.id === e.target.value);
-                        setCfg(c => ({ ...c,
-                          [emp.phoneIdKey]: e.target.value,
-                          [emp.phoneLblKey]: sel ? `${sel.verified_name} (${sel.display_phone_number})` : "",
-                        }));
-                      }}
-                      style={{ ...inp, cursor: "pointer" }}>
-                      <option value="">— Seleccionar número —</option>
-                      {phones.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.verified_name} — {p.display_phone_number}
-                        </option>
-                      ))}
-                    </select>
-                    {cfg[emp.phoneLblKey] && (
-                      <p style={{ margin: "6px 0 0", fontSize: 11, color: "#64748b" }}>
-                        ✓ {cfg[emp.phoneLblKey]}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </>
-            )}
+            {/* Números por empresa — ingreso manual */}
+            {[
+              { key: "americanet", label: "Americanet", color: "#0369a1", phoneIdKey: "americanet_phone_id", phoneLblKey: "americanet_phone_label" },
+              { key: "dim",        label: "DIM",        color: "#7c3aed", phoneIdKey: "dim_phone_id",        phoneLblKey: "dim_phone_label" },
+            ].map(emp => (
+              <div key={emp.key} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px",
+                border: `1.5px solid ${emp.color}33` }}>
+                <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: emp.color }}>
+                  📲 Número para {emp.label}
+                </p>
+                <label style={lbl}>Phone Number ID</label>
+                <input value={cfg[emp.phoneIdKey] || ""}
+                  onChange={e => setCfg(c => ({ ...c, [emp.phoneIdKey]: e.target.value }))}
+                  placeholder="Ej: 824888677376395"
+                  style={{ ...inp, fontFamily: "monospace" }} />
+                <label style={{ ...lbl, marginTop: 8 }}>Nombre / Etiqueta (opcional)</label>
+                <input value={cfg[emp.phoneLblKey] || ""}
+                  onChange={e => setCfg(c => ({ ...c, [emp.phoneLblKey]: e.target.value }))}
+                  placeholder="Ej: +51 950 485 133"
+                  style={inp} />
+                <p style={{ margin: "6px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                  Encuéntralo en Meta Developers → WhatsApp → Configuración de la API → "Identificador del número de teléfono"
+                </p>
+              </div>
+            ))}
 
             <button onClick={guardarConfig} disabled={savingCfg} style={btn("#16a34a")}>
               {savingCfg ? "Guardando..." : "💾 Guardar configuración"}
