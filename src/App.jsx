@@ -2799,9 +2799,12 @@ export default function App() {
     return { ok: res.ok, status: res.status, json };
   };
 
-  // mkFetch para Nod_04 (dimfiber) — llamada directa
+  // mkFetch para Nod_04 (dimfiber) — vía proxy diagno (evita CORS/mixed-content)
   const mkFetchNod04 = async (body) => {
-    const res = await fetch(MIKROWISP_NOD04_URL, {
+    const url = DIAGNO_BASE
+      ? `${DIAGNO_BASE}/api/mikrowisp-nod04/GetClientsDetails`
+      : `/api/mikrowisp-nod04/GetClientsDetails`;
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: MIKROWISP_NOD04_TOKEN, ...body }),

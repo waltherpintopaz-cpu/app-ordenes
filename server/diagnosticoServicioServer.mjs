@@ -5,6 +5,8 @@ const DEFAULT_SUPABASE_URL = "https://vgwbqbzpjlbkmxtfghdm.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_";
 const DEFAULT_MIKROWISP_API_BASE = "https://americanet.club/api/v1";
 const DEFAULT_MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+const DEFAULT_MIKROWISP_NOD04_API_BASE = "http://dimfiber.com/api/v1";
+const DEFAULT_MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
 const DEFAULT_SMARTOLT_API_BASE = "https://americanet.smartolt.com/api";
 const DEFAULT_SMARTOLT_TOKEN = "0cb1ad391ea4458cab6efe97769c761d";
 const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "127.0.0.1").trim() || "127.0.0.1";
@@ -14,6 +16,9 @@ const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || process.env.VI
 const MIKROWISP_API_BASE =
   String(process.env.MIKROWISP_API_BASE || DEFAULT_MIKROWISP_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_MIKROWISP_API_BASE;
 const MIKROWISP_TOKEN = String(process.env.MIKROWISP_TOKEN || DEFAULT_MIKROWISP_TOKEN).trim();
+const MIKROWISP_NOD04_API_BASE =
+  String(process.env.MIKROWISP_NOD04_API_BASE || DEFAULT_MIKROWISP_NOD04_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_MIKROWISP_NOD04_API_BASE;
+const MIKROWISP_NOD04_TOKEN = String(process.env.MIKROWISP_NOD04_TOKEN || DEFAULT_MIKROWISP_NOD04_TOKEN).trim();
 const SMARTOLT_API_BASE =
   String(process.env.SMARTOLT_API_BASE || process.env.VITE_API_BASE_URL || DEFAULT_SMARTOLT_API_BASE)
     .trim()
@@ -539,6 +544,18 @@ const proxyMikrowispGetClientDetails = async (req) => {
   return { status: response.status, json };
 };
 
+const proxyMikrowispNod04GetClientDetails = async (req) => {
+  const rawBody = await readRawBody(req);
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_NOD04_API_BASE, "/GetClientsDetails");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: rawBody.length ? rawBody : JSON.stringify({ token: MIKROWISP_NOD04_TOKEN }),
+  });
+  const json = await readProxyJsonResponse(response, "Mikrowisp Nod04 GetClientsDetails");
+  return { status: response.status, json };
+};
+
 const proxyMikrowispNewUser = async (req) => {
   const rawBody = await readRawBody(req);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
@@ -614,6 +631,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp/GetClientsDetails") {
       const result = await proxyMikrowispGetClientDetails(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mikrowisp-nod04/GetClientsDetails") {
+      const result = await proxyMikrowispNod04GetClientDetails(req);
       writeJson(res, result.status, result.json);
       return;
     }
