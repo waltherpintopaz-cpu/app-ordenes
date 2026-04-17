@@ -451,9 +451,10 @@ export default function MetaPlantillasPanel() {
               {(cfg[pEmpresa]?.wabas?.length || 0) > 1 && (
                 <select value={pWabaIdx} onChange={e => { setPWabaIdx(Number(e.target.value)); setPlantillas([]); }}
                   style={{ ...inp, width: "auto", fontSize: 12, cursor: "pointer" }}>
-                  {cfg[pEmpresa].wabas.map((w, i) => (
-                    <option key={w.id} value={i}>WABA {i + 1} — {w.waba_id || "sin configurar"}</option>
-                  ))}
+                  {cfg[pEmpresa].wabas.map((w, i) => {
+                    const nums = (w.numeros || []).map(n => n.nombre || n.numero).filter(Boolean).join(", ");
+                    return <option key={w.id} value={i}>WABA {i + 1}{nums ? ` — ${nums}` : w.waba_id ? ` — ${w.waba_id}` : " — sin configurar"}</option>;
+                  })}
                 </select>
               )}
 
@@ -667,9 +668,10 @@ export default function MetaPlantillasPanel() {
                 <label style={lbl}>WABA</label>
                 <select value={prWabaIdx} onChange={e => { setPrWabaIdx(Number(e.target.value)); setPrNumeroId(""); setPrPlantilla(""); setPlantillas([]); }}
                   style={{ ...inp, cursor: "pointer" }}>
-                  {cfg[prEmpresa].wabas.map((w, i) => (
-                    <option key={w.id} value={i}>WABA {i + 1} — {w.waba_id || "sin configurar"}</option>
-                  ))}
+                  {cfg[prEmpresa].wabas.map((w, i) => {
+                    const nums = (w.numeros || []).map(n => n.nombre || n.numero).filter(Boolean).join(", ");
+                    return <option key={w.id} value={i}>WABA {i + 1}{nums ? ` — ${nums}` : w.waba_id ? ` — ${w.waba_id}` : " — sin configurar"}</option>;
+                  })}
                 </select>
               </div>
             )}
