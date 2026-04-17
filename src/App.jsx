@@ -1817,6 +1817,7 @@ export default function App() {
   const [mkwMasivoLoading, setMkwMasivoLoading] = useState(false);
   const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
   const [mkwMasivoNodoFiltro, setMkwMasivoNodoFiltro] = useState("todos");
+  const [mkwIndividualNodo, setMkwIndividualNodo] = useState("americanet");
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
@@ -2944,7 +2945,8 @@ export default function App() {
     if (!cedula) return;
     setMkwBuscando(true); setMkwError(""); setMkwResultado(null);
     try {
-      const datos = await mkwConsultarCedula(cedula);
+      const nodoParam = mkwIndividualNodo === "nod04" ? "Nod_04" : "";
+      const datos = await mkwConsultarCedula(cedula, nodoParam);
       setMkwResultado(datos[0]);
     } catch (e) {
       setMkwError(e.message);
@@ -17069,6 +17071,10 @@ export default function App() {
                   {/* Individual */}
                   <div style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", marginBottom: 12, border: "1px solid #e0f2fe" }}>
                     <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 12, color: "#0f172a" }}>Consulta individual por cédula</p>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <button onClick={() => setMkwIndividualNodo("americanet")} style={{ flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 700, borderRadius: 7, border: "1.5px solid " + (mkwIndividualNodo === "americanet" ? "#0369a1" : "#cbd5e1"), background: mkwIndividualNodo === "americanet" ? "#0369a1" : "#f8fafc", color: mkwIndividualNodo === "americanet" ? "#fff" : "#64748b", cursor: "pointer" }}>Americanet</button>
+                      <button onClick={() => setMkwIndividualNodo("nod04")} style={{ flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 700, borderRadius: 7, border: "1.5px solid " + (mkwIndividualNodo === "nod04" ? "#7c3aed" : "#cbd5e1"), background: mkwIndividualNodo === "nod04" ? "#7c3aed" : "#f8fafc", color: mkwIndividualNodo === "nod04" ? "#fff" : "#64748b", cursor: "pointer" }}>Nod_04 (dimfiber)</button>
+                    </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <input
                         value={mkwCedula}
