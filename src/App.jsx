@@ -1816,6 +1816,7 @@ export default function App() {
   const [mkwError, setMkwError] = useState("");
   const [mkwMasivoLoading, setMkwMasivoLoading] = useState(false);
   const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
+  const [mkwMasivoNodoFiltro, setMkwMasivoNodoFiltro] = useState("todos");
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
@@ -2780,15 +2781,30 @@ export default function App() {
     window.alert("Clientes locales eliminados.");
   };
 
-  const MIKROWISP_NODOS = ["Nod_01", "Nod_03"];
+  const MIKROWISP_NODOS = ["Nod_01", "Nod_03", "Nod_04"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+  const MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
+  const MIKROWISP_NOD04_URL = "http://dimfiber.com/api/v1/GetClientsDetails";
   const DIAGNO_BASE = (import.meta.env.DEV ? "" : "https://amnet-diagno.0lthka.easypanel.host");
+
+  // mkFetch para Nod_01/Nod_03 (americanet) — proxy diagno
   const mkFetch = async (endpoint, body) => {
     const url = DIAGNO_BASE ? `${DIAGNO_BASE}/api/mikrowisp/${endpoint}` : `/api/mikrowisp/${endpoint}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: MIKROWISP_TOKEN, ...body }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, json };
+  };
+
+  // mkFetch para Nod_04 (dimfiber) — llamada directa
+  const mkFetchNod04 = async (body) => {
+    const res = await fetch(MIKROWISP_NOD04_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: MIKROWISP_NOD04_TOKEN, ...body }),
     });
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
@@ -2874,12 +2890,16 @@ export default function App() {
     return { ok: !error, msg: error?.message || "OK", row };
   };
 
-  const mkwConsultarCedula = async (cedula) => {
-    const { ok, status, json } = await mkFetch("GetClientsDetails", { cedula: String(cedula).trim() });
+  const mkwConsultarCedula = async (cedula, nodo = "") => {
+    const esNod04 = String(nodo || "").trim() === "Nod_04";
+    const { ok, status, json } = esNod04
+      ? await mkFetchNod04({ cedula: String(cedula).trim() })
+      : await mkFetch("GetClientsDetails", { cedula: String(cedula).trim() });
     if (status === 404) throw new Error("Cédula no encontrada en MikroWisp");
     if (!ok) throw new Error(json?.mensaje || `Error HTTP ${status}`);
-    if (json.estado !== "exito") throw new Error(json.mensaje || "Sin resultados para esa cédula");
-    // Normalizar respuesta plana de GetClientsDetails al formato que espera mkwUpsert
+    // Normalizar respuesta — americanet usa estado:"exito", dimfiber puede variar
+    const exito = json.estado === "exito" || json.success === true || json.estado === true;
+    if (!exito && json.estado !== undefined) throw new Error(json.mensaje || json.message || "Sin resultados para esa cédula");
     const raw = json.datos?.[0] ?? json.data ?? json;
     const d = {
       id:       raw.idcliente ?? raw.id,
@@ -2888,6 +2908,7 @@ export default function App() {
       movil:    raw.movil ?? raw.telefono ?? "",
       estado:   raw.estado ?? "",
       servicios: raw.servicios ?? [],
+      _nodo:    nodo,
     };
     if (!d.id) throw new Error("MikroWisp no devolvió idcliente");
     return [d];
@@ -2922,10 +2943,11 @@ export default function App() {
     const dni = String(cliente.dni || "").replace(/\D/g, "").trim();
     if (!dni) return window.alert("El cliente no tiene DNI registrado.");
     const cid = String(cliente.id || dni);
+    const nodo = String(cliente.nodo || "");
     setMkwCliLoading((p) => ({ ...p, [cid]: true }));
     setMkwCliOk((p) => ({ ...p, [cid]: false }));
     try {
-      const datos = await mkwConsultarCedula(dni);
+      const datos = await mkwConsultarCedula(dni, nodo);
       const { ok, msg } = await mkwUpsert(datos);
       if (ok) setMkwCliOk((p) => ({ ...p, [cid]: true }));
       else window.alert(`Error al guardar: ${msg}`);
@@ -2951,25 +2973,30 @@ export default function App() {
 
   const mkwSincronizarMasivo = async () => {
     if (!esAdminSesion) return;
-    const clientesConDni = clientes.filter(c => String(c?.dni || "").trim().length >= 5);
-    if (clientesConDni.length === 0) { setMkwMasivoInfo("No hay clientes con DNI registrado."); return; }
+    const todosCon = clientes.filter(c => String(c?.dni || "").trim().length >= 5);
+    let base = todosCon;
+    if (mkwMasivoNodoFiltro !== "todos") {
+      base = todosCon.filter(c => String(c?.nodo || "") === mkwMasivoNodoFiltro);
+    }
+    if (base.length === 0) { setMkwMasivoInfo("No hay clientes con DNI para el nodo seleccionado."); return; }
+    const confirmar = window.confirm(`Se sincronizarán ${base.length} clientes${mkwMasivoNodoFiltro !== "todos" ? ` del ${mkwMasivoNodoFiltro}` : ""}. ¿Continuar?`);
+    if (!confirmar) return;
     setMkwMasivoLoading(true);
     let ok = 0, err = 0, nuevo = 0;
-    for (let i = 0; i < clientesConDni.length; i++) {
-      const c = clientesConDni[i];
-      setMkwMasivoInfo(`Consultando ${i + 1}/${clientesConDni.length} — ${c.nombre || c.dni}...`);
+    for (let i = 0; i < base.length; i++) {
+      const c = base[i];
+      setMkwMasivoInfo(`Consultando ${i + 1}/${base.length} — ${c.nombre || c.dni}...`);
       try {
-        const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""));
+        const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""), String(c.nodo || ""));
         const { data: prev } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id).maybeSingle();
         const res = await mkwUpsert(datos);
         if (res.ok) { ok++; if (!prev) nuevo++; }
         else err++;
       } catch (_) { err++; }
-      // pequeña pausa para no saturar la API
       await new Promise(r => setTimeout(r, 300));
     }
     setMkwMasivoLoading(false);
-    setMkwMasivoInfo(`✓ Listo — ${ok} guardados (${nuevo} nuevos), ${err} errores de ${clientesConDni.length} clientes.`);
+    setMkwMasivoInfo(`✓ Listo — ${ok} guardados (${nuevo} nuevos), ${err} errores de ${base.length} clientes.`);
   };
 
   const actualizarEstadoMasivoMikrowisp = async () => {
@@ -17053,9 +17080,36 @@ export default function App() {
                   {/* Masivo */}
                   <div style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", border: "1px solid #e0f2fe" }}>
                     <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 12, color: "#0f172a" }}>Sincronización masiva</p>
-                    <p style={{ margin: "0 0 10px", fontSize: 11, color: "#64748b" }}>Consulta MikroWisp por el DNI de cada cliente registrado en tu sistema ({clientes.filter(c => String(c?.dni || "").trim().length >= 5).length} con DNI)</p>
-                    <button onClick={mkwSincronizarMasivo} disabled={mkwMasivoLoading} style={{ padding: "8px 18px", background: mkwMasivoLoading ? "#94a3b8" : "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: mkwMasivoLoading ? "wait" : "pointer" }}>
-                      {mkwMasivoLoading ? "⏳ Sincronizando..." : "🔄 Sincronizar todos"}
+                    <p style={{ margin: "0 0 10px", fontSize: 11, color: "#64748b" }}>
+                      Consulta MikroWisp por DNI de cada cliente. Nod_04 usa su propia API (dimfiber).
+                    </p>
+                    {/* Selector de nodo */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                      {[
+                        { key: "todos", label: "Todos los nodos" },
+                        { key: "Nod_01", label: "Nod_01" },
+                        { key: "Nod_03", label: "Nod_03" },
+                        { key: "Nod_04", label: "Nod_04 (dimfiber)" },
+                      ].map(({ key, label }) => {
+                        const cnt = key === "todos"
+                          ? clientes.filter(c => String(c?.dni || "").trim().length >= 5).length
+                          : clientes.filter(c => String(c?.nodo || "") === key && String(c?.dni || "").trim().length >= 5).length;
+                        const active = mkwMasivoNodoFiltro === key;
+                        return (
+                          <button key={key} onClick={() => setMkwMasivoNodoFiltro(key)}
+                            style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${active ? "#0369a1" : "#cbd5e1"}`,
+                              background: active ? "#0369a1" : "#f8fafc", color: active ? "#fff" : "#475569",
+                              fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            {label} <span style={{ opacity: 0.75 }}>({cnt})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button onClick={mkwSincronizarMasivo} disabled={mkwMasivoLoading}
+                      style={{ padding: "8px 18px", background: mkwMasivoLoading ? "#94a3b8" : "#0f172a",
+                        color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        cursor: mkwMasivoLoading ? "wait" : "pointer" }}>
+                      {mkwMasivoLoading ? "⏳ Sincronizando..." : "🔄 Sincronizar"}
                     </button>
                     {mkwMasivoInfo && (
                       <p style={{ margin: "8px 0 0", fontSize: 12, color: mkwMasivoInfo.startsWith("✓") ? "#16a34a" : "#0369a1", fontWeight: 600 }}>{mkwMasivoInfo}</p>
