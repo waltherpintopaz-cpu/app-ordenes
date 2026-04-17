@@ -14,29 +14,31 @@ const NODOS = [
   { key: "Nod_04", label: "Nod_04 (DimFiber)", color: "#7c3aed", api: "dimfiber" },
 ];
 
+// Valores aceptados por el CHECK constraint de Supabase: ACTIVO, SUSPENDIDO, INACTIVO, DESCONOCIDO
 const ESTADO_LABELS = {
-  activo:      { label: "Activo",      bg: "#f0fdf4", color: "#16a34a", border: "#86efac" },
-  suspendido:  { label: "Suspendido",  bg: "#fff7ed", color: "#ea580c", border: "#fdba74" },
-  moroso:      { label: "Moroso",      bg: "#fff1f2", color: "#e11d48", border: "#fda4af" },
-  cortado:     { label: "Cortado",     bg: "#fff1f2", color: "#be123c", border: "#fecdd3" },
-  retirado:    { label: "Retirado",    bg: "#f1f5f9", color: "#64748b", border: "#cbd5e1" },
-  desconocido: { label: "Desconocido", bg: "#f8fafc", color: "#94a3b8", border: "#e2e8f0" },
+  ACTIVO:      { label: "Activo",      bg: "#f0fdf4", color: "#16a34a", border: "#86efac" },
+  SUSPENDIDO:  { label: "Suspendido",  bg: "#fff7ed", color: "#ea580c", border: "#fdba74" },
+  INACTIVO:    { label: "Inactivo",    bg: "#fffbeb", color: "#d97706", border: "#fcd34d" },
+  DESCONOCIDO: { label: "Desconocido", bg: "#f8fafc", color: "#94a3b8", border: "#e2e8f0" },
 };
 
+// Misma lógica que la app mobile (ClientsScreen.js)
 const normalizarEstado = (raw = "") => {
-  const r = String(raw).toLowerCase().trim();
-  if (r.includes("activo") || r === "active" || r === "1" || r === "true") return "activo";
-  if (r.includes("suspend") || r.includes("suspendid")) return "suspendido";
-  if (r.includes("moroso") || r.includes("moros")) return "moroso";
-  if (r.includes("cortado") || r.includes("cortad") || r.includes("cut")) return "cortado";
-  if (r.includes("retir") || r.includes("baja")) return "retirado";
-  if (r === "") return "desconocido";
-  return r;
+  const r = String(raw).trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (!r) return "DESCONOCIDO";
+  if (r.includes("activo") || r.includes("online") || r.includes("enabled") || r === "up" || r === "1" || r === "true")
+    return "ACTIVO";
+  if (r.includes("suspend") || r.includes("cortado") || r.includes("bloque") || r.includes("disabled") || r.includes("moroso") || r.includes("deuda"))
+    return "SUSPENDIDO";
+  if (r.includes("inactivo") || r.includes("offline") || r === "down")
+    return "INACTIVO";
+  return "DESCONOCIDO";
 };
 
 const badgeEstado = (estadoRaw) => {
   const estado = normalizarEstado(estadoRaw || "");
-  const s = ESTADO_LABELS[estado] || { label: estado, bg: "#f8fafc", color: "#64748b", border: "#e2e8f0" };
+  const s = ESTADO_LABELS[estado] || ESTADO_LABELS.DESCONOCIDO;
   return (
     <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 99,
       background: s.bg, color: s.color, border: `1px solid ${s.border}`, whiteSpace: "nowrap" }}>
@@ -246,10 +248,10 @@ export default function MkwEstadoPanel() {
           <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
             {[
               { label: "Total", val: stats.total, bg: "#f1f5f9", color: "#0f172a" },
-              { label: "Activos", val: stats.activo || 0, bg: "#f0fdf4", color: "#16a34a" },
-              { label: "Suspendidos", val: stats.suspendido || 0, bg: "#fff7ed", color: "#ea580c" },
-              { label: "Morosos", val: stats.moroso || 0, bg: "#fff1f2", color: "#e11d48" },
-              { label: "Sin estado", val: stats.desconocido || 0, bg: "#f8fafc", color: "#94a3b8" },
+              { label: "Activos", val: stats.ACTIVO || 0, bg: "#f0fdf4", color: "#16a34a" },
+              { label: "Suspendidos", val: stats.SUSPENDIDO || 0, bg: "#fff7ed", color: "#ea580c" },
+              { label: "Inactivos", val: stats.INACTIVO || 0, bg: "#fffbeb", color: "#d97706" },
+              { label: "Sin estado", val: stats.DESCONOCIDO || 0, bg: "#f8fafc", color: "#94a3b8" },
             ].map(s => (
               <div key={s.label} style={{ background: s.bg, borderRadius: 10, padding: "8px 16px",
                 textAlign: "center", minWidth: 80, border: `1px solid ${s.bg}` }}>
@@ -273,12 +275,10 @@ export default function MkwEstadoPanel() {
             style={{ padding: "7px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8,
               fontSize: 12, cursor: "pointer", outline: "none", background: "#fff" }}>
             <option value="todos">Todos los estados</option>
-            <option value="activo">Activo</option>
-            <option value="suspendido">Suspendido</option>
-            <option value="moroso">Moroso</option>
-            <option value="cortado">Cortado</option>
-            <option value="retirado">Retirado</option>
-            <option value="desconocido">Sin estado</option>
+            <option value="ACTIVO">Activo</option>
+            <option value="SUSPENDIDO">Suspendido</option>
+            <option value="INACTIVO">Inactivo</option>
+            <option value="DESCONOCIDO">Sin estado</option>
           </select>
 
           {/* Recargar */}
