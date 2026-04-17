@@ -652,13 +652,29 @@ const server = http.createServer(async (req, res) => {
     if (String(req.url || "").startsWith("/api/wispro/")) {
       const wisproPath = req.url.replace("/api/wispro", "");
       const wisproUrl  = `${WISPRO_BASE}${wisproPath}`;
-      const authHeader = req.headers["authorization"] || "";
-      const wisproRes  = await fetch(wisproUrl, {
+      // Extraer token limpio — el cliente puede mandar "Token xxx" o "Bearer xxx" o solo el token
+      const rawAuth  = req.headers["authorization"] || "";
+      const tokenVal = rawAuth.replace(/^(Token|Bearer)\s+/i, "").trim();
+      const body = req.method !== "GET" ? await readRawBody(req).then(b => b.length ? b : undefined) : undefined;
+
+      // Intentar primero con "Token xxx" (formato WisPro estándar)
+      let wisproRes = await fetch(wisproUrl, {
         method: req.method || "GET",
-        headers: { "Authorization": authHeader, "Content-Type": "application/json", "Accept": "application/json" },
-        body: req.method !== "GET" ? await readRawBody(req).then(b => b.length ? b : undefined) : undefined,
+        headers: { "Authorization": `Token ${tokenVal}`, "Content-Type": "application/json", "Accept": "application/json" },
+        body,
       });
-      const wisproJson = await wisproRes.json().catch(() => ({}));
+      let wisproJson = await wisproRes.json().catch(() => ({}));
+
+      // Si falla con 401, intentar con solo el token (sin prefijo)
+      if ((wisproRes.status === 401 || wisproJson?.status === 401 || wisproJson?.message === "Unauthorized") && tokenVal) {
+        wisproRes  = await fetch(wisproUrl, {
+          method: req.method || "GET",
+          headers: { "Authorization": tokenVal, "Content-Type": "application/json", "Accept": "application/json" },
+          body,
+        });
+        wisproJson = await wisproRes.json().catch(() => ({}));
+      }
+
       writeJson(res, wisproRes.status, wisproJson);
       return;
     }
