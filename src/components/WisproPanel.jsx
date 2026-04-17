@@ -113,7 +113,7 @@ export default function WisproPanel() {
       if (json?.status === 401 || json?.message === "Unauthorized" || json?.errors !== undefined && !json?.count) {
         throw new Error("Token inválido o sin permisos (Unauthorized)");
       }
-      const total = json?.count ?? json?.meta?.total_count ?? json?.total ?? (Array.isArray(json) ? json.length : "?");
+      const total = json?.meta?.pagination?.total_records ?? json?.count ?? json?.meta?.total_count ?? json?.total ?? (Array.isArray(json) ? json.length : "?");
       setTestMsg(`✓ Conexión exitosa — ${total} contratos encontrados`);
     } catch(e) { setTestMsg("Error: "+e.message); }
     finally { setTestando(false); }
@@ -124,18 +124,60 @@ export default function WisproPanel() {
     if (!cfg?.api_token) return setConMsg("Configura el API Token primero.");
     setLoadingCon(true); setConMsg("");
     try {
-      const res = await fetch(`${DIAGNO_BASE}/api/wispro/contracts?per_page=200`, {
-        headers: { Authorization: `Token ${cfg.api_token}`, Accept: "application/json" },
+      const hdrs = { Authorization: `Token ${cfg.api_token}`, Accept: "application/json" };
+
+      // Cargar contratos (paginando hasta obtener todos)
+      let allContratos = [];
+      let page = 1;
+      while (true) {
+        const res = await fetch(`${DIAGNO_BASE}/api/wispro/contracts?per_page=100&page=${page}`, { headers: hdrs });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const batch = Array.isArray(json) ? json : (json?.data ?? json?.results ?? json?.contracts ?? []);
+        allContratos = allContratos.concat(batch);
+        const totalPages = json?.meta?.pagination?.total_pages ?? 1;
+        if (page >= totalPages || batch.length === 0) break;
+        page++;
+      }
+
+      // Cargar clientes (paginando)
+      let allClientes = [];
+      page = 1;
+      while (true) {
+        const res = await fetch(`${DIAGNO_BASE}/api/wispro/clients?per_page=100&page=${page}`, { headers: hdrs });
+        if (!res.ok) break;
+        const json = await res.json().catch(() => ({}));
+        const batch = Array.isArray(json) ? json : (json?.data ?? json?.results ?? json?.clients ?? []);
+        if (batch.length === 0) break;
+        allClientes = allClientes.concat(batch);
+        const totalPages = json?.meta?.pagination?.total_pages ?? 1;
+        if (page >= totalPages) break;
+        page++;
+      }
+
+      // Mapa client_id → cliente (por id y public_id)
+      const clientMap = {};
+      allClientes.forEach(cl => {
+        if (cl.id)        clientMap[String(cl.id)]        = cl;
+        if (cl.public_id) clientMap[String(cl.public_id)] = cl;
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      // WisPro usa formato DRF: { count, results } — también soporta array y otros formatos
-      const lista = Array.isArray(json) ? json
-        : (json?.results ?? json?.contracts ?? json?.data ?? []);
-      setContratos(lista);
-      if (lista.length === 0) setConMsg("No se encontraron contratos. Verifica que el token tenga permisos.");
+
+      // Enriquecer contratos con datos del cliente
+      const listaEnriq = allContratos.map(c => ({ ...c, _cliente: clientMap[String(c.client_id)] || null }));
+
+      setContratos(listaEnriq);
+
+      const sinCliente = listaEnriq.filter(c => !c._cliente).length;
+      if (listaEnriq.length === 0) {
+        setConMsg("No se encontraron contratos. Verifica que el token tenga permisos.");
+      } else if (allClientes.length === 0) {
+        setConMsg(`⚠ ${listaEnriq.length} contratos cargados, pero el endpoint /clients no devolvió datos. Nombre y teléfono no disponibles.`);
+      } else if (sinCliente > 0) {
+        setConMsg(`${listaEnriq.length} contratos · ${allClientes.length} clientes cargados · ${sinCliente} sin datos de cliente`);
+      }
+
       // cargar config local de cada uno
-      const ids = lista.map(c => String(c.id));
+      const ids = listaEnriq.map(c => String(c.id));
       const { data: cfgRows } = await supabase.from("wispro_clientes_config")
         .select("*").in("contrato_id", ids);
       const map = {};
@@ -163,7 +205,8 @@ export default function WisproPanel() {
     const phone = getPhone();
     if (!waba?.token || !phone?.phone_number_id)
       return setBienMsg("Configura el número emisor en la pestaña Configuración.");
-    const tel = normTel(contrato.subscriber?.phone || contrato.phone || "");
+    const nombreCliente = getNombre(contrato);
+    const tel = normTel(getTel(contrato));
     if (!tel) return setBienMsg("Este cliente no tiene teléfono registrado en WisPro.");
     setEnviandoBien(true); setBienMsg("");
     try {
@@ -173,7 +216,7 @@ export default function WisproPanel() {
         body: JSON.stringify({
           messaging_product:"whatsapp", to: tel, type:"template",
           template:{ name: cfg.plantilla_bienvenida, language:{ code:"es" },
-            components:[{ type:"body", parameters:[{ type:"text", text: contrato.subscriber?.name || contrato.name || "Cliente" }]}]
+            components:[{ type:"body", parameters:[{ type:"text", text: nombreCliente === "—" ? "Cliente" : nombreCliente }]}]
           },
         }),
       });
@@ -181,11 +224,11 @@ export default function WisproPanel() {
       if (json.error) throw new Error(json.error.message);
       // registrar en log
       await supabase.from("wispro_notificaciones_log").insert({
-        contrato_id: String(contrato.id), cliente_nombre: contrato.subscriber?.name||contrato.name||"",
+        contrato_id: String(contrato.id), cliente_nombre: nombreCliente,
         telefono: tel, tipo:"bienvenida", resultado:"enviado",
       });
       // marcar bienvenida enviada
-      await guardarClienteCfg(String(contrato.id), { bienvenida_enviada:true, cliente_nombre: contrato.subscriber?.name||contrato.name||"" });
+      await guardarClienteCfg(String(contrato.id), { bienvenida_enviada:true, cliente_nombre: nombreCliente });
       setBienMsg("✓ Bienvenida enviada a +"+tel);
       setBienContrato(null);
     } catch(e) { setBienMsg("Error: "+e.message); }
@@ -208,12 +251,29 @@ export default function WisproPanel() {
 
   useEffect(() => { if (tab==="historial") cargarLogs(); }, [tab, cargarLogs]);
 
+  // Helper para obtener nombre/tel de un contrato (con datos de cliente enriquecidos)
+  const getNombre = (c) => {
+    const cl = c._cliente || {};
+    return cl.name || cl.full_name || cl.razon_social ||
+      [cl.first_name, cl.last_name].filter(Boolean).join(" ") ||
+      c.subscriber?.name || c.subscriber?.full_name ||
+      c.client?.name || c.client?.full_name ||
+      c.subscriber_name || c.client_name || c.name || "—";
+  };
+  const getTel = (c) => {
+    const cl = c._cliente || {};
+    return cl.phone || cl.mobile || cl.telephone || cl.celular || cl.telefono ||
+      c.subscriber?.phone || c.subscriber?.mobile ||
+      c.client?.phone || c.client?.mobile ||
+      c.subscriber_phone || c.client_phone || c.phone || "";
+  };
+
   /* ── filtros contratos ── */
   const contratosFilt = contratos.filter(c => {
-    const nombre = (c.subscriber?.name||c.name||"").toLowerCase();
+    const nombre = getNombre(c).toLowerCase();
     const estado = c.state||c.status||"";
     if (filtroCon !== "todos" && estado !== filtroCon) return false;
-    if (busqCon.trim()) return nombre.includes(busqCon.toLowerCase()) || String(c.id).includes(busqCon);
+    if (busqCon.trim()) return nombre.includes(busqCon.toLowerCase()) || String(c.id).includes(busqCon) || String(c.public_id||"").includes(busqCon);
     return true;
   });
 
@@ -428,8 +488,8 @@ export default function WisproPanel() {
                       {contratosFilt.map(c=>{
                         const cid = String(c.id);
                         const ccfg = clientesCfg[cid] || {};
-                        const nombre = c.subscriber?.name||c.name||"—";
-                        const tel = c.subscriber?.phone||c.phone||"";
+                        const nombre = getNombre(c);
+                        const tel = getTel(c);
                         const estado = c.state||c.status||"";
                         return (
                           <tr key={cid} style={{borderBottom:"1px solid #f1f5f9", background:"#fff"}}>
@@ -503,7 +563,7 @@ export default function WisproPanel() {
                 <option value="">— Seleccionar cliente —</option>
                 {contratos.map(c=>(
                   <option key={c.id} value={c.id}>
-                    {c.subscriber?.name||c.name||"—"} | {c.subscriber?.phone||c.phone||"sin tel"} | ID:{c.id}
+                    {getNombre(c)} | {getTel(c)||"sin tel"} | #{c.public_id||c.id}
                   </option>
                 ))}
               </select>
@@ -511,8 +571,8 @@ export default function WisproPanel() {
 
             {bienContrato && (
               <div style={{background:"#f8fafc", borderRadius:12, padding:"14px 16px", border:"1.5px solid #e2e8f0", marginBottom:14}}>
-                <p style={{margin:"0 0 4px", fontWeight:700, fontSize:13}}>{bienContrato.subscriber?.name||bienContrato.name}</p>
-                <p style={{margin:"0 0 2px", fontSize:12, color:"#64748b"}}>Tel: {bienContrato.subscriber?.phone||bienContrato.phone||"—"}</p>
+                <p style={{margin:"0 0 4px", fontWeight:700, fontSize:13}}>{getNombre(bienContrato)}</p>
+                <p style={{margin:"0 0 2px", fontSize:12, color:"#64748b"}}>Tel: {getTel(bienContrato)||"—"}</p>
                 <p style={{margin:0, fontSize:12, color:"#64748b"}}>Contrato ID: {bienContrato.id}</p>
                 {clientesCfg[String(bienContrato.id)]?.bienvenida_enviada && (
                   <p style={{margin:"8px 0 0", fontSize:11, color:"#d97706", background:"#fffbeb", borderRadius:6, padding:"4px 8px", border:"1px solid #fcd34d"}}>
