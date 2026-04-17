@@ -2863,11 +2863,31 @@ export default function App() {
   // ── MikroWisp: consulta por cédula y guarda en mikrowisp_clientes ──
   // Reutiliza el proxy diagno ya existente (mismo que agregarClienteMikrowisp)
 
+  // Normaliza un número peruano: agrega prefijo 51 si no lo tiene
+  const normalizarTelefono51 = (num) => {
+    const n = String(num || "").replace(/\D/g, "").trim();
+    if (!n) return "";
+    if (n.startsWith("51")) return n;
+    return `51${n}`;
+  };
+
+  // Normaliza todos los números de un campo telefónico separado por comas
+  const normalizarTelefonos51 = (campo) => {
+    return String(campo || "")
+      .split(",")
+      .map(t => normalizarTelefono51(t.trim()))
+      .filter(Boolean)
+      .join(",");
+  };
+
   const mkwUpsert = async (datos) => {
     // datos puede ser un objeto o array — tomamos el primero con movil
     const d = Array.isArray(datos) ? datos[0] : datos;
     if (!d?.id) return { ok: false, msg: "Sin id en respuesta" };
-    const movil = String(d.movil || "").trim();
+    const esNod04 = String(d._nodo || "").trim() === "Nod_04";
+    const movilRaw = String(d.movil || "").trim();
+    // Nod_04: agregar prefijo 51 a todos los números que no lo tengan
+    const movil = esNod04 ? normalizarTelefonos51(movilRaw) : movilRaw;
     const nodo = d.servicios?.[0]?.nodo ?? null;
     const { data: existing } = await supabase
       .from("mikrowisp_clientes")
@@ -2876,7 +2896,9 @@ export default function App() {
       .maybeSingle();
     let telefonos = movil;
     if (existing) {
-      const actuales = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
+      // También normalizar los ya guardados si es Nod_04
+      const actualesRaw = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
+      const actuales = esNod04 ? actualesRaw.map(normalizarTelefono51) : actualesRaw;
       if (movil && !actuales.includes(movil)) actuales.push(movil);
       telefonos = actuales.join(",");
     }
