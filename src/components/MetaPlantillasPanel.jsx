@@ -80,6 +80,7 @@ export default function MetaPlantillasPanel() {
   const [form, setForm] = useState(FORM_VACIO);
   const [creando, setCreando] = useState(false);
   const [formMsg, setFormMsg] = useState("");
+  const [plantillaEditando, setPlantillaEditando] = useState(null); // { id, name }
 
   const bodyRef = useRef(null);
   const headerRef = useRef(null);
@@ -150,6 +151,41 @@ export default function MetaPlantillasPanel() {
     } catch (e) { setPMsg("Error: " + e.message); }
   };
 
+  /* ── Precargar formulario para editar ── */
+  const editarPlantilla = (p) => {
+    const prefix = empresa === "dim" ? "dim_" : "amn_";
+    const nombre = p.name.startsWith(prefix) ? p.name.slice(prefix.length) : p.name;
+
+    const header = p.components?.find(c => c.type === "HEADER");
+    const body   = p.components?.find(c => c.type === "BODY");
+    const footer = p.components?.find(c => c.type === "FOOTER");
+    const btns   = p.components?.find(c => c.type === "BUTTONS");
+    const btn    = btns?.buttons?.[0];
+
+    let btn_tipo = "NONE";
+    if (btn?.type === "QUICK_REPLY")   btn_tipo = "QUICK_REPLY";
+    else if (btn?.type === "URL")      btn_tipo = "URL";
+    else if (btn?.type === "PHONE_NUMBER") btn_tipo = "PHONE";
+
+    setForm({
+      nombre,
+      idioma:       p.language || "es",
+      categoria:    p.category || "UTILITY",
+      header_tipo:  header?.format || "NONE",
+      header_texto: header?.text   || "",
+      body:         body?.text     || "",
+      footer:       footer?.text   || "",
+      btn_tipo,
+      btn_texto:    btn?.text      || "",
+      btn_url:      btn?.url || btn?.phone_number || "",
+      muestras:     {},
+    });
+    setPlantillaEditando({ id: p.id, name: p.name });
+    setShowForm(true);
+    setFormMsg("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   /* ── Crear plantilla ── */
   const crearPlantilla = async () => {
     if (!form.nombre.trim()) return setFormMsg("El nombre es obligatorio.");
@@ -188,6 +224,16 @@ export default function MetaPlantillasPanel() {
     }
 
     try {
+      /* Si estamos editando, eliminar la plantilla anterior primero */
+      if (plantillaEditando) {
+        const delRes = await fetch(
+          `${META_BASE}/${cfg.waba_id}/message_templates?hsm_id=${plantillaEditando.id}&name=${plantillaEditando.name}&access_token=${cfg.access_token}`,
+          { method: "DELETE" }
+        );
+        const delJson = await delRes.json();
+        if (delJson.error) throw new Error("Error al eliminar la anterior: " + delJson.error.message);
+      }
+
       const res = await fetch(`${META_BASE}/${cfg.waba_id}/message_templates`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.access_token}` },
@@ -195,9 +241,12 @@ export default function MetaPlantillasPanel() {
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);
-      setFormMsg("✓ Plantilla enviada a revisión (estado: PENDIENTE).");
+      setFormMsg(plantillaEditando
+        ? "✓ Plantilla actualizada y enviada a revisión."
+        : "✓ Plantilla enviada a revisión (estado: PENDIENTE).");
       setShowForm(false);
       setForm(FORM_VACIO);
+      setPlantillaEditando(null);
       cargarPlantillas();
     } catch (e) { setFormMsg("Error: " + e.message); }
     finally { setCreando(false); }
@@ -327,8 +376,8 @@ export default function MetaPlantillasPanel() {
                 style={{ ...btn("#0369a1"), padding: "6px 14px", fontSize: 12 }}>
                 {loadingP ? "Cargando..." : "🔄 Sincronizar"}
               </button>
-              <button onClick={() => { setShowForm(v => !v); setFormMsg(""); setForm(FORM_VACIO); }}
-                style={{ ...btn("#16a34a"), padding: "6px 14px", fontSize: 12 }}>
+              <button onClick={() => { setShowForm(v => !v); setFormMsg(""); setForm(FORM_VACIO); setPlantillaEditando(null); }}
+                style={{ ...btn(showForm ? "#64748b" : "#16a34a"), padding: "6px 14px", fontSize: 12 }}>
                 {showForm ? "✕ Cancelar" : "+ Nueva plantilla"}
               </button>
             </div>
@@ -343,13 +392,18 @@ export default function MetaPlantillasPanel() {
               <div style={{ background: "#f8fafc", borderRadius: 14, padding: "20px 22px",
                 border: "1.5px solid #e2e8f0", marginBottom: 20 }}>
                 <p style={{ margin: "0 0 16px", fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
-                  Nueva plantilla —{" "}
+                  {plantillaEditando ? "✏ Editar plantilla" : "Nueva plantilla"} —{" "}
                   <span style={{ color: empresa === "dim" ? "#7c3aed" : "#0369a1" }}>
                     {empresa === "dim" ? "DIM" : "Americanet"}
                   </span>
                   <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500, marginLeft: 8 }}>
                     prefijo: {prefix}
                   </span>
+                  {plantillaEditando && (
+                    <span style={{ fontSize: 11, color: "#d97706", marginLeft: 8 }}>
+                      ⚠ Se eliminará la anterior y se creará una nueva
+                    </span>
+                  )}
                 </p>
 
                 {/* Nombre / Idioma / Categoría */}
@@ -552,11 +606,18 @@ export default function MetaPlantillasPanel() {
                       {getBodyText(p.components).slice(0, 200) || "—"}
                     </p>
                   </div>
-                  <button onClick={() => eliminar(p.id, p.name)}
-                    style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, borderRadius: 8, border: "none",
-                      cursor: "pointer", background: "#fff1f2", color: "#e11d48", whiteSpace: "nowrap" }}>
-                    Eliminar
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button onClick={() => editarPlantilla(p)}
+                      style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, borderRadius: 8, border: "none",
+                        cursor: "pointer", background: "#eff6ff", color: "#2563eb", whiteSpace: "nowrap" }}>
+                      ✏ Editar
+                    </button>
+                    <button onClick={() => eliminar(p.id, p.name)}
+                      style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, borderRadius: 8, border: "none",
+                        cursor: "pointer", background: "#fff1f2", color: "#e11d48", whiteSpace: "nowrap" }}>
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
