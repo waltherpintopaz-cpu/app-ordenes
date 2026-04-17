@@ -97,16 +97,18 @@ export default function WisproPanel() {
   };
 
   /* ── probar API WisPro ── */
+  const [rawResp, setRawResp] = useState("");
   const probarApi = async () => {
     if (!cfg?.api_token) return setTestMsg("Ingresa el API Token.");
-    setTestando(true); setTestMsg("");
+    setTestando(true); setTestMsg(""); setRawResp("");
     try {
-      const res = await fetch(`${DIAGNO_BASE}/api/wispro/contracts?per_page=1`, {
+      const res = await fetch(`${DIAGNO_BASE}/api/wispro/contracts?per_page=2`, {
         headers: { Authorization: `Token ${cfg.api_token}`, Accept: "application/json" },
       });
       if (res.status === 401) throw new Error("Token inválido o sin permisos");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      setRawResp(JSON.stringify(json, null, 2));
       const total = json?.count ?? json?.meta?.total_count ?? json?.total ?? (Array.isArray(json) ? json.length : "?");
       setTestMsg(`✓ Conexión exitosa — ${total} contratos encontrados`);
     } catch(e) { setTestMsg("Error: "+e.message); }
@@ -257,6 +259,15 @@ export default function WisproPanel() {
                   </button>
                   {testMsg && <span style={{fontSize:12, fontWeight:600, color: testMsg.startsWith("✓")?"#16a34a":"#dc2626"}}>{testMsg}</span>}
                 </div>
+                {rawResp && (
+                  <div style={{marginTop:10}}>
+                    <p style={{margin:"0 0 4px", fontSize:11, fontWeight:700, color:"#475569"}}>Respuesta raw (primeros 2 contratos):</p>
+                    <pre style={{background:"#0f172a", color:"#e2e8f0", borderRadius:10, padding:"12px 14px",
+                      fontSize:10, overflowX:"auto", maxHeight:300, overflowY:"auto", margin:0}}>
+                      {rawResp}
+                    </pre>
+                  </div>
+                )}
               </div>
             </div>
 
