@@ -107,7 +107,7 @@ const writeJson = (res, status, data) => {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS,DELETE",
-    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Token, token",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Token, token, Authorization",
   });
   res.end(JSON.stringify(data));
 };
