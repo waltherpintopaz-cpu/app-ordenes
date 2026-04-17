@@ -64,8 +64,9 @@ const extraerVariables = (texto) => {
 export default function MetaPlantillasPanel() {
   const [tab, setTab] = useState("config");
   const [cfg, setCfg] = useState({
-    waba_id: "", access_token: "",
+    americanet_waba_id: "", americanet_token: "",
     americanet_phone_id: "", americanet_phone_label: "",
+    dim_waba_id: "", dim_token: "",
     dim_phone_id: "", dim_phone_label: "",
   });
   const [savingCfg, setSavingCfg] = useState(false);
@@ -131,25 +132,31 @@ export default function MetaPlantillasPanel() {
 
   /* ── Cargar plantillas desde Meta ── */
   const cargarPlantillas = useCallback(async () => {
-    if (!cfg.waba_id || !cfg.access_token) return setPMsg("Configura las credenciales primero.");
+    const wabaId = empresa === "dim" ? cfg.dim_waba_id : cfg.americanet_waba_id;
+    const token  = empresa === "dim" ? cfg.dim_token   : cfg.americanet_token;
+    if (!wabaId || !token) return setPMsg("Configura el WABA ID y Token para esta empresa primero.");
     setLoadingP(true); setPMsg("");
     try {
       const res = await fetch(
-        `${META_BASE}/${cfg.waba_id}/message_templates?fields=id,name,language,category,status,components&limit=200&access_token=${cfg.access_token}`
+        `${META_BASE}/${wabaId}/message_templates?fields=id,name,language,category,status,components&limit=200&access_token=${token}`
       );
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);
       setPlantillas(json.data || []);
     } catch (e) { setPMsg("Error: " + e.message); }
     finally { setLoadingP(false); }
-  }, [cfg.waba_id, cfg.access_token]);
+  }, [empresa, cfg]);
+
+  /* ── Credenciales activas según empresa ── */
+  const wabaActivo  = empresa === "dim" ? cfg.dim_waba_id : cfg.americanet_waba_id;
+  const tokenActivo = empresa === "dim" ? cfg.dim_token   : cfg.americanet_token;
 
   /* ── Eliminar plantilla ── */
   const eliminar = async (templateId, nombre) => {
     if (!window.confirm(`¿Eliminar plantilla "${nombre}"?`)) return;
     try {
       const res = await fetch(
-        `${META_BASE}/${cfg.waba_id}/message_templates?hsm_id=${templateId}&name=${nombre}&access_token=${cfg.access_token}`,
+        `${META_BASE}/${wabaActivo}/message_templates?hsm_id=${templateId}&name=${nombre}&access_token=${tokenActivo}`,
         { method: "DELETE" }
       );
       const json = await res.json();
@@ -235,16 +242,16 @@ export default function MetaPlantillasPanel() {
       /* Si estamos editando, eliminar la plantilla anterior primero */
       if (plantillaEditando) {
         const delRes = await fetch(
-          `${META_BASE}/${cfg.waba_id}/message_templates?hsm_id=${plantillaEditando.id}&name=${plantillaEditando.name}&access_token=${cfg.access_token}`,
+          `${META_BASE}/${wabaActivo}/message_templates?hsm_id=${plantillaEditando.id}&name=${plantillaEditando.name}&access_token=${tokenActivo}`,
           { method: "DELETE" }
         );
         const delJson = await delRes.json();
         if (delJson.error) throw new Error("Error al eliminar la anterior: " + delJson.error.message);
       }
 
-      const res = await fetch(`${META_BASE}/${cfg.waba_id}/message_templates`, {
+      const res = await fetch(`${META_BASE}/${wabaActivo}/message_templates`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.access_token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenActivo}` },
         body: JSON.stringify({ name: nombreFinal, language: form.idioma, category: form.categoria, components }),
       });
       const json = await res.json();
@@ -266,8 +273,9 @@ export default function MetaPlantillasPanel() {
     if (!pruebaPlantilla)       return setPruebaMsg("Selecciona una plantilla.");
     setEnviando(true); setPruebaMsg("");
 
-    const phoneId = pruebaEmpresa === "dim" ? cfg.dim_phone_id : cfg.americanet_phone_id;
-    if (!phoneId) return (setPruebaMsg("Configura el Phone Number ID para esta empresa."), setEnviando(false));
+    const phoneId = pruebaEmpresa === "dim" ? cfg.dim_phone_id    : cfg.americanet_phone_id;
+    const token   = pruebaEmpresa === "dim" ? cfg.dim_token       : cfg.americanet_token;
+    if (!phoneId || !token) return (setPruebaMsg("Configura el Phone Number ID y Token para esta empresa."), setEnviando(false));
 
     const plantilla = plantillas.find(p => p.name === pruebaPlantilla);
     if (!plantilla) return (setPruebaMsg("Plantilla no encontrada."), setEnviando(false));
@@ -291,7 +299,7 @@ export default function MetaPlantillasPanel() {
     try {
       const res = await fetch(`${META_BASE}/${phoneId}/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.access_token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           messaging_product: "whatsapp",
           to: destino,
@@ -362,39 +370,45 @@ export default function MetaPlantillasPanel() {
         {tab === "config" && (
           <div style={{ display: "grid", gap: 20, maxWidth: 620 }}>
 
-            <div style={{ background: "#f8fafc", borderRadius: 12, padding: "16px 18px", border: "1px solid #e2e8f0" }}>
-              <p style={{ margin: "0 0 14px", fontWeight: 700, fontSize: 13, color: "#0f172a" }}>
-                🔑 Credenciales Meta
-              </p>
-              <label style={lbl}>WABA ID</label>
-              <input value={cfg.waba_id} onChange={e => setCfg(c => ({ ...c, waba_id: e.target.value }))}
-                placeholder="Ej: 123456789012345" style={inp} />
-              <label style={{ ...lbl, marginTop: 10 }}>Access Token (permanente)</label>
-              <input value={cfg.access_token} onChange={e => setCfg(c => ({ ...c, access_token: e.target.value }))}
-                placeholder="EAABxxxx..." style={{ ...inp, fontFamily: "monospace", fontSize: 11 }} />
-            </div>
-
             {[
-              { key: "americanet", label: "Americanet", color: "#0369a1", phoneIdKey: "americanet_phone_id", phoneLblKey: "americanet_phone_label" },
-              { key: "dim",        label: "DIM",        color: "#7c3aed", phoneIdKey: "dim_phone_id",        phoneLblKey: "dim_phone_label" },
+              { key: "americanet", label: "Americanet", color: "#0369a1",
+                wabaKey: "americanet_waba_id", tokenKey: "americanet_token",
+                phoneIdKey: "americanet_phone_id", phoneLblKey: "americanet_phone_label" },
+              { key: "dim", label: "DIM", color: "#7c3aed",
+                wabaKey: "dim_waba_id", tokenKey: "dim_token",
+                phoneIdKey: "dim_phone_id", phoneLblKey: "dim_phone_label" },
             ].map(emp => (
-              <div key={emp.key} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px",
+              <div key={emp.key} style={{ background: "#f8fafc", borderRadius: 12, padding: "16px 18px",
                 border: `1.5px solid ${emp.color}33` }}>
-                <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: emp.color }}>
-                  📲 Número para {emp.label}
+                <p style={{ margin: "0 0 14px", fontWeight: 700, fontSize: 13, color: emp.color }}>
+                  🔑 Credenciales — {emp.label}
                 </p>
-                <label style={lbl}>Identificador del número (Phone Number ID)</label>
+
+                <label style={lbl}>WABA ID</label>
+                <input value={cfg[emp.wabaKey] || ""}
+                  onChange={e => setCfg(c => ({ ...c, [emp.wabaKey]: e.target.value }))}
+                  placeholder="Ej: 1177872660476042"
+                  style={{ ...inp, fontFamily: "monospace" }} />
+
+                <label style={{ ...lbl, marginTop: 10 }}>Access Token (permanente)</label>
+                <input value={cfg[emp.tokenKey] || ""}
+                  onChange={e => setCfg(c => ({ ...c, [emp.tokenKey]: e.target.value }))}
+                  placeholder="EAABxxxx..."
+                  style={{ ...inp, fontFamily: "monospace", fontSize: 11 }} />
+
+                <label style={{ ...lbl, marginTop: 10 }}>Phone Number ID</label>
                 <input value={cfg[emp.phoneIdKey] || ""}
                   onChange={e => setCfg(c => ({ ...c, [emp.phoneIdKey]: e.target.value }))}
                   placeholder="Ej: 824888677376395"
                   style={{ ...inp, fontFamily: "monospace" }} />
+
                 <label style={{ ...lbl, marginTop: 8 }}>Etiqueta del número (opcional)</label>
                 <input value={cfg[emp.phoneLblKey] || ""}
                   onChange={e => setCfg(c => ({ ...c, [emp.phoneLblKey]: e.target.value }))}
-                  placeholder="Ej: +51 950 485 133"
-                  style={inp} />
+                  placeholder="Ej: +51 950 485 133" style={inp} />
+
                 <p style={{ margin: "6px 0 0", fontSize: 11, color: "#94a3b8" }}>
-                  Encuéntralo en Meta Developers → WhatsApp → Configuración de la API → "Identificador del número de teléfono"
+                  Encuéntralo en Meta Developers → WhatsApp → Configuración de la API
                 </p>
               </div>
             ))}
