@@ -11,6 +11,7 @@ import SmartOltPanel from "./components/SmartOltPanel";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import MetaPlantillasPanel from "./components/MetaPlantillasPanel";
+import MkwEstadoPanel from "./components/MkwEstadoPanel";
 import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
@@ -167,6 +168,7 @@ const MENU_VISTAS_WEB = [
   { key: "clientes", label: "Clientes" },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
+  { key: "mkwEstado", label: "Estado MikroWisp" },
   { key: "nap", label: "Cajas NAP" },
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
@@ -241,6 +243,7 @@ const MENU_ICON_PATHS = {
   clientes: "M4 6H20V18H4V6ZM8 10H16M8 14H13",
   whatsapp: "M21 11.5C21 16.747 16.747 21 11.5 21C9.83 21 8.255 20.578 6.888 19.835L3 21L4.165 17.112C3.422 15.745 3 14.17 3 12.5C3 7.253 7.253 3 12.5 3C16.747 3 20.322 5.526 21 11.5ZM9 10H8V14H9V10ZM13 10H12C11.448 10 11 10.448 11 11V13C11 13.552 11.448 14 12 14H13C13.552 14 14 13.552 14 13V11C14 10.448 13.552 10 13 10ZM17 10H15V14H16V12.5H17V10Z",
   metaPlantillas: "M4 4H20V16H4V4ZM8 20H16M12 16V20M8 9H16M8 13H12",
+  mkwEstado: "M9 3H15M12 3V7M3 12H7M17 12H21M12 17V21M5.636 5.636L8.465 8.465M15.535 15.535L18.364 18.364M5.636 18.364L8.465 15.535M15.535 8.465L18.364 5.636",
   nap: "M12 2L4 6V12C4 15.31 7.58 19.2 12 21C16.42 19.2 20 15.31 20 12V6L12 2ZM10 17L6 13L7.41 11.59L10 14.17L16.59 7.58L18 9L10 17Z",
   cobertura: "M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01",
 };
@@ -17436,6 +17439,10 @@ export default function App() {
 
         {vistaActiva === "metaPlantillas" && (
           <MetaPlantillasPanel />
+        )}
+
+        {vistaActiva === "mkwEstado" && (
+          <MkwEstadoPanel />
         )}
 
         {vistaActiva === "nap" && (
