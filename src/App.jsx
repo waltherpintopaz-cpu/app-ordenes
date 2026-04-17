@@ -1826,6 +1826,7 @@ export default function App() {
   const [mkwMasivoLoading, setMkwMasivoLoading] = useState(false);
   const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
   const [mkwMasivoNodoFiltro, setMkwMasivoNodoFiltro] = useState("todos");
+  const [mkwMasivoSobreescribir, setMkwMasivoSobreescribir] = useState(false);
   const [mkwIndividualNodo, setMkwIndividualNodo] = useState("americanet");
   const [mkwMasivoErrores, setMkwMasivoErrores] = useState([]);
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
@@ -2891,7 +2892,7 @@ export default function App() {
       .join(",");
   };
 
-  const mkwUpsert = async (datos) => {
+  const mkwUpsert = async (datos, { sobreescribir = false } = {}) => {
     // datos puede ser un objeto o array — tomamos el primero con movil
     const d = Array.isArray(datos) ? datos[0] : datos;
     if (!d?.id) return { ok: false, msg: "Sin id en respuesta" };
@@ -2900,18 +2901,19 @@ export default function App() {
     // Nod_04: agregar prefijo 51 a todos los números que no lo tengan
     const movil = esNod04 ? normalizarTelefonos51(movilRaw) : movilRaw;
     const nodo = d.servicios?.[0]?.nodo ?? null;
-    const { data: existing } = await supabase
-      .from("mikrowisp_clientes")
-      .select("telefonos")
-      .eq("mikrowisp_id", d.id)
-      .maybeSingle();
     let telefonos = movil;
-    if (existing) {
-      // También normalizar los ya guardados si es Nod_04
-      const actualesRaw = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
-      const actuales = esNod04 ? actualesRaw.map(normalizarTelefono51) : actualesRaw;
-      if (movil && !actuales.includes(movil)) actuales.push(movil);
-      telefonos = actuales.join(",");
+    if (!sobreescribir) {
+      const { data: existing } = await supabase
+        .from("mikrowisp_clientes")
+        .select("telefonos")
+        .eq("mikrowisp_id", d.id)
+        .maybeSingle();
+      if (existing) {
+        const actualesRaw = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
+        const actuales = esNod04 ? actualesRaw.map(normalizarTelefono51) : actualesRaw;
+        if (movil && !actuales.includes(movil)) actuales.push(movil);
+        telefonos = actuales.join(",");
+      }
     }
     const row = {
       mikrowisp_id: d.id,
@@ -3028,7 +3030,7 @@ export default function App() {
       try {
         const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""), String(c.nodo || ""));
         const { data: prev } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id).maybeSingle();
-        const res = await mkwUpsert(datos);
+        const res = await mkwUpsert(datos, { sobreescribir: mkwMasivoSobreescribir });
         if (res.ok) { ok++; if (!prev) nuevo++; }
         else { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: res.msg || "Error al guardar" }); }
       } catch (e) { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: e.message || "Error desconocido" }); }
@@ -17149,6 +17151,13 @@ export default function App() {
                         );
                       })}
                     </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, cursor: "pointer", userSelect: "none" }}>
+                      <input type="checkbox" checked={mkwMasivoSobreescribir}
+                        onChange={e => setMkwMasivoSobreescribir(e.target.checked)} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: mkwMasivoSobreescribir ? "#dc2626" : "#64748b" }}>
+                        Sobreescribir teléfonos (reemplaza los actuales con los de MikroWisp)
+                      </span>
+                    </label>
                     <button onClick={mkwSincronizarMasivo} disabled={mkwMasivoLoading}
                       style={{ padding: "8px 18px", background: mkwMasivoLoading ? "#94a3b8" : "#0f172a",
                         color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700,
