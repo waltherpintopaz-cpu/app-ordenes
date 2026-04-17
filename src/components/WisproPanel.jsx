@@ -109,6 +109,10 @@ export default function WisproPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setRawResp(JSON.stringify(json, null, 2));
+      // WisPro a veces devuelve HTTP 200 con error en el body
+      if (json?.status === 401 || json?.message === "Unauthorized" || json?.errors !== undefined && !json?.count) {
+        throw new Error("Token inválido o sin permisos (Unauthorized)");
+      }
       const total = json?.count ?? json?.meta?.total_count ?? json?.total ?? (Array.isArray(json) ? json.length : "?");
       setTestMsg(`✓ Conexión exitosa — ${total} contratos encontrados`);
     } catch(e) { setTestMsg("Error: "+e.message); }
