@@ -42,6 +42,7 @@ export default function WisproPanel() {
   const [contratos, setContratos]       = useState([]);
   const [loadingCon, setLoadingCon]     = useState(false);
   const [conMsg, setConMsg]             = useState("");
+  const [rawClienteDebug, setRawClienteDebug] = useState(null);
   const [clientesCfg, setClientesCfg]  = useState({}); // { contrato_id: row }
   const [busqCon, setBusqCon]           = useState("");
   const [filtroCon, setFiltroCon]       = useState("todos");
@@ -167,6 +168,10 @@ export default function WisproPanel() {
 
       setContratos(listaEnriq);
 
+      // Debug: mostrar campos del primer cliente para diagnosticar teléfono
+      const primerConCliente = listaEnriq.find(c => c._cliente);
+      if (primerConCliente?._cliente) setRawClienteDebug(primerConCliente._cliente);
+
       const sinCliente = listaEnriq.filter(c => !c._cliente).length;
       if (listaEnriq.length === 0) {
         setConMsg("No se encontraron contratos. Verifica que el token tenga permisos.");
@@ -262,9 +267,12 @@ export default function WisproPanel() {
   };
   const getTel = (c) => {
     const cl = c._cliente || {};
-    return cl.phone || cl.mobile || cl.telephone || cl.celular || cl.telefono ||
-      c.subscriber?.phone || c.subscriber?.mobile ||
-      c.client?.phone || c.client?.mobile ||
+    return cl.phone || cl.phone_number || cl.mobile || cl.mobile_phone ||
+      cl.telephone || cl.celular || cl.telefono || cl.whatsapp ||
+      cl.contact_phone || cl.cell_phone || cl.cellphone ||
+      (Array.isArray(cl.phones) ? cl.phones[0]?.number || cl.phones[0]?.phone || cl.phones[0] : null) ||
+      c.subscriber?.phone || c.subscriber?.phone_number || c.subscriber?.mobile ||
+      c.client?.phone || c.client?.phone_number ||
       c.subscriber_phone || c.client_phone || c.phone || "";
   };
 
@@ -465,7 +473,17 @@ export default function WisproPanel() {
                 {loadingCon?"Cargando...":"🔄 Cargar desde WisPro"}
               </button>
             </div>
-            {conMsg && <p style={{fontSize:12, color:"#dc2626", marginBottom:10}}>{conMsg}</p>}
+            {conMsg && <p style={{fontSize:12, color: conMsg.startsWith("⚠")?"#d97706":"#64748b", marginBottom:10}}>{conMsg}</p>}
+            {rawClienteDebug && !getTel({_cliente: rawClienteDebug}) && (
+              <details style={{marginBottom:10, fontSize:11, color:"#64748b"}}>
+                <summary style={{cursor:"pointer", fontWeight:700, color:"#7c3aed"}}>
+                  🔍 Debug: campos del cliente (teléfono no encontrado)
+                </summary>
+                <pre style={{background:"#f8fafc", borderRadius:8, padding:"8px 12px", marginTop:6, overflowX:"auto", fontSize:10}}>
+                  {JSON.stringify(rawClienteDebug, null, 2)}
+                </pre>
+              </details>
+            )}
             {contratos.length===0 && !loadingCon ? (
               <p style={{color:"#94a3b8", fontSize:13, padding:"30px 0", textAlign:"center"}}>
                 Haz clic en "Cargar desde WisPro" para ver los contratos.
