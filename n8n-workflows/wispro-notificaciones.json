@@ -14,43 +14,52 @@
     {
       "parameters": {
         "url": "https://amnet-diagno.0lthka.easypanel.host/api/wispro/contracts?per_page=500",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {}
-      },
-      "id": "get-contratos",
-      "name": "GET contratos WisPro",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [460, 300],
-      "credentials": { "httpHeaderAuth": { "id": "wispro-token", "name": "WisPro API Token" } }
-    },
-    {
-      "parameters": {
-        "url": "https://amnet-diagno.0lthka.easypanel.host/api/wispro/contracts?per_page=500",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [{ "name": "Authorization", "value": "Token 09ba7595-964f-4fa1-a924-10353372e9a5" }]
         },
         "options": {}
       },
-      "id": "get-contratos-v2",
-      "name": "GET Contratos WisPro (con token fijo)",
+      "id": "get-contratos",
+      "name": "GET Contratos WisPro",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
       "position": [460, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Lee la config desde Supabase (inyectada en nodo anterior)\n// y procesa cada contrato para determinar si hay que notificar\n\nconst contratos = $input.first().json;\nconst lista = Array.isArray(contratos) ? contratos\n  : (contratos?.contracts ?? contratos?.data ?? []);\n\nconst hoy = new Date();\nhoy.setHours(0,0,0,0);\n\nconst candidatos = [];\n\nfor (const c of lista) {\n  const fechaVencStr = c.due_date || c.expiration_date || c.next_due_date || \"\";\n  if (!fechaVencStr) continue;\n\n  const fechaVenc = new Date(fechaVencStr);\n  fechaVenc.setHours(0,0,0,0);\n\n  const diasVencido = Math.floor((hoy - fechaVenc) / (1000 * 60 * 60 * 24));\n  const estado      = c.state || c.status || \"\";\n  const deuda       = parseFloat(c.balance || c.debt || c.amount_due || 0);\n  const tel         = c.subscriber?.phone || c.phone || \"\";\n  const nombre      = c.subscriber?.name  || c.name  || \"\";\n\n  // Recordatorio 1 (default: día +2)\n  if (diasVencido === 2 && deuda > 0 && estado !== \"disabled\") {\n    candidatos.push({ contrato: c, tipo: \"recordatorio_1\", diasVencido, deuda, tel, nombre });\n  }\n  // Recordatorio 2 (default: día +5)\n  else if (diasVencido === 5 && deuda > 0) {\n    candidatos.push({ contrato: c, tipo: \"recordatorio_2\", diasVencido, deuda, tel, nombre });\n  }\n  // Recordatorio 3 (default: día +7)\n  else if (diasVencido === 7 && deuda > 0) {\n    candidatos.push({ contrato: c, tipo: \"recordatorio_3\", diasVencido, deuda, tel, nombre });\n  }\n  // Suspensión\n  else if (estado === \"disabled\" && deuda > 0) {\n    candidatos.push({ contrato: c, tipo: \"suspension\", diasVencido, deuda, tel, nombre });\n  }\n}\n\nreturn candidatos.map(c => ({ json: c }));"
+        "url": "https://amnet-diagno.0lthka.easypanel.host/api/wispro/clients?per_page=500",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "Token 09ba7595-964f-4fa1-a924-10353372e9a5" }]
+        },
+        "options": {}
+      },
+      "id": "get-clientes",
+      "name": "GET Clientes WisPro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enriquecer contratos con datos del cliente (nombre, teléfono)\nconst jsonC  = $('GET Contratos WisPro').first().json;\nconst jsonCl = $input.first().json;\n\nconst contratos = Array.isArray(jsonC)  ? jsonC  : (jsonC?.data  ?? jsonC?.results  ?? jsonC?.contracts ?? []);\nconst clientes  = Array.isArray(jsonCl) ? jsonCl : (jsonCl?.data ?? jsonCl?.results ?? jsonCl?.clients  ?? []);\n\n// Mapa client_id → cliente (por id y public_id)\nconst clientMap = {};\nclientes.forEach(cl => {\n  if (cl.id)        clientMap[String(cl.id)]        = cl;\n  if (cl.public_id) clientMap[String(cl.public_id)] = cl;\n});\n\n// Enriquecer cada contrato con _cliente\nconst lista = contratos.map(c => ({\n  ...c,\n  _cliente: clientMap[String(c.client_id)] || null,\n}));\n\nreturn [{ json: { data: lista, count: lista.length } }];"
+      },
+      "id": "merge-contratos-clientes",
+      "name": "Merge contratos+clientes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Evalúa qué contratos necesitan notificación hoy\nconst input = $input.first().json;\nconst lista = Array.isArray(input) ? input : (input?.data ?? input?.results ?? []);\n\nconst hoy = new Date();\nhoy.setHours(0,0,0,0);\n\nconst candidatos = [];\n\nfor (const c of lista) {\n  const fechaVencStr = c.due_date || c.expiration_date || c.next_due_date || \"\";\n  if (!fechaVencStr) continue;\n\n  const fechaVenc = new Date(fechaVencStr);\n  fechaVenc.setHours(0,0,0,0);\n\n  const diasVencido = Math.floor((hoy - fechaVenc) / (1000 * 60 * 60 * 24));\n  const estado      = c.state || c.status || \"\";\n  const deuda       = parseFloat(c.balance || c.debt || c.amount_due || 0);\n\n  // Nombre: primero desde _cliente (datos reales), luego fallbacks\n  const cl     = c._cliente || {};\n  const nombre = cl.name || cl.full_name ||\n    [cl.first_name, cl.last_name].filter(Boolean).join(\" \") ||\n    c.subscriber?.name || c.name || \"\";\n\n  // Teléfono: phone_mobile es el campo real de WisPro\n  const tel = cl.phone_mobile || cl.phone || cl.mobile || cl.telephone ||\n    c.subscriber?.phone || c.phone || \"\";\n\n  // Recordatorio 1 (default: día +2)\n  if (diasVencido === 2 && deuda > 0 && estado !== \"disabled\") {\n    candidatos.push({ contrato: c, tipo: \"recordatorio_1\", diasVencido, deuda, tel, nombre });\n  }\n  // Recordatorio 2 (default: día +5)\n  else if (diasVencido === 5 && deuda > 0) {\n    candidatos.push({ contrato: c, tipo: \"recordatorio_2\", diasVencido, deuda, tel, nombre });\n  }\n  // Recordatorio 3 (default: día +7)\n  else if (diasVencido === 7 && deuda > 0) {\n    candidatos.push({ contrato: c, tipo: \"recordatorio_3\", diasVencido, deuda, tel, nombre });\n  }\n  // Suspensión\n  else if (estado === \"disabled\" && deuda > 0) {\n    candidatos.push({ contrato: c, tipo: \"suspension\", diasVencido, deuda, tel, nombre });\n  }\n}\n\nreturn candidatos.map(c => ({ json: c }));"
       },
       "id": "evaluar-candidatos",
       "name": "Evaluar candidatos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [1120, 300]
     },
     {
       "parameters": {
@@ -65,16 +74,16 @@
       "name": "Filtrar sin teléfono",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [900, 300]
+      "position": [1340, 300]
     },
     {
       "parameters": {
-        "url": "=https://TU_SUPABASE_URL/rest/v1/wispro_notificaciones_log?select=id&contrato_id=eq.{{ $json.contrato.id }}&tipo=eq.{{ $json.tipo }}&creado_at=gte.{{ new Date().toISOString().slice(0,10) }}",
+        "url": "=https://vgwbqbzpjlbkmxtfghdm.supabase.co/rest/v1/wispro_notificaciones_log?select=id&contrato_id=eq.{{ $json.contrato.id }}&tipo=eq.{{ $json.tipo }}&creado_at=gte.{{ new Date().toISOString().slice(0,10) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey",        "value": "TU_SUPABASE_ANON_KEY" },
-            { "name": "Authorization", "value": "Bearer TU_SUPABASE_ANON_KEY" }
+            { "name": "apikey",        "value": "sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_" },
+            { "name": "Authorization", "value": "Bearer sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_" }
           ]
         },
         "options": {}
@@ -83,7 +92,7 @@
       "name": "¿Ya se envió hoy?",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1120, 300]
+      "position": [1560, 300]
     },
     {
       "parameters": {
@@ -97,7 +106,7 @@
       "name": "Si NO se envió hoy",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [1340, 300]
+      "position": [1780, 300]
     },
     {
       "parameters": {
@@ -114,17 +123,17 @@
       "name": "Verificar deuda actual (tiempo real)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [1560, 300]
+      "position": [2000, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Verificar si sigue con deuda después del chequeo en tiempo real\nconst contratoActual  = $input.first().json;\nconst candidato       = $('evaluar-candidatos').item.json;\n\nconst deudaActual  = parseFloat(contratoActual.balance || contratoActual.debt || contratoActual.amount_due || 0);\nconst estadoActual = contratoActual.state || contratoActual.status || \"\";\n\n// Normalizar teléfono peruano\nlet tel = candidato.tel || \"\";\ntel = tel.replace(/\\D/g, \"\");\nif (tel && !tel.startsWith(\"51\")) tel = \"51\" + tel;\n\nif (deudaActual <= 0) {\n  return [{ json: { ...candidato, accion: \"saltado_pago\", tel, deudaActual } }];\n}\n\nif (candidato.tipo === \"suspension\" && estadoActual !== \"disabled\") {\n  return [{ json: { ...candidato, accion: \"saltado_estado\", tel, deudaActual } }];\n}\n\nreturn [{ json: { ...candidato, accion: \"enviar\", tel, deudaActual } }];"
+        "jsCode": "// Verificar si sigue con deuda después del chequeo en tiempo real\nconst contratoActual = $input.first().json;\nconst candidato      = $('evaluar-candidatos').item.json;\n\n// Deuda actual: también puede venir en data[0] si WisPro retorna objeto envuelto\nconst cData = contratoActual?.data?.[0] || contratoActual;\nconst deudaActual  = parseFloat(cData.balance || cData.debt || cData.amount_due || 0);\nconst estadoActual = cData.state || cData.status || \"\";\n\n// Normalizar teléfono peruano\nlet tel = candidato.tel || \"\";\ntel = tel.replace(/\\D/g, \"\");\nif (tel && !tel.startsWith(\"51\")) tel = \"51\" + tel;\n\nif (deudaActual <= 0) {\n  return [{ json: { ...candidato, accion: \"saltado_pago\", tel, deudaActual } }];\n}\n\nif (candidato.tipo === \"suspension\" && estadoActual !== \"disabled\") {\n  return [{ json: { ...candidato, accion: \"saltado_estado\", tel, deudaActual } }];\n}\n\nreturn [{ json: { ...candidato, accion: \"enviar\", tel, deudaActual } }];"
       },
       "id": "decision-enviar",
       "name": "¿Enviar o saltar?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 300]
+      "position": [2220, 300]
     },
     {
       "parameters": {
@@ -138,17 +147,17 @@
       "name": "IF accion = enviar",
       "type": "n8n-nodes-base.filter",
       "typeVersion": 2,
-      "position": [2000, 300]
+      "position": [2440, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Construir payload WhatsApp según tipo de mensaje\nconst d = $input.first().json;\n\n// ---- CONFIGURA AQUÍ ----\nconst PHONE_NUMBER_ID = \"TU_PHONE_NUMBER_ID_DIM\";  // Phone Number ID de DIM en Meta\nconst WABA_TOKEN      = \"TU_TOKEN_PERMANENTE_DIM\";  // Token permanente DIM\n// -------------------------\n\nconst plantillas = {\n  recordatorio_1: \"dim_recordatorio_deuda\",\n  recordatorio_2: \"dim_recordatorio_deuda\",\n  recordatorio_3: \"dim_recordatorio_deuda\",\n  suspension:     \"dim_aviso_suspension\",\n};\n\nconst plantilla = plantillas[d.tipo] || \"dim_recordatorio_deuda\";\n\nconst body = {\n  messaging_product: \"whatsapp\",\n  to: d.tel,\n  type: \"template\",\n  template: {\n    name: plantilla,\n    language: { code: \"es\" },\n    components: [{\n      type: \"body\",\n      parameters: [\n        { type: \"text\", text: d.nombre || \"Cliente\" },                          // {{1}} nombre\n        { type: \"text\", text: String(d.diasVencido || 0) },                     // {{2}} días vencido\n        { type: \"text\", text: \"S/. \" + parseFloat(d.deudaActual).toFixed(2) }, // {{3}} monto\n      ]\n    }]\n  }\n};\n\nreturn [{ json: {\n  phoneNumberId: PHONE_NUMBER_ID,\n  token:         WABA_TOKEN,\n  payload:       body,\n  meta:          d,\n}}];"
+        "jsCode": "// Construir payload WhatsApp según tipo de mensaje\nconst d = $input.first().json;\n\nconst PHONE_NUMBER_ID = \"780547891818677\";\nconst WABA_TOKEN      = \"EAAj2lTsJ9JoBP1SQI1vKXGq6CsitlFFAGj1huorePzDFV4zwWfZCUvQMO5Jls0R8cKzKWNZClFd64YggXspiMonYe4o7qi1ZBLgWGbCL8Mr7aXUThkSMX73kOAZCG9EhPygDMqeBkFUglgpCp3IiMSubVfr2hqQNUnBtrbPvEuCJRVEBbZAWWgJxeWi7eFi0HBwZDZD\";\n\nconst plantillas = {\n  recordatorio_1: \"dim_recordatorio_deuda\",\n  recordatorio_2: \"dim_recordatorio_deuda\",\n  recordatorio_3: \"dim_recordatorio_deuda\",\n  suspension:     \"dim_aviso_suspension\",\n};\n\nconst plantilla = plantillas[d.tipo] || \"dim_recordatorio_deuda\";\n\nconst body = {\n  messaging_product: \"whatsapp\",\n  to: d.tel,\n  type: \"template\",\n  template: {\n    name: plantilla,\n    language: { code: \"es\" },\n    components: [{\n      type: \"body\",\n      parameters: [\n        { type: \"text\", text: d.nombre || \"Cliente\" },\n        { type: \"text\", text: String(d.diasVencido || 0) },\n        { type: \"text\", text: \"S/. \" + parseFloat(d.deudaActual).toFixed(2) },\n      ]\n    }]\n  }\n};\n\nreturn [{ json: {\n  phoneNumberId: PHONE_NUMBER_ID,\n  token:         WABA_TOKEN,\n  payload:       body,\n  meta:          d,\n}}];"
       },
       "id": "construir-payload",
       "name": "Construir payload WhatsApp",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2220, 300]
+      "position": [2660, 300]
     },
     {
       "parameters": {
@@ -171,17 +180,17 @@
       "name": "Enviar WhatsApp",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [2440, 300]
+      "position": [2880, 300]
     },
     {
       "parameters": {
-        "url": "https://TU_SUPABASE_URL/rest/v1/wispro_notificaciones_log",
+        "url": "https://vgwbqbzpjlbkmxtfghdm.supabase.co/rest/v1/wispro_notificaciones_log",
         "method": "POST",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "apikey",        "value": "TU_SUPABASE_ANON_KEY" },
-            { "name": "Authorization", "value": "Bearer TU_SUPABASE_ANON_KEY" },
+            { "name": "apikey",        "value": "sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_" },
+            { "name": "Authorization", "value": "Bearer sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_" },
             { "name": "Content-Type",  "value": "application/json" },
             { "name": "Prefer",        "value": "return=minimal" }
           ]
@@ -196,21 +205,23 @@
       "name": "Registrar en log (enviado/error)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [2660, 300]
+      "position": [3100, 300]
     }
   ],
   "connections": {
-    "Cron diario 9 AM":                    { "main": [[{ "node": "GET Contratos WisPro (con token fijo)", "type": "main", "index": 0 }]] },
-    "GET Contratos WisPro (con token fijo)":{ "main": [[{ "node": "Evaluar candidatos",        "type": "main", "index": 0 }]] },
-    "Evaluar candidatos":                   { "main": [[{ "node": "Filtrar sin teléfono",       "type": "main", "index": 0 }]] },
-    "Filtrar sin teléfono":                 { "main": [[{ "node": "¿Ya se envió hoy?",          "type": "main", "index": 0 }]] },
-    "¿Ya se envió hoy?":                    { "main": [[{ "node": "Si NO se envió hoy",         "type": "main", "index": 0 }]] },
-    "Si NO se envió hoy":                   { "main": [[{ "node": "Verificar deuda actual (tiempo real)", "type": "main", "index": 0 }]] },
-    "Verificar deuda actual (tiempo real)": { "main": [[{ "node": "¿Enviar o saltar?",          "type": "main", "index": 0 }]] },
-    "¿Enviar o saltar?":                    { "main": [[{ "node": "IF accion = enviar",          "type": "main", "index": 0 }]] },
-    "IF accion = enviar":                   { "main": [[{ "node": "Construir payload WhatsApp", "type": "main", "index": 0 }]] },
-    "Construir payload WhatsApp":           { "main": [[{ "node": "Enviar WhatsApp",             "type": "main", "index": 0 }]] },
-    "Enviar WhatsApp":                      { "main": [[{ "node": "Registrar en log (enviado/error)", "type": "main", "index": 0 }]] }
+    "Cron diario 9 AM":                      { "main": [[{ "node": "GET Contratos WisPro",                "type": "main", "index": 0 }]] },
+    "GET Contratos WisPro":                  { "main": [[{ "node": "GET Clientes WisPro",                 "type": "main", "index": 0 }]] },
+    "GET Clientes WisPro":                   { "main": [[{ "node": "Merge contratos+clientes",            "type": "main", "index": 0 }]] },
+    "Merge contratos+clientes":              { "main": [[{ "node": "Evaluar candidatos",                  "type": "main", "index": 0 }]] },
+    "Evaluar candidatos":                    { "main": [[{ "node": "Filtrar sin teléfono",                "type": "main", "index": 0 }]] },
+    "Filtrar sin teléfono":                  { "main": [[{ "node": "¿Ya se envió hoy?",                   "type": "main", "index": 0 }]] },
+    "¿Ya se envió hoy?":                     { "main": [[{ "node": "Si NO se envió hoy",                  "type": "main", "index": 0 }]] },
+    "Si NO se envió hoy":                    { "main": [[{ "node": "Verificar deuda actual (tiempo real)", "type": "main", "index": 0 }]] },
+    "Verificar deuda actual (tiempo real)":  { "main": [[{ "node": "¿Enviar o saltar?",                   "type": "main", "index": 0 }]] },
+    "¿Enviar o saltar?":                     { "main": [[{ "node": "IF accion = enviar",                   "type": "main", "index": 0 }]] },
+    "IF accion = enviar":                    { "main": [[{ "node": "Construir payload WhatsApp",           "type": "main", "index": 0 }]] },
+    "Construir payload WhatsApp":            { "main": [[{ "node": "Enviar WhatsApp",                     "type": "main", "index": 0 }]] },
+    "Enviar WhatsApp":                       { "main": [[{ "node": "Registrar en log (enviado/error)",    "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" },
   "staticData": null,
