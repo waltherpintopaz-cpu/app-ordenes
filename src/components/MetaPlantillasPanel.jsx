@@ -82,6 +82,14 @@ export default function MetaPlantillasPanel() {
   const [formMsg, setFormMsg] = useState("");
   const [plantillaEditando, setPlantillaEditando] = useState(null); // { id, name }
 
+  /* ── Estado envío de prueba ── */
+  const [pruebaEmpresa, setPruebaEmpresa] = useState("americanet");
+  const [pruebaPlantilla, setPruebaPlantilla] = useState("");
+  const [pruebaTelefono, setPruebaTelefono] = useState("");
+  const [pruebaVars, setPruebaVars] = useState({});
+  const [enviando, setEnviando] = useState(false);
+  const [pruebaMsg, setPruebaMsg] = useState("");
+
   const bodyRef = useRef(null);
   const headerRef = useRef(null);
 
@@ -252,6 +260,56 @@ export default function MetaPlantillasPanel() {
     finally { setCreando(false); }
   };
 
+  /* ── Enviar mensaje de prueba ── */
+  const enviarPrueba = async () => {
+    if (!pruebaTelefono.trim()) return setPruebaMsg("Ingresa el número de destino.");
+    if (!pruebaPlantilla)       return setPruebaMsg("Selecciona una plantilla.");
+    setEnviando(true); setPruebaMsg("");
+
+    const phoneId = pruebaEmpresa === "dim" ? cfg.dim_phone_id : cfg.americanet_phone_id;
+    if (!phoneId) return (setPruebaMsg("Configura el Phone Number ID para esta empresa."), setEnviando(false));
+
+    const plantilla = plantillas.find(p => p.name === pruebaPlantilla);
+    if (!plantilla) return (setPruebaMsg("Plantilla no encontrada."), setEnviando(false));
+
+    const bodyComp = plantilla.components?.find(c => c.type === "BODY");
+    const varsDetectadas = extraerVariables(bodyComp?.text || "");
+
+    const components = [];
+    if (varsDetectadas.length > 0) {
+      components.push({
+        type: "body",
+        parameters: varsDetectadas.map(n => ({
+          type: "text",
+          text: pruebaVars[`v${n}`] || `{{${n}}}`,
+        })),
+      });
+    }
+
+    const destino = pruebaTelefono.replace(/\D/g, "");
+
+    try {
+      const res = await fetch(`${META_BASE}/${phoneId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.access_token}` },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to: destino,
+          type: "template",
+          template: {
+            name: plantilla.name,
+            language: { code: plantilla.language },
+            ...(components.length > 0 ? { components } : {}),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message);
+      setPruebaMsg("✓ Mensaje enviado correctamente a +" + destino);
+    } catch (e) { setPruebaMsg("Error: " + e.message); }
+    finally { setEnviando(false); }
+  };
+
   /* ── Plantillas filtradas por empresa ── */
   const prefix = empresa === "dim" ? "dim_" : "amn_";
   const plantillasFiltradas = plantillas.filter(p => p.name.startsWith(prefix));
@@ -286,6 +344,7 @@ export default function MetaPlantillasPanel() {
           {[
             { key: "config",     label: "⚙ Configuración" },
             { key: "plantillas", label: "📋 Plantillas" },
+            { key: "prueba",     label: "📤 Enviar prueba" },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               style={{ padding: "8px 18px", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer",
@@ -623,6 +682,128 @@ export default function MetaPlantillasPanel() {
             </div>
           </div>
         )}
+
+        {/* ══════════════════════
+            TAB: ENVIAR PRUEBA
+        ══════════════════════ */}
+        {tab === "prueba" && (
+          <div style={{ maxWidth: 560 }}>
+            <p style={{ margin: "0 0 18px", fontSize: 13, color: "#64748b" }}>
+              Envía un mensaje de prueba usando una plantilla aprobada. Primero sincroniza las plantillas en la pestaña "Plantillas".
+            </p>
+
+            {/* Empresa / número emisor */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Enviar desde</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[
+                  { key: "americanet", label: "Americanet", color: "#0369a1" },
+                  { key: "dim",        label: "DIM",        color: "#7c3aed" },
+                ].map(e => (
+                  <button key={e.key} onClick={() => { setPruebaEmpresa(e.key); setPruebaPlantilla(""); setPruebaVars({}); }}
+                    style={{ padding: "7px 18px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "none",
+                      cursor: "pointer",
+                      background: pruebaEmpresa === e.key ? e.color : "#f1f5f9",
+                      color: pruebaEmpresa === e.key ? "#fff" : "#64748b" }}>
+                    {e.label}
+                    {pruebaEmpresa === e.key && (
+                      <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.85 }}>
+                        {pruebaEmpresa === "dim" ? cfg.dim_phone_label : cfg.americanet_phone_label}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Seleccionar plantilla */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Plantilla</label>
+              {plantillas.filter(p => p.name.startsWith(pruebaEmpresa === "dim" ? "dim_" : "amn_") && p.status === "APPROVED").length === 0 ? (
+                <p style={{ fontSize: 12, color: "#dc2626", background: "#fff1f2", borderRadius: 8,
+                  padding: "8px 12px", margin: 0 }}>
+                  No hay plantillas APROBADAS para {pruebaEmpresa === "dim" ? "DIM" : "Americanet"}.
+                  Sincroniza en "Plantillas" o espera que Meta apruebe.
+                </p>
+              ) : (
+                <select value={pruebaPlantilla}
+                  onChange={e => { setPruebaPlantilla(e.target.value); setPruebaVars({}); }}
+                  style={{ ...inp, cursor: "pointer" }}>
+                  <option value="">— Seleccionar plantilla —</option>
+                  {plantillas
+                    .filter(p => p.name.startsWith(pruebaEmpresa === "dim" ? "dim_" : "amn_") && p.status === "APPROVED")
+                    .map(p => (
+                      <option key={p.id} value={p.name}>{p.name}</option>
+                    ))}
+                </select>
+              )}
+            </div>
+
+            {/* Vista previa del cuerpo */}
+            {pruebaPlantilla && (() => {
+              const p = plantillas.find(t => t.name === pruebaPlantilla);
+              const bodyText = getBodyText(p?.components);
+              return bodyText ? (
+                <div style={{ marginBottom: 14, background: "#f0f9ff", borderRadius: 10,
+                  padding: "10px 14px", border: "1px solid #bae6fd" }}>
+                  <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, color: "#0369a1" }}>
+                    Vista previa del mensaje:
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#0f172a", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                    {bodyText}
+                  </p>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Variables de la plantilla seleccionada */}
+            {pruebaPlantilla && (() => {
+              const p = plantillas.find(t => t.name === pruebaPlantilla);
+              const vars = extraerVariables(getBodyText(p?.components));
+              return vars.length > 0 ? (
+                <div style={{ marginBottom: 14, background: "#fffbeb", borderRadius: 10,
+                  padding: "12px 14px", border: "1px solid #fcd34d" }}>
+                  <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 12, color: "#92400e" }}>
+                    Valores de las variables
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                    {vars.map(n => (
+                      <div key={n}>
+                        <label style={{ ...lbl, color: "#92400e" }}>{'{{' + n + '}}'}</label>
+                        <input value={pruebaVars[`v${n}`] || ""}
+                          onChange={e => setPruebaVars(v => ({ ...v, [`v${n}`]: e.target.value }))}
+                          placeholder={`Valor para {{${n}}}`} style={inp} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* Número destino */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>Número de destino</label>
+              <input value={pruebaTelefono}
+                onChange={e => setPruebaTelefono(e.target.value)}
+                placeholder="Ej: 51999888777 (con código de país, sin +)"
+                style={inp} />
+              <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                Incluye el código de país. Ej: Perú → 51XXXXXXXXX
+              </p>
+            </div>
+
+            <button onClick={enviarPrueba} disabled={enviando}
+              style={{ ...btn("#16a34a"), width: "100%", padding: "10px" }}>
+              {enviando ? "Enviando..." : "📤 Enviar mensaje de prueba"}
+            </button>
+
+            {pruebaMsg && (
+              <p style={{ margin: "12px 0 0", fontSize: 12, fontWeight: 600,
+                color: pruebaMsg.startsWith("✓") ? "#16a34a" : "#dc2626" }}>{pruebaMsg}</p>
+            )}
+          </div>
+        )}
+
       </div>
     </div>
   );
