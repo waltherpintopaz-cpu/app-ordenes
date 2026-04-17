@@ -131,21 +131,42 @@ export default function MkwEstadoPanel() {
     setSyncMsg(p => ({ ...p, [id]: "" }));
     try {
       const { estado_mikrowisp, estado_servicio } = await consultarMkw(dni, nodoInfo.api);
-      await supabase.from("clientes").update({
+      const now = new Date().toISOString();
+
+      // Intentar update completo
+      let { error } = await supabase.from("clientes").update({
         estado_servicio,
         estado_mikrowisp,
-        estado_actualizado_at: new Date().toISOString(),
+        estado_actualizado_at: now,
         estado_sync_fuente: "web_manual",
         estado_sync_pendiente: false,
         estado_sync_error: "",
       }).eq("id", id);
+
+      // Si falla por columnas inexistentes, intentar solo estado_servicio
+      if (error) {
+        const msg = String(error.message || "").toLowerCase();
+        if (msg.includes("column") || msg.includes("does not exist")) {
+          const { error: error2 } = await supabase.from("clientes")
+            .update({ estado_servicio })
+            .eq("id", id);
+          if (error2) throw new Error(error2.message);
+        } else {
+          throw new Error(error.message);
+        }
+      }
+
       setClientes(prev => prev.map(c =>
-        c.id === id ? { ...c, estado_servicio, estado_mikrowisp, estado_actualizado_at: new Date().toISOString() } : c
+        c.id === id
+          ? { ...c, estado_servicio, estado_mikrowisp, estado_actualizado_at: now }
+          : c
       ));
       setSyncRow(p => ({ ...p, [id]: "ok" }));
+      return true;
     } catch (e) {
       setSyncRow(p => ({ ...p, [id]: "err" }));
       setSyncMsg(p => ({ ...p, [id]: e.message || "Error" }));
+      return false;
     }
   };
 
@@ -159,12 +180,12 @@ export default function MkwEstadoPanel() {
     for (let i = 0; i < conDni.length; i++) {
       const c = conDni[i];
       setProgreso(`Consultando ${i + 1}/${conDni.length} — ${c.nombre || c.dni}...`);
-      await syncUno(c);
-      if (syncRow[c.id] !== "err") ok++; else err++;
+      const resultado = await syncUno(c);
+      if (resultado) ok++; else err++;
       await new Promise(r => setTimeout(r, 280));
     }
     setSincronizando(false);
-    setProgreso(`✓ Listo — ${ok + err > 0 ? `${conDni.length} consultados` : "0 consultados"}, actualiza la vista para ver los cambios.`);
+    setProgreso(`✓ Listo — ${ok} guardados, ${err} errores de ${conDni.length} consultados.`);
   };
 
   /* ── filtros ── */
