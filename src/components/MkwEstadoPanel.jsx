@@ -105,7 +105,7 @@ export default function MkwEstadoPanel() {
     setLoading(true);
     const { data, error } = await supabase
       .from("clientes")
-      .select("id,nombre,dni,nodo,estado_servicio,estado_mikrowisp,estado_actualizado_at,celular,usuario_nodo")
+      .select("id,nombre,dni,nodo,estado_servicio,estado_mikrowisp,estado_actualizado_at,celular,contacto,usuario_nodo")
       .eq("nodo", nodoActivo)
       .order("nombre", { ascending: true });
     setLoading(false);
@@ -322,7 +322,7 @@ export default function MkwEstadoPanel() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
-                    {["Nombre", "DNI", "Usuario nodo", "Estado DB", "Estado MkW", "Actualizado", "Acción"].map(h => (
+                    {["Nombre", "DNI", "Celular", "Usuario nodo", "Estado DB", "Estado MkW", "Actualizado", "Acción"].map(h => (
                       <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700,
                         fontSize: 11, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
@@ -337,6 +337,9 @@ export default function MkwEstadoPanel() {
                       </td>
                       <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "#475569" }}>
                         {c.dni || "—"}
+                      </td>
+                      <td style={{ padding: "9px 12px", fontSize: 12, color: "#0f172a" }}>
+                        {c.celular || c.contacto || "—"}
                       </td>
                       <td style={{ padding: "9px 12px", fontSize: 11, color: "#64748b", fontFamily: "monospace" }}>
                         {c.usuario_nodo || "—"}
