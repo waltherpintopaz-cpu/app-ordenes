@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
+import MetaEnvioMasivoPanel from "./MetaEnvioMasivoPanel";
 
 const META_BASE = "https://graph.facebook.com/v19.0";
 
@@ -304,7 +305,7 @@ export default function MetaPlantillasPanel() {
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "2px solid #f1f5f9" }}>
-          {[{ key: "config", label: "⚙ Configuración" }, { key: "plantillas", label: "📋 Plantillas" }, { key: "prueba", label: "📤 Enviar prueba" }]
+          {[{ key: "config", label: "⚙ Configuración" }, { key: "plantillas", label: "📋 Plantillas" }, { key: "prueba", label: "📤 Enviar prueba" }, { key: "masivo", label: "📨 Envío Masivo" }]
             .map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 style={{ padding: "8px 18px", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer",
@@ -772,6 +773,11 @@ export default function MetaPlantillasPanel() {
             {prMsg && <p style={{ margin: "12px 0 0", fontSize: 12, fontWeight: 600,
               color: prMsg.startsWith("✓") ? "#16a34a" : "#dc2626" }}>{prMsg}</p>}
           </div>
+        )}
+
+        {/* ══ TAB: ENVÍO MASIVO ══ */}
+        {tab === "masivo" && (
+          <MetaEnvioMasivoPanel cfg={cfg} />
         )}
       </div>
     </div>
