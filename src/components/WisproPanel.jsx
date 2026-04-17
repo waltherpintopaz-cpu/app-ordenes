@@ -267,7 +267,7 @@ export default function WisproPanel() {
   };
   const getTel = (c) => {
     const cl = c._cliente || {};
-    return cl.phone || cl.phone_number || cl.mobile || cl.mobile_phone ||
+    return cl.phone_mobile || cl.phone || cl.phone_number || cl.mobile || cl.mobile_phone ||
       cl.telephone || cl.celular || cl.telefono || cl.whatsapp ||
       cl.contact_phone || cl.cell_phone || cl.cellphone ||
       (Array.isArray(cl.phones) ? cl.phones[0]?.number || cl.phones[0]?.phone || cl.phones[0] : null) ||
