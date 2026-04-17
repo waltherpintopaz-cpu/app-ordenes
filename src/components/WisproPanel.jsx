@@ -107,7 +107,7 @@ export default function WisproPanel() {
       if (res.status === 401) throw new Error("Token inválido o sin permisos");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const total = json?.meta?.total_count ?? json?.total ?? (Array.isArray(json) ? json.length : "?");
+      const total = json?.count ?? json?.meta?.total_count ?? json?.total ?? (Array.isArray(json) ? json.length : "?");
       setTestMsg(`✓ Conexión exitosa — ${total} contratos encontrados`);
     } catch(e) { setTestMsg("Error: "+e.message); }
     finally { setTestando(false); }
@@ -123,8 +123,11 @@ export default function WisproPanel() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const lista = Array.isArray(json) ? json : (json?.contracts ?? json?.data ?? []);
+      // WisPro usa formato DRF: { count, results } — también soporta array y otros formatos
+      const lista = Array.isArray(json) ? json
+        : (json?.results ?? json?.contracts ?? json?.data ?? []);
       setContratos(lista);
+      if (lista.length === 0) setConMsg("No se encontraron contratos. Verifica que el token tenga permisos.");
       // cargar config local de cada uno
       const ids = lista.map(c => String(c.id));
       const { data: cfgRows } = await supabase.from("wispro_clientes_config")
