@@ -8,6 +8,7 @@ const DEFAULT_MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
 const DEFAULT_MIKROWISP_NOD04_API_BASE = "http://dimfiber.com/api/v1";
 const DEFAULT_MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
 const DEFAULT_SMARTOLT_API_BASE = "https://americanet.smartolt.com/api";
+const WISPRO_BASE = "https://www.cloud.wispro.co/api/v1";
 const DEFAULT_SMARTOLT_TOKEN = "0cb1ad391ea4458cab6efe97769c761d";
 const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const SERVER_PORT = Number(process.env.DIAGNOSTICO_SERVER_PORT || 8787) || 8787;
@@ -644,6 +645,21 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/mikrowisp/NewUser") {
       const result = await proxyMikrowispNewUser(req);
       writeJson(res, result.status, result.json);
+      return;
+    }
+
+    // ── Proxy WisPro (evita CORS desde el browser) ──────────────
+    if (String(req.url || "").startsWith("/api/wispro/")) {
+      const wisproPath = req.url.replace("/api/wispro", "");
+      const wisproUrl  = `${WISPRO_BASE}${wisproPath}`;
+      const authHeader = req.headers["authorization"] || "";
+      const wisproRes  = await fetch(wisproUrl, {
+        method: req.method || "GET",
+        headers: { "Authorization": authHeader, "Content-Type": "application/json", "Accept": "application/json" },
+        body: req.method !== "GET" ? await readRawBody(req).then(b => b.length ? b : undefined) : undefined,
+      });
+      const wisproJson = await wisproRes.json().catch(() => ({}));
+      writeJson(res, wisproRes.status, wisproJson);
       return;
     }
 
