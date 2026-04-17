@@ -1818,6 +1818,7 @@ export default function App() {
   const [mkwMasivoInfo, setMkwMasivoInfo] = useState("");
   const [mkwMasivoNodoFiltro, setMkwMasivoNodoFiltro] = useState("todos");
   const [mkwIndividualNodo, setMkwIndividualNodo] = useState("americanet");
+  const [mkwMasivoErrores, setMkwMasivoErrores] = useState([]);
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
@@ -3009,7 +3010,9 @@ export default function App() {
     const confirmar = window.confirm(`Se sincronizarán ${base.length} clientes${mkwMasivoNodoFiltro !== "todos" ? ` del ${mkwMasivoNodoFiltro}` : ""}. ¿Continuar?`);
     if (!confirmar) return;
     setMkwMasivoLoading(true);
+    setMkwMasivoErrores([]);
     let ok = 0, err = 0, nuevo = 0;
+    const errList = [];
     for (let i = 0; i < base.length; i++) {
       const c = base[i];
       setMkwMasivoInfo(`Consultando ${i + 1}/${base.length} — ${c.nombre || c.dni}...`);
@@ -3018,11 +3021,12 @@ export default function App() {
         const { data: prev } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id).maybeSingle();
         const res = await mkwUpsert(datos);
         if (res.ok) { ok++; if (!prev) nuevo++; }
-        else err++;
-      } catch (_) { err++; }
+        else { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: res.msg || "Error al guardar" }); }
+      } catch (e) { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: e.message || "Error desconocido" }); }
       await new Promise(r => setTimeout(r, 300));
     }
     setMkwMasivoLoading(false);
+    setMkwMasivoErrores(errList);
     setMkwMasivoInfo(`✓ Listo — ${ok} guardados (${nuevo} nuevos), ${err} errores de ${base.length} clientes.`);
   };
 
@@ -17144,6 +17148,18 @@ export default function App() {
                     </button>
                     {mkwMasivoInfo && (
                       <p style={{ margin: "8px 0 0", fontSize: 12, color: mkwMasivoInfo.startsWith("✓") ? "#16a34a" : "#0369a1", fontWeight: 600 }}>{mkwMasivoInfo}</p>
+                    )}
+                    {mkwMasivoErrores.length > 0 && (
+                      <div style={{ marginTop: 10, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "10px 12px" }}>
+                        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#c2410c" }}>⚠ {mkwMasivoErrores.length} errores:</p>
+                        <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                          {mkwMasivoErrores.map((e, i) => (
+                            <div key={i} style={{ fontSize: 11, color: "#7c2d12", borderBottom: "1px solid #fed7aa", padding: "4px 0" }}>
+                              <b>{e.dni}</b> — {e.nombre} <span style={{ color: "#dc2626" }}>({e.motivo})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
