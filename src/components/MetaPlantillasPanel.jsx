@@ -1,14 +1,31 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
 const META_BASE = "https://graph.facebook.com/v19.0";
 
-const CATEGORIAS = ["UTILITY", "MARKETING", "AUTHENTICATION"];
+const CATEGORIAS = [
+  { value: "UTILITY",        label: "UTILITY — Notificaciones de servicio" },
+  { value: "MARKETING",      label: "MARKETING — Promociones" },
+  { value: "AUTHENTICATION", label: "AUTHENTICATION — Códigos de acceso" },
+];
 const IDIOMAS = [
-  { value: "es", label: "Español" },
+  { value: "es",    label: "Español" },
   { value: "es_AR", label: "Español (Argentina)" },
   { value: "es_MX", label: "Español (México)" },
   { value: "en_US", label: "Inglés (EE.UU.)" },
+];
+const HEADER_TIPOS = [
+  { value: "NONE",     label: "Ninguno" },
+  { value: "TEXT",     label: "Texto" },
+  { value: "IMAGE",    label: "Imagen" },
+  { value: "DOCUMENT", label: "Documento" },
+  { value: "VIDEO",    label: "Video" },
+];
+const BTN_TIPOS = [
+  { value: "NONE",        label: "Sin botón" },
+  { value: "QUICK_REPLY", label: "Respuesta rápida" },
+  { value: "URL",         label: "Ir al sitio web" },
+  { value: "PHONE",       label: "Llamar a teléfono" },
 ];
 
 const ESTADO_COLOR = {
@@ -34,6 +51,14 @@ const FORM_VACIO = {
   header_tipo: "NONE", header_texto: "",
   body: "", footer: "",
   btn_tipo: "NONE", btn_texto: "", btn_url: "",
+  muestras: {},
+};
+
+/* Extrae los números de variables {{N}} de un texto */
+const extraerVariables = (texto) => {
+  const matches = [...texto.matchAll(/\{\{(\d+)\}\}/g)];
+  const nums = [...new Set(matches.map(m => parseInt(m[1])))].sort((a, b) => a - b);
+  return nums;
 };
 
 export default function MetaPlantillasPanel() {
@@ -56,11 +81,32 @@ export default function MetaPlantillasPanel() {
   const [creando, setCreando] = useState(false);
   const [formMsg, setFormMsg] = useState("");
 
+  const bodyRef = useRef(null);
+  const headerRef = useRef(null);
+
   /* ── Cargar config ── */
   useEffect(() => {
     supabase.from("meta_wa_config").select("*").eq("id", 1).maybeSingle()
       .then(({ data }) => { if (data) setCfg(data); });
   }, []);
+
+  /* ── Insertar variable en un campo ── */
+  const insertarVariable = (campo, ref) => {
+    const el = ref.current;
+    if (!el) return;
+    const inicio = el.selectionStart ?? el.value.length;
+    const fin    = el.selectionEnd   ?? el.value.length;
+    const texto  = form[campo];
+    const vars   = extraerVariables(texto);
+    const siguiente = vars.length > 0 ? Math.max(...vars) + 1 : 1;
+    const nueva = texto.slice(0, inicio) + `{{${siguiente}}}` + texto.slice(fin);
+    setForm(f => ({ ...f, [campo]: nueva }));
+    setTimeout(() => {
+      const pos = inicio + `{{${siguiente}}}`.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    }, 0);
+  };
 
   /* ── Guardar config ── */
   const guardarConfig = async () => {
@@ -107,7 +153,7 @@ export default function MetaPlantillasPanel() {
   /* ── Crear plantilla ── */
   const crearPlantilla = async () => {
     if (!form.nombre.trim()) return setFormMsg("El nombre es obligatorio.");
-    if (!form.body.trim())   return setFormMsg("El cuerpo (body) es obligatorio.");
+    if (!form.body.trim())   return setFormMsg("El cuerpo del mensaje es obligatorio.");
     setCreando(true); setFormMsg("");
 
     const prefix = empresa === "dim" ? "dim_" : "amn_";
@@ -121,7 +167,15 @@ export default function MetaPlantillasPanel() {
       components.push(hComp);
     }
 
-    components.push({ type: "BODY", text: form.body });
+    /* Body con muestras de variables */
+    const bodyComp = { type: "BODY", text: form.body };
+    const varsBody = extraerVariables(form.body);
+    if (varsBody.length > 0) {
+      bodyComp.example = {
+        body_text: [varsBody.map(n => form.muestras[`body_${n}`] || `ejemplo${n}`)]
+      };
+    }
+    components.push(bodyComp);
 
     if (form.footer.trim()) components.push({ type: "FOOTER", text: form.footer });
 
@@ -141,7 +195,7 @@ export default function MetaPlantillasPanel() {
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);
-      setFormMsg("✓ Plantilla enviada a revisión (estado: PENDING).");
+      setFormMsg("✓ Plantilla enviada a revisión (estado: PENDIENTE).");
       setShowForm(false);
       setForm(FORM_VACIO);
       cargarPlantillas();
@@ -156,6 +210,9 @@ export default function MetaPlantillasPanel() {
   /* ── Extraer body text de componentes ── */
   const getBodyText = (components = []) =>
     components.find(c => c.type === "BODY")?.text || "";
+
+  /* Variables detectadas en el body del formulario */
+  const varsBody = extraerVariables(form.body);
 
   /* ════════════════════════════════════════
      RENDER
@@ -197,7 +254,6 @@ export default function MetaPlantillasPanel() {
         {tab === "config" && (
           <div style={{ display: "grid", gap: 20, maxWidth: 620 }}>
 
-            {/* Credenciales globales */}
             <div style={{ background: "#f8fafc", borderRadius: 12, padding: "16px 18px", border: "1px solid #e2e8f0" }}>
               <p style={{ margin: "0 0 14px", fontWeight: 700, fontSize: 13, color: "#0f172a" }}>
                 🔑 Credenciales Meta
@@ -210,7 +266,6 @@ export default function MetaPlantillasPanel() {
                 placeholder="EAABxxxx..." style={{ ...inp, fontFamily: "monospace", fontSize: 11 }} />
             </div>
 
-            {/* Números por empresa — ingreso manual */}
             {[
               { key: "americanet", label: "Americanet", color: "#0369a1", phoneIdKey: "americanet_phone_id", phoneLblKey: "americanet_phone_label" },
               { key: "dim",        label: "DIM",        color: "#7c3aed", phoneIdKey: "dim_phone_id",        phoneLblKey: "dim_phone_label" },
@@ -220,12 +275,12 @@ export default function MetaPlantillasPanel() {
                 <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 13, color: emp.color }}>
                   📲 Número para {emp.label}
                 </p>
-                <label style={lbl}>Phone Number ID</label>
+                <label style={lbl}>Identificador del número (Phone Number ID)</label>
                 <input value={cfg[emp.phoneIdKey] || ""}
                   onChange={e => setCfg(c => ({ ...c, [emp.phoneIdKey]: e.target.value }))}
                   placeholder="Ej: 824888677376395"
                   style={{ ...inp, fontFamily: "monospace" }} />
-                <label style={{ ...lbl, marginTop: 8 }}>Nombre / Etiqueta (opcional)</label>
+                <label style={{ ...lbl, marginTop: 8 }}>Etiqueta del número (opcional)</label>
                 <input value={cfg[emp.phoneLblKey] || ""}
                   onChange={e => setCfg(c => ({ ...c, [emp.phoneLblKey]: e.target.value }))}
                   placeholder="Ej: +51 950 485 133"
@@ -272,7 +327,7 @@ export default function MetaPlantillasPanel() {
                 style={{ ...btn("#0369a1"), padding: "6px 14px", fontSize: 12 }}>
                 {loadingP ? "Cargando..." : "🔄 Sincronizar"}
               </button>
-              <button onClick={() => { setShowForm(v => !v); setFormMsg(""); }}
+              <button onClick={() => { setShowForm(v => !v); setFormMsg(""); setForm(FORM_VACIO); }}
                 style={{ ...btn("#16a34a"), padding: "6px 14px", fontSize: 12 }}>
                 {showForm ? "✕ Cancelar" : "+ Nueva plantilla"}
               </button>
@@ -285,118 +340,180 @@ export default function MetaPlantillasPanel() {
 
             {/* ── Formulario nueva plantilla ── */}
             {showForm && (
-              <div style={{ background: "#f8fafc", borderRadius: 14, padding: "18px 20px",
+              <div style={{ background: "#f8fafc", borderRadius: 14, padding: "20px 22px",
                 border: "1.5px solid #e2e8f0", marginBottom: 20 }}>
-                <p style={{ margin: "0 0 14px", fontWeight: 800, fontSize: 13, color: "#0f172a" }}>
-                  Nueva plantilla — <span style={{ color: empresa === "dim" ? "#7c3aed" : "#0369a1" }}>
+                <p style={{ margin: "0 0 16px", fontWeight: 800, fontSize: 14, color: "#0f172a" }}>
+                  Nueva plantilla —{" "}
+                  <span style={{ color: empresa === "dim" ? "#7c3aed" : "#0369a1" }}>
                     {empresa === "dim" ? "DIM" : "Americanet"}
                   </span>
                   <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500, marginLeft: 8 }}>
-                    (prefijo automático: {prefix})
+                    prefijo: {prefix}
                   </span>
                 </p>
 
+                {/* Nombre / Idioma / Categoría */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
                   <div>
                     <label style={lbl}>Nombre *</label>
-                    <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                      placeholder="ej: bienvenida_cliente" style={inp} />
+                    <input value={form.nombre}
+                      onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                      placeholder="ej: confirmacion_servicio" style={inp} />
+                    <p style={{ margin: "4px 0 0", fontSize: 10, color: "#94a3b8" }}>
+                      Solo letras, números y guiones bajos
+                    </p>
                   </div>
                   <div>
                     <label style={lbl}>Idioma</label>
-                    <select value={form.idioma} onChange={e => setForm(f => ({ ...f, idioma: e.target.value }))}
+                    <select value={form.idioma}
+                      onChange={e => setForm(f => ({ ...f, idioma: e.target.value }))}
                       style={{ ...inp, cursor: "pointer" }}>
                       {IDIOMAS.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label style={lbl}>Categoría</label>
-                    <select value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
+                    <select value={form.categoria}
+                      onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
                       style={{ ...inp, cursor: "pointer" }}>
-                      {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
+                      {CATEGORIAS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                     </select>
                   </div>
                 </div>
 
-                {/* Header */}
-                <div style={{ marginTop: 12 }}>
-                  <label style={lbl}>Header</label>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                    {["NONE", "TEXT", "IMAGE", "DOCUMENT", "VIDEO"].map(t => (
-                      <button key={t} onClick={() => setForm(f => ({ ...f, header_tipo: t }))}
-                        style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: 6, border: "none",
+                {/* Encabezado */}
+                <div style={{ marginTop: 14 }}>
+                  <label style={lbl}>Encabezado</label>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                    {HEADER_TIPOS.map(t => (
+                      <button key={t.value} onClick={() => setForm(f => ({ ...f, header_tipo: t.value }))}
+                        style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, borderRadius: 6, border: "none",
                           cursor: "pointer",
-                          background: form.header_tipo === t ? "#2563eb" : "#e2e8f0",
-                          color: form.header_tipo === t ? "#fff" : "#64748b" }}>
-                        {t}
+                          background: form.header_tipo === t.value ? "#2563eb" : "#e2e8f0",
+                          color: form.header_tipo === t.value ? "#fff" : "#64748b" }}>
+                        {t.label}
                       </button>
                     ))}
                   </div>
                   {form.header_tipo === "TEXT" && (
-                    <input value={form.header_texto} onChange={e => setForm(f => ({ ...f, header_texto: e.target.value }))}
-                      placeholder="Texto del header" style={inp} />
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <input ref={headerRef} value={form.header_texto}
+                        onChange={e => setForm(f => ({ ...f, header_texto: e.target.value }))}
+                        placeholder="Texto del encabezado" style={{ ...inp, flex: 1 }} />
+                      <button onClick={() => insertarVariable("header_texto", headerRef)}
+                        style={{ ...btn("#6366f1"), padding: "8px 12px", fontSize: 11, whiteSpace: "nowrap" }}>
+                        + Variable
+                      </button>
+                    </div>
                   )}
                   {["IMAGE", "DOCUMENT", "VIDEO"].includes(form.header_tipo) && (
-                    <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0" }}>
-                      La URL del archivo se proporciona al enviar el mensaje.
+                    <p style={{ fontSize: 11, color: "#64748b", margin: "4px 0 0", background: "#f1f5f9",
+                      borderRadius: 6, padding: "6px 10px" }}>
+                      ℹ La URL del archivo se enviará al momento de usar la plantilla.
                     </p>
                   )}
                 </div>
 
-                {/* Body */}
-                <div style={{ marginTop: 12 }}>
-                  <label style={lbl}>Body * <span style={{ fontWeight: 400, color: "#94a3b8" }}>
-                    (usa {'{{1}}'}, {'{{2}}'} para variables)
-                  </span></label>
-                  <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
-                    placeholder="Hola {{1}}, tu servicio {{2}} ha sido activado correctamente."
-                    rows={4} style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} />
+                {/* Cuerpo */}
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={lbl}>Cuerpo del mensaje *</label>
+                    <button onClick={() => insertarVariable("body", bodyRef)}
+                      style={{ ...btn("#6366f1"), padding: "5px 12px", fontSize: 11 }}>
+                      + Agregar variable
+                    </button>
+                  </div>
+                  <textarea ref={bodyRef} value={form.body}
+                    onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+                    placeholder={"Hola {{1}}, tu servicio ha sido activado correctamente.\nFecha: {{2}}\nTécnico: {{3}}"}
+                    rows={5} style={{ ...inp, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6 }} />
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                    Usa "Agregar variable" para insertar {'{{1}}'}, {'{{2}}'}, etc. en la posición del cursor.
+                  </p>
                 </div>
 
-                {/* Footer */}
-                <div style={{ marginTop: 10 }}>
-                  <label style={lbl}>Footer <span style={{ fontWeight: 400, color: "#94a3b8" }}>(opcional)</span></label>
-                  <input value={form.footer} onChange={e => setForm(f => ({ ...f, footer: e.target.value }))}
-                    placeholder="Ej: No responder a este mensaje" style={inp} />
+                {/* Muestras de variables */}
+                {varsBody.length > 0 && (
+                  <div style={{ marginTop: 12, background: "#fffbeb", borderRadius: 10, padding: "12px 14px",
+                    border: "1px solid #fcd34d" }}>
+                    <p style={{ margin: "0 0 10px", fontWeight: 700, fontSize: 12, color: "#92400e" }}>
+                      📝 Muestras de variables
+                    </p>
+                    <p style={{ margin: "0 0 10px", fontSize: 11, color: "#78350f" }}>
+                      Meta necesita ejemplos para revisar la plantilla. No incluyas datos reales de clientes.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                      {varsBody.map(n => (
+                        <div key={n}>
+                          <label style={{ ...lbl, color: "#92400e" }}>{'{{' + n + '}}'} — Muestra</label>
+                          <input value={form.muestras[`body_${n}`] || ""}
+                            onChange={e => setForm(f => ({ ...f, muestras: { ...f.muestras, [`body_${n}`]: e.target.value } }))}
+                            placeholder={`Ej: ${n === 1 ? "Juan Pérez" : n === 2 ? "Plan Básico" : "valor " + n}`}
+                            style={inp} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Pie de página */}
+                <div style={{ marginTop: 14 }}>
+                  <label style={lbl}>Pie de página <span style={{ fontWeight: 400, color: "#94a3b8" }}>(opcional)</span></label>
+                  <input value={form.footer}
+                    onChange={e => setForm(f => ({ ...f, footer: e.target.value }))}
+                    placeholder="Ej: No respondas a este mensaje" style={inp} />
                 </div>
 
                 {/* Botones */}
-                <div style={{ marginTop: 12 }}>
-                  <label style={lbl}>Botón</label>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                    {["NONE", "QUICK_REPLY", "URL", "PHONE"].map(t => (
-                      <button key={t} onClick={() => setForm(f => ({ ...f, btn_tipo: t }))}
-                        style={{ padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: 6, border: "none",
+                <div style={{ marginTop: 14 }}>
+                  <label style={lbl}>Botón de acción</label>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                    {BTN_TIPOS.map(t => (
+                      <button key={t.value} onClick={() => setForm(f => ({ ...f, btn_tipo: t.value }))}
+                        style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, borderRadius: 6, border: "none",
                           cursor: "pointer",
-                          background: form.btn_tipo === t ? "#2563eb" : "#e2e8f0",
-                          color: form.btn_tipo === t ? "#fff" : "#64748b" }}>
-                        {t}
+                          background: form.btn_tipo === t.value ? "#2563eb" : "#e2e8f0",
+                          color: form.btn_tipo === t.value ? "#fff" : "#64748b" }}>
+                        {t.label}
                       </button>
                     ))}
                   </div>
                   {form.btn_tipo !== "NONE" && (
-                    <div style={{ display: "grid", gridTemplateColumns: form.btn_tipo !== "QUICK_REPLY" ? "1fr 1fr" : "1fr", gap: 8 }}>
-                      <input value={form.btn_texto} onChange={e => setForm(f => ({ ...f, btn_texto: e.target.value }))}
-                        placeholder="Texto del botón" style={inp} />
+                    <div style={{ display: "grid",
+                      gridTemplateColumns: form.btn_tipo !== "QUICK_REPLY" ? "1fr 1fr" : "1fr", gap: 8 }}>
+                      <div>
+                        <label style={lbl}>Texto del botón</label>
+                        <input value={form.btn_texto}
+                          onChange={e => setForm(f => ({ ...f, btn_texto: e.target.value }))}
+                          placeholder="Ej: Ver detalles" style={inp} />
+                      </div>
                       {form.btn_tipo === "URL" && (
-                        <input value={form.btn_url} onChange={e => setForm(f => ({ ...f, btn_url: e.target.value }))}
-                          placeholder="https://..." style={inp} />
+                        <div>
+                          <label style={lbl}>URL de destino</label>
+                          <input value={form.btn_url}
+                            onChange={e => setForm(f => ({ ...f, btn_url: e.target.value }))}
+                            placeholder="https://..." style={inp} />
+                        </div>
                       )}
                       {form.btn_tipo === "PHONE" && (
-                        <input value={form.btn_url} onChange={e => setForm(f => ({ ...f, btn_url: e.target.value }))}
-                          placeholder="+51999999999" style={inp} />
+                        <div>
+                          <label style={lbl}>Número de teléfono</label>
+                          <input value={form.btn_url}
+                            onChange={e => setForm(f => ({ ...f, btn_url: e.target.value }))}
+                            placeholder="+51999999999" style={inp} />
+                        </div>
                       )}
                     </div>
                   )}
                 </div>
 
                 {formMsg && (
-                  <p style={{ fontSize: 12, fontWeight: 600, margin: "10px 0 0",
+                  <p style={{ fontSize: 12, fontWeight: 600, margin: "12px 0 0",
                     color: formMsg.startsWith("✓") ? "#16a34a" : "#dc2626" }}>{formMsg}</p>
                 )}
 
                 <button onClick={crearPlantilla} disabled={creando}
-                  style={{ ...btn("#2563eb"), marginTop: 14 }}>
+                  style={{ ...btn("#2563eb"), marginTop: 16, width: "100%", padding: "10px" }}>
                   {creando ? "Enviando a Meta..." : "🚀 Crear y enviar a revisión"}
                 </button>
               </div>
@@ -408,13 +525,11 @@ export default function MetaPlantillasPanel() {
                 Haz clic en "Sincronizar" para cargar las plantillas de Meta.
               </p>
             )}
-
             {loadingP && (
               <p style={{ fontSize: 13, color: "#64748b", textAlign: "center", padding: "24px 0" }}>
                 Cargando plantillas...
               </p>
             )}
-
             {plantillasFiltradas.length === 0 && !loadingP && plantillas.length > 0 && (
               <p style={{ fontSize: 13, color: "#94a3b8", textAlign: "center", padding: "20px 0" }}>
                 No hay plantillas para {empresa === "dim" ? "DIM" : "Americanet"} (prefijo: {prefix}).
@@ -426,7 +541,7 @@ export default function MetaPlantillasPanel() {
                 <div key={p.id} style={{ background: "#fff", borderRadius: 12, border: "1px solid #e8edf5",
                   padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{p.name}</span>
                       {badge(p.status)}
                       <span style={{ fontSize: 11, color: "#94a3b8", background: "#f1f5f9",
@@ -434,7 +549,7 @@ export default function MetaPlantillasPanel() {
                       <span style={{ fontSize: 11, color: "#94a3b8" }}>{p.language}</span>
                     </div>
                     <p style={{ margin: 0, fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
-                      {getBodyText(p.components).slice(0, 160) || "—"}
+                      {getBodyText(p.components).slice(0, 200) || "—"}
                     </p>
                   </div>
                   <button onClick={() => eliminar(p.id, p.name)}
