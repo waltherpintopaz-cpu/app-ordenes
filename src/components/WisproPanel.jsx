@@ -76,6 +76,23 @@ export default function WisproPanel() {
       }));
     supabase.from("meta_wa_config").select("config_json").eq("id",1).maybeSingle()
       .then(({data}) => setMetaCfg(data?.config_json || {}));
+
+    // Cargar contratos guardados desde Supabase al abrir
+    supabase.from("wispro_clientes_config").select("*").then(({data}) => {
+      if (!data?.length) return;
+      const map = {};
+      data.forEach(r => { map[r.contrato_id] = r; });
+      setClientesCfg(map);
+      // Reconstruir lista de contratos desde los datos guardados
+      const lista = data.map(r => ({
+        id: r.contrato_id,
+        public_id: r.public_id || null,
+        _cliente: { name: r.cliente_nombre, phone_mobile: r.telefono },
+        state: r.estado || "enabled",
+        _cached: true,
+      }));
+      setContratos(lista);
+    });
   }, []);
 
   const getWaba = () => {
@@ -179,6 +196,20 @@ export default function WisproPanel() {
         setConMsg(`⚠ ${listaEnriq.length} contratos cargados, pero el endpoint /clients no devolvió datos. Nombre y teléfono no disponibles.`);
       } else if (sinCliente > 0) {
         setConMsg(`${listaEnriq.length} contratos · ${allClientes.length} clientes cargados · ${sinCliente} sin datos de cliente`);
+      }
+
+      // Guardar nombre, teléfono, estado y public_id en Supabase (cache)
+      const upsertRows = listaEnriq.map(c => ({
+        contrato_id:   String(c.id),
+        public_id:     c.public_id || null,
+        cliente_nombre: getNombre(c) !== "—" ? getNombre(c) : undefined,
+        telefono:      getTel(c) || null,
+        estado:        c.state || c.status || null,
+        updated_at:    new Date().toISOString(),
+      })).filter(r => r.cliente_nombre || r.telefono);
+      if (upsertRows.length > 0) {
+        await supabase.from("wispro_clientes_config")
+          .upsert(upsertRows, { onConflict: "contrato_id", ignoreDuplicates: false });
       }
 
       // cargar config local de cada uno
@@ -470,23 +501,13 @@ export default function WisproPanel() {
                 </select>
               </div>
               <button onClick={cargarContratos} disabled={loadingCon} style={btnS("#7c3aed", loadingCon)}>
-                {loadingCon?"Cargando...":"🔄 Cargar desde WisPro"}
+                {loadingCon ? "Actualizando..." : contratos.some(c=>c._cached) ? "🔄 Actualizar desde WisPro" : "🔄 Cargar desde WisPro"}
               </button>
             </div>
             {conMsg && <p style={{fontSize:12, color: conMsg.startsWith("⚠")?"#d97706":"#64748b", marginBottom:10}}>{conMsg}</p>}
-            {rawClienteDebug && !getTel({_cliente: rawClienteDebug}) && (
-              <details style={{marginBottom:10, fontSize:11, color:"#64748b"}}>
-                <summary style={{cursor:"pointer", fontWeight:700, color:"#7c3aed"}}>
-                  🔍 Debug: campos del cliente (teléfono no encontrado)
-                </summary>
-                <pre style={{background:"#f8fafc", borderRadius:8, padding:"8px 12px", marginTop:6, overflowX:"auto", fontSize:10}}>
-                  {JSON.stringify(rawClienteDebug, null, 2)}
-                </pre>
-              </details>
-            )}
             {contratos.length===0 && !loadingCon ? (
               <p style={{color:"#94a3b8", fontSize:13, padding:"30px 0", textAlign:"center"}}>
-                Haz clic en "Cargar desde WisPro" para ver los contratos.
+                Cargando datos guardados...
               </p>
             ) : (
               <>
