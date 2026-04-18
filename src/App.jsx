@@ -2818,10 +2818,10 @@ export default function App() {
   };
 
   // mkFetch para Nod_04 (dimfiber) — vía proxy diagno (evita CORS/mixed-content)
-  const mkFetchNod04 = async (body) => {
+  const mkFetchNod04 = async (endpoint, body) => {
     const url = DIAGNO_BASE
-      ? `${DIAGNO_BASE}/api/mikrowisp-nod04/GetClientsDetails`
-      : `/api/mikrowisp-nod04/GetClientsDetails`;
+      ? `${DIAGNO_BASE}/api/mikrowisp-nod04/${endpoint}`
+      : `/api/mikrowisp-nod04/${endpoint}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2837,10 +2837,14 @@ export default function App() {
     if (!dni) return window.alert("El cliente no tiene DNI registrado.");
     if (cliente.en_mikrowisp || mikrowisp_ok[id]) return window.alert("Este cliente ya está registrado en Mikrowisp.");
 
+    const esNod04 = String(cliente.nodo || "").trim() === "Nod_04";
+
     setMikrowispLoading((p) => ({ ...p, [id]: true }));
     try {
       // 1. Verificar si ya existe en Mikrowisp
-      const check = await mkFetch("GetClientsDetails", { cedula: dni });
+      const check = esNod04
+        ? await mkFetchNod04("GetClientsDetails", { cedula: dni })
+        : await mkFetch("GetClientsDetails", { cedula: dni });
       const b = check.json;
       const existe = b?.estado === "exito" && (b?.idcliente || b?.data?.idcliente || b?.cedula || b?.data?.cedula);
       if (existe) {
@@ -2858,7 +2862,9 @@ export default function App() {
         movil: String(cliente.celular || "").trim(),
         direccion_principal: String(cliente.direccion || "").trim(),
       };
-      const add = await mkFetch("NewUser", payload);
+      const add = esNod04
+        ? await mkFetchNod04("NewUser", payload)
+        : await mkFetch("NewUser", payload);
       if (add.json?.estado === "error") {
         throw new Error(add.json?.mensaje || `HTTP ${add.status}`);
       }
@@ -2870,7 +2876,7 @@ export default function App() {
         await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cliente.id);
         setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, en_mikrowisp: true } : c));
       }
-      window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a Mikrowisp correctamente.`);
+      window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a MikroWisp${esNod04 ? " DimFiber" : ""} correctamente.`);
     } catch (e) {
       window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
     } finally {
@@ -2939,7 +2945,7 @@ export default function App() {
   const mkwConsultarCedula = async (cedula, nodo = "") => {
     const esNod04 = String(nodo || "").trim() === "Nod_04";
     const { ok, status, json } = esNod04
-      ? await mkFetchNod04({ cedula: String(cedula).trim() })
+      ? await mkFetchNod04("GetClientsDetails", { cedula: String(cedula).trim() })
       : await mkFetch("GetClientsDetails", { cedula: String(cedula).trim() });
     if (status === 404) throw new Error("Cédula no encontrada en MikroWisp");
     if (!ok) throw new Error(json?.mensaje || `Error HTTP ${status}`);
