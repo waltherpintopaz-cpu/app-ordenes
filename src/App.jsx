@@ -17413,28 +17413,40 @@ export default function App() {
                               {colsClientesVisibles.registrado && (
                               <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
-                              <td style={{ padding: "11px 14px" }}>
-                                <div style={{ display: "flex", gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
-                                  {/* Ver — siempre visible */}
-                                  <button onClick={() => void abrirDetalleCliente(cliente)} style={{ padding: "6px 14px", background: "#fff", color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Ver</button>
-                                  {/* + Orden — siempre visible */}
-                                  <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 12px", background: "#163f86", color: "#fff", border: "none", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
-                                  {/* Señal OLT — visible inline cuando aplica */}
-                                  {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (
-                                    <button
-                                      onClick={() => void consultarSenalClienteTabla(cliente)}
-                                      disabled={!!cliSenalLoading[cliente.id]}
-                                      title={cliSenalData[cliente.id] ? `RX: ${cliSenalData[cliente.id].rx} | TX: ${cliSenalData[cliente.id].tx}` : "Ver señal ONU"}
-                                      style={{ padding: "6px 10px", background: cliSenalData[cliente.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${cliSenalData[cliente.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 7, fontSize: 11, fontWeight: 600, color: cliSenalData[cliente.id] ? "#1d4ed8" : "#64748b", cursor: "pointer", whiteSpace: "nowrap" }}
-                                    >
-                                      {cliSenalLoading[cliente.id] ? "···" : cliSenalData[cliente.id] ? `${cliSenalData[cliente.id].rx}` : "📡"}
-                                    </button>
-                                  )}
-                                  {/* Menú contextual ··· */}
+                              <td style={{ padding: "8px 14px" }}>
+                                <div style={{ display: "inline-flex", alignItems: "stretch", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+                                  {/* Ver */}
+                                  <button onClick={() => void abrirDetalleCliente(cliente)}
+                                    style={{ padding: "0 14px", height: 30, background: "#fff", color: "#374151", border: "none", borderRight: "1px solid #e2e8f0", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    Ver
+                                  </button>
+                                  {/* + Orden */}
+                                  <button onClick={() => crearOrdenDesdeCliente(cliente)}
+                                    style={{ padding: "0 14px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu ? "1px solid #1e40af" : "none", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    + Orden
+                                  </button>
+                                  {/* SN — señal ONU, solo nodos SmartOLT con serial */}
+                                  {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
+                                    const sd = cliSenalData[cliente.id];
+                                    const hasData = !!sd;
+                                    const isLoading = !!cliSenalLoading[cliente.id];
+                                    const hasError = !!cliSenalError[cliente.id];
+                                    return (
+                                      <button
+                                        onClick={() => void consultarSenalClienteTabla(cliente)}
+                                        disabled={isLoading}
+                                        title={hasData ? `SN: ${cliente.snOnu} | RX: ${sd.rx} dBm | TX: ${sd.tx} dBm` : `SN: ${cliente.snOnu}`}
+                                        style={{ padding: "0 12px", height: 30, background: hasData ? "#eff6ff" : hasError ? "#fff7ed" : "#f8fafc", color: hasData ? "#1d4ed8" : hasError ? "#c2410c" : "#64748b", border: "none", borderRight: "1px solid #e2e8f0", fontSize: 11, fontWeight: 700, cursor: isLoading ? "wait" : "pointer", whiteSpace: "nowrap", fontFamily: "monospace" }}
+                                      >
+                                        {isLoading ? "··" : hasData ? `${sd.rx}` : hasError ? "!" : "SN"}
+                                      </button>
+                                    );
+                                  })()}
+                                  {/* Menú ··· */}
                                   <div style={{ position: "relative" }}>
                                     <button
                                       onClick={() => setAbonadosMenuClienteId(v => v === cliente.id ? null : cliente.id)}
-                                      style={{ padding: "6px 10px", background: abonadosMenuClienteId === cliente.id ? "#f1f5f9" : "#fff", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 13, fontWeight: 700, color: "#64748b", cursor: "pointer", lineHeight: 1 }}>···</button>
+                                      style={{ padding: "0 11px", height: 30, background: abonadosMenuClienteId === cliente.id ? "#f1f5f9" : "#fff", border: "none", fontSize: 14, fontWeight: 700, color: "#94a3b8", cursor: "pointer", letterSpacing: "0.05em" }}>···</button>
                                     {abonadosMenuClienteId === cliente.id && (
                                       <>
                                         <div onClick={() => setAbonadosMenuClienteId(null)} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
