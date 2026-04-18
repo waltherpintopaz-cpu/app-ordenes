@@ -569,6 +569,18 @@ const proxyMikrowispNewUser = async (req) => {
   return { status: response.status, json };
 };
 
+const proxyMikrowispNod04NewUser = async (req) => {
+  const rawBody = await readRawBody(req);
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_NOD04_API_BASE, "/NewUser");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: rawBody.length ? rawBody : JSON.stringify({ token: MIKROWISP_NOD04_TOKEN }),
+  });
+  const json = await readProxyJsonResponse(response, "Mikrowisp Nod04 NewUser");
+  return { status: response.status, json };
+};
+
 const proxySmartOltRequest = async (req) => {
   const url = new URL(req.url || "", "http://localhost");
   const targetPath = url.pathname.replace(/^\/api\/smartolt/, "");
@@ -644,6 +656,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp/NewUser") {
       const result = await proxyMikrowispNewUser(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mikrowisp-nod04/NewUser") {
+      const result = await proxyMikrowispNod04NewUser(req);
       writeJson(res, result.status, result.json);
       return;
     }
