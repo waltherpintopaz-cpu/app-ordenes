@@ -17318,7 +17318,7 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <div style={{ border: "1px solid #f1f5f9", borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ border: "1px solid #f1f5f9", borderRadius: 14, overflow: "visible" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
                       <thead>
                         <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #f1f5f9" }}>
