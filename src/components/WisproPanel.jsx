@@ -327,7 +327,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
         <div style={{marginBottom:18}}>
           <h2 style={{margin:0, fontSize:22, fontWeight:800, color:"#0f172a"}}>WisPro — Notificaciones</h2>
           <p style={{margin:"3px 0 0", fontSize:12, color:"#94a3b8"}}>
-            Recordatorios y mensajes automáticos para clientes vía WisPro
+            Recordatorios y mensajes automáticos para clientes de Nod_06 (DimFiber)
           </p>
         </div>
 
