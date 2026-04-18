@@ -27,8 +27,8 @@ const fmtFecha = (iso) => { if(!iso) return "—"; const d=new Date(iso); return
 const resultColor = (r) => ({ enviado:"#16a34a", saltado_pago:"#d97706", saltado_optout:"#64748b", duplicado:"#94a3b8", error:"#dc2626" }[r] || "#64748b");
 
 /* ════════════════════════════════════════════════ */
-export default function WisproPanel() {
-  const [tab, setTab] = useState("config");
+export default function WisproPanel({ esAdmin = false, sessionUser }) {
+  const [tab, setTab] = useState(esAdmin ? "config" : "clientes");
 
   /* ── config ── */
   const [cfg, setCfg]           = useState(null);
@@ -333,7 +333,12 @@ export default function WisproPanel() {
 
         {/* Tabs */}
         <div style={{display:"flex", gap:4, marginBottom:24, borderBottom:"2px solid #f1f5f9"}}>
-          {[{key:"config",label:"⚙ Configuración"},{key:"clientes",label:"👥 Clientes"},{key:"bienvenida",label:"👋 Bienvenida"},{key:"historial",label:"📋 Historial"}].map(t=>(
+          {[
+            esAdmin && {key:"config",label:"⚙ Configuración"},
+            {key:"clientes",label:"👥 Clientes"},
+            esAdmin && {key:"bienvenida",label:"👋 Bienvenida"},
+            {key:"historial",label:"📋 Historial"},
+          ].filter(Boolean).map(t=>(
             <button key={t.key} onClick={()=>setTab(t.key)}
               style={{padding:"8px 18px", fontSize:13, fontWeight:700, border:"none", cursor:"pointer",
                 borderBottom: tab===t.key?"2px solid #7c3aed":"2px solid transparent",
