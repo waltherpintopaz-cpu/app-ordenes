@@ -17457,6 +17457,18 @@ export default function App() {
                                       );
                                     })()}
                                   </div>
+                                  {/* Badge MW — visible si es nodo MikroWisp y admin */}
+                                  {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
+                                    const id = String(cliente.id || cliente.dni || "");
+                                    const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
+                                    const cargando = mikrowisp_loading[id];
+                                    if (!yaAgregado && !cargando) return null;
+                                    return (
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", height: 30, background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", borderRadius: 7, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                                        {cargando ? "⏳" : "✓ MW"}
+                                      </span>
+                                    );
+                                  })()}
                                   {/* Menú ··· — separado del grupo para que el dropdown no quede cortado */}
                                   <div style={{ position: "relative" }}>
                                     <button
