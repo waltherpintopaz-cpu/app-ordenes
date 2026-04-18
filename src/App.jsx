@@ -1800,6 +1800,8 @@ export default function App() {
     catch { return { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, snOnu: false, usuarioPppoe: false, registrado: false }; }
   });
   const [mostrarColsModal, setMostrarColsModal] = useState(false);
+  const [abonadosToolsOpen, setAbonadosToolsOpen] = useState(false);
+  const [abonadosMenuClienteId, setAbonadosMenuClienteId] = useState(null);
   const [actualizarEstadoMasivoLoading, setActualizarEstadoMasivoLoading] = useState(false);
   const [actualizarEstadoMasivoProgreso, setActualizarEstadoMasivoProgreso] = useState(null);
   const [syncCajasNapLoading, setSyncCajasNapLoading] = useState(false);
@@ -17019,33 +17021,52 @@ export default function App() {
                   <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.4px" }}>Abonados</h2>
                   <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {esAdminSesion && (
-                    <button onClick={abrirNuevoCliente} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Nuevo cliente</button>
+                    <button onClick={abrirNuevoCliente} style={{ padding: "8px 16px", background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "-0.2px" }}>+ Nuevo</button>
                   )}
-                  {esAdminSesion && (
-                    <button onClick={sincronizarCajasNapDesdeHistorial} disabled={syncCajasNapLoading} title="Actualiza la caja NAP de cada cliente con la más reciente de su historial" style={{ padding: "8px 14px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #7dd3fc", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: syncCajasNapLoading ? "wait" : "pointer" }}>
-                      {syncCajasNapLoading ? "Sincronizando..." : "Sync Cajas NAP"}
-                    </button>
-                  )}
-                  {esAdminSesion && (
-                    <button onClick={sincronizarEquiposDesdeAppsheet} disabled={syncEquiposAppsheetLoading} title="Importa equipos del historial AppSheet a cada cliente (solo una vez, no duplica)" style={{ padding: "8px 14px", background: "#fdf4ff", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: syncEquiposAppsheetLoading ? "wait" : "pointer" }}>
-                      {syncEquiposAppsheetLoading ? (syncEquiposAppsheetInfo || "Importando...") : "Sync Equipos AppSheet"}
-                    </button>
-                  )}
-                  <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Recargar
                   </button>
-                  <button onClick={actualizarEstadoMasivoMikrowisp} disabled={actualizarEstadoMasivoLoading} title="Consulta Mikrowisp por DNI para actualizar estado" style={{ padding: "8px 14px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                    {actualizarEstadoMasivoLoading ? `MK ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}` : "Sync MikroTik"}
-                  </button>
-                  <button onClick={() => setMostrarColsModal(true)} style={{ padding: "8px 14px", background: "#f8f4ff", color: "#6d28d9", border: "1px solid #ddd6fe", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                    ⊞ Columnas
+                  <button onClick={() => setMostrarColsModal(true)} style={{ padding: "8px 14px", background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    Columnas
                   </button>
                   {esAdminSesion && (
-                    <button onClick={() => { setMkwPanelAbierto(v => !v); setMkwError(""); setMkwResultado(null); }} style={{ padding: "8px 14px", background: mkwPanelAbierto ? "#0f172a" : "#f0f9ff", color: mkwPanelAbierto ? "#fff" : "#0369a1", border: "1px solid #7dd3fc", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                      📱 MikroWisp
-                    </button>
+                    <div style={{ position: "relative" }}>
+                      <button
+                        onClick={() => setAbonadosToolsOpen(v => !v)}
+                        style={{ padding: "8px 14px", background: abonadosToolsOpen ? "#0f172a" : "#f8fafc", color: abonadosToolsOpen ? "#fff" : "#475569", border: "1px solid " + (abonadosToolsOpen ? "#0f172a" : "#e2e8f0"), borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                        Herramientas <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
+                      </button>
+                      {abonadosToolsOpen && (
+                        <div
+                          onClick={() => setAbonadosToolsOpen(false)}
+                          style={{ position: "fixed", inset: 0, zIndex: 999 }}
+                        />
+                      )}
+                      {abonadosToolsOpen && (
+                        <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 32px rgba(15,23,42,0.12)", minWidth: 220, zIndex: 1000, overflow: "hidden" }}>
+                          <div style={{ padding: "6px 12px", fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", borderBottom: "1px solid #f1f5f9" }}>Sincronización</div>
+                          <button onClick={() => { sincronizarCajasNapDesdeHistorial(); setAbonadosToolsOpen(false); }} disabled={syncCajasNapLoading}
+                            style={{ width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#0f172a", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ color: "#0369a1" }}>⊞</span> {syncCajasNapLoading ? "Sincronizando..." : "Sync Cajas NAP"}
+                          </button>
+                          <button onClick={() => { sincronizarEquiposDesdeAppsheet(); setAbonadosToolsOpen(false); }} disabled={syncEquiposAppsheetLoading}
+                            style={{ width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#0f172a", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ color: "#7c3aed" }}>↓</span> {syncEquiposAppsheetLoading ? (syncEquiposAppsheetInfo || "Importando...") : "Sync Equipos AppSheet"}
+                          </button>
+                          <button onClick={() => { actualizarEstadoMasivoMikrowisp(); setAbonadosToolsOpen(false); }} disabled={actualizarEstadoMasivoLoading}
+                            style={{ width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#0f172a", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ color: "#16a34a" }}>⟳</span> {actualizarEstadoMasivoLoading ? `Sync MikroTik ${actualizarEstadoMasivoProgreso?.actual ?? 0}/${actualizarEstadoMasivoProgreso?.total ?? 0}` : "Sync MikroTik"}
+                          </button>
+                          <div style={{ padding: "6px 12px", fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", borderBottom: "1px solid #f1f5f9", borderTop: "1px solid #f1f5f9" }}>MikroWisp</div>
+                          <button onClick={() => { setMkwPanelAbierto(v => !v); setMkwError(""); setMkwResultado(null); setAbonadosToolsOpen(false); }}
+                            style={{ width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#0369a1", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span>📱</span> {mkwPanelAbierto ? "Cerrar panel MikroWisp" : "Panel MikroWisp"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -17269,16 +17290,16 @@ export default function App() {
               )}
 
               {/* ── Stats strip ── */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 18 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
                 {[
-                  { label: "Visibles", value: clientesResumen.total, color: "#163f86" },
-                  { label: "Con celular", value: clientesResumen.conCelular, color: "#0369a1" },
-                  { label: "Con nodo", value: clientesResumen.conNodo, color: "#0f766e" },
-                  { label: "Con etiqueta", value: clientesResumen.conEtiqueta, color: "#b45309" },
-                ].map(({ label, value, color }) => (
-                  <div key={label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 12, padding: "10px 14px" }}>
-                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
-                    <div style={{ fontSize: 24, fontWeight: 800, color, marginTop: 2, lineHeight: 1 }}>{value}</div>
+                  { label: "Visibles", value: clientesResumen.total },
+                  { label: "Con celular", value: clientesResumen.conCelular },
+                  { label: "Con nodo", value: clientesResumen.conNodo },
+                  { label: "Con etiqueta", value: clientesResumen.conEtiqueta },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 8, padding: "8px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{value}</span>
+                    <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>{label}</span>
                   </div>
                 ))}
               </div>
@@ -17393,66 +17414,82 @@ export default function App() {
                               <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               <td style={{ padding: "11px 14px" }}>
-                                <div style={{ display: "flex", gap: 5, justifyContent: "center", flexWrap: "wrap" }}>
-                                  <button onClick={() => void abrirDetalleCliente(cliente)} style={{ padding: "6px 12px", background: "#eff6ff", color: "#163f86", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Ver</button>
-                                  <button onClick={() => void abrirDiagnosticoRapidoCliente(cliente)} title="Diagnóstico MikroTik" style={{ padding: "6px 10px", background: "#f0fdf4", color: "#166534", border: "1px solid #86efac", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>MK</button>
-                                  {puedeGestionarSuspensionClientes && !clienteEstaSuspendidoMikrotik(cliente) && (
-                                    <button onClick={() => void ejecutarAccionMikrotikCliente(cliente, "suspender")} disabled={clienteMikrotikAccionLoading === "suspender"} title="Suspender" style={{ padding: "6px 9px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>⏸</button>
-                                  )}
-                                  {puedeGestionarSuspensionClientes && clienteEstaSuspendidoMikrotik(cliente) && (
-                                    <button onClick={() => void ejecutarAccionMikrotikCliente(cliente, "activar")} disabled={clienteMikrotikAccionLoading === "activar"} title="Activar" style={{ padding: "6px 9px", background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>▶</button>
-                                  )}
+                                <div style={{ display: "flex", gap: 4, alignItems: "center", justifyContent: "flex-end" }}>
+                                  {/* Ver — siempre visible */}
+                                  <button onClick={() => void abrirDetalleCliente(cliente)} style={{ padding: "6px 14px", background: "#fff", color: "#0f172a", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Ver</button>
+                                  {/* + Orden — siempre visible */}
+                                  <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 12px", background: "#163f86", color: "#fff", border: "none", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
+                                  {/* Señal OLT — visible inline cuando aplica */}
                                   {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (
-                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                                      <button
-                                        onClick={() => void consultarSenalClienteTabla(cliente)}
-                                        disabled={!!cliSenalLoading[cliente.id]}
-                                        style={{ padding: "6px 10px", background: cliSenalData[cliente.id] ? "#eff6ff" : "#f0fdf4", border: `1px solid ${cliSenalData[cliente.id] ? "#93c5fd" : "#86efac"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, color: cliSenalData[cliente.id] ? "#1d4ed8" : "#166534", cursor: "pointer", whiteSpace: "nowrap" }}
-                                      >
-                                        {cliSenalLoading[cliente.id] ? "..." : cliSenalData[cliente.id] ? `📡 ${cliSenalData[cliente.id].rx} dBm` : "📡 Señal"}
-                                      </button>
-                                      {cliSenalData[cliente.id] && (
-                                        <span style={{ fontSize: 10, color: "#1d4ed8", fontWeight: 600 }}>TX: {cliSenalData[cliente.id].tx}</span>
-                                      )}
-                                      {cliSenalError[cliente.id] && (
-                                        <span style={{ fontSize: 10, color: "#dc2626" }}>⚠ {cliSenalError[cliente.id]}</span>
-                                      )}
-                                    </div>
+                                    <button
+                                      onClick={() => void consultarSenalClienteTabla(cliente)}
+                                      disabled={!!cliSenalLoading[cliente.id]}
+                                      title={cliSenalData[cliente.id] ? `RX: ${cliSenalData[cliente.id].rx} | TX: ${cliSenalData[cliente.id].tx}` : "Ver señal ONU"}
+                                      style={{ padding: "6px 10px", background: cliSenalData[cliente.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${cliSenalData[cliente.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 7, fontSize: 11, fontWeight: 600, color: cliSenalData[cliente.id] ? "#1d4ed8" : "#64748b", cursor: "pointer", whiteSpace: "nowrap" }}
+                                    >
+                                      {cliSenalLoading[cliente.id] ? "···" : cliSenalData[cliente.id] ? `${cliSenalData[cliente.id].rx}` : "📡"}
+                                    </button>
                                   )}
-                                  <button onClick={() => crearOrdenDesdeCliente(cliente)} style={{ padding: "6px 11px", background: "#163f86", color: "#fff", border: "none", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Orden</button>
-                                  {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
-                                    const id = String(cliente.id || cliente.dni || "");
-                                    const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
-                                    const cargando = mikrowisp_loading[id];
-                                    return (
-                                      <button
-                                        onClick={() => void agregarClienteMikrowisp(cliente)}
-                                        disabled={cargando || yaAgregado}
-                                        title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar a Mikrowisp"}
-                                        style={{ padding: "6px 9px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", color: yaAgregado ? "#16a34a" : "#92400e", border: `1px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer", whiteSpace: "nowrap" }}
-                                      >
-                                        {cargando ? "..." : yaAgregado ? "✓ MW" : "MW+"}
-                                      </button>
-                                    );
-                                  })()}
-                                  {esAdminSesion && cliente.dni && (() => {
-                                    const cid = String(cliente.id || cliente.dni || "");
-                                    const cargando = mkwCliLoading[cid];
-                                    const sincOk = mkwCliOk[cid];
-                                    return (
-                                      <button
-                                        onClick={() => void mkwSincronizarCliente(cliente)}
-                                        disabled={cargando}
-                                        title="Sincronizar con MikroWisp"
-                                        style={{ padding: "6px 9px", background: sincOk ? "#f0fdf4" : "#f0f9ff", color: sincOk ? "#16a34a" : "#0369a1", border: `1px solid ${sincOk ? "#86efac" : "#bae6fd"}`, borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: cargando ? "wait" : "pointer", whiteSpace: "nowrap" }}
-                                      >
-                                        {cargando ? "⏳" : sincOk ? "✓ MW" : "📱 MW"}
-                                      </button>
-                                    );
-                                  })()}
-                                  {esAdminSesion && (
-                                    <button onClick={() => void eliminarCliente(cliente)} title="Eliminar" style={{ padding: "6px 8px", background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, fontSize: 11, cursor: "pointer" }}>✕</button>
-                                  )}
+                                  {/* Menú contextual ··· */}
+                                  <div style={{ position: "relative" }}>
+                                    <button
+                                      onClick={() => setAbonadosMenuClienteId(v => v === cliente.id ? null : cliente.id)}
+                                      style={{ padding: "6px 10px", background: abonadosMenuClienteId === cliente.id ? "#f1f5f9" : "#fff", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 13, fontWeight: 700, color: "#64748b", cursor: "pointer", lineHeight: 1 }}>···</button>
+                                    {abonadosMenuClienteId === cliente.id && (
+                                      <>
+                                        <div onClick={() => setAbonadosMenuClienteId(null)} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
+                                        <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 32px rgba(15,23,42,0.12)", minWidth: 180, zIndex: 1000, overflow: "hidden" }}>
+                                          <button onClick={() => { void abrirDiagnosticoRapidoCliente(cliente); setAbonadosMenuClienteId(null); }}
+                                            style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: "#166534", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                            <span>⚡</span> Diagnóstico MikroTik
+                                          </button>
+                                          {puedeGestionarSuspensionClientes && !clienteEstaSuspendidoMikrotik(cliente) && (
+                                            <button onClick={() => { void ejecutarAccionMikrotikCliente(cliente, "suspender"); setAbonadosMenuClienteId(null); }} disabled={clienteMikrotikAccionLoading === "suspender"}
+                                              style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: "#dc2626", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                              <span>⏸</span> Suspender
+                                            </button>
+                                          )}
+                                          {puedeGestionarSuspensionClientes && clienteEstaSuspendidoMikrotik(cliente) && (
+                                            <button onClick={() => { void ejecutarAccionMikrotikCliente(cliente, "activar"); setAbonadosMenuClienteId(null); }} disabled={clienteMikrotikAccionLoading === "activar"}
+                                              style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: "#16a34a", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                              <span>▶</span> Activar
+                                            </button>
+                                          )}
+                                          {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
+                                            const id = String(cliente.id || cliente.dni || "");
+                                            const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
+                                            const cargando = mikrowisp_loading[id];
+                                            return (
+                                              <button onClick={() => { void agregarClienteMikrowisp(cliente); setAbonadosMenuClienteId(null); }} disabled={cargando || yaAgregado}
+                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                <span>{yaAgregado ? "✓" : "+"}</span> {cargando ? "Procesando..." : yaAgregado ? "En MikroWisp" : "Agregar a MikroWisp"}
+                                              </button>
+                                            );
+                                          })()}
+                                          {esAdminSesion && cliente.dni && (() => {
+                                            const cid = String(cliente.id || cliente.dni || "");
+                                            const cargando = mkwCliLoading[cid];
+                                            const sincOk = mkwCliOk[cid];
+                                            return (
+                                              <button onClick={() => { void mkwSincronizarCliente(cliente); setAbonadosMenuClienteId(null); }} disabled={cargando}
+                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: sincOk ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                <span>📱</span> {cargando ? "Sincronizando..." : sincOk ? "Sincronizado MW" : "Sync MikroWisp"}
+                                              </button>
+                                            );
+                                          })()}
+                                          {esAdminSesion && (
+                                            <>
+                                              <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0" }} />
+                                              <button onClick={() => { void eliminarCliente(cliente); setAbonadosMenuClienteId(null); }}
+                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: "#dc2626", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                <span>✕</span> Eliminar cliente
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
                             </tr>
