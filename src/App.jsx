@@ -17464,8 +17464,8 @@ export default function App() {
                                       );
                                     })()}
                                   </div>
-                                  {/* Badge MW — visible si es nodo MikroWisp y admin */}
-                                  {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
+                                  {/* Badge MW — visible si es nodo MikroWisp y admin, o gestor con acceso a ese nodo */}
+                                  {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                     const id = String(cliente.id || cliente.dni || "");
                                     const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
                                     const cargando = mikrowisp_loading[id];
@@ -17501,7 +17501,7 @@ export default function App() {
                                               <span>▶</span> Activar
                                             </button>
                                           )}
-                                          {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && esAdminSesion && (() => {
+                                          {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                             const id = String(cliente.id || cliente.dni || "");
                                             const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
                                             const cargando = mikrowisp_loading[id];
