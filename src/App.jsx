@@ -2728,11 +2728,13 @@ export default function App() {
     const conCel = lista.filter((c) => String(c.celular || "").trim()).length;
     const conNodo = lista.filter((c) => String(c.nodo || "").trim()).length;
     const conEtiqueta = lista.filter((c) => String(c.codigoEtiqueta || "").trim() && String(c.codigoEtiqueta || "").trim() !== "-").length;
+    const conSnOnu = lista.filter((c) => String(c.snOnu || "").trim()).length;
     return {
       total: lista.length,
       conCelular: conCel,
       conNodo,
       conEtiqueta,
+      conSnOnu,
     };
   }, [clientesFiltrados]);
 
@@ -17295,6 +17297,7 @@ export default function App() {
                   { label: "Visibles", value: clientesResumen.total },
                   { label: "Con celular", value: clientesResumen.conCelular },
                   { label: "Con nodo", value: clientesResumen.conNodo },
+                  { label: "Con SN ONU", value: clientesResumen.conSnOnu },
                   { label: "Con etiqueta", value: clientesResumen.conEtiqueta },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 8, padding: "8px 14px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -17414,39 +17417,51 @@ export default function App() {
                               <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               <td style={{ padding: "8px 14px" }}>
-                                <div style={{ display: "inline-flex", alignItems: "stretch", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-                                  {/* Ver */}
-                                  <button onClick={() => void abrirDetalleCliente(cliente)}
-                                    style={{ padding: "0 14px", height: 30, background: "#fff", color: "#374151", border: "none", borderRight: "1px solid #e2e8f0", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                    Ver
-                                  </button>
-                                  {/* + Orden */}
-                                  <button onClick={() => crearOrdenDesdeCliente(cliente)}
-                                    style={{ padding: "0 14px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu ? "1px solid #1e40af" : "none", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                    + Orden
-                                  </button>
-                                  {/* SN — señal ONU, solo nodos SmartOLT con serial */}
-                                  {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
-                                    const sd = cliSenalData[cliente.id];
-                                    const hasData = !!sd;
-                                    const isLoading = !!cliSenalLoading[cliente.id];
-                                    const hasError = !!cliSenalError[cliente.id];
-                                    return (
-                                      <button
-                                        onClick={() => void consultarSenalClienteTabla(cliente)}
-                                        disabled={isLoading}
-                                        title={hasData ? `SN: ${cliente.snOnu} | RX: ${sd.rx} dBm | TX: ${sd.tx} dBm` : `SN: ${cliente.snOnu}`}
-                                        style={{ padding: "0 12px", height: 30, background: hasData ? "#eff6ff" : hasError ? "#fff7ed" : "#f8fafc", color: hasData ? "#1d4ed8" : hasError ? "#c2410c" : "#64748b", border: "none", borderRight: "1px solid #e2e8f0", fontSize: 11, fontWeight: 700, cursor: isLoading ? "wait" : "pointer", whiteSpace: "nowrap", fontFamily: "monospace" }}
-                                      >
-                                        {isLoading ? "··" : hasData ? `${sd.rx}` : hasError ? "!" : "SN"}
-                                      </button>
-                                    );
-                                  })()}
-                                  {/* Menú ··· */}
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                                  {/* Button group: Ver | +Orden | SN señal */}
+                                  <div style={{ display: "inline-flex", alignItems: "stretch", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+                                    {/* Ver */}
+                                    <button onClick={() => void abrirDetalleCliente(cliente)}
+                                      style={{ padding: "0 13px", height: 30, background: "#fff", color: "#374151", border: "none", borderRight: "1px solid #e2e8f0", borderRadius: "7px 0 0 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      Ver
+                                    </button>
+                                    {/* + Orden */}
+                                    <button onClick={() => crearOrdenDesdeCliente(cliente)}
+                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      + Orden
+                                    </button>
+                                    {/* SN — señal ONU, solo nodos SmartOLT con serial */}
+                                    {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
+                                      const sd = cliSenalData[cliente.id];
+                                      const hasData = !!sd;
+                                      const isLoading = !!cliSenalLoading[cliente.id];
+                                      const hasError = !!cliSenalError[cliente.id];
+                                      const snColor = hasData ? "#1d4ed8" : hasError ? "#c2410c" : "#0369a1";
+                                      return (
+                                        <button
+                                          onClick={() => void consultarSenalClienteTabla(cliente)}
+                                          disabled={isLoading}
+                                          title={hasData ? `SN: ${cliente.snOnu} | RX: ${sd.rx} dBm | TX: ${sd.tx} dBm` : `Ver señal · SN: ${cliente.snOnu}`}
+                                          style={{ padding: "0 11px", height: 30, background: hasData ? "#eff6ff" : hasError ? "#fff7ed" : "#f0f9ff", color: snColor, border: "none", borderRadius: "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: isLoading ? "wait" : "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}
+                                        >
+                                          <svg width="13" height="11" viewBox="0 0 13 11" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                                            <rect x="0" y="7" width="2.5" height="4" rx="1" fill={isLoading ? "#cbd5e1" : snColor}/>
+                                            <rect x="3.5" y="4.5" width="2.5" height="6.5" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#94a3b8"}/>
+                                            <rect x="7" y="2" width="2.5" height="9" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#cbd5e1"}/>
+                                            <rect x="10.5" y="0" width="2.5" height="11" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#e2e8f0"}/>
+                                          </svg>
+                                          <span style={{ fontFamily: "monospace", fontSize: 10 }}>
+                                            {isLoading ? "···" : hasData ? `${sd.rx}` : hasError ? "Err" : "SN"}
+                                          </span>
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
+                                  {/* Menú ··· — separado del grupo para que el dropdown no quede cortado */}
                                   <div style={{ position: "relative" }}>
                                     <button
                                       onClick={() => setAbonadosMenuClienteId(v => v === cliente.id ? null : cliente.id)}
-                                      style={{ padding: "0 11px", height: 30, background: abonadosMenuClienteId === cliente.id ? "#f1f5f9" : "#fff", border: "none", fontSize: 14, fontWeight: 700, color: "#94a3b8", cursor: "pointer", letterSpacing: "0.05em" }}>···</button>
+                                      style={{ padding: "0 10px", height: 30, background: abonadosMenuClienteId === cliente.id ? "#f1f5f9" : "#fff", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 14, fontWeight: 700, color: "#94a3b8", cursor: "pointer", letterSpacing: "0.05em", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>···</button>
                                     {abonadosMenuClienteId === cliente.id && (
                                       <>
                                         <div onClick={() => setAbonadosMenuClienteId(null)} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
