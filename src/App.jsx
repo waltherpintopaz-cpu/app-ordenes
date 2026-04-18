@@ -4130,6 +4130,7 @@ export default function App() {
       estado_servicio: cliente.estadoServicio || "DESCONOCIDO",
       caja_nap: nullIfEmpty(cliente.cajaNap),
       puerto_nap: nullIfEmpty(cliente.puertoNap),
+      en_mikrowisp: cliente.en_mikrowisp === true ? true : false,
       payload: cliente,
       updated_at: new Date().toISOString(),
     };
@@ -4155,6 +4156,7 @@ export default function App() {
         estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
         mikrotikSuspensionIp: row.mikrotik_suspension_ip || p.mikrotikSuspensionIp || "",
         mikrotikUltimaAccion: row.mikrotik_ultima_accion || p.mikrotikUltimaAccion || "",
+        en_mikrowisp: row.en_mikrowisp || p.en_mikrowisp || false,
         ...signalFields,
       };
     }
@@ -4189,6 +4191,7 @@ export default function App() {
       equiposHistorial: Array.isArray(row.equipos_historial) ? row.equipos_historial : [],
       mikrotikSuspensionIp: row.mikrotik_suspension_ip || "",
       mikrotikUltimaAccion: row.mikrotik_ultima_accion || "",
+      en_mikrowisp: row.en_mikrowisp || false,
       ...signalFields,
     };
   };
