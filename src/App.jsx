@@ -3039,7 +3039,14 @@ export default function App() {
         const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""), String(c.nodo || ""));
         const { data: prev } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id).maybeSingle();
         const res = await mkwUpsert(datos, { sobreescribir: mkwMasivoSobreescribir });
-        if (res.ok) { ok++; if (!prev) nuevo++; }
+        if (res.ok) {
+          ok++; if (!prev) nuevo++;
+          if (isSupabaseConfigured && c.id && !c.en_mikrowisp) {
+            await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", c.id);
+            setClientes(prev => prev.map(x => x.id === c.id ? { ...x, en_mikrowisp: true } : x));
+            setMikrowispOk(p => ({ ...p, [String(c.id || c.dni || "")]: true }));
+          }
+        }
         else { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: res.msg || "Error al guardar" }); }
       } catch (e) { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: e.message || "Error desconocido" }); }
       await new Promise(r => setTimeout(r, 300));
