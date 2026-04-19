@@ -2917,13 +2917,15 @@ export default function App() {
     if (!sobreescribir) {
       const { data: existing } = await supabase
         .from("mikrowisp_clientes")
-        .select("telefonos")
+        .select("telefonos, nodo")
         .eq("mikrowisp_id", d.id)
         .maybeSingle();
-      if (existing) {
+      // Solo fusionar teléfonos si el registro existente es del MISMO nodo.
+      // IDs como 788 se repiten en Americanet y DimFiber — son personas distintas.
+      const mismoNodo = existing && existing.nodo === (nodo ? Number(nodo) : null);
+      if (existing && mismoNodo) {
         const actualesRaw = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
         const actuales = esNod04 ? actualesRaw.map(normalizarTelefono51) : actualesRaw;
-        // movil puede tener múltiples números separados por coma — agregar cada uno individualmente
         const nuevos = movil.split(",").map(t => t.trim()).filter(Boolean);
         nuevos.forEach(n => { if (!actuales.includes(n)) actuales.push(n); });
         telefonos = actuales.join(",");
