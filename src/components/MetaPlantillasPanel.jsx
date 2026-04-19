@@ -49,8 +49,9 @@ const extraerVariables = (texto) => {
 const FORM_VACIO = {
   nombre: "", idioma: "es", categoria: "UTILITY",
   header_tipo: "NONE", header_texto: "", body: "", footer: "",
-  btn_tipo: "NONE", btn_texto: "", btn_url: "", muestras: {},
+  botones: [], muestras: {},
 };
+const BTN_VACIO = () => ({ tipo: "QUICK_REPLY", texto: "", url: "" });
 
 /* Config vacía por empresa */
 const cfgVacia = () => ({ americanet: { wabas: [] }, dim: { wabas: [] } });
@@ -178,15 +179,16 @@ export default function MetaPlantillasPanel() {
     const header = p.components?.find(c => c.type === "HEADER");
     const body   = p.components?.find(c => c.type === "BODY");
     const footer = p.components?.find(c => c.type === "FOOTER");
-    const btn    = p.components?.find(c => c.type === "BUTTONS")?.buttons?.[0];
-    let btn_tipo = "NONE";
-    if (btn?.type === "QUICK_REPLY") btn_tipo = "QUICK_REPLY";
-    else if (btn?.type === "URL")    btn_tipo = "URL";
-    else if (btn?.type === "PHONE_NUMBER") btn_tipo = "PHONE";
+    const btnsRaw = p.components?.find(c => c.type === "BUTTONS")?.buttons || [];
+    const botones = btnsRaw.map(b => ({
+      tipo: b.type === "QUICK_REPLY" ? "QUICK_REPLY" : b.type === "URL" ? "URL" : "PHONE",
+      texto: b.text || "",
+      url: b.url || b.phone_number || "",
+    }));
     setForm({ nombre, idioma: p.language || "es", categoria: p.category || "UTILITY",
       header_tipo: header?.format || "NONE", header_texto: header?.text || "",
       body: body?.text || "", footer: footer?.text || "",
-      btn_tipo, btn_texto: btn?.text || "", btn_url: btn?.url || btn?.phone_number || "", muestras: {} });
+      botones, muestras: {} });
     setPlantillaEditando({ id: p.id, name: p.name });
     setShowForm(true); setFormMsg("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -223,12 +225,15 @@ export default function MetaPlantillasPanel() {
       bodyComp.example = { body_text: [varsBody.map(n => form.muestras[`body_${n}`] || `ejemplo${n}`)] };
     components.push(bodyComp);
     if (form.footer.trim()) components.push({ type: "FOOTER", text: form.footer });
-    if (form.btn_tipo === "QUICK_REPLY")
-      components.push({ type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: form.btn_texto }] });
-    else if (form.btn_tipo === "URL")
-      components.push({ type: "BUTTONS", buttons: [{ type: "URL", text: form.btn_texto, url: form.btn_url }] });
-    else if (form.btn_tipo === "PHONE")
-      components.push({ type: "BUTTONS", buttons: [{ type: "PHONE_NUMBER", text: form.btn_texto, phone_number: form.btn_url }] });
+    const btnsValidos = (form.botones || []).filter(b => b.texto.trim());
+    if (btnsValidos.length > 0) {
+      const buttons = btnsValidos.map(b => {
+        if (b.tipo === "QUICK_REPLY") return { type: "QUICK_REPLY", text: b.texto };
+        if (b.tipo === "URL")         return { type: "URL", text: b.texto, url: b.url };
+        return { type: "PHONE_NUMBER", text: b.texto, phone_number: b.url };
+      });
+      components.push({ type: "BUTTONS", buttons });
+    }
     try {
       if (plantillaEditando) {
         const delRes = await fetch(
@@ -576,25 +581,50 @@ export default function MetaPlantillasPanel() {
                     placeholder="Ej: No respondas a este mensaje" style={inp} />
                 </div>
                 <div style={{ marginTop: 14 }}>
-                  <label style={lbl}>Botón de acción</label>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
-                    {BTN_TIPOS.map(t => (
-                      <button key={t.value} onClick={() => setForm(f => ({ ...f, btn_tipo: t.value }))}
-                        style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, borderRadius: 6, border: "none", cursor: "pointer",
-                          background: form.btn_tipo === t.value ? "#2563eb" : "#e2e8f0",
-                          color: form.btn_tipo === t.value ? "#fff" : "#64748b" }}>{t.label}</button>
-                    ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <label style={lbl}>Botones <span style={{ fontWeight: 400, color: "#94a3b8" }}>(máx. 3)</span></label>
+                    {(form.botones || []).length < 3 && (
+                      <button type="button" onClick={() => setForm(f => ({ ...f, botones: [...(f.botones || []), BTN_VACIO()] }))}
+                        style={{ ...btnS("#16a34a"), padding: "4px 12px", fontSize: 11 }}>+ Agregar botón</button>
+                    )}
                   </div>
-                  {form.btn_tipo !== "NONE" && (
-                    <div style={{ display: "grid", gridTemplateColumns: form.btn_tipo !== "QUICK_REPLY" ? "1fr 1fr" : "1fr", gap: 8 }}>
-                      <div><label style={lbl}>Texto del botón</label>
-                        <input value={form.btn_texto} onChange={e => setForm(f => ({ ...f, btn_texto: e.target.value }))} placeholder="Ver detalles" style={inp} /></div>
-                      {form.btn_tipo === "URL" && <div><label style={lbl}>URL</label>
-                        <input value={form.btn_url} onChange={e => setForm(f => ({ ...f, btn_url: e.target.value }))} placeholder="https://..." style={inp} /></div>}
-                      {form.btn_tipo === "PHONE" && <div><label style={lbl}>Teléfono</label>
-                        <input value={form.btn_url} onChange={e => setForm(f => ({ ...f, btn_url: e.target.value }))} placeholder="+51999999999" style={inp} /></div>}
-                    </div>
+                  {(form.botones || []).length === 0 && (
+                    <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>Sin botones. Haz clic en "+ Agregar botón".</p>
                   )}
+                  {(form.botones || []).map((btn, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: btn.tipo !== "QUICK_REPLY" ? "120px 1fr 1fr auto" : "120px 1fr auto", gap: 8, marginBottom: 8, alignItems: "end" }}>
+                      <div>
+                        <label style={lbl}>Tipo</label>
+                        <select value={btn.tipo} onChange={e => setForm(f => { const b = [...f.botones]; b[i] = { ...b[i], tipo: e.target.value, url: "" }; return { ...f, botones: b }; })}
+                          style={{ ...inp, cursor: "pointer", padding: "7px 8px" }}>
+                          <option value="QUICK_REPLY">↩ Respuesta</option>
+                          <option value="URL">🔗 URL</option>
+                          <option value="PHONE">📞 Teléfono</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={lbl}>Texto del botón</label>
+                        <input value={btn.texto} onChange={e => setForm(f => { const b = [...f.botones]; b[i] = { ...b[i], texto: e.target.value }; return { ...f, botones: b }; })}
+                          placeholder="Ej: Métodos de pago" style={inp} />
+                      </div>
+                      {btn.tipo === "URL" && (
+                        <div>
+                          <label style={lbl}>URL</label>
+                          <input value={btn.url} onChange={e => setForm(f => { const b = [...f.botones]; b[i] = { ...b[i], url: e.target.value }; return { ...f, botones: b }; })}
+                            placeholder="https://..." style={inp} />
+                        </div>
+                      )}
+                      {btn.tipo === "PHONE" && (
+                        <div>
+                          <label style={lbl}>Teléfono</label>
+                          <input value={btn.url} onChange={e => setForm(f => { const b = [...f.botones]; b[i] = { ...b[i], url: e.target.value }; return { ...f, botones: b }; })}
+                            placeholder="+51999999999" style={inp} />
+                        </div>
+                      )}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, botones: f.botones.filter((_, j) => j !== i) }))}
+                        style={{ padding: "7px 10px", background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, marginBottom: 1 }}>✕</button>
+                    </div>
+                  ))}
                 </div>
 
                 {formMsg && <p style={{ fontSize: 12, fontWeight: 600, margin: "12px 0 0",
@@ -660,14 +690,14 @@ export default function MetaPlantillasPanel() {
                         </div>
                       </div>
                       {/* Botones */}
-                      {form.btn_tipo !== "NONE" && form.btn_texto && (
-                        <div style={{ background: "#fff", borderRadius: "0 0 10px 10px", marginTop: 1, borderTop: "1px solid #f1f5f9" }}>
-                          <div style={{ padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                            <span style={{ fontSize: 13 }}>
-                              {form.btn_tipo === "URL" ? "🔗" : form.btn_tipo === "PHONE" ? "📞" : "↩"}
-                            </span>
-                            <span style={{ fontSize: 12, color: "#0369a1", fontWeight: 600 }}>{form.btn_texto}</span>
-                          </div>
+                      {(form.botones || []).filter(b => b.texto.trim()).length > 0 && (
+                        <div style={{ marginTop: 1, borderTop: "1px solid #f1f5f9" }}>
+                          {(form.botones || []).filter(b => b.texto.trim()).map((b, i) => (
+                            <div key={i} style={{ padding: "7px 12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, borderTop: i > 0 ? "1px solid #f1f5f9" : "none" }}>
+                              <span style={{ fontSize: 12 }}>{b.tipo === "URL" ? "🔗" : b.tipo === "PHONE" ? "📞" : "↩"}</span>
+                              <span style={{ fontSize: 12, color: "#0369a1", fontWeight: 600 }}>{b.texto}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
