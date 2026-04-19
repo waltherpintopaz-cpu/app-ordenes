@@ -485,6 +485,10 @@ export default function MetaPlantillasPanel() {
                   {plantillaEditando && <span style={{ fontSize: 11, color: "#d97706", marginLeft: 8 }}>⚠ Se eliminará la anterior</span>}
                 </p>
 
+                {/* Layout: formulario + preview */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 24, alignItems: "start" }}>
+                <div>{/* columna formulario */}
+
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
                   <div>
                     <label style={lbl}>Nombre *</label>
@@ -599,6 +603,81 @@ export default function MetaPlantillasPanel() {
                   style={{ ...btnS("#2563eb"), marginTop: 16, width: "100%", padding: "10px" }}>
                   {creando ? "Enviando a Meta..." : "🚀 Crear y enviar a revisión"}
                 </button>
+                </div>{/* fin columna formulario */}
+
+                {/* ── Vista previa WhatsApp ── */}
+                <div style={{ position: "sticky", top: 16 }}>
+                  <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>Vista previa</p>
+                  {/* Teléfono mockup */}
+                  <div style={{ background: "#e5ddd5", borderRadius: 18, padding: "12px 8px 16px", boxShadow: "0 4px 24px rgba(0,0,0,0.13)", minHeight: 200 }}>
+                    {/* Barra superior */}
+                    <div style={{ background: "#075e54", borderRadius: "10px 10px 0 0", padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#25d366", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>💬</div>
+                      <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>WhatsApp Business</span>
+                    </div>
+                    {/* Burbuja del mensaje */}
+                    <div style={{ margin: "0 6px" }}>
+                      <div style={{ background: "#fff", borderRadius: "0 10px 10px 10px", padding: "10px 12px", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", maxWidth: "100%" }}>
+                        {/* Header */}
+                        {form.header_tipo === "TEXT" && form.header_texto && (
+                          <p style={{ margin: "0 0 6px", fontWeight: 800, fontSize: 13, color: "#111827", lineHeight: 1.4 }}>
+                            {form.header_texto}
+                          </p>
+                        )}
+                        {form.header_tipo === "IMAGE" && (
+                          <div style={{ background: "#e2e8f0", borderRadius: 6, height: 80, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, fontSize: 22 }}>🖼</div>
+                        )}
+                        {form.header_tipo === "VIDEO" && (
+                          <div style={{ background: "#e2e8f0", borderRadius: 6, height: 80, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8, fontSize: 22 }}>🎥</div>
+                        )}
+                        {form.header_tipo === "DOCUMENT" && (
+                          <div style={{ background: "#e2e8f0", borderRadius: 6, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontSize: 18 }}>📄</span>
+                            <span style={{ fontSize: 11, color: "#475569" }}>Documento adjunto</span>
+                          </div>
+                        )}
+                        {/* Body */}
+                        {form.body ? (
+                          <p style={{ margin: "0 0 4px", fontSize: 12, color: "#111827", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                            {form.body.replace(/\{\{(\d+)\}\}/g, (_, n) =>
+                              form.muestras[`body_${n}`]
+                                ? `*${form.muestras[`body_${n}`]}*`
+                                : `{{${n}}}`
+                            )}
+                          </p>
+                        ) : (
+                          <p style={{ margin: "0 0 4px", fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>Escribe el cuerpo del mensaje...</p>
+                        )}
+                        {/* Footer */}
+                        {form.footer && (
+                          <p style={{ margin: "6px 0 0", fontSize: 10, color: "#94a3b8", lineHeight: 1.4 }}>{form.footer}</p>
+                        )}
+                        {/* Hora */}
+                        <div style={{ textAlign: "right", marginTop: 4 }}>
+                          <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                            {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })} ✓✓
+                          </span>
+                        </div>
+                      </div>
+                      {/* Botones */}
+                      {form.btn_tipo !== "NONE" && form.btn_texto && (
+                        <div style={{ background: "#fff", borderRadius: "0 0 10px 10px", marginTop: 1, borderTop: "1px solid #f1f5f9" }}>
+                          <div style={{ padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            <span style={{ fontSize: 13 }}>
+                              {form.btn_tipo === "URL" ? "🔗" : form.btn_tipo === "PHONE" ? "📞" : "↩"}
+                            </span>
+                            <span style={{ fontSize: 12, color: "#0369a1", fontWeight: 600 }}>{form.btn_texto}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {/* Nombre plantilla */}
+                  {form.nombre && (
+                    <p style={{ margin: "8px 0 0", fontSize: 10, color: "#94a3b8", textAlign: "center" }}>{form.nombre}</p>
+                  )}
+                </div>
+                </div>{/* fin grid form+preview */}
               </div>
             )}
 
