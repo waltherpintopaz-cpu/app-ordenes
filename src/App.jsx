@@ -18,6 +18,7 @@ import RecordatoriosPanel from "./components/RecordatoriosPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import LogsPanel from "./components/LogsPanel";
 import CoberturaPanel from "./components/CoberturaPanel";
+import ChatwootReportesPanel from "./components/ChatwootReportesPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -175,6 +176,7 @@ const MENU_VISTAS_WEB = [
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
   { key: "logs", label: "Logs" },
+  { key: "chatwootReportes", label: "Reportes Chatwoot" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -17613,6 +17615,10 @@ export default function App() {
 
         {vistaActiva === "logs" && esAdminSesion && (
           <LogsPanel cardStyle={cardStyle} inputStyle={inputStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "chatwootReportes" && esAdminSesion && (
+          <ChatwootReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
