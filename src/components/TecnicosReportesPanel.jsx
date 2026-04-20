@@ -332,7 +332,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
-                    {["#", "Técnico", "Total", "Liquidadas", "Pendientes", "Canceladas", "% Eficiencia", "Tipo Principal"].map(h => (
+                    {["#", "Técnico", "Total", "Liquidadas", "Pendientes", "Canceladas", "% Eficiencia", "Tipos de Actuación"].map(h => (
                       <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -352,7 +352,15 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                           {t.pct_liq}%
                         </span>
                       </td>
-                      <td style={{ padding: "9px 12px", color: "#475569", fontSize: 12 }}>{t.tipo_principal}</td>
+                      <td style={{ padding: "9px 12px" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {Object.entries(t.tipos).sort((a,b) => b[1]-a[1]).map(([tipo, cnt]) => (
+                            <span key={tipo} style={{ background: "#eff6ff", color: "#1d4ed8", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+                              {tipo} ({cnt})
+                            </span>
+                          ))}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
