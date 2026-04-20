@@ -2916,16 +2916,17 @@ export default function App() {
     const movil = esNod04 ? normalizarTelefonos51(movilRaw) : movilRaw;
     const nodo = d.servicios?.[0]?.nodo ?? null;
     let telefonos = movil;
+    const nodoNum = nodo ? Number(nodo) : null;
     if (!sobreescribir) {
-      const { data: existing } = await supabase
+      let query = supabase
         .from("mikrowisp_clientes")
         .select("telefonos, nodo")
-        .eq("mikrowisp_id", d.id)
-        .maybeSingle();
-      // Solo fusionar teléfonos si el registro existente es del MISMO nodo.
-      // IDs como 788 se repiten en Americanet y DimFiber — son personas distintas.
-      const mismoNodo = existing && existing.nodo === (nodo ? Number(nodo) : null);
-      if (existing && mismoNodo) {
+        .eq("mikrowisp_id", d.id);
+      // Filtrar por nodo para evitar mezclar registros de Americanet y DimFiber con mismo ID
+      if (nodoNum !== null) query = query.eq("nodo", nodoNum);
+      else query = query.is("nodo", null);
+      const { data: existing } = await query.maybeSingle();
+      if (existing) {
         const actualesRaw = String(existing.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
         const actuales = esNod04 ? actualesRaw.map(normalizarTelefono51) : actualesRaw;
         const nuevos = movil.split(",").map(t => t.trim()).filter(Boolean);
@@ -2939,10 +2940,10 @@ export default function App() {
       nombre:       String(d.nombre || "").trim(),
       telefonos,
       estado:       String(d.estado || "").trim(),
-      nodo:         nodo ? Number(nodo) : null,
+      nodo:         nodoNum,
       updated_at:   new Date().toISOString(),
     };
-    const { error } = await supabase.from("mikrowisp_clientes").upsert(row, { onConflict: "mikrowisp_id" });
+    const { error } = await supabase.from("mikrowisp_clientes").upsert(row, { onConflict: "mikrowisp_id,nodo" });
     return { ok: !error, msg: error?.message || "OK", row };
   };
 
