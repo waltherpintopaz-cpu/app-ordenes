@@ -20,6 +20,7 @@ import LogsPanel from "./components/LogsPanel";
 import CoberturaPanel from "./components/CoberturaPanel";
 import ChatwootReportesPanel from "./components/ChatwootReportesPanel";
 import OrdenesReportesPanel from "./components/OrdenesReportesPanel";
+import MikrowispReportesPanel from "./components/MikrowispReportesPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -179,6 +180,7 @@ const MENU_VISTAS_WEB = [
   { key: "logs", label: "Logs" },
   { key: "chatwootReportes", label: "Reportes Chatwoot" },
   { key: "ordenesReportes", label: "Reportes Órdenes" },
+  { key: "mikrowispReportes", label: "Reportes MikroWisp" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -17642,6 +17644,10 @@ export default function App() {
 
         {vistaActiva === "ordenesReportes" && esAdminSesion && (
           <OrdenesReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "mikrowispReportes" && esAdminSesion && (
+          <MikrowispReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
