@@ -2954,6 +2954,7 @@ export default function App() {
       estado:       String(d.estado || "").trim(),
       nodo:         nodoNum,
       updated_at:   new Date().toISOString(),
+      agregado_por: String(usuarioSesion?.nombre || "").trim() || null,
     };
     // Delete + insert para evitar problemas con ON CONFLICT en índices funcionales
     let delQuery = supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", d.id);
