@@ -54,9 +54,9 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         .limit(10000),
       supabase
         .from("liquidaciones")
-        .select("id,tecnico,nodo,fecha_actuacion")
-        .gte("fecha_actuacion", fechaDesde)
-        .lte("fecha_actuacion", fechaHasta)
+        .select("id,tecnico_liquida,nodo,fecha_liquidacion")
+        .gte("fecha_liquidacion", fechaDesde)
+        .lte("fecha_liquidacion", fechaHasta)
         .limit(10000),
     ]);
     if (resOrdenes.error) setError(resOrdenes.error.message);
@@ -66,9 +66,9 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     const liqMap = Object.fromEntries((resLiqs.data || []).map(l => [l.id, l]));
     const mats = (resMats.data || []).map(m => ({
       ...m,
-      tecnico: liqMap[m.liquidacion_id]?.tecnico || null,
-      nodo:    liqMap[m.liquidacion_id]?.nodo    || null,
-      fecha:   liqMap[m.liquidacion_id]?.fecha_actuacion || null,
+      tecnico: liqMap[m.liquidacion_id]?.tecnico_liquida || null,
+      nodo:    liqMap[m.liquidacion_id]?.nodo            || null,
+      fecha:   liqMap[m.liquidacion_id]?.fecha_liquidacion || null,
     }));
     setDropData(mats);
     setLoading(false);
