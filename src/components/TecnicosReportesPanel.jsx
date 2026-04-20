@@ -49,7 +49,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         .limit(10000),
       supabase
         .from("liquidacion_materiales")
-        .select("tecnico,material,cantidad,unidad,fecha,nodo,updated_at")
+        .select("material,cantidad,unidad,liquidaciones!liquidacion_id(tecnico,nodo,fecha_actuacion)")
         .ilike("material", "%drop%")
         .limit(10000),
     ]);
@@ -69,13 +69,23 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     return true;
   }), [ordenes, filtroNodos, filtroTecnicos]);
 
-  const dropFiltrado = useMemo(() => dropData.filter(d => {
-    const fechaReg = String(d.fecha || d.updated_at || "").slice(0, 10);
+  // Normalizar drop data aplanando el join con liquidaciones
+  const dropNormalizado = useMemo(() => dropData.map(d => ({
+    material:  d.material,
+    cantidad:  d.cantidad,
+    unidad:    d.unidad,
+    tecnico:   d.liquidaciones?.tecnico  || null,
+    nodo:      d.liquidaciones?.nodo     || null,
+    fecha:     d.liquidaciones?.fecha_actuacion || null,
+  })), [dropData]);
+
+  const dropFiltrado = useMemo(() => dropNormalizado.filter(d => {
+    const fechaReg = String(d.fecha || "").slice(0, 10);
     if (fechaReg && (fechaReg < fechaDesde || fechaReg > fechaHasta)) return false;
-    if (filtroNodos.length > 0 && !filtroNodos.includes(d.nodo)) return false;
+    if (filtroNodos.length > 0    && !filtroNodos.includes(d.nodo))      return false;
     if (filtroTecnicos.length > 0 && !filtroTecnicos.includes(d.tecnico)) return false;
     return true;
-  }), [dropData, filtroNodos, filtroTecnicos, fechaDesde, fechaHasta]);
+  }), [dropNormalizado, filtroNodos, filtroTecnicos, fechaDesde, fechaHasta]);
 
   // Agrupado por técnico (órdenes)
   const porTecnico = useMemo(() => {
