@@ -103,12 +103,16 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
     doc.setFontSize(16);
     doc.text("Reporte de Órdenes", 14, 18);
     doc.setFontSize(10);
-    doc.text(`Periodo: ${fechaDesde} al ${fechaHasta}`, 14, 26);
-    doc.text(`Total: ${total}  |  Liquidadas: ${liquidadas} (${pctLiq}%)  |  Pendientes: ${pendientes}  |  Canceladas: ${canceladas}`, 14, 32);
+    let y = 26;
+    doc.text(`Periodo: ${fechaDesde} al ${fechaHasta}`, 14, y); y += 6;
+    if (filtroNodos.length > 0)   { doc.text(`Nodos: ${filtroNodos.join(", ")}`, 14, y); y += 6; }
+    if (filtroEstados.length > 0) { doc.text(`Estados: ${filtroEstados.join(", ")}`, 14, y); y += 6; }
+    if (filtroTipos.length > 0)   { doc.text(`Tipos: ${filtroTipos.join(", ")}`, 14, y); y += 6; }
+    doc.text(`Total: ${total}  |  Liquidadas: ${liquidadas} (${pctLiq}%)  |  Pendientes: ${pendientes}  |  Canceladas: ${canceladas}`, 14, y); y += 10;
 
-    doc.setFontSize(12); doc.text("Por Autor", 14, 42);
+    doc.setFontSize(12); doc.text("Por Autor", 14, y); y += 4;
     autoTable(doc, {
-      startY: 46,
+      startY: y,
       head: [["Autor", "Total", "Liquidadas", "% Liq.", "Pendientes", "Canceladas"]],
       body: porAutor.map(r => [r.autor, r.total, r.liquidadas, pct(r.liquidadas, r.total), r.pendientes, r.canceladas]),
       styles: { fontSize: 8 }, headStyles: { fillColor: [37, 99, 235] },
