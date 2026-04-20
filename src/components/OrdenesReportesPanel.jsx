@@ -8,11 +8,14 @@ import {
 } from "recharts";
 
 const COLORS = ["#16a34a", "#d97706", "#dc2626", "#2563eb", "#7c3aed", "#0891b2"];
+const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || "";
 
 export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
   const [ordenes, setOrdenes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [analisisIA, setAnalisisIA] = useState("");
+  const [loadingIA, setLoadingIA] = useState(false);
 
   const hoy = new Date().toISOString().split("T")[0];
   const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
@@ -122,6 +125,42 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
   ].filter(d => d.value > 0);
 
   const pct = (n, t) => t > 0 ? ((n / t) * 100).toFixed(1) + "%" : "—";
+
+  async function generarAnalisisIA() {
+    setLoadingIA(true); setAnalisisIA("");
+    const resumen = {
+      periodo: `${fechaDesde} al ${fechaHasta}`,
+      total, liquidadas, pendientes, canceladas,
+      pct_liquidacion: pctLiq + "%",
+      por_autor: porAutor.map(r => ({ autor: r.autor, total: r.total, liquidadas: r.liquidadas, pct: pct(r.liquidadas, r.total) })),
+      por_tecnico: porTecnico.map(r => ({ tecnico: r.tecnico, total: r.total, liquidadas: r.liquidadas, pct: pct(r.liquidadas, r.total) })),
+      por_tipo: porTipo.map(r => ({ tipo: r.tipo, total: r.total, liquidadas: r.liquidadas, pct: pct(r.liquidadas, r.total) })),
+    };
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{
+            role: "system",
+            content: "Eres un analista de operaciones para una empresa ISP (proveedor de internet). Analiza los datos de órdenes de trabajo y genera un resumen ejecutivo claro y conciso en español. Destaca: rendimiento general, mejor y peor técnico, tipos de actuación más frecuentes, y recomendaciones concretas. Sé directo y usa viñetas."
+          }, {
+            role: "user",
+            content: `Analiza estos datos de órdenes:\n${JSON.stringify(resumen, null, 2)}`
+          }],
+          max_tokens: 600,
+          temperature: 0.5,
+        }),
+      });
+      const data = await res.json();
+      setAnalisisIA(data.choices?.[0]?.message?.content || "Sin respuesta de la IA.");
+    } catch (e) {
+      setAnalisisIA("Error al conectar con OpenAI: " + e.message);
+    } finally {
+      setLoadingIA(false);
+    }
+  }
 
   function generarPDF() {
     const doc = new jsPDF({ orientation: "landscape" });
@@ -256,9 +295,15 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
       <div style={{ ...cardStyle, marginBottom: 16 }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div style={{ ...sectionTitleStyle }}>Reportes Órdenes</div>
-          <button onClick={generarPDF} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            ⬇ Generar PDF
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={generarAnalisisIA} disabled={loadingIA || filtrados.length === 0}
+              style={{ background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: loadingIA ? 0.7 : 1 }}>
+              {loadingIA ? "⏳ Analizando..." : "🤖 Análisis IA"}
+            </button>
+            <button onClick={generarPDF} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              ⬇ Generar PDF
+            </button>
+          </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -306,6 +351,19 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
         <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#64748b" }}>Sin datos para el periodo seleccionado</div>
       ) : (
         <>
+          {/* Análisis IA */}
+          {analisisIA && (
+            <div style={{ ...cardStyle, marginBottom: 16, borderLeft: "4px solid #7c3aed" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 18 }}>🤖</span>
+                <span style={{ ...sectionTitleStyle, color: "#7c3aed" }}>Análisis IA</span>
+              </div>
+              <div style={{ fontSize: 14, color: "#334155", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+                {analisisIA}
+              </div>
+            </div>
+          )}
+
           {/* Gráficos fila 1 */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
 
