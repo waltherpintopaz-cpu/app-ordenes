@@ -49,9 +49,9 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
   }), [ordenes, filtroNodos, filtroEstados, filtroTipos]);
 
   const total       = filtrados.length;
-  const liquidadas  = filtrados.filter(o => o.estado === "Liquidado").length;
+  const liquidadas  = filtrados.filter(o => o.estado === "Liquidada").length;
   const pendientes  = filtrados.filter(o => o.estado === "Pendiente").length;
-  const canceladas  = filtrados.filter(o => o.estado === "Cancelado").length;
+  const canceladas  = filtrados.filter(o => o.estado === "Cancelada").length;
   const pctLiq      = total > 0 ? ((liquidadas / total) * 100).toFixed(1) : "0.0";
 
   // Agrupado por autor
@@ -61,9 +61,9 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
       const k = o.autor_orden || "Sin autor";
       if (!map[k]) map[k] = { autor: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0 };
       map[k].total++;
-      if (o.estado === "Liquidado") map[k].liquidadas++;
+      if (o.estado === "Liquidada") map[k].liquidadas++;
       else if (o.estado === "Pendiente") map[k].pendientes++;
-      else if (o.estado === "Cancelado") map[k].canceladas++;
+      else if (o.estado === "Cancelada") map[k].canceladas++;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [filtrados]);
@@ -75,9 +75,9 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
       const k = o.tecnico || "Sin asignar";
       if (!map[k]) map[k] = { tecnico: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0 };
       map[k].total++;
-      if (o.estado === "Liquidado") map[k].liquidadas++;
+      if (o.estado === "Liquidada") map[k].liquidadas++;
       else if (o.estado === "Pendiente") map[k].pendientes++;
-      else if (o.estado === "Cancelado") map[k].canceladas++;
+      else if (o.estado === "Cancelada") map[k].canceladas++;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [filtrados]);
@@ -89,9 +89,9 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
       const k = o.tipo_actuacion || "Sin tipo";
       if (!map[k]) map[k] = { tipo: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0 };
       map[k].total++;
-      if (o.estado === "Liquidado") map[k].liquidadas++;
+      if (o.estado === "Liquidada") map[k].liquidadas++;
       else if (o.estado === "Pendiente") map[k].pendientes++;
-      else if (o.estado === "Cancelado") map[k].canceladas++;
+      else if (o.estado === "Cancelada") map[k].canceladas++;
     }
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [filtrados]);
