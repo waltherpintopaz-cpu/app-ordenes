@@ -21,6 +21,7 @@ import CoberturaPanel from "./components/CoberturaPanel";
 import ChatwootReportesPanel from "./components/ChatwootReportesPanel";
 import OrdenesReportesPanel from "./components/OrdenesReportesPanel";
 import MikrowispReportesPanel from "./components/MikrowispReportesPanel";
+import TecnicosReportesPanel from "./components/TecnicosReportesPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -267,13 +268,15 @@ const HIST_APPSHEET_SUBMENU_ICON_PATHS = {
 };
 
 const REPORTES_SUBMENU_ITEMS = [
-  { key: "general",   label: "General",  sideLabel: "General"  },
-  { key: "chatwoot",  label: "Chatwoot", sideLabel: "Chatwoot" },
-  { key: "ordenes",   label: "Órdenes",  sideLabel: "Órdenes"  },
-  { key: "mikrowisp", label: "MikroWisp",sideLabel: "MikroWisp"},
+  { key: "general",   label: "General",   sideLabel: "General"   },
+  { key: "tecnicos",  label: "Técnicos",  sideLabel: "Técnicos"  },
+  { key: "chatwoot",  label: "Chatwoot",  sideLabel: "Chatwoot"  },
+  { key: "ordenes",   label: "Órdenes",   sideLabel: "Órdenes"   },
+  { key: "mikrowisp", label: "MikroWisp", sideLabel: "MikroWisp" },
 ];
 const REPORTES_SUBMENU_ICON_PATHS = {
   general:   "M5 19V12M12 19V8M19 19V5",
+  tecnicos:  "M4 20H20M6 16L10 12L13 14L18 8",
   chatwoot:  "M8 9H16M8 13H14M6 3H18A2 2 0 0 1 20 5V15A2 2 0 0 1 18 17H7L3 21V5A2 2 0 0 1 5 3Z",
   ordenes:   "M9 5H7A2 2 0 0 0 5 7V19A2 2 0 0 0 7 21H17A2 2 0 0 0 19 19V7A2 2 0 0 0 17 5H15M9 5A2 2 0 0 1 11 3H13A2 2 0 0 1 15 5",
   mikrowisp: "M3 12H6L8 17L12 7L15 14L17 12H21",
@@ -17712,6 +17715,10 @@ export default function App() {
 
         {vistaActiva === "logs" && esAdminSesion && (
           <LogsPanel cardStyle={cardStyle} inputStyle={inputStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "reportes" && reportesSubmenu === "tecnicos" && esAdminSesion && (
+          <TecnicosReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "reportes" && reportesSubmenu === "chatwoot" && esAdminSesion && (
