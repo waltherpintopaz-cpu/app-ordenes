@@ -217,9 +217,14 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   function generarPDF() {
     const doc = new jsPDF();
     doc.setFontSize(16); doc.text("Reporte de Técnicos", 14, 18);
-    doc.setFontSize(10); doc.text(`Período: ${fechaDesde} al ${fechaHasta}`, 14, 26);
+    doc.setFontSize(10);
+    let y = 26;
+    doc.text(`Período: ${fechaDesde} al ${fechaHasta}`, 14, y); y += 6;
+    if (filtroNodos.length)     { doc.text(`Nodos: ${filtroNodos.join(", ")}`, 14, y); y += 6; }
+    if (filtroTecnicos.length)  { doc.text(`Técnicos: ${filtroTecnicos.join(", ")}`, 14, y); y += 6; }
+    doc.text(`Total órdenes: ${totalOrdenes} | Liquidadas: ${totalLiquidadas} | Eficiencia: ${promedioEficiencia}% | Metros drop: ${totalMetrosGlobal}m`, 14, y); y += 4;
     autoTable(doc, {
-      startY: 32,
+      startY: y + 4,
       head: [["Técnico", "Total", "Liq.", "% Efic.", "Instal.", "Incid.", "Cancel.", "Metros Drop", "Prom. m/trabajo"]],
       body: porTecnico.map(t => {
         const drop = dropMap[t.tecnico];
