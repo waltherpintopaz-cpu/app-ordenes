@@ -2878,6 +2878,13 @@ export default function App() {
         await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cliente.id);
         setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, en_mikrowisp: true } : c));
       }
+      // Sincronizar datos a mikrowisp_clientes después de agregar exitosamente
+      try {
+        const datosSync = await mkwConsultarCedula(dni, esNod04 ? "Nod_04" : "");
+        await mkwUpsert(datosSync, { sobreescribir: true });
+      } catch (syncErr) {
+        console.warn("Sincronización mikrowisp_clientes falló:", syncErr.message);
+      }
       window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a MikroWisp${esNod04 ? " DimFiber" : ""} correctamente.`);
     } catch (e) {
       window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
