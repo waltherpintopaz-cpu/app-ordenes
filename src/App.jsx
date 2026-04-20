@@ -2943,7 +2943,12 @@ export default function App() {
       nodo:         nodoNum,
       updated_at:   new Date().toISOString(),
     };
-    const { error } = await supabase.from("mikrowisp_clientes").upsert(row, { onConflict: "mikrowisp_id,nodo" });
+    // Delete + insert para evitar problemas con ON CONFLICT en índices funcionales
+    let delQuery = supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", d.id);
+    if (nodoNum !== null) delQuery = delQuery.eq("nodo", nodoNum);
+    else delQuery = delQuery.is("nodo", null);
+    await delQuery;
+    const { error } = await supabase.from("mikrowisp_clientes").insert(row);
     return { ok: !error, msg: error?.message || "OK", row };
   };
 
