@@ -3,7 +3,19 @@ import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-const formatNodo = (n) => n != null ? `Nod_${String(n).padStart(2, "0")}` : "Sin nodo";
+const NODO_LABELS = {
+  5:  "Nod_04",
+  6:  "Nod_04",
+  10: "Nod_03",
+  3:  "Nod_03",
+  9:  "Nod_01",
+  1:  "Nod_01",
+  8:  "Nod_01",
+  7:  "Nod_01",
+  2:  "Nod_02",
+  11: "Nod_06",
+};
+const formatNodo = (n) => n != null ? (NODO_LABELS[n] || `Nod_${String(n).padStart(2, "0")}`) : "Sin nodo";
 
 export default function ChatwootReportesPanel({ cardStyle, sectionTitleStyle }) {
   const [stats, setStats] = useState([]);
@@ -40,11 +52,7 @@ export default function ChatwootReportesPanel({ cardStyle, sectionTitleStyle }) 
 
   const inboxes = useMemo(() => [...new Set(stats.map((s) => s.inbox_name))].filter(Boolean).sort(), [stats]);
   const agentes = useMemo(() => [...new Set(stats.map((s) => s.agent_name))].filter(Boolean).sort(), [stats]);
-  const nodos   = useMemo(() => [...new Set(stats.map((s) => s.nodo))].sort((a, b) => {
-    if (a == null) return 1;
-    if (b == null) return -1;
-    return a - b;
-  }), [stats]);
+  const nodos = useMemo(() => [...new Set(stats.map((s) => formatNodo(s.nodo)))].filter(Boolean).sort(), [stats]);
 
   const toggleInbox  = (v) => setFiltroInboxes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   const toggleAgente = (v) => setFiltroAgentes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
@@ -53,16 +61,17 @@ export default function ChatwootReportesPanel({ cardStyle, sectionTitleStyle }) 
   const filtrados = useMemo(() => stats.filter((s) => {
     if (filtroInboxes.length > 0 && !filtroInboxes.includes(s.inbox_name)) return false;
     if (filtroAgentes.length > 0 && !filtroAgentes.includes(s.agent_name)) return false;
-    if (filtroNodos.length > 0 && !filtroNodos.includes(s.nodo)) return false;
+    if (filtroNodos.length > 0 && !filtroNodos.includes(formatNodo(s.nodo))) return false;
     return true;
   }), [stats, filtroInboxes, filtroAgentes, filtroNodos]);
 
   const agrupado = useMemo(() => {
     const map = {};
     for (const row of filtrados) {
-      const key = `${row.inbox_name}__${row.agent_name}__${row.nodo}`;
+      const nodoLabel = formatNodo(row.nodo);
+      const key = `${row.inbox_name}__${row.agent_name}__${nodoLabel}`;
       if (!map[key]) {
-        map[key] = { inbox_name: row.inbox_name, agent_name: row.agent_name, nodo: row.nodo, total: 0, resolved: 0, open: 0, pending: 0, snoozed: 0 };
+        map[key] = { inbox_name: row.inbox_name, agent_name: row.agent_name, nodo: nodoLabel, total: 0, resolved: 0, open: 0, pending: 0, snoozed: 0 };
       }
       map[key].total    += row.conversation_count || 0;
       map[key].resolved += row.resolved_count || 0;
@@ -220,8 +229,8 @@ export default function ChatwootReportesPanel({ cardStyle, sectionTitleStyle }) 
                   </td>
                   <td style={{ padding: "10px 14px", color: "#334155", fontWeight: 500 }}>{row.agent_name || "Sin asignar"}</td>
                   <td style={{ padding: "10px 14px" }}>
-                    {row.nodo != null
-                      ? <span style={{ background: "#f0fdf4", color: "#16a34a", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 600 }}>{formatNodo(row.nodo)}</span>
+                    {row.nodo && row.nodo !== "Sin nodo"
+                      ? <span style={{ background: "#f0fdf4", color: "#16a34a", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 600 }}>{row.nodo}</span>
                       : <span style={{ color: "#94a3b8", fontSize: 12 }}>Sin nodo</span>
                     }
                   </td>
