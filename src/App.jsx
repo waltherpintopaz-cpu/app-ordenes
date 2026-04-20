@@ -178,9 +178,6 @@ const MENU_VISTAS_WEB = [
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
   { key: "logs", label: "Logs" },
-  { key: "chatwootReportes", label: "Reportes Chatwoot" },
-  { key: "ordenesReportes", label: "Reportes Órdenes" },
-  { key: "mikrowispReportes", label: "Reportes MikroWisp" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -267,6 +264,19 @@ const HIST_APPSHEET_SUBMENU_ICON_PATHS = {
   movimientos: "M4 18L9 12L13 15L20 8",
   ordenesBaseData: "M5 4H19V20H5V4ZM8 8H16M8 12H16M8 16H14",
   conciliacionOnus: "M4 7H20V17H4V7ZM8 11H16M8 15H13M14.5 4.5L16.5 6.5L12 11",
+};
+
+const REPORTES_SUBMENU_ITEMS = [
+  { key: "general",   label: "General",  sideLabel: "General"  },
+  { key: "chatwoot",  label: "Chatwoot", sideLabel: "Chatwoot" },
+  { key: "ordenes",   label: "Órdenes",  sideLabel: "Órdenes"  },
+  { key: "mikrowisp", label: "MikroWisp",sideLabel: "MikroWisp"},
+];
+const REPORTES_SUBMENU_ICON_PATHS = {
+  general:   "M5 19V12M12 19V8M19 19V5",
+  chatwoot:  "M8 9H16M8 13H14M6 3H18A2 2 0 0 1 20 5V15A2 2 0 0 1 18 17H7L3 21V5A2 2 0 0 1 5 3Z",
+  ordenes:   "M9 5H7A2 2 0 0 0 5 7V19A2 2 0 0 0 7 21H17A2 2 0 0 0 19 19V7A2 2 0 0 0 17 5H15M9 5A2 2 0 0 1 11 3H13A2 2 0 0 1 15 5",
+  mikrowisp: "M3 12H6L8 17L12 7L15 14L17 12H21",
 };
 
 function escapeRegExp(value = "") {
@@ -1654,6 +1664,7 @@ export default function App() {
     return sesionGuardada ? "dashboard" : "crear";
   });
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
+  const [reportesSubmenu, setReportesSubmenu] = useState("general");
   const [historialAppsheetEquipos, setHistorialAppsheetEquipos] = useState([]);
   const [historialAppsheetLiquidaciones, setHistorialAppsheetLiquidaciones] = useState([]);
   const [historialAppsheetLoading, setHistorialAppsheetLoading] = useState(false);
@@ -2339,6 +2350,15 @@ export default function App() {
       null,
     [historialAppsheetSubmenu, historialAppsheetSubmenuItemsPermitidos]
   );
+  const reportesSubmenuItemsPermitidos = useMemo(
+    () => esAdminSesion ? REPORTES_SUBMENU_ITEMS : REPORTES_SUBMENU_ITEMS.filter(item => item.key === "general"),
+    [esAdminSesion]
+  );
+  const reportesSubmenuActual = useMemo(
+    () => reportesSubmenuItemsPermitidos.find(item => item.key === reportesSubmenu) || reportesSubmenuItemsPermitidos[0] || null,
+    [reportesSubmenu, reportesSubmenuItemsPermitidos]
+  );
+
   const tieneAccesoNodoSesion = useCallback(
     (rawNodo = "") => {
       if (!esGestorSesion) return true;
@@ -12178,6 +12198,18 @@ export default function App() {
     );
   };
 
+  const renderReportesSubmenuIcon = (key, active = false, size = 12) => {
+    const path = REPORTES_SUBMENU_ICON_PATHS[key];
+    const color = active ? "#d98908" : "#9ca7bf";
+    return (
+      <span aria-hidden="true" style={{ width: "18px", height: "18px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", border: active ? "1px solid #ffd9a0" : "1px solid #edf0f7", background: active ? "#fff2dc" : "#ffffff", flexShrink: 0 }}>
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d={path || "M5 19V12M12 19V8M19 19V5"} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    );
+  };
+
   const mainMenuItems = MENU_VISTAS_WEB.filter((item) => {
     if (!accesosSesion.includes(item.key)) return false;
     if (item.key === "almacenes" && !esAdminSesion) return false;
@@ -12352,6 +12384,50 @@ export default function App() {
               );
             }
 
+            if (item.key === "reportes") {
+              const isReportesActive = vistaActiva === "reportes";
+              return (
+                <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "4px" }}>
+                  <button
+                    key={`side-${item.key}`}
+                    type="button"
+                    style={sideHistorialAppsheetButtonStyle(isReportesActive)}
+                    onClick={() => setVistaActiva("reportes")}
+                  >
+                    <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                        {renderSidebarIcon(item.key, isReportesActive)}
+                        <span style={{ display: "grid", gap: "2px", minWidth: 0 }}>
+                          <span style={{ fontSize: "15px", fontWeight: isReportesActive ? 700 : 500 }}>{item.label}</span>
+                          {isReportesActive && reportesSubmenuActual ? (
+                            <span style={{ fontSize: "11px", color: "#98a3b9", letterSpacing: "0.02em" }}>
+                              {reportesSubmenuActual.sideLabel || reportesSubmenuActual.label}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: "12px", lineHeight: 1, color: isReportesActive ? "#d98908" : "#a4afc5", transform: isReportesActive ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 140ms ease" }}>{">"}</span>
+                    </span>
+                  </button>
+                  {isReportesActive ? (
+                    <div style={sideHistorialAppsheetSubmenuWrapStyle}>
+                      {reportesSubmenuItemsPermitidos.map((submenu) => (
+                        <button
+                          key={`sub-rep-${submenu.key}`}
+                          type="button"
+                          style={sideHistorialAppsheetSubmenuButtonStyle(reportesSubmenu === submenu.key)}
+                          onClick={() => setReportesSubmenu(submenu.key)}
+                        >
+                          {renderReportesSubmenuIcon(submenu.key, reportesSubmenu === submenu.key)}
+                          <span>{submenu.sideLabel || submenu.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
             return (
               <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "2px" }}>
                 <button key={`side-${item.key}`} type="button" style={sideMenuButton(vistaActiva === item.key)} onClick={() => setVistaActiva(item.key)}>
@@ -12368,7 +12444,7 @@ export default function App() {
 
       <header style={topbarStyle}>
         <div style={{ fontSize: "22px", fontWeight: 700, color: "#2a3140", letterSpacing: "-0.01em" }}>
-          {vistaActiva === "historialAppsheet" ? "Historial AppSheet" : "Gestión de Órdenes"}
+          {vistaActiva === "historialAppsheet" ? "Historial AppSheet" : vistaActiva === "reportes" ? `Reportes — ${reportesSubmenuActual?.label || ""}` : "Gestión de Órdenes"}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{ position: "relative" }} ref={sessionMenuRef}>
@@ -15347,7 +15423,7 @@ export default function App() {
           </div>
         ) : null}
 
-        {puedeVerReportes && vistaActiva === "reportes" && (
+        {puedeVerReportes && vistaActiva === "reportes" && reportesSubmenu === "general" && (
           <div style={{ display: "grid", gap: "24px" }}>
             <div style={cardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
@@ -17638,15 +17714,15 @@ export default function App() {
           <LogsPanel cardStyle={cardStyle} inputStyle={inputStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
-        {vistaActiva === "chatwootReportes" && esAdminSesion && (
+        {vistaActiva === "reportes" && reportesSubmenu === "chatwoot" && esAdminSesion && (
           <ChatwootReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
-        {vistaActiva === "ordenesReportes" && esAdminSesion && (
+        {vistaActiva === "reportes" && reportesSubmenu === "ordenes" && esAdminSesion && (
           <OrdenesReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
-        {vistaActiva === "mikrowispReportes" && esAdminSesion && (
+        {vistaActiva === "reportes" && reportesSubmenu === "mikrowisp" && esAdminSesion && (
           <MikrowispReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
