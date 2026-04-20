@@ -39,7 +39,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
 
   async function fetchAll() {
     setLoading(true); setError(null);
-    const [resOrdenes, resDrop] = await Promise.all([
+    const [resOrdenes, resMats, resLiqs] = await Promise.all([
       supabase
         .from("ordenes")
         .select("id,tecnico,estado,tipo_actuacion,nodo,fecha_actuacion,autor_orden,empresa")
@@ -49,13 +49,28 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         .limit(10000),
       supabase
         .from("liquidacion_materiales")
-        .select("material,cantidad,unidad,liquidaciones!liquidacion_id(tecnico,nodo,fecha_actuacion)")
+        .select("liquidacion_id,material,cantidad,unidad")
         .ilike("material", "%drop%")
+        .limit(10000),
+      supabase
+        .from("liquidaciones")
+        .select("id,tecnico,nodo,fecha_actuacion")
+        .gte("fecha_actuacion", fechaDesde)
+        .lte("fecha_actuacion", fechaHasta)
         .limit(10000),
     ]);
     if (resOrdenes.error) setError(resOrdenes.error.message);
     else setOrdenes(resOrdenes.data || []);
-    setDropData(resDrop.data || []);
+
+    // Unir materiales con liquidaciones en JS
+    const liqMap = Object.fromEntries((resLiqs.data || []).map(l => [l.id, l]));
+    const mats = (resMats.data || []).map(m => ({
+      ...m,
+      tecnico: liqMap[m.liquidacion_id]?.tecnico || null,
+      nodo:    liqMap[m.liquidacion_id]?.nodo    || null,
+      fecha:   liqMap[m.liquidacion_id]?.fecha_actuacion || null,
+    }));
+    setDropData(mats);
     setLoading(false);
   }
 
@@ -69,23 +84,13 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     return true;
   }), [ordenes, filtroNodos, filtroTecnicos]);
 
-  // Normalizar drop data aplanando el join con liquidaciones
-  const dropNormalizado = useMemo(() => dropData.map(d => ({
-    material:  d.material,
-    cantidad:  d.cantidad,
-    unidad:    d.unidad,
-    tecnico:   d.liquidaciones?.tecnico  || null,
-    nodo:      d.liquidaciones?.nodo     || null,
-    fecha:     d.liquidaciones?.fecha_actuacion || null,
-  })), [dropData]);
-
-  const dropFiltrado = useMemo(() => dropNormalizado.filter(d => {
+  const dropFiltrado = useMemo(() => dropData.filter(d => {
     const fechaReg = String(d.fecha || "").slice(0, 10);
     if (fechaReg && (fechaReg < fechaDesde || fechaReg > fechaHasta)) return false;
     if (filtroNodos.length > 0    && !filtroNodos.includes(d.nodo))      return false;
     if (filtroTecnicos.length > 0 && !filtroTecnicos.includes(d.tecnico)) return false;
     return true;
-  }), [dropNormalizado, filtroNodos, filtroTecnicos, fechaDesde, fechaHasta]);
+  }), [dropData, filtroNodos, filtroTecnicos, fechaDesde, fechaHasta]);
 
   // Agrupado por técnico (órdenes)
   const porTecnico = useMemo(() => {
