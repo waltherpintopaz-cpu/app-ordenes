@@ -154,7 +154,12 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
         }),
       });
       const data = await res.json();
-      setAnalisisIA(data.choices?.[0]?.message?.content || "Sin respuesta de la IA.");
+      if (!res.ok) {
+        setAnalisisIA(`Error OpenAI (${res.status}): ${data?.error?.message || JSON.stringify(data)}`);
+        return;
+      }
+      const texto = data.choices?.[0]?.message?.content;
+      setAnalisisIA(texto || `Sin contenido. Respuesta: ${JSON.stringify(data)}`);
     } catch (e) {
       setAnalisisIA("Error al conectar con OpenAI: " + e.message);
     } finally {
