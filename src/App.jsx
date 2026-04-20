@@ -2923,9 +2923,12 @@ export default function App() {
     const movilRaw = String(d.movil || "").trim();
     // Nod_04: agregar prefijo 51 a todos los números que no lo tengan
     const movil = esNod04 ? normalizarTelefonos51(movilRaw) : movilRaw;
-    const nodo = d.servicios?.[0]?.nodo ?? null;
+    const nodoServicio = d.servicios?.[0]?.nodo ?? null;
+    // Si es Nod_04 DimFiber y no tiene nodo de servicios, usar 5 como default para evitar
+    // colisión de mikrowisp_id con Americanet (ambos sistemas tienen IDs independientes)
+    const nodo = nodoServicio ?? (esNod04 ? 5 : null);
     let telefonos = movil;
-    const nodoNum = nodo ? Number(nodo) : null;
+    const nodoNum = nodo !== null ? Number(nodo) : null;
     if (!sobreescribir) {
       let query = supabase
         .from("mikrowisp_clientes")
