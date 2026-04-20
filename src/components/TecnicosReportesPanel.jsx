@@ -15,45 +15,56 @@ const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
 })();
 
 const pct = (a, b) => (b === 0 ? 0 : Math.round((a / b) * 100));
-const pctStr = (a, b) => pct(a, b) + "%";
 
 export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) {
-  const [ordenes, setOrdenes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [analisisIA, setAnalisisIA] = useState("");
-  const [loadingIA, setLoadingIA] = useState(false);
-
-  const hoy = new Date().toISOString().split("T")[0];
-  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-  const [fechaDesde, setFechaDesde] = useState(hace30);
-  const [fechaHasta, setFechaHasta] = useState(hoy);
-  const [filtroNodos, setFiltroNodos] = useState([]);
-  const [filtroTecnicos, setFiltroTecnicos] = useState([]);
-  const [showNodoDD, setShowNodoDD] = useState(false);
-  const [showTecnicoDD, setShowTecnicoDD] = useState(false);
+  const [ordenes, setOrdenes]         = useState([]);
+  const [dropData, setDropData]       = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [analisisIA, setAnalisisIA]   = useState("");
+  const [loadingIA, setLoadingIA]     = useState(false);
   const [tecnicoDetalle, setTecnicoDetalle] = useState(null);
 
-  useEffect(() => { fetchOrdenes(); }, [fechaDesde, fechaHasta]);
+  const hoy    = new Date().toISOString().split("T")[0];
+  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-  async function fetchOrdenes() {
+  const [fechaDesde, setFechaDesde]       = useState(hace30);
+  const [fechaHasta, setFechaHasta]       = useState(hoy);
+  const [filtroNodos, setFiltroNodos]     = useState([]);
+  const [filtroTecnicos, setFiltroTecnicos] = useState([]);
+  const [showNodoDD, setShowNodoDD]       = useState(false);
+  const [showTecnicoDD, setShowTecnicoDD] = useState(false);
+
+  useEffect(() => { fetchAll(); }, [fechaDesde, fechaHasta]);
+
+  async function fetchAll() {
     setLoading(true); setError(null);
-    const { data, error } = await supabase
-      .from("ordenes")
-      .select("id,tecnico,estado,tipo_actuacion,nodo,fecha_actuacion,fecha_creacion,autor_orden,empresa")
-      .gte("fecha_actuacion", fechaDesde)
-      .lte("fecha_actuacion", fechaHasta)
-      .order("fecha_actuacion", { ascending: true })
-      .limit(10000);
-    if (error) setError(error.message);
-    else setOrdenes(data || []);
+    const [resOrdenes, resDrop] = await Promise.all([
+      supabase
+        .from("ordenes")
+        .select("id,tecnico,estado,tipo_actuacion,nodo,fecha_actuacion,autor_orden,empresa")
+        .gte("fecha_actuacion", fechaDesde)
+        .lte("fecha_actuacion", fechaHasta)
+        .order("fecha_actuacion", { ascending: true })
+        .limit(10000),
+      supabase
+        .from("liquidacion_materiales")
+        .select("tecnico,material,cantidad,unidad,fecha,nodo")
+        .ilike("material", "%drop%")
+        .eq("unidad", "metros")
+        .gte("fecha", fechaDesde)
+        .lte("fecha", fechaHasta)
+        .limit(10000),
+    ]);
+    if (resOrdenes.error) setError(resOrdenes.error.message);
+    else setOrdenes(resOrdenes.data || []);
+    setDropData(resDrop.data || []);
     setLoading(false);
   }
 
-  const nodos = useMemo(() => [...new Set(ordenes.map(o => o.nodo))].filter(Boolean).sort(), [ordenes]);
+  const nodos    = useMemo(() => [...new Set(ordenes.map(o => o.nodo))].filter(Boolean).sort(), [ordenes]);
   const tecnicos = useMemo(() => [...new Set(ordenes.map(o => o.tecnico))].filter(Boolean).sort(), [ordenes]);
-  const toggle = (set) => (v) => set(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  const toggle   = (set) => (v) => set(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
 
   const filtrados = useMemo(() => ordenes.filter(o => {
     if (filtroNodos.length > 0 && !filtroNodos.includes(o.nodo)) return false;
@@ -61,25 +72,65 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     return true;
   }), [ordenes, filtroNodos, filtroTecnicos]);
 
-  // Agrupado por técnico
+  const dropFiltrado = useMemo(() => dropData.filter(d => {
+    if (filtroNodos.length > 0 && !filtroNodos.includes(d.nodo)) return false;
+    if (filtroTecnicos.length > 0 && !filtroTecnicos.includes(d.tecnico)) return false;
+    return true;
+  }), [dropData, filtroNodos, filtroTecnicos]);
+
+  // Agrupado por técnico (órdenes)
   const porTecnico = useMemo(() => {
     const map = {};
     for (const o of filtrados) {
       const k = o.tecnico || "Sin asignar";
-      if (!map[k]) map[k] = { tecnico: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0, tipos: {} };
+      if (!map[k]) map[k] = { tecnico: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0, tipos: {}, instalaciones: 0, incidencias: 0 };
       map[k].total++;
-      if (o.estado === "Liquidada") map[k].liquidadas++;
+      if (o.estado === "Liquidada")  map[k].liquidadas++;
       else if (o.estado === "Pendiente") map[k].pendientes++;
       else if (o.estado === "Cancelada") map[k].canceladas++;
       const tipo = o.tipo_actuacion || "Sin tipo";
       map[k].tipos[tipo] = (map[k].tipos[tipo] || 0) + 1;
+      const tipoLow = tipo.toLowerCase();
+      if (tipoLow.includes("instalac")) map[k].instalaciones++;
+      else if (tipoLow.includes("incidencia") || tipoLow.includes("avería") || tipoLow.includes("averia")) map[k].incidencias++;
     }
     return Object.values(map)
-      .map(r => ({ ...r, pct_liq: pct(r.liquidadas, r.total), tipo_principal: Object.entries(r.tipos).sort((a,b)=>b[1]-a[1])[0]?.[0] || "-" }))
+      .map(r => ({ ...r, pct_liq: pct(r.liquidadas, r.total) }))
       .sort((a, b) => b.liquidadas - a.liquidadas);
   }, [filtrados]);
 
-  // Tendencia diaria agrupada por técnico (top 5)
+  // Metros de drop por técnico
+  const dropPorTecnico = useMemo(() => {
+    const map = {};
+    for (const d of dropFiltrado) {
+      const k = d.tecnico || "Sin asignar";
+      if (!map[k]) map[k] = { tecnico: k, totalMetros: 0, registros: 0 };
+      map[k].totalMetros += Number(d.cantidad) || 0;
+      map[k].registros++;
+    }
+    return Object.values(map)
+      .map(r => ({ ...r, promMetros: r.registros > 0 ? Math.round(r.totalMetros / r.registros) : 0 }))
+      .sort((a, b) => b.totalMetros - a.totalMetros);
+  }, [dropFiltrado]);
+
+  // Combinar para tabla unificada
+  const dropMap = useMemo(() => Object.fromEntries(dropPorTecnico.map(d => [d.tecnico, d])), [dropPorTecnico]);
+
+  // Gráfico instalaciones vs incidencias
+  const instVsIncChart = useMemo(() =>
+    porTecnico.filter(t => t.tecnico !== "Sin asignar" && (t.instalaciones > 0 || t.incidencias > 0))
+      .map(t => ({ tecnico: t.tecnico.split(" ")[0], Instalaciones: t.instalaciones, Incidencias: t.incidencias })),
+    [porTecnico]
+  );
+
+  // Gráfico metros drop
+  const dropChart = useMemo(() =>
+    dropPorTecnico.filter(d => d.tecnico !== "Sin asignar")
+      .map(d => ({ tecnico: d.tecnico.split(" ")[0], "Total metros": d.totalMetros, "Prom. por trabajo": d.promMetros })),
+    [dropPorTecnico]
+  );
+
+  // Tendencia diaria top 5
   const top5 = useMemo(() => porTecnico.filter(t => t.tecnico !== "Sin asignar").slice(0, 5).map(t => t.tecnico), [porTecnico]);
   const tendenciaDiaria = useMemo(() => {
     const map = {};
@@ -94,7 +145,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     return Object.values(map).sort((a, b) => a.fecha.localeCompare(b.fecha));
   }, [filtrados, top5]);
 
-  // Radar por técnico (top 6): liquidadas, pendientes, canceladas normalizados
+  // Radar
   const radarData = useMemo(() => {
     const top = porTecnico.filter(t => t.tecnico !== "Sin asignar").slice(0, 6);
     const maxLiq = Math.max(...top.map(t => t.liquidadas), 1);
@@ -108,20 +159,23 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   }, [porTecnico]);
 
   // KPIs
-  const totalTecnicos = porTecnico.filter(t => t.tecnico !== "Sin asignar").length;
-  const totalLiquidadas = filtrados.filter(o => o.estado === "Liquidada").length;
-  const totalOrdenes = filtrados.length;
+  const totalTecnicos      = porTecnico.filter(t => t.tecnico !== "Sin asignar").length;
+  const totalLiquidadas    = filtrados.filter(o => o.estado === "Liquidada").length;
+  const totalOrdenes       = filtrados.length;
+  const totalMetrosGlobal  = dropFiltrado.reduce((s, d) => s + (Number(d.cantidad) || 0), 0);
   const promedioEficiencia = totalTecnicos > 0
     ? Math.round(porTecnico.filter(t => t.tecnico !== "Sin asignar").reduce((s, t) => s + t.pct_liq, 0) / totalTecnicos)
     : 0;
   const mejorTecnico = porTecnico.find(t => t.tecnico !== "Sin asignar" && t.total >= 3);
-  const peorTecnico = [...porTecnico].filter(t => t.tecnico !== "Sin asignar" && t.total >= 3).sort((a, b) => a.pct_liq - b.pct_liq)[0];
+  const peorTecnico  = [...porTecnico].filter(t => t.tecnico !== "Sin asignar" && t.total >= 3).sort((a, b) => a.pct_liq - b.pct_liq)[0];
+  const tecMasMetros = dropPorTecnico[0];
 
   async function analizarIA() {
     setLoadingIA(true); setAnalisisIA("");
-    const resumen = porTecnico.slice(0, 10).map(t =>
-      `${t.tecnico}: ${t.total} órdenes, ${t.liquidadas} liquidadas (${t.pct_liq}%), ${t.canceladas} canceladas, tipo principal: ${t.tipo_principal}`
-    ).join("\n");
+    const resumenOrdenes = porTecnico.slice(0, 10).map(t => {
+      const drop = dropMap[t.tecnico];
+      return `${t.tecnico}: ${t.total} órdenes, ${t.liquidadas} liquidadas (${t.pct_liq}%), ${t.instalaciones} instalaciones, ${t.incidencias} incidencias, canceladas: ${t.canceladas}${drop ? `, metros drop: ${drop.totalMetros}m (prom ${drop.promMetros}m/trabajo)` : ""}`;
+    }).join("\n");
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -130,12 +184,12 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
           model: "gpt-4o-mini",
           messages: [{
             role: "system",
-            content: "Eres un analista de operaciones para una empresa ISP. Analiza el rendimiento de los técnicos y genera un informe ejecutivo en español. Destaca: el mejor y peor técnico, patrones de cancelaciones, tipos de trabajo más frecuentes, y recomendaciones concretas de gestión. Usa viñetas y sé directo."
+            content: "Eres un analista de operaciones para una empresa ISP. Analiza el rendimiento de los técnicos y genera un informe ejecutivo en español. Incluye análisis de: eficiencia, mix de trabajo (instalaciones vs incidencias), metros de drop (instalaciones largas vs cortas), y recomendaciones concretas de gestión. Usa viñetas y sé directo."
           }, {
             role: "user",
-            content: `Período: ${fechaDesde} al ${fechaHasta}\nTotal órdenes: ${totalOrdenes}\nTécnicos activos: ${totalTecnicos}\n\nRendimiento por técnico:\n${resumen}`
+            content: `Período: ${fechaDesde} al ${fechaHasta}\nTotal órdenes: ${totalOrdenes} | Total metros drop: ${totalMetrosGlobal}m\n\nPor técnico:\n${resumenOrdenes}`
           }],
-          max_tokens: 600,
+          max_tokens: 700,
         }),
       });
       const json = await res.json();
@@ -150,20 +204,20 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     const doc = new jsPDF();
     doc.setFontSize(16); doc.text("Reporte de Técnicos", 14, 18);
     doc.setFontSize(10); doc.text(`Período: ${fechaDesde} al ${fechaHasta}`, 14, 26);
-    if (filtroNodos.length) doc.text(`Nodos: ${filtroNodos.join(", ")}`, 14, 32);
-    if (filtroTecnicos.length) doc.text(`Técnicos: ${filtroTecnicos.join(", ")}`, 14, 38);
     autoTable(doc, {
-      startY: filtroNodos.length || filtroTecnicos.length ? 44 : 34,
-      head: [["Técnico", "Total", "Liquidadas", "% Efic.", "Pendientes", "Canceladas", "Tipo Principal"]],
-      body: porTecnico.map(t => [t.tecnico, t.total, t.liquidadas, t.pct_liq + "%", t.pendientes, t.canceladas, t.tipo_principal]),
-      styles: { fontSize: 9 },
+      startY: 32,
+      head: [["Técnico", "Total", "Liq.", "% Efic.", "Instal.", "Incid.", "Cancel.", "Metros Drop", "Prom. m/trabajo"]],
+      body: porTecnico.map(t => {
+        const drop = dropMap[t.tecnico];
+        return [t.tecnico, t.total, t.liquidadas, t.pct_liq + "%", t.instalaciones, t.incidencias, t.canceladas, drop ? drop.totalMetros + "m" : "-", drop ? drop.promMetros + "m" : "-"];
+      }),
+      styles: { fontSize: 8 },
     });
     if (analisisIA) {
       const y = doc.lastAutoTable.finalY + 10;
       doc.setFontSize(12); doc.text("Análisis IA", 14, y);
       doc.setFontSize(9);
-      const lines = doc.splitTextToSize(analisisIA, 180);
-      doc.text(lines, 14, y + 8);
+      doc.text(doc.splitTextToSize(analisisIA, 180), 14, y + 8);
     }
     doc.save(`reporte_tecnicos_${fechaDesde}_${fechaHasta}.pdf`);
   }
@@ -204,9 +258,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     <div style={{ display: "grid", gap: 20 }}>
       {/* Header */}
       <div style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ ...sectionTitleStyle, marginBottom: 4 }}>Reporte de Técnicos</div>
-        </div>
+        <div style={{ ...sectionTitleStyle, marginBottom: 0 }}>Reporte de Técnicos</div>
         <button onClick={generarPDF} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           ↓ Generar PDF
         </button>
@@ -226,13 +278,13 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         </div>
         <MultiSelect label="Nodo" options={nodos} selected={filtroNodos} onToggle={toggle(setFiltroNodos)} show={showNodoDD} setShow={setShowNodoDD} />
         <MultiSelect label="Técnico" options={tecnicos} selected={filtroTecnicos} onToggle={toggle(setFiltroTecnicos)} show={showTecnicoDD} setShow={setShowTecnicoDD} />
-        <button onClick={fetchOrdenes} style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 16 }}>
+        <button onClick={fetchAll} style={{ background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", marginTop: 16 }}>
           Actualizar
         </button>
       </div>
 
       {loading && <div style={{ ...cardStyle, color: "#6b7280" }}>Cargando...</div>}
-      {error && <div style={{ ...cardStyle, color: "#dc2626" }}>{error}</div>}
+      {error   && <div style={{ ...cardStyle, color: "#dc2626" }}>{error}</div>}
 
       {!loading && !error && (
         <>
@@ -254,6 +306,10 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
               <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>EFICIENCIA PROM.</div>
               <div style={{ fontSize: 32, fontWeight: 800, color: badgeColor(promedioEficiencia) }}>{promedioEficiencia}%</div>
             </div>
+            <div style={{ ...kpiStyle, background: "#eff6ff", borderColor: "#bfdbfe" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>📏 TOTAL METROS DROP</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#1d4ed8" }}>{totalMetrosGlobal.toLocaleString()}m</div>
+            </div>
             {mejorTecnico && (
               <div style={{ ...kpiStyle, background: "#f0fdf4", borderColor: "#bbf7d0" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>🏆 MEJOR TÉCNICO</div>
@@ -261,44 +317,47 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                 <div style={{ fontSize: 12, color: "#16a34a" }}>{mejorTecnico.pct_liq}% eficiencia</div>
               </div>
             )}
+            {tecMasMetros && (
+              <div style={{ ...kpiStyle, background: "#faf5ff", borderColor: "#e9d5ff" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>📡 MÁS RECORRIDO</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#6d28d9" }}>{tecMasMetros.tecnico.split(" ").slice(0,2).join(" ")}</div>
+                <div style={{ fontSize: 12, color: "#7c3aed" }}>{tecMasMetros.totalMetros}m · prom {tecMasMetros.promMetros}m/trabajo</div>
+              </div>
+            )}
             {peorTecnico && peorTecnico.tecnico !== mejorTecnico?.tecnico && (
               <div style={{ ...kpiStyle, background: "#fff7ed", borderColor: "#fed7aa" }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>⚠ REQUIERE ATENCIÓN</div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#b45309" }}>{peorTecnico.tecnico.split(" ").slice(0,2).join(" ")}</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#b45309" }}>{peorTecnico.tecnico.split(" ").slice(0,2).join(" ")}</div>
                 <div style={{ fontSize: 12, color: "#d97706" }}>{peorTecnico.pct_liq}% eficiencia</div>
               </div>
             )}
           </div>
 
-          {/* Gráficos */}
+          {/* Gráficos fila 1 */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {/* Barras comparativo */}
             <div style={{ ...cardStyle }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Comparativo por Técnico</div>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={porTecnico.filter(t => t.tecnico !== "Sin asignar").slice(0, 8)} layout="vertical" margin={{ left: 10, right: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Instalaciones vs Incidencias por Técnico</div>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={instVsIncChart} layout="vertical" margin={{ left: 10, right: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="tecnico" type="category" tick={{ fontSize: 11 }} width={80} />
+                  <YAxis dataKey="tecnico" type="category" tick={{ fontSize: 11 }} width={75} />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="liquidadas" name="Liquidadas" fill="#16a34a" radius={[0,4,4,0]} />
-                  <Bar dataKey="pendientes" name="Pendientes" fill="#d97706" radius={[0,4,4,0]} />
-                  <Bar dataKey="canceladas" name="Canceladas" fill="#dc2626" radius={[0,4,4,0]} />
+                  <Bar dataKey="Instalaciones" fill="#2563eb" radius={[0,4,4,0]} />
+                  <Bar dataKey="Incidencias"   fill="#d97706" radius={[0,4,4,0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-
-            {/* Radar eficiencia */}
             <div style={{ ...cardStyle }}>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Radar de Rendimiento (Top 6)</div>
-              <ResponsiveContainer width="100%" height={280}>
+              <ResponsiveContainer width="100%" height={260}>
                 <RadarChart data={radarData}>
                   <PolarGrid />
                   <PolarAngleAxis dataKey="tecnico" tick={{ fontSize: 11 }} />
                   <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 9 }} />
                   <Radar name="% Eficiencia" dataKey="% Eficiencia" stroke="#2563eb" fill="#2563eb" fillOpacity={0.3} />
-                  <Radar name="Liquidadas" dataKey="Liquidadas" stroke="#16a34a" fill="#16a34a" fillOpacity={0.2} />
+                  <Radar name="Liquidadas"   dataKey="Liquidadas"   stroke="#16a34a" fill="#16a34a" fillOpacity={0.2} />
                   <Legend />
                   <Tooltip />
                 </RadarChart>
@@ -306,11 +365,32 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
             </div>
           </div>
 
-          {/* Tendencia diaria liquidadas por técnico (top 5) */}
+          {/* Metros de Drop */}
+          {dropChart.length > 0 && (
+            <div style={{ ...cardStyle }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: "#1e293b" }}>📏 Metros de Drop por Técnico</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>
+                Total metros instalados y promedio por trabajo — a mayor promedio, mayor complejidad/distancia de la instalación.
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={dropChart} layout="vertical" margin={{ left: 10, right: 30 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} unit="m" />
+                  <YAxis dataKey="tecnico" type="category" tick={{ fontSize: 11 }} width={75} />
+                  <Tooltip formatter={(v) => v + "m"} />
+                  <Legend />
+                  <Bar dataKey="Total metros"       fill="#7c3aed" radius={[0,4,4,0]} />
+                  <Bar dataKey="Prom. por trabajo"  fill="#0891b2" radius={[0,4,4,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Tendencia diaria */}
           {tendenciaDiaria.length > 0 && (
             <div style={{ ...cardStyle }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Tendencia Diaria de Liquidaciones (Top 5 Técnicos)</div>
-              <ResponsiveContainer width="100%" height={240}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Tendencia Diaria de Liquidaciones (Top 5)</div>
+              <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={tendenciaDiaria} margin={{ left: 0, right: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="fecha" tick={{ fontSize: 10 }} tickFormatter={v => v.slice(5)} />
@@ -332,54 +412,63 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
-                    {["#", "Técnico", "Total", "Liquidadas", "Pendientes", "Canceladas", "% Eficiencia", "Tipos de Actuación"].map(h => (
-                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                    {["#","Técnico","Total","Liquidadas","Instal.","Incid.","Pendientes","Canceladas","% Eficiencia","Metros Drop","Prom. m/trabajo","Tipos"].map(h => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 12 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {porTecnico.map((t, i) => (
-                    <tr key={t.tecnico} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", cursor: "pointer" }}
-                      onClick={() => setTecnicoDetalle(tecnicoDetalle === t.tecnico ? null : t.tecnico)}>
-                      <td style={{ padding: "9px 12px", color: "#9ca3af", fontWeight: 600 }}>{i + 1}</td>
-                      <td style={{ padding: "9px 12px", fontWeight: 700, color: "#1e293b" }}>{t.tecnico}</td>
-                      <td style={{ padding: "9px 12px", fontWeight: 700, color: "#2563eb" }}>{t.total}</td>
-                      <td style={{ padding: "9px 12px", fontWeight: 700, color: "#16a34a" }}>{t.liquidadas}</td>
-                      <td style={{ padding: "9px 12px", color: "#d97706" }}>{t.pendientes}</td>
-                      <td style={{ padding: "9px 12px", color: "#dc2626" }}>{t.canceladas}</td>
-                      <td style={{ padding: "9px 12px" }}>
-                        <span style={{ background: badgeColor(t.pct_liq) + "20", color: badgeColor(t.pct_liq), borderRadius: 6, padding: "3px 10px", fontWeight: 700, fontSize: 12 }}>
-                          {t.pct_liq}%
-                        </span>
-                      </td>
-                      <td style={{ padding: "9px 12px" }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {Object.entries(t.tipos).sort((a,b) => b[1]-a[1]).map(([tipo, cnt]) => (
-                            <span key={tipo} style={{ background: "#eff6ff", color: "#1d4ed8", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
-                              {tipo} ({cnt})
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {porTecnico.map((t, i) => {
+                    const drop = dropMap[t.tecnico];
+                    return (
+                      <tr key={t.tecnico} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", cursor: "pointer" }}
+                        onClick={() => setTecnicoDetalle(tecnicoDetalle === t.tecnico ? null : t.tecnico)}>
+                        <td style={{ padding: "9px 12px", color: "#9ca3af", fontWeight: 600 }}>{i + 1}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#1e293b" }}>{t.tecnico}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#2563eb" }}>{t.total}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#16a34a" }}>{t.liquidadas}</td>
+                        <td style={{ padding: "9px 12px", color: "#2563eb", fontWeight: 600 }}>{t.instalaciones}</td>
+                        <td style={{ padding: "9px 12px", color: "#d97706", fontWeight: 600 }}>{t.incidencias}</td>
+                        <td style={{ padding: "9px 12px", color: "#d97706" }}>{t.pendientes}</td>
+                        <td style={{ padding: "9px 12px", color: "#dc2626" }}>{t.canceladas}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <span style={{ background: badgeColor(t.pct_liq) + "20", color: badgeColor(t.pct_liq), borderRadius: 6, padding: "3px 10px", fontWeight: 700, fontSize: 12 }}>
+                            {t.pct_liq}%
+                          </span>
+                        </td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#7c3aed" }}>{drop ? drop.totalMetros + "m" : "—"}</td>
+                        <td style={{ padding: "9px 12px", color: "#0891b2", fontWeight: 600 }}>{drop ? drop.promMetros + "m" : "—"}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {Object.entries(t.tipos).sort((a,b) => b[1]-a[1]).map(([tipo, cnt]) => (
+                              <span key={tipo} style={{ background: "#eff6ff", color: "#1d4ed8", borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+                                {tipo} ({cnt})
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {/* Detalle de tipos al hacer clic en técnico */}
             {tecnicoDetalle && (() => {
               const t = porTecnico.find(x => x.tecnico === tecnicoDetalle);
+              const drop = dropMap[tecnicoDetalle];
               if (!t) return null;
               return (
                 <div style={{ marginTop: 16, padding: 14, background: "#eff6ff", borderRadius: 10, border: "1px solid #bfdbfe" }}>
-                  <div style={{ fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>Detalle de tipos — {t.tecnico}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {Object.entries(t.tipos).sort((a,b) => b[1]-a[1]).map(([tipo, cnt]) => (
-                      <span key={tipo} style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 600 }}>
-                        {tipo}: {cnt}
-                      </span>
-                    ))}
+                  <div style={{ fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>{t.tecnico} — resumen</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13 }}>
+                    <div><span style={{ color: "#6b7280" }}>Instalaciones:</span> <strong style={{ color: "#2563eb" }}>{t.instalaciones}</strong></div>
+                    <div><span style={{ color: "#6b7280" }}>Incidencias:</span> <strong style={{ color: "#d97706" }}>{t.incidencias}</strong></div>
+                    <div><span style={{ color: "#6b7280" }}>Canceladas:</span> <strong style={{ color: "#dc2626" }}>{t.canceladas}</strong></div>
+                    {drop && <>
+                      <div><span style={{ color: "#6b7280" }}>Total metros drop:</span> <strong style={{ color: "#7c3aed" }}>{drop.totalMetros}m</strong></div>
+                      <div><span style={{ color: "#6b7280" }}>Prom. por trabajo:</span> <strong style={{ color: "#0891b2" }}>{drop.promMetros}m</strong></div>
+                    </>}
                   </div>
                 </div>
               );
@@ -395,13 +484,12 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                 {loadingIA ? "Analizando..." : "🤖 Analizar"}
               </button>
             </div>
-            {analisisIA && (
+            {analisisIA ? (
               <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: 16, fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
                 {analisisIA}
               </div>
-            )}
-            {!analisisIA && !loadingIA && (
-              <div style={{ color: "#94a3b8", fontSize: 13 }}>Haz clic en "🤖 Analizar" para obtener un análisis automático del rendimiento del equipo técnico.</div>
+            ) : (
+              <div style={{ color: "#94a3b8", fontSize: 13 }}>Haz clic en "🤖 Analizar" para obtener un análisis del rendimiento del equipo técnico, incluyendo complejidad de instalaciones por metros de drop.</div>
             )}
           </div>
         </>
