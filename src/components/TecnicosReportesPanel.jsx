@@ -49,11 +49,8 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         .limit(10000),
       supabase
         .from("liquidacion_materiales")
-        .select("tecnico,material,cantidad,unidad,fecha,nodo")
+        .select("tecnico,material,cantidad,unidad,fecha,nodo,updated_at")
         .ilike("material", "%drop%")
-        .eq("unidad", "metros")
-        .gte("fecha", fechaDesde)
-        .lte("fecha", fechaHasta)
         .limit(10000),
     ]);
     if (resOrdenes.error) setError(resOrdenes.error.message);
@@ -73,10 +70,12 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   }), [ordenes, filtroNodos, filtroTecnicos]);
 
   const dropFiltrado = useMemo(() => dropData.filter(d => {
+    const fechaReg = String(d.fecha || d.updated_at || "").slice(0, 10);
+    if (fechaReg && (fechaReg < fechaDesde || fechaReg > fechaHasta)) return false;
     if (filtroNodos.length > 0 && !filtroNodos.includes(d.nodo)) return false;
     if (filtroTecnicos.length > 0 && !filtroTecnicos.includes(d.tecnico)) return false;
     return true;
-  }), [dropData, filtroNodos, filtroTecnicos]);
+  }), [dropData, filtroNodos, filtroTecnicos, fechaDesde, fechaHasta]);
 
   // Agrupado por técnico (órdenes)
   const porTecnico = useMemo(() => {
