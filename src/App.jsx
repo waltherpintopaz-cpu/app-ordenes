@@ -3753,6 +3753,55 @@ export default function App() {
   };
 
   const SMART_OLT_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
+  const OLT_SSH_NODOS   = ["Nod_06"];
+  const OLT_SSH_API     = "http://185.173.110.145:3002";
+
+  // Consulta señal via SSH API (Nod_06) — desde ficha de cliente
+  const consultarSenalOltSsh = async (cli) => {
+    const sn = String(cli?.snOnu || "").trim();
+    if (!sn) return;
+    setClienteSenalLoading(true);
+    setClienteSenalError("");
+    setClienteSenal(null);
+    try {
+      const params = new URLSearchParams({ sn });
+      if (cli.vlan) params.set("vlan", String(cli.vlan));
+      const res  = await fetch(`${OLT_SSH_API}/signal?${params}`);
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      const now = new Date().toISOString();
+      setClienteSenal({ rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-"), rxOlt: String(json.rxPowerOlt ?? "-"), temperature: json.temperature, voltage: json.voltage, queried_at: now });
+      setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: json.rxPower, txSignal: json.txPower, signalUpdatedAt: now, oltIp: json.oltName, pon: `${json.slot}/${json.port}`, onuId: json.onuId } : prev);
+      await supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, olt_ip: json.oltName, pon: `${json.slot}/${json.port}`, onu_id: json.onuId, signal_updated_at: now }).eq("id", cli.id);
+    } catch (e) {
+      setClienteSenalError(String(e?.message || "Error al consultar señal OLT."));
+    } finally {
+      setClienteSenalLoading(false);
+    }
+  };
+
+  // Consulta señal via SSH API (Nod_06) — desde fila de tabla
+  const consultarSenalOltSshTabla = async (cli) => {
+    const id = cli?.id;
+    if (!id) return;
+    const sn = String(cli.snOnu || "").trim();
+    if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
+    setCliSenalLoading(p => ({ ...p, [id]: true }));
+    setCliSenalError(p => ({ ...p, [id]: "" }));
+    setCliSenalData(p => ({ ...p, [id]: null }));
+    try {
+      const params = new URLSearchParams({ sn });
+      if (cli.vlan) params.set("vlan", String(cli.vlan));
+      const res  = await fetch(`${OLT_SSH_API}/signal?${params}`);
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      setCliSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+    } catch (e) {
+      setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
+    } finally {
+      setCliSenalLoading(p => ({ ...p, [id]: false }));
+    }
+  };
 
   const consultarSenalOrdenWeb = async (item) => {
     const id = item?.id;
@@ -4180,6 +4229,7 @@ export default function App() {
       password_usuario: nullIfEmpty(cliente.passwordUsuario),
       codigo_etiqueta: nullIfEmpty(cliente.codigoEtiqueta),
       sn_onu: nullIfEmpty(cliente.snOnu),
+      vlan: cliente.vlan ? Number(cliente.vlan) : null,
       ubicacion: nullIfEmpty(cliente.ubicacion),
       descripcion: nullIfEmpty(cliente.descripcion),
       tecnico: nullIfEmpty(cliente.tecnico),
@@ -4203,6 +4253,7 @@ export default function App() {
     const p = row && typeof row.payload === "object" && row.payload ? row.payload : null;
     const signalFields = {
       snOnu: row.sn_onu || (p && p.snOnu) || "",
+      vlan: row.vlan != null ? Number(row.vlan) : (p?.vlan ?? null),
       rxSignal: row.rx_signal != null ? Number(row.rx_signal) : null,
       txSignal: row.tx_signal != null ? Number(row.tx_signal) : null,
       oltIp: row.olt_ip || "",
@@ -4514,7 +4565,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
@@ -9901,6 +9952,7 @@ export default function App() {
       usuarioNodo: cli.usuarioNodo || "",
       passwordUsuario: cli.passwordUsuario || "",
       snOnu: cli.snOnu || "",
+      vlan: cli.vlan != null ? String(cli.vlan) : "",
       codigoEtiqueta: cli.codigoEtiqueta || "",
       codigoCliente: cli.codigoCliente || cli.codigoAbonado || "",
       estadoServicio: cli.estadoServicio || "ACTIVO",
@@ -9933,6 +9985,7 @@ export default function App() {
         usuarioNodo: f.usuarioNodo.trim(),
         passwordUsuario: f.passwordUsuario.trim(),
         snOnu: f.snOnu.trim(),
+        vlan: f.vlan ? Number(f.vlan) : null,
         codigoEtiqueta: f.codigoEtiqueta.trim(),
         codigoCliente: f.codigoCliente.trim(),
         estadoServicio: f.estadoServicio,
@@ -17556,9 +17609,35 @@ export default function App() {
                                     </button>
                                     {/* + Orden */}
                                     <button onClick={() => crearOrdenDesdeCliente(cliente)}
-                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: (SMART_OLT_NODOS.includes(String(cliente.nodo || "")) || OLT_SSH_NODOS.includes(String(cliente.nodo || ""))) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: (SMART_OLT_NODOS.includes(String(cliente.nodo || "")) || OLT_SSH_NODOS.includes(String(cliente.nodo || ""))) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       + Orden
                                     </button>
+                                    {/* Señal OLT SSH — solo Nod_06 con serial */}
+                                    {OLT_SSH_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
+                                      const sd = cliSenalData[cliente.id];
+                                      const hasData = !!sd;
+                                      const isLoading = !!cliSenalLoading[cliente.id];
+                                      const hasError = !!cliSenalError[cliente.id];
+                                      const snColor = hasData ? "#0369a1" : hasError ? "#c2410c" : "#0369a1";
+                                      return (
+                                        <button
+                                          onClick={() => void consultarSenalOltSshTabla(cliente)}
+                                          disabled={isLoading}
+                                          title={hasData ? `RX: ${sd.rx} dBm | TX: ${sd.tx} dBm` : `Ver señal OLT · SN: ${cliente.snOnu}${cliente.vlan ? ` · VLAN ${cliente.vlan}` : ""}`}
+                                          style={{ padding: "0 11px", height: 30, background: hasData ? "#f0f9ff" : hasError ? "#fff7ed" : "#f0f9ff", color: snColor, border: "none", borderRadius: "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: isLoading ? "wait" : "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}
+                                        >
+                                          <svg width="13" height="11" viewBox="0 0 13 11" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                                            <rect x="0" y="7" width="2.5" height="4" rx="1" fill={isLoading ? "#cbd5e1" : snColor}/>
+                                            <rect x="3.5" y="4.5" width="2.5" height="6.5" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#94a3b8"}/>
+                                            <rect x="7" y="2" width="2.5" height="9" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#cbd5e1"}/>
+                                            <rect x="10.5" y="0" width="2.5" height="11" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#e2e8f0"}/>
+                                          </svg>
+                                          <span style={{ fontFamily: "monospace", fontSize: 10 }}>
+                                            {isLoading ? "···" : hasData ? `${sd.rx}` : hasError ? "Err" : "OLT"}
+                                          </span>
+                                        </button>
+                                      );
+                                    })()}
                                     {/* SN — señal ONU, solo nodos SmartOLT con serial */}
                                     {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
                                       const sd = cliSenalData[cliente.id];
@@ -17850,6 +17929,69 @@ export default function App() {
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
               )}
 
+              {/* ── Señal ONU — Nod_06 SSH ── */}
+              {cli.snOnu && OLT_SSH_NODOS.includes(String(cli.nodo || "")) && (
+                <div style={{ background: "linear-gradient(135deg,#f0f9ff,#e0f2fe)", border: "1.5px solid #7dd3fc", borderRadius: 16, padding: "18px 24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#075985", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      📶 Señal OLT — {cli.snOnu}{cli.vlan ? ` · VLAN ${cli.vlan}` : ""}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {cli.signalUpdatedAt && !clienteSenalLoading && (
+                        <span style={{ fontSize: 10, color: "#0369a1", fontWeight: 600 }}>
+                          Actualizado {new Date(cli.signalUpdatedAt).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => consultarSenalOltSsh(cli)}
+                        disabled={clienteSenalLoading}
+                        style={{ padding: "6px 14px", background: clienteSenalLoading ? "#bae6fd" : "#0369a1", color: "#fff", border: "none", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: clienteSenalLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                      >
+                        {clienteSenalLoading ? "⏳ Consultando..." : "📡 Consultar Señal"}
+                      </button>
+                    </div>
+                  </div>
+                  {clienteSenalError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", color: "#dc2626", fontSize: 12, marginBottom: 12 }}>
+                      {clienteSenalError}
+                    </div>
+                  )}
+                  {cli.rxSignal != null && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
+                      {[
+                        { label: "Rx ONU (dBm)", value: cli.rxSignal },
+                        { label: "Tx ONU (dBm)", value: cli.txSignal },
+                      ].map(({ label, value }) => {
+                        const n = parseFloat(value);
+                        const isNum = !isNaN(n);
+                        const ok = isNum && n >= -27 && n <= -8;
+                        const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
+                        return (
+                          <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
+                            <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+                            <div style={{ fontSize: 22, fontWeight: 800, color, letterSpacing: "-0.5px" }}>{value != null ? value : "-"}</div>
+                            {isNum && <div style={{ fontSize: 10, marginTop: 2, fontWeight: 700, color: ok ? "#16a34a" : "#dc2626" }}>{ok ? "✓ Óptima" : "✗ Baja"}</div>}
+                          </div>
+                        );
+                      })}
+                      {cli.oltIp && (
+                        <div style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: "1.5px solid #e2e8f0" }}>
+                          <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>OLT / Puerto</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#374151" }}>{cli.oltIp}</div>
+                          {cli.pon && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>GPON {cli.pon} · ONU {cli.onuId}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {cli.rxSignal == null && !clienteSenalLoading && (
+                    <div style={{ color: "#6b7280", fontSize: 13 }}>
+                      Sin señal registrada — presiona "Consultar Señal" para obtener datos en tiempo real.
+                      {!cli.vlan && <span style={{ color: "#f59e0b", fontWeight: 600 }}> (Recomendado: asignar VLAN para mayor velocidad)</span>}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ── Señal ONU ── */}
               {cli.snOnu && SMART_OLT_NODOS.includes(String(cli.nodo || "")) && (
                 <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
@@ -17936,6 +18078,7 @@ export default function App() {
                   {infoRow("Contraseña", cli.passwordUsuario, true, true)}
                   {infoRow("Cód. etiqueta", cli.codigoEtiqueta)}
                   {infoRow("SN ONU", cli.snOnu, true)}
+                  {cli.vlan && infoRow("VLAN", `${cli.vlan} — ${cli.vlan === 500 || cli.vlan === "500" ? "Nod_06_A" : "Nod_06_B"}`)}
                 </div>
 
                 {/* NAP */}
@@ -18356,6 +18499,14 @@ export default function App() {
                         </div>
                       </div>
                       {grp("SN ONU", "snOnu")}
+                      <div>
+                        <label style={lbl}>VLAN <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>(solo Nod_06)</span></label>
+                        <select value={f.vlan || ""} onChange={e => set("vlan", e.target.value)} style={inp}>
+                          <option value="">— Sin VLAN —</option>
+                          <option value="500">500 — Nod_06_A</option>
+                          <option value="100">100 — Nod_06_B</option>
+                        </select>
+                      </div>
                       {grp("Estado servicio", "estadoServicio", { select: true, options: ["ACTIVO", "SUSPENDIDO", "INACTIVO", "DESCONOCIDO"] })}
                     </div>
                   </div>
