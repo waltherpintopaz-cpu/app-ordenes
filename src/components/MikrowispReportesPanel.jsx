@@ -35,7 +35,8 @@ export default function MikrowispReportesPanel({ cardStyle, sectionTitleStyle })
       .select("mikrowisp_id,cedula,nombre,nodo,estado,updated_at,agregado_por")
       .gte("updated_at", fechaDesde + "T00:00:00")
       .lte("updated_at", fechaHasta + "T23:59:59")
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false })
+      .limit(10000);
     if (error) setError(error.message);
     else setRegistros(data || []);
     setLoading(false);
