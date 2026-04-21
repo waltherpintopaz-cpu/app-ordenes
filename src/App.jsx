@@ -17964,7 +17964,8 @@ export default function App() {
                       ].map(({ label, value }) => {
                         const n = parseFloat(value);
                         const isNum = !isNaN(n);
-                        const ok = isNum && n >= -27 && n <= -8;
+                        const isTx = label.toLowerCase().startsWith("tx");
+                        const ok = isNum && (isTx ? (n >= 0 && n <= 7) : (n >= -27 && n <= -8));
                         const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
                         return (
                           <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
@@ -18025,7 +18026,8 @@ export default function App() {
                       ].map(({ label, value }) => {
                         const n = parseFloat(value);
                         const isNum = !isNaN(n);
-                        const ok = isNum && n >= -27 && n <= -8;
+                        const isTx = label.toLowerCase().startsWith("tx");
+                        const ok = isNum && (isTx ? (n >= 0 && n <= 7) : (n >= -27 && n <= -8));
                         const color = isNum ? (ok ? "#16a34a" : "#dc2626") : "#374151";
                         return (
                           <div key={label} style={{ background: "#fff", borderRadius: 12, padding: "12px 16px", border: `1.5px solid ${isNum ? (ok ? "#86efac" : "#fca5a5") : "#e2e8f0"}` }}>
