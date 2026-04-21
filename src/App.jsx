@@ -17661,11 +17661,11 @@ export default function App() {
                                       {loading ? (
                                         <span style={{ fontSize: 15, color: "#94a3b8", lineHeight: 1 }}>⏳</span>
                                       ) : (
-                                        <svg width="22" height="19" viewBox="0 0 22 19" fill="none">
-                                          <circle cx="11" cy="17" r="2" fill={level >= 1 ? color : dim}/>
-                                          <path d="M7 13.5 Q11 9.5 15 13.5" stroke={level >= 2 ? color : dim} strokeWidth="2.2" strokeLinecap="round"/>
-                                          <path d="M4 10 Q11 4 18 10" stroke={level >= 3 ? color : dim} strokeWidth="2.2" strokeLinecap="round"/>
-                                          <path d="M1 6.5 Q11 -1.5 21 6.5" stroke={level >= 4 ? color : dim} strokeWidth="2.2" strokeLinecap="round"/>
+                                        <svg width="26" height="22" viewBox="0 0 26 22" fill="none">
+                                          <circle cx="13" cy="20" r="3" fill={level >= 1 ? color : dim}/>
+                                          <path d="M8.5 15.5 Q13 10.5 17.5 15.5" stroke={level >= 2 ? color : dim} strokeWidth="4" strokeLinecap="round"/>
+                                          <path d="M4 11 Q13 3.5 22 11" stroke={level >= 3 ? color : dim} strokeWidth="4" strokeLinecap="round"/>
+                                          <path d="M0 6.5 Q13 -2.5 26 6.5" stroke={level >= 4 ? color : dim} strokeWidth="4" strokeLinecap="round"/>
                                         </svg>
                                       )}
                                       <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.3px" }}>
