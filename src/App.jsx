@@ -1958,6 +1958,8 @@ export default function App() {
   const [cliSenalLoading, setCliSenalLoading] = useState({});
   const [cliSenalError, setCliSenalError] = useState({});
   const [nod6Refreshing, setNod6Refreshing] = useState(false);
+  const [fillSnLoading, setFillSnLoading] = useState(false);
+  const [fillSnMsg, setFillSnMsg] = useState("");
   const [mikrowisp_loading, setMikrowispLoading] = useState({});  // { [clienteId]: bool }
   const [mikrowisp_ok, setMikrowispOk] = useState({});            // { [clienteId]: bool } — ya agregado esta sesión
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
@@ -3840,6 +3842,27 @@ export default function App() {
       await consultarSenalOltSshTabla(c);
     }
     setNod6Refreshing(false);
+  };
+
+  const syncFillSn = async () => {
+    const olts = ["Nod_06_A", "Nod_06_B", "Nod_04_A"];
+    setFillSnLoading(true);
+    setFillSnMsg("Sincronizando...");
+    try {
+      let total = 0;
+      for (const olt of olts) {
+        setFillSnMsg(`Escaneando ${olt}...`);
+        const res = await fetch(`${OLT_SSH_API}/fill-sn?oltName=${olt}`);
+        const json = await res.json().catch(() => ({}));
+        total += json.updated?.length || 0;
+      }
+      setFillSnMsg(`Listo — ${total} ONUs actualizadas`);
+    } catch (e) {
+      setFillSnMsg(`Error: ${e.message}`);
+    } finally {
+      setFillSnLoading(false);
+      setTimeout(() => setFillSnMsg(""), 5000);
+    }
   };
 
   const consultarSenalOrdenWeb = async (item) => {
@@ -17514,6 +17537,16 @@ export default function App() {
                     <span style={{ fontSize: 13, lineHeight: 1 }}>{nod6Refreshing ? "⏳" : "↺"}</span>
                     {nod6Refreshing ? "Actualizando..." : "Actualizar Señales"}
                   </button>
+                  {esAdminSesion && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button type="button" onClick={() => void syncFillSn()} disabled={fillSnLoading}
+                        style={{ padding: "6px 12px", border: "1.5px solid #7c3aed", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: fillSnLoading ? "wait" : "pointer", background: fillSnLoading ? "#ede9fe" : "#f5f3ff", color: "#7c3aed", display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ fontSize: 13, lineHeight: 1 }}>{fillSnLoading ? "⏳" : "⚡"}</span>
+                        {fillSnLoading ? "Sincronizando..." : "Sync OLT"}
+                      </button>
+                      {fillSnMsg && <span style={{ fontSize: 11, color: "#7c3aed", fontWeight: 600 }}>{fillSnMsg}</span>}
+                    </div>
+                  )}
                 </div>
               )}
 
