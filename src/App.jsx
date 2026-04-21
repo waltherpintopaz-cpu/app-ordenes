@@ -17937,7 +17937,7 @@ export default function App() {
           <MikrowispReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
-        {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel />}
+        {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} />}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
           const cli = clienteSeleccionado;

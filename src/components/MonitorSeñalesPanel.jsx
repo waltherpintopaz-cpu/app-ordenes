@@ -50,7 +50,7 @@ function TarjetaResumen({ emoji, label, count, color, bg, border, onClick, activ
   );
 }
 
-export default function MonitorSeñalesPanel() {
+export default function MonitorSeñalesPanel({ onCrearOrden }) {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filtro, setFiltro]     = useState("todos");
@@ -242,10 +242,18 @@ export default function MonitorSeñalesPanel() {
                     <td style={{ padding: "10px 14px", fontSize: 12, color: "#475569" }}>{c.tx_signal != null ? `${c.tx_signal} dBm` : "—"}</td>
                     <td style={{ padding: "10px 14px", fontSize: 11, color: "#94a3b8" }}>{formatTime(c.signal_updated_at)}</td>
                     <td style={{ padding: "10px 14px", textAlign: "center" }}>
-                      <button onClick={() => refrescarSenal(c)} disabled={!!refreshing[c.id]} title="Consultar señal ahora"
-                        style={{ padding: "5px 10px", background: refreshing[c.id] ? "#f1f5f9" : "#eff6ff", border: `1px solid ${refreshing[c.id] ? "#e2e8f0" : "#bfdbfe"}`, borderRadius: 8, fontSize: 12, cursor: refreshing[c.id] ? "wait" : "pointer", color: "#1e40af" }}>
-                        {refreshing[c.id] ? "⏳" : "↺"}
-                      </button>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                        <button onClick={() => refrescarSenal(c)} disabled={!!refreshing[c.id]} title="Consultar señal ahora"
+                          style={{ padding: "5px 10px", background: refreshing[c.id] ? "#f1f5f9" : "#eff6ff", border: `1px solid ${refreshing[c.id] ? "#e2e8f0" : "#bfdbfe"}`, borderRadius: 8, fontSize: 12, cursor: refreshing[c.id] ? "wait" : "pointer", color: "#1e40af" }}>
+                          {refreshing[c.id] ? "⏳" : "↺"}
+                        </button>
+                        {onCrearOrden && (
+                          <button onClick={() => onCrearOrden(c)} title="Crear orden de visita"
+                            style={{ padding: "5px 10px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, fontSize: 12, cursor: "pointer", color: "#c2410c", fontWeight: 700 }}>
+                            + Orden
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
