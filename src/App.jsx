@@ -2517,19 +2517,6 @@ export default function App() {
   }, [vistaActiva]);
 
   useEffect(() => {
-    if (!clientesPorNodo.length) return;
-    setCliSenalData(prev => {
-      const next = { ...prev };
-      clientesPorNodo.forEach(c => {
-        if (c.rxSignal != null && !next[c.id]) {
-          next[c.id] = { rx: String(c.rxSignal), tx: String(c.txSignal ?? "-") };
-        }
-      });
-      return next;
-    });
-  }, [clientesPorNodo]);
-
-  useEffect(() => {
     if (vistaActiva !== "clientes") return;
     const id = setInterval(() => { void refrescarTodosNod6(); }, 5 * 60 * 1000);
     return () => clearInterval(id);
@@ -2691,6 +2678,19 @@ export default function App() {
     const set = new Set();
     clientesPorNodo.forEach((c) => { const n = String(c.nodo || "").trim(); if (n) set.add(n); });
     return Array.from(set).sort();
+  }, [clientesPorNodo]);
+
+  useEffect(() => {
+    if (!clientesPorNodo.length) return;
+    setCliSenalData(prev => {
+      const next = { ...prev };
+      clientesPorNodo.forEach(c => {
+        if (c.rxSignal != null && !next[c.id]) {
+          next[c.id] = { rx: String(c.rxSignal), tx: String(c.txSignal ?? "-") };
+        }
+      });
+      return next;
+    });
   }, [clientesPorNodo]);
 
   const clientesFiltrados = useMemo(() => {
