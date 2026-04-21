@@ -24,6 +24,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/api/olt-ssh': {
+        target: 'http://185.173.110.145:3002',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/olt-ssh/, ''),
+      },
     },
   },
 })
