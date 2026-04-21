@@ -2738,6 +2738,11 @@ export default function App() {
         else if (sortClientes.col === "snOnu") { va = String(a.snOnu || ""); vb = String(b.snOnu || ""); }
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
+        else if (sortClientes.col === "rxSignal") {
+          const na = parseFloat(a.rxSignal ?? ""); const nb = parseFloat(b.rxSignal ?? "");
+          const av = isNaN(na) ? -Infinity : na; const bv = isNaN(nb) ? -Infinity : nb;
+          return sortClientes.dir === "asc" ? av - bv : bv - av;
+        }
         const cmp = va.localeCompare(vb, undefined, { sensitivity: "base" });
         return sortClientes.dir === "asc" ? cmp : -cmp;
       });
@@ -17593,7 +17598,7 @@ export default function App() {
                             { key: "snOnu", label: "SN ONU", sortCol: "snOnu" },
                             { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
                             { key: "registrado", label: "Registrado", sortCol: "registrado" },
-                            { key: "señal", label: "Señal RX", sortCol: null },
+                            { key: "señal", label: "Señal RX", sortCol: "rxSignal" },
                             { key: "acciones", label: "Acciones", sortCol: null },
                           ].filter(h => h.key === "acciones" || h.key === "señal" || colsClientesVisibles[h.key]).map((h) => {
                             const isSorted = sortClientes.col === h.sortCol;
