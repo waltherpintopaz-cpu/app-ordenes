@@ -6,6 +6,32 @@ import * as XLSX from "xlsx";
 
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 
+function mapearCliente(row) {
+  return {
+    id:               row.id,
+    nombre:           row.nombre           || "",
+    dni:              row.dni              || "",
+    celular:          row.celular          || "",
+    email:            row.email            || "",
+    direccion:        row.direccion        || "",
+    empresa:          row.empresa          || "",
+    velocidad:        row.velocidad        || "",
+    precioPlan:       row.precio_plan      != null ? String(row.precio_plan) : "",
+    nodo:             row.nodo             || "",
+    usuarioNodo:      row.usuario_nodo     || "",
+    passwordUsuario:  row.password_usuario || "",
+    snOnu:            row.sn_onu           || "",
+    codigoEtiqueta:   row.codigo_etiqueta  || "",
+    ubicacion:        row.ubicacion        || "",
+    cajaNap:          row.caja_nap         || "",
+    puertoNap:        row.puerto_nap       || "",
+    descripcion:      row.descripcion      || "",
+    vlan:             row.vlan             ?? null,
+    rxSignal:         row.rx_signal        ?? null,
+    txSignal:         row.tx_signal        ?? null,
+  };
+}
+
 function nivelSenal(rx) {
   if (rx == null || isNaN(rx)) return "sin_datos";
   if (rx >= -22) return "normal";
@@ -176,7 +202,7 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
     setLoading(true);
     const { data } = await supabase
       .from("clientes")
-      .select("id, nombre, nodo, sn_onu, rx_signal, tx_signal, signal_updated_at, vlan, celular, dni")
+      .select("id, nombre, nodo, dni, celular, email, direccion, empresa, velocidad, precio_plan, usuario_nodo, password_usuario, sn_onu, codigo_etiqueta, ubicacion, caja_nap, puerto_nap, descripcion, vlan, rx_signal, tx_signal, signal_updated_at")
       .not("sn_onu", "is", null).neq("sn_onu", "")
       .order("rx_signal", { ascending: true, nullsFirst: false })
       .limit(2000);
@@ -494,7 +520,7 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
                           {refreshing[c.id] ? "⏳" : "↺"}
                         </button>
                         {onCrearOrden && (
-                          <button onClick={() => onCrearOrden(c)} title="Crear orden de visita"
+                          <button onClick={() => onCrearOrden(mapearCliente(c))} title="Crear orden de visita"
                             style={{ padding: "5px 9px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, fontSize: 11, cursor: "pointer", color: "#c2410c", fontWeight: 700, whiteSpace: "nowrap" }}>
                             + Orden
                           </button>
