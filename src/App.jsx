@@ -3754,7 +3754,7 @@ export default function App() {
 
   const SMART_OLT_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
   const OLT_SSH_NODOS   = ["Nod_06"];
-  const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "/api/olt-ssh").trim().replace(/\/$/, "");
+  const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 
   // Consulta señal via SSH API (Nod_06) — desde ficha de cliente
   const consultarSenalOltSsh = async (cli) => {
