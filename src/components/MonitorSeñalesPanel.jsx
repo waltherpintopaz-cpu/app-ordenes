@@ -1,5 +1,8 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "../supabaseClient";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 
@@ -142,6 +145,105 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
     } catch { return "—"; }
   };
 
+  const exportarPDF = () => {
+    const doc = new jsPDF({ orientation: "landscape" });
+    const fechaHoy = new Date().toLocaleString("es-PE");
+    const filtroLabel = filtro === "todos" ? "Todos" : NIVEL_CONFIG[filtro]?.label || filtro;
+
+    doc.setFontSize(16);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Monitor de Señales OLT — Americanet", 14, 16);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generado: ${fechaHoy}   |   Filtro: ${filtroLabel}   |   Total: ${lista.length} clientes`, 14, 24);
+
+    // Resumen
+    doc.setFontSize(11);
+    doc.setTextColor(220, 38, 38);  doc.text(`Críticos: ${stats.critico}`, 14, 32);
+    doc.setTextColor(217, 119, 6);  doc.text(`Alertas: ${stats.alerta}`, 60, 32);
+    doc.setTextColor(22, 163, 74);  doc.text(`Normales: ${stats.normal}`, 106, 32);
+    doc.setTextColor(100);          doc.text(`Sin datos: ${stats.sin_datos}`, 152, 32);
+
+    autoTable(doc, {
+      startY: 38,
+      head: [["Estado", "Cliente", "Nodo", "SN ONU", "RX (dBm)", "TX (dBm)", "Última consulta"]],
+      body: lista.map(c => {
+        const rx = parseFloat(c.rx_signal);
+        const nivel = nivelSenal(isNaN(rx) ? null : rx);
+        return [
+          NIVEL_CONFIG[nivel].label,
+          c.nombre || "—",
+          c.nodo || "—",
+          c.sn_onu || "—",
+          isNaN(rx) ? "—" : rx.toFixed(2),
+          c.tx_signal != null ? String(c.tx_signal) : "—",
+          formatTime(c.signal_updated_at),
+        ];
+      }),
+      headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: "bold", fontSize: 9 },
+      bodyStyles: { fontSize: 9 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      didParseCell(data) {
+        if (data.section === "body" && data.column.index === 0) {
+          const v = data.cell.raw;
+          if (v === "Crítico")  { data.cell.styles.textColor = [220, 38, 38];  data.cell.styles.fontStyle = "bold"; }
+          if (v === "Alerta")   { data.cell.styles.textColor = [217, 119, 6];  data.cell.styles.fontStyle = "bold"; }
+          if (v === "Normal")   { data.cell.styles.textColor = [22, 163, 74];  data.cell.styles.fontStyle = "bold"; }
+        }
+        if (data.section === "body" && data.column.index === 4) {
+          const rx = parseFloat(data.cell.raw);
+          if (!isNaN(rx)) {
+            if (rx < -25) data.cell.styles.textColor = [220, 38, 38];
+            else if (rx < -22) data.cell.styles.textColor = [217, 119, 6];
+            else data.cell.styles.textColor = [22, 163, 74];
+          }
+        }
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    doc.save(`monitor-senales-${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
+  const exportarExcel = () => {
+    const filtroLabel = filtro === "todos" ? "Todos" : NIVEL_CONFIG[filtro]?.label || filtro;
+    const filas = lista.map(c => {
+      const rx = parseFloat(c.rx_signal);
+      const nivel = nivelSenal(isNaN(rx) ? null : rx);
+      return {
+        "Estado":           NIVEL_CONFIG[nivel].label,
+        "Cliente":          c.nombre || "",
+        "Nodo":             c.nodo || "",
+        "SN ONU":           c.sn_onu || "",
+        "RX (dBm)":         isNaN(rx) ? "" : rx,
+        "TX (dBm)":         c.tx_signal != null ? c.tx_signal : "",
+        "Última consulta":  formatTime(c.signal_updated_at),
+      };
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(filas);
+
+    // Ancho de columnas
+    ws["!cols"] = [{ wch: 12 }, { wch: 28 }, { wch: 12 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 18 }];
+
+    // Hoja de resumen
+    const resumen = XLSX.utils.aoa_to_sheet([
+      ["Monitor de Señales OLT — Americanet"],
+      [`Generado: ${new Date().toLocaleString("es-PE")}`],
+      [`Filtro: ${filtroLabel}   |   Total: ${lista.length} clientes`],
+      [],
+      ["Críticos", stats.critico],
+      ["Alertas", stats.alerta],
+      ["Normales", stats.normal],
+      ["Sin datos", stats.sin_datos],
+    ]);
+
+    XLSX.utils.book_append_sheet(wb, resumen, "Resumen");
+    XLSX.utils.book_append_sheet(wb, ws, "Señales");
+    XLSX.writeFile(wb, `monitor-senales-${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
   return (
     <div style={{ padding: "24px 20px", maxWidth: 1200, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
 
@@ -151,9 +253,17 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>Monitor de Señales OLT</h2>
           {ultimaActualizacion && <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>Actualizado: {ultimaActualizacion}</p>}
         </div>
-        <button onClick={cargar} disabled={loading} style={{ padding: "10px 20px", background: "#1e40af", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: loading ? "wait" : "pointer" }}>
-          {loading ? "⏳ Cargando..." : "↺ Actualizar"}
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={cargar} disabled={loading} style={{ padding: "10px 18px", background: "#1e40af", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: loading ? "wait" : "pointer" }}>
+            {loading ? "⏳" : "↺"} Actualizar
+          </button>
+          <button onClick={exportarPDF} disabled={loading || lista.length === 0} style={{ padding: "10px 18px", background: "#dc2626", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: lista.length === 0 ? 0.5 : 1 }}>
+            ⬇ PDF
+          </button>
+          <button onClick={exportarExcel} disabled={loading || lista.length === 0} style={{ padding: "10px 18px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: lista.length === 0 ? 0.5 : 1 }}>
+            ⬇ Excel
+          </button>
+        </div>
       </div>
 
       {/* Tarjetas resumen */}
