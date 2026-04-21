@@ -3825,7 +3825,9 @@ export default function App() {
       const res  = await fetch(`${OLT_SSH_API}/signal?${params}`);
       const json = await res.json().catch(() => ({}));
       if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      const now = new Date().toISOString();
       setCliSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+      await supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, olt_ip: json.oltName, pon: `${json.slot}/${json.port}`, onu_id: json.onuId, signal_updated_at: now }).eq("id", id);
     } catch (e) {
       setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
     } finally {
