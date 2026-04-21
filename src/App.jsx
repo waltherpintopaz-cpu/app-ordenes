@@ -1957,6 +1957,7 @@ export default function App() {
   const [cliSenalData, setCliSenalData] = useState({});     // { [clienteId]: { rx, tx } }
   const [cliSenalLoading, setCliSenalLoading] = useState({});
   const [cliSenalError, setCliSenalError] = useState({});
+  const [nod6Refreshing, setNod6Refreshing] = useState(false);
   const [mikrowisp_loading, setMikrowispLoading] = useState({});  // { [clienteId]: bool }
   const [mikrowisp_ok, setMikrowispOk] = useState({});            // { [clienteId]: bool } — ya agregado esta sesión
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
@@ -2513,6 +2514,12 @@ export default function App() {
     if (vistaActiva !== "historialAppsheet") return;
     if (historialAppsheetEquipos.length > 0) return;
     void cargarHistorialAppsheetEquipos();
+  }, [vistaActiva]);
+
+  useEffect(() => {
+    if (vistaActiva !== "clientes") return;
+    const id = setInterval(() => { void refrescarTodosNod6(); }, 5 * 60 * 1000);
+    return () => clearInterval(id);
   }, [vistaActiva]);
 
   useEffect(() => {
@@ -3801,6 +3808,17 @@ export default function App() {
     } finally {
       setCliSenalLoading(p => ({ ...p, [id]: false }));
     }
+  };
+
+  const refrescarTodosNod6 = async (listaClientes) => {
+    const base = listaClientes || clientesPorNodo || [];
+    const targets = base.filter(c => OLT_SSH_NODOS.includes(String(c.nodo || "")) && c.snOnu);
+    if (!targets.length) return;
+    setNod6Refreshing(true);
+    for (const c of targets) {
+      await consultarSenalOltSshTabla(c);
+    }
+    setNod6Refreshing(false);
   };
 
   const consultarSenalOrdenWeb = async (item) => {
@@ -17470,6 +17488,11 @@ export default function App() {
                       </button>
                     );
                   })}
+                  <button type="button" onClick={() => void refrescarTodosNod6()} disabled={nod6Refreshing}
+                    style={{ padding: "6px 12px", border: "1.5px solid #0369a1", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: nod6Refreshing ? "wait" : "pointer", background: nod6Refreshing ? "#e0f2fe" : "#f0f9ff", color: "#0369a1", display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 13, lineHeight: 1 }}>{nod6Refreshing ? "⏳" : "↺"}</span>
+                    {nod6Refreshing ? "Actualizando..." : "Actualizar Nodo 6"}
+                  </button>
                 </div>
               )}
 
@@ -17514,8 +17537,9 @@ export default function App() {
                             { key: "snOnu", label: "SN ONU", sortCol: "snOnu" },
                             { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
                             { key: "registrado", label: "Registrado", sortCol: "registrado" },
+                            { key: "señal", label: "Señal RX", sortCol: null },
                             { key: "acciones", label: "Acciones", sortCol: null },
-                          ].filter(h => h.key === "acciones" || colsClientesVisibles[h.key]).map((h) => {
+                          ].filter(h => h.key === "acciones" || h.key === "señal" || colsClientesVisibles[h.key]).map((h) => {
                             const isSorted = sortClientes.col === h.sortCol;
                             const arrow = isSorted ? (sortClientes.dir === "asc" ? " ▲" : " ▼") : (h.sortCol ? " ⇅" : "");
                             return (
@@ -17598,6 +17622,39 @@ export default function App() {
                               {colsClientesVisibles.registrado && (
                               <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
+                              {/* ── Señal RX ── */}
+                              {(() => {
+                                const isOltSsh = OLT_SSH_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu;
+                                if (!isOltSsh) return <td style={{ padding: "8px 14px" }}><span style={{ color: "#e2e8f0", fontSize: 11 }}>—</span></td>;
+                                const sd = cliSenalData[cliente.id];
+                                const loading = !!cliSenalLoading[cliente.id];
+                                const hasErr = !!cliSenalError[cliente.id];
+                                const rx = sd ? parseFloat(sd.rx) : null;
+                                const rxOk = rx != null && !isNaN(rx);
+                                const color = rxOk ? (rx >= -22 && rx <= -8 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#94a3b8");
+                                const wifiBars = [
+                                  { x: 0, y: 7, h: 4 }, { x: 3.5, y: 4.5, h: 6.5 }, { x: 7, y: 2, h: 9 }, { x: 10.5, y: 0, h: 11 }
+                                ];
+                                return (
+                                  <td style={{ padding: "8px 14px", textAlign: "center" }}>
+                                    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "pointer", minWidth: 52 }} onClick={() => void consultarSenalOltSshTabla(cliente)} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
+                                      {loading ? (
+                                        <span style={{ fontSize: 16, color: "#94a3b8" }}>⏳</span>
+                                      ) : (
+                                        <svg width="16" height="14" viewBox="0 0 13 11" fill="none">
+                                          {wifiBars.map((b, i) => (
+                                            <rect key={i} x={b.x} y={b.y} width="2.5" height={b.h} rx="1"
+                                              fill={rxOk ? (i < (rx >= -14 ? 4 : rx >= -20 ? 3 : rx >= -24 ? 2 : 1) ? color : "#e2e8f0") : (i === 0 && hasErr ? "#fca5a5" : "#e2e8f0")} />
+                                          ))}
+                                        </svg>
+                                      )}
+                                      <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.3px" }}>
+                                        {loading ? "···" : rxOk ? `${rx}` : hasErr ? "Err" : "—"}
+                                      </span>
+                                    </div>
+                                  </td>
+                                );
+                              })()}
                               <td style={{ padding: "8px 14px" }}>
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
                                   {/* Button group: Ver | +Orden | SN señal */}
@@ -17612,32 +17669,17 @@ export default function App() {
                                       style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: (SMART_OLT_NODOS.includes(String(cliente.nodo || "")) || OLT_SSH_NODOS.includes(String(cliente.nodo || ""))) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: (SMART_OLT_NODOS.includes(String(cliente.nodo || "")) || OLT_SSH_NODOS.includes(String(cliente.nodo || ""))) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       + Orden
                                     </button>
-                                    {/* Señal OLT SSH — solo Nod_06 con serial */}
-                                    {OLT_SSH_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
-                                      const sd = cliSenalData[cliente.id];
-                                      const hasData = !!sd;
-                                      const isLoading = !!cliSenalLoading[cliente.id];
-                                      const hasError = !!cliSenalError[cliente.id];
-                                      const snColor = hasData ? "#0369a1" : hasError ? "#c2410c" : "#0369a1";
-                                      return (
-                                        <button
-                                          onClick={() => void consultarSenalOltSshTabla(cliente)}
-                                          disabled={isLoading}
-                                          title={hasData ? `RX: ${sd.rx} dBm | TX: ${sd.tx} dBm` : `Ver señal OLT · SN: ${cliente.snOnu}${cliente.vlan ? ` · VLAN ${cliente.vlan}` : ""}`}
-                                          style={{ padding: "0 11px", height: 30, background: hasData ? "#f0f9ff" : hasError ? "#fff7ed" : "#f0f9ff", color: snColor, border: "none", borderRadius: "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: isLoading ? "wait" : "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}
-                                        >
-                                          <svg width="13" height="11" viewBox="0 0 13 11" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                                            <rect x="0" y="7" width="2.5" height="4" rx="1" fill={isLoading ? "#cbd5e1" : snColor}/>
-                                            <rect x="3.5" y="4.5" width="2.5" height="6.5" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#94a3b8"}/>
-                                            <rect x="7" y="2" width="2.5" height="9" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#cbd5e1"}/>
-                                            <rect x="10.5" y="0" width="2.5" height="11" rx="1" fill={isLoading ? "#cbd5e1" : hasData ? snColor : "#e2e8f0"}/>
-                                          </svg>
-                                          <span style={{ fontFamily: "monospace", fontSize: 10 }}>
-                                            {isLoading ? "···" : hasData ? `${sd.rx}` : hasError ? "Err" : "OLT"}
-                                          </span>
-                                        </button>
-                                      );
-                                    })()}
+                                    {/* Señal OLT SSH — ↺ actualizar individual */}
+                                    {OLT_SSH_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (
+                                      <button
+                                        onClick={() => void consultarSenalOltSshTabla(cliente)}
+                                        disabled={!!cliSenalLoading[cliente.id]}
+                                        title={`Actualizar señal · SN: ${cliente.snOnu}`}
+                                        style={{ padding: "0 10px", height: 30, background: "#f0f9ff", color: "#0369a1", border: "none", borderRadius: "0 7px 7px 0", fontSize: 14, cursor: cliSenalLoading[cliente.id] ? "wait" : "pointer" }}
+                                      >
+                                        {cliSenalLoading[cliente.id] ? "⏳" : "↺"}
+                                      </button>
+                                    )}
                                     {/* SN — señal ONU, solo nodos SmartOLT con serial */}
                                     {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
                                       const sd = cliSenalData[cliente.id];
