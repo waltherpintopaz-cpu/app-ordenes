@@ -3781,7 +3781,7 @@ export default function App() {
   };
 
   const SMART_OLT_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
-  const OLT_SSH_NODOS   = ["Nod_06"];
+  const OLT_SSH_NODOS   = ["Nod_06", "Nod_04"];
   const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 
   // Consulta señal via SSH API (Nod_06) — desde ficha de cliente
@@ -3808,7 +3808,7 @@ export default function App() {
     }
   };
 
-  // Consulta señal via SSH API (Nod_06) — desde fila de tabla
+  // Consulta señal via SSH API (Nod_06, Nod_04) — desde fila de tabla
   const consultarSenalOltSshTabla = async (cli) => {
     const id = cli?.id;
     if (!id) return;
@@ -17512,7 +17512,7 @@ export default function App() {
                   <button type="button" onClick={() => void refrescarTodosNod6()} disabled={nod6Refreshing}
                     style={{ padding: "6px 12px", border: "1.5px solid #0369a1", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: nod6Refreshing ? "wait" : "pointer", background: nod6Refreshing ? "#e0f2fe" : "#f0f9ff", color: "#0369a1", display: "flex", alignItems: "center", gap: 5 }}>
                     <span style={{ fontSize: 13, lineHeight: 1 }}>{nod6Refreshing ? "⏳" : "↺"}</span>
-                    {nod6Refreshing ? "Actualizando..." : "Actualizar Nodo 6"}
+                    {nod6Refreshing ? "Actualizando..." : "Actualizar Señales"}
                   </button>
                 </div>
               )}
