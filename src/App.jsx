@@ -183,7 +183,7 @@ const MENU_VISTAS_WEB = [
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
   { key: "logs", label: "Logs" },
-  { key: "monitorSenales", label: "Monitor Señales" },
+  { key: "monitorSenales", label: "Monitor Señales", gestoraVisible: true },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -17942,7 +17942,7 @@ export default function App() {
           <MikrowispReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
-        {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} />}
+        {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
           const cli = clienteSeleccionado;

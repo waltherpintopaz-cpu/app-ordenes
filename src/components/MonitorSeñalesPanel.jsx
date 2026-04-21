@@ -74,7 +74,7 @@ function BarraSenal({ rx }) {
 }
 
 // ── Panel principal ───────────────────────────────────────────────────────────
-export default function MonitorSeñalesPanel({ onCrearOrden }) {
+export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [] }) {
   const [clientes, setClientes]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [nodoFiltro, setNodoFiltro]   = useState("todos");
@@ -84,16 +84,23 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
   const [busqueda, setBusqueda]       = useState("");
   const [sortDir, setSortDir]         = useState("asc");
 
+  // Si gestor tiene un solo nodo, pre-seleccionarlo
+  useEffect(() => {
+    if (nodosPermitidos.length === 1) setNodoFiltro(nodosPermitidos[0]);
+  }, [nodosPermitidos]);
+
   const cargar = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase.from("clientes")
+    let q = supabase.from("clientes")
       .select("id, nombre, nodo, dni, celular, email, direccion, empresa, velocidad, precio_plan, usuario_nodo, password_usuario, sn_onu, codigo_etiqueta, ubicacion, caja_nap, puerto_nap, descripcion, vlan, rx_signal, tx_signal, signal_updated_at")
       .not("sn_onu","is",null).neq("sn_onu","")
       .order("rx_signal",{ascending:true,nullsFirst:false}).limit(2000);
+    if (nodosPermitidos.length > 0) q = q.in("nodo", nodosPermitidos);
+    const { data } = await q;
     setClientes(data||[]);
     setUltimaAct(new Date().toLocaleTimeString());
     setLoading(false);
-  }, []);
+  }, [nodosPermitidos]);
 
   useEffect(() => {
     cargar();
