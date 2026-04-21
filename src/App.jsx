@@ -18649,11 +18649,12 @@ export default function App() {
                       </div>
                       {grp("SN ONU", "snOnu")}
                       <div>
-                        <label style={lbl}>VLAN <span style={{ color: "#94a3b8", fontWeight: 400, textTransform: "none" }}>(solo Nod_06)</span></label>
+                        <label style={lbl}>VLAN</label>
                         <select value={f.vlan || ""} onChange={e => set("vlan", e.target.value)} style={inp}>
                           <option value="">— Sin VLAN —</option>
                           <option value="500">500 — Nod_06_A</option>
                           <option value="100">100 — Nod_06_B</option>
+                          <option value="200">200 — Nod_04_A</option>
                         </select>
                       </div>
                       {grp("Estado servicio", "estadoServicio", { select: true, options: ["ACTIVO", "SUSPENDIDO", "INACTIVO", "DESCONOCIDO"] })}
