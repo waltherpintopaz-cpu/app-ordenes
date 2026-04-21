@@ -30,15 +30,22 @@ export default function MikrowispReportesPanel({ cardStyle, sectionTitleStyle })
 
   async function fetchRegistros() {
     setLoading(true); setError(null);
-    const { data, error } = await supabase
-      .from("mikrowisp_clientes")
-      .select("mikrowisp_id,cedula,nombre,nodo,estado,updated_at,agregado_por")
-      .gte("updated_at", fechaDesde + "T00:00:00")
-      .lte("updated_at", fechaHasta + "T23:59:59")
-      .order("updated_at", { ascending: false })
-      .limit(10000);
-    if (error) setError(error.message);
-    else setRegistros(data || []);
+    const PAGE = 1000;
+    let all = [], from = 0, hasMore = true;
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from("mikrowisp_clientes")
+        .select("mikrowisp_id,cedula,nombre,nodo,estado,updated_at,agregado_por")
+        .gte("updated_at", fechaDesde + "T00:00:00")
+        .lte("updated_at", fechaHasta + "T23:59:59")
+        .order("updated_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) { setError(error.message); setLoading(false); return; }
+      all = all.concat(data || []);
+      hasMore = (data || []).length === PAGE;
+      from += PAGE;
+    }
+    setRegistros(all);
     setLoading(false);
   }
 
