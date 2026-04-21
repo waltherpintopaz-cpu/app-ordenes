@@ -17652,15 +17652,20 @@ export default function App() {
                                 const hasErr = !!cliSenalError[cliente.id];
                                 const rx = sd ? parseFloat(sd.rx) : null;
                                 const rxOk = rx != null && !isNaN(rx);
-                                const color = rxOk ? (rx >= -22 && rx <= -8 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#cbd5e1");
+                                const level = rxOk ? (rx >= -18 ? 4 : rx >= -22 ? 3 : rx >= -25 ? 2 : 1) : 0;
+                                const color = rxOk ? (rx >= -22 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#cbd5e1");
+                                const dim = "#e2e8f0";
                                 return (
                                   <td style={{ padding: "6px 14px", textAlign: "center" }}>
                                     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer" }} onClick={() => void consultarSenalOltSshTabla(cliente)} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
                                       {loading ? (
                                         <span style={{ fontSize: 15, color: "#94a3b8", lineHeight: 1 }}>⏳</span>
                                       ) : (
-                                        <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
-                                          <path d="M11 17 L1 1 L21 1 Z" fill={color} />
+                                        <svg width="22" height="19" viewBox="0 0 22 19" fill="none">
+                                          <circle cx="11" cy="17" r="2" fill={level >= 1 ? color : dim}/>
+                                          <path d="M7 13.5 Q11 9.5 15 13.5" stroke={level >= 2 ? color : dim} strokeWidth="2.2" strokeLinecap="round"/>
+                                          <path d="M4 10 Q11 4 18 10" stroke={level >= 3 ? color : dim} strokeWidth="2.2" strokeLinecap="round"/>
+                                          <path d="M1 6.5 Q11 -1.5 21 6.5" stroke={level >= 4 ? color : dim} strokeWidth="2.2" strokeLinecap="round"/>
                                         </svg>
                                       )}
                                       <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.3px" }}>
