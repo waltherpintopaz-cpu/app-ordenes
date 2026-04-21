@@ -17956,7 +17956,7 @@ export default function App() {
                       {clienteSenalError}
                     </div>
                   )}
-                  {cli.rxSignal != null && (
+                  {(cli.rxSignal != null || cli.txSignal != null || cli.oltIp) && (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12 }}>
                       {[
                         { label: "Rx ONU (dBm)", value: cli.rxSignal },
