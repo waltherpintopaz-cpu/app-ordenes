@@ -25,6 +25,7 @@ import TecnicosReportesPanel from "./components/TecnicosReportesPanel";
 import InstalacionesReportesPanel from "./components/InstalacionesReportesPanel";
 import GestorasReportesPanel from "./components/GestorasReportesPanel";
 import DashboardEjecutivoPanel from "./components/DashboardEjecutivoPanel";
+import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -182,6 +183,7 @@ const MENU_VISTAS_WEB = [
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
   { key: "logs", label: "Logs" },
+  { key: "monitorSenales", label: "Monitor Señales" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -17934,6 +17936,8 @@ export default function App() {
         {vistaActiva === "reportes" && reportesSubmenu === "mikrowisp" && esAdminSesion && (
           <MikrowispReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
+
+        {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel />}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
           const cli = clienteSeleccionado;
