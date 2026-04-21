@@ -2188,14 +2188,22 @@ export default function App() {
       .channel("clientes-estado-web")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "clientes" }, (payload) => {
         const nuevo = payload.new;
-        if (!nuevo?.id || !nuevo?.estado_servicio) return;
-        setClientes((prev) =>
-          prev.map((c) =>
-            String(c.id) === String(nuevo.id)
-              ? { ...c, estadoServicio: nuevo.estado_servicio, estado_servicio: nuevo.estado_servicio, mikrotikSuspensionIp: nuevo.mikrotik_suspension_ip ?? c.mikrotikSuspensionIp, mikrotikUltimaAccion: nuevo.mikrotik_ultima_accion ?? c.mikrotikUltimaAccion }
-              : c
-          )
-        );
+        if (!nuevo?.id) return;
+        if (nuevo.estado_servicio) {
+          setClientes((prev) =>
+            prev.map((c) =>
+              String(c.id) === String(nuevo.id)
+                ? { ...c, estadoServicio: nuevo.estado_servicio, estado_servicio: nuevo.estado_servicio, mikrotikSuspensionIp: nuevo.mikrotik_suspension_ip ?? c.mikrotikSuspensionIp, mikrotikUltimaAccion: nuevo.mikrotik_ultima_accion ?? c.mikrotikUltimaAccion }
+                : c
+            )
+          );
+        }
+        if (nuevo.rx_signal != null) {
+          setCliSenalData((prev) => ({
+            ...prev,
+            [nuevo.id]: { rx: String(nuevo.rx_signal), tx: String(nuevo.tx_signal ?? "-") },
+          }));
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
