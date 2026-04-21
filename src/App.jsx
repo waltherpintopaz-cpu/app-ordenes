@@ -17652,21 +17652,15 @@ export default function App() {
                                 const hasErr = !!cliSenalError[cliente.id];
                                 const rx = sd ? parseFloat(sd.rx) : null;
                                 const rxOk = rx != null && !isNaN(rx);
-                                const color = rxOk ? (rx >= -22 && rx <= -8 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#94a3b8");
-                                const wifiBars = [
-                                  { x: 0, y: 7, h: 4 }, { x: 3.5, y: 4.5, h: 6.5 }, { x: 7, y: 2, h: 9 }, { x: 10.5, y: 0, h: 11 }
-                                ];
+                                const color = rxOk ? (rx >= -22 && rx <= -8 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#cbd5e1");
                                 return (
-                                  <td style={{ padding: "8px 14px", textAlign: "center" }}>
-                                    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "pointer", minWidth: 52 }} onClick={() => void consultarSenalOltSshTabla(cliente)} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
+                                  <td style={{ padding: "6px 14px", textAlign: "center" }}>
+                                    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer" }} onClick={() => void consultarSenalOltSshTabla(cliente)} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
                                       {loading ? (
-                                        <span style={{ fontSize: 16, color: "#94a3b8" }}>⏳</span>
+                                        <span style={{ fontSize: 15, color: "#94a3b8", lineHeight: 1 }}>⏳</span>
                                       ) : (
-                                        <svg width="16" height="14" viewBox="0 0 13 11" fill="none">
-                                          {wifiBars.map((b, i) => (
-                                            <rect key={i} x={b.x} y={b.y} width="2.5" height={b.h} rx="1"
-                                              fill={rxOk ? (i < (rx >= -14 ? 4 : rx >= -20 ? 3 : rx >= -24 ? 2 : 1) ? color : "#e2e8f0") : (i === 0 && hasErr ? "#fca5a5" : "#e2e8f0")} />
-                                          ))}
+                                        <svg width="22" height="18" viewBox="0 0 22 18" fill="none">
+                                          <path d="M11 17 L1 1 L21 1 Z" fill={color} />
                                         </svg>
                                       )}
                                       <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color, letterSpacing: "-0.3px" }}>
