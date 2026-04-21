@@ -170,6 +170,7 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
     try{
       const params=new URLSearchParams({sn});
       if(cli.vlan) params.set("vlan",String(cli.vlan));
+      if(cli.nodo) params.set("nodo",String(cli.nodo));
       const json=await fetch(`${OLT_SSH_API}/signal?${params}`).then(r=>r.json()).catch(()=>({}));
       if(json.ok){
         const now=new Date().toISOString();
