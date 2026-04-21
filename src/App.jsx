@@ -1868,6 +1868,7 @@ export default function App() {
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
   const [modalSelCelular, setModalSelCelular] = useState(null); // { cliente, numeros: [] }
+  const [modalSelectorServicio, setModalSelectorServicio] = useState(null); // { servicios: [], dni }
   const [selCelularPrincipal, setSelCelularPrincipal] = useState("");
   const [selCelularContacto, setSelCelularContacto] = useState("");
   const [selManualPrincipal, setSelManualPrincipal] = useState(false);
@@ -3245,7 +3246,7 @@ export default function App() {
       if (isSupabaseConfigured) {
         try {
           const rows = actualizados.map((c) => serializarClienteParaSupabase(c));
-          await supabase.from(CLIENTES_TABLE).upsert(rows, { onConflict: "dni" });
+          await supabase.from(CLIENTES_TABLE).upsert(rows, { onConflict: "id" });
         } catch {
           // noop — estado queda en memoria
         }
@@ -8091,6 +8092,44 @@ export default function App() {
     window.open(url, "_blank");
   };
 
+  const _aplicarClienteInternoAOrden = async (clienteInterno, dni) => {
+    setClienteEnDB(true);
+    setOrden((prev) => ({
+      ...prev,
+      nombre: clienteInterno.nombre || prev.nombre,
+      direccion: clienteInterno.direccion || prev.direccion,
+      celular: clienteInterno.celular || prev.celular,
+      email: clienteInterno.email || prev.email,
+      contacto: clienteInterno.contacto || prev.contacto,
+      nodo: clienteInterno.nodo || prev.nodo,
+      usuarioNodo: clienteInterno.usuario_nodo || prev.usuarioNodo,
+      velocidad: clienteInterno.velocidad || prev.velocidad,
+      precioPlan: clienteInterno.precio_plan || prev.precioPlan,
+      ubicacion: clienteInterno.ubicacion || prev.ubicacion,
+      tecnico: clienteInterno.tecnico || prev.tecnico,
+      fotoFachada: clienteInterno.foto_fachada || prev.fotoFachada,
+      cajaNap: clienteInterno.caja_nap || prev.cajaNap,
+      puertoNap: clienteInterno.puerto_nap || prev.puertoNap,
+      snOnu: clienteInterno.sn_onu || prev.snOnu,
+      codigoEtiqueta: clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
+    }));
+    if (clienteInterno.caja_nap) cajaNapDesdClienteRef.current = true;
+    const numsSel = [];
+    const agregarSel = (n) => { const r = String(n||"").replace(/\D/g,"").trim(); if(!r||r.length<7) return; const f=r.startsWith("51")?r:`51${r}`; if(f.length<=11&&!numsSel.includes(f)) numsSel.push(f); };
+    String(clienteInterno.celular||"").split(",").forEach(agregarSel);
+    if (isSupabaseConfigured) {
+      try { const {data:mkw} = await supabase.from("mikrowisp_clientes").select("telefonos").eq("cedula",dni).maybeSingle(); if(mkw?.telefonos) mkw.telefonos.split(",").forEach(agregarSel); } catch {}
+    }
+    if (numsSel.length > 0) {
+      setSelCelularPrincipal(numsSel[0]); setSelCelularContacto(numsSel[1]||"");
+      setSelManualPrincipal(false); setSelManualContacto(false);
+      setModalSelCelular({ cliente: clienteInterno, numeros: numsSel, updateOnly: true });
+    }
+    const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
+    const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
+    setFotosClienteDni(todasFotos);
+  };
+
   const buscarDni = async () => {
     const dni = orden.dni.trim();
 
@@ -8121,67 +8160,21 @@ export default function App() {
 
       const result = await response.json();
 
-      // Buscar en clientes internos primero
-      let clienteInterno = null;
+      // Buscar TODOS los servicios del DNI en DB interna
+      let todosServiciosDB = [];
       if (isSupabaseConfigured) {
-        const { data: cli } = await supabase
+        const { data: srvs } = await supabase
           .from("clientes")
-          .select("nombre,direccion,celular,email,contacto,nodo,usuario_nodo,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta")
-          .eq("dni", dni)
-          .order("id", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        clienteInterno = cli;
-      }
-
-      if (clienteInterno) {
-        setClienteEnDB(true);
-        // Verificar si hay múltiples servicios para este DNI
-        const { data: todosServicios } = await supabase
-          .from("clientes")
-          .select("codigo_cliente, nodo, velocidad, usuario_nodo")
+          .select("id,codigo_cliente,nombre,direccion,celular,email,contacto,nodo,usuario_nodo,password_usuario,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta")
           .eq("dni", dni)
           .order("id", { ascending: false });
-        if (todosServicios && todosServicios.length > 1) {
-          const resumen = todosServicios.map((s) => `• ${s.codigo_cliente || "Sin código"} — ${s.nodo || "Sin nodo"} ${s.velocidad ? `(${s.velocidad})` : ""}`).join("\n");
-          alert(`⚠️ Este DNI ya tiene ${todosServicios.length} servicio(s) activos:\n${resumen}\n\nSi es un nuevo servicio, se creará un código de abonado nuevo al liquidar.`);
-        }
-        setOrden((prev) => ({
-          ...prev,
-          nombre: clienteInterno.nombre || prev.nombre,
-          direccion: clienteInterno.direccion || prev.direccion,
-          celular: clienteInterno.celular || prev.celular,
-          email: clienteInterno.email || prev.email,
-          contacto: clienteInterno.contacto || prev.contacto,
-          nodo: clienteInterno.nodo || prev.nodo,
-          usuarioNodo: clienteInterno.usuario_nodo || prev.usuarioNodo,
-          velocidad: clienteInterno.velocidad || prev.velocidad,
-          precioPlan: clienteInterno.precio_plan || prev.precioPlan,
-          ubicacion: clienteInterno.ubicacion || prev.ubicacion,
-          tecnico: clienteInterno.tecnico || prev.tecnico,
-          fotoFachada: clienteInterno.foto_fachada || prev.fotoFachada,
-          cajaNap: clienteInterno.caja_nap || prev.cajaNap,
-          puertoNap: clienteInterno.puerto_nap || prev.puertoNap,
-          snOnu: clienteInterno.sn_onu || prev.snOnu,
-          codigoEtiqueta: clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
-        }));
-        if (clienteInterno.caja_nap) cajaNapDesdClienteRef.current = true;
-        // Mostrar selector de número si tiene múltiples celulares
-        const numsSel = [];
-        const agregarSel = (n) => { const r = String(n||"").replace(/\D/g,"").trim(); if(!r||r.length<7) return; const f=r.startsWith("51")?r:`51${r}`; if(f.length<=11&&!numsSel.includes(f)) numsSel.push(f); };
-        String(clienteInterno.celular||"").split(",").forEach(agregarSel);
-        if (isSupabaseConfigured) {
-          try { const {data:mkw} = await supabase.from("mikrowisp_clientes").select("telefonos").eq("cedula",dni).maybeSingle(); if(mkw?.telefonos) mkw.telefonos.split(",").forEach(agregarSel); } catch {}
-        }
-        if (numsSel.length > 0) {
-          setSelCelularPrincipal(numsSel[0]); setSelCelularContacto(numsSel[1]||"");
-          setSelManualPrincipal(false); setSelManualContacto(false);
-          setModalSelCelular({ cliente: clienteInterno, numeros: numsSel, updateOnly: true });
-        }
-        // Cargar todas las fotos del cliente
-        const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
-        const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
-        setFotosClienteDni(todasFotos);
+        todosServiciosDB = srvs || [];
+      }
+
+      if (todosServiciosDB.length > 1) {
+        setModalSelectorServicio({ servicios: todosServiciosDB, dni });
+      } else if (todosServiciosDB.length === 1) {
+        await _aplicarClienteInternoAOrden(todosServiciosDB[0], dni);
       } else if (result.estado && result.resultado) {
         setOrden((prev) => ({
           ...prev,
@@ -9962,10 +9955,15 @@ export default function App() {
     }, 0);
     // Actualiza caja_nap en background si hay datos más frescos en Supabase
     const dniCliente = firstText(cliente.dni);
-    if (dniCliente && isSupabaseConfigured) {
+    const clienteId = cliente.id || cliente.clienteId || null;
+    if (isSupabaseConfigured && (clienteId || dniCliente)) {
       void (async () => {
         try {
-          const { data: fresh } = await supabase.from("clientes").select("caja_nap,puerto_nap").eq("dni", dniCliente).maybeSingle();
+          // Busca por id si está disponible para no mezclar servicios del mismo DNI
+          const query = supabase.from("clientes").select("caja_nap,puerto_nap");
+          const { data: fresh } = clienteId
+            ? await query.eq("id", clienteId).maybeSingle()
+            : await query.eq("dni", dniCliente).order("id", { ascending: false }).limit(1).maybeSingle();
           if (fresh?.caja_nap || fresh?.puerto_nap) {
             setOrden(prev => ({
               ...prev,
@@ -10069,7 +10067,7 @@ export default function App() {
       };
       const row = serializarClienteParaSupabase(updated);
       const { id: _drop, ...rowSinId } = row;
-      const { error } = await supabase.from(CLIENTES_TABLE).update(rowSinId).eq("dni", updated.dni);
+      const { error } = await supabase.from(CLIENTES_TABLE).update(rowSinId).eq("id", updated.id);
       if (error) throw error;
       setClienteSeleccionado(updated);
       setClientes(prev => prev.map(c => (c.id === updated.id || c.dni === updated.dni) ? { ...c, ...updated } : c));
@@ -10118,17 +10116,24 @@ export default function App() {
         window.alert("No se encontraron liquidaciones con caja NAP registrada.");
         return;
       }
-      // 3. Actualizar clientes en Supabase
+      // 3. Actualizar clientes en Supabase — solo registros SIN caja_nap, por id individual
       let actualizados = 0;
       for (const [dni, cajaNap] of cajasPorDni) {
-        const { error } = await supabase
+        // Traer todos los registros de este DNI para operar por id (evita corrupción en multi-servicio)
+        const { data: clientesDni } = await supabase
           .from(CLIENTES_TABLE)
-          .update({ caja_nap: cajaNap, ultima_actualizacion: new Date().toISOString() })
+          .select("id, caja_nap")
           .eq("dni", dni);
-        if (!error) {
-          actualizados++;
-          // Actualizar estado local
-          setClientes(prev => prev.map(c => String(c.dni || "") === dni ? { ...c, cajaNap } : c));
+        const sinCaja = (clientesDni || []).filter(c => !c.caja_nap || !String(c.caja_nap).trim());
+        for (const c of sinCaja) {
+          const { error } = await supabase
+            .from(CLIENTES_TABLE)
+            .update({ caja_nap: cajaNap, ultima_actualizacion: new Date().toISOString() })
+            .eq("id", c.id);
+          if (!error) {
+            actualizados++;
+            setClientes(prev => prev.map(cli => String(cli.id || "") === String(c.id) ? { ...cli, cajaNap } : cli));
+          }
         }
       }
       window.alert(`✅ Sync completado. Se actualizaron ${actualizados} clientes con su caja NAP más reciente.`);
@@ -18455,6 +18460,42 @@ export default function App() {
             </div>
           );
         })()}
+
+        {/* ── Modal selector de servicio (mismo DNI) ── */}
+        {modalSelectorServicio && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.65)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => setModalSelectorServicio(null)}>
+            <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 440, maxHeight: "85vh", overflow: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+              <div style={{ background: "linear-gradient(135deg,#0369a1,#0284c7)", padding: "20px 22px", borderRadius: "20px 20px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ color: "#fff", fontWeight: 800, fontSize: 15 }}>Seleccionar servicio</div>
+                  <div style={{ color: "#bae6fd", fontSize: 12, marginTop: 2 }}>DNI {modalSelectorServicio.dni} — {modalSelectorServicio.servicios.length} servicios encontrados</div>
+                </div>
+                <button onClick={() => setModalSelectorServicio(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: "pointer", fontWeight: 700 }}>×</button>
+              </div>
+              <div style={{ padding: "16px 20px", display: "grid", gap: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Elige el servicio para esta orden</div>
+                {modalSelectorServicio.servicios.map((srv) => (
+                  <button key={srv.id} onClick={async () => { setModalSelectorServicio(null); await _aplicarClienteInternoAOrden(srv, modalSelectorServicio.dni); }}
+                    style={{ textAlign: "left", padding: "14px 16px", background: "#f8fafc", border: "2px solid #e2e8f0", borderRadius: 14, cursor: "pointer", transition: "border-color 0.15s" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "#0369a1"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "#e2e8f0"}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{srv.codigo_cliente || "Sin código"}</div>
+                    <div style={{ fontSize: 12, color: "#475569", marginTop: 3, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {srv.nodo && <span>📡 {srv.nodo}</span>}
+                      {srv.velocidad && <span>⚡ {srv.velocidad}</span>}
+                      {srv.usuario_nodo && <span>👤 {srv.usuario_nodo}</span>}
+                      {srv.caja_nap && <span>📦 Caja {srv.caja_nap}</span>}
+                    </div>
+                  </button>
+                ))}
+                <button onClick={() => setModalSelectorServicio(null)}
+                  style={{ marginTop: 4, padding: "10px", background: "none", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, color: "#64748b", cursor: "pointer" }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Modal liquidación de instalación ── */}
         {modalLiqCliente && (
