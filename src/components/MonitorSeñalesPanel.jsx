@@ -33,7 +33,7 @@ function mapearCliente(row) {
 }
 
 // ── Mini donut SVG ────────────────────────────────────────────────────────────
-function MiniDonut({ critico=0, alerta=0, normal=0, sin_datos=0, size=64 }) {
+function MiniDonut({ critico=0, alerta=0, normal=0, sin_datos=0, size=90 }) {
   const total = critico + alerta + normal + sin_datos || 1;
   const r = 16; const cx = 20; const cy = 20; const circ = 2 * Math.PI * r;
   const segs = [
@@ -277,15 +277,15 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
           {/* Todos */}
           {/* Todos */}
           <button onClick={()=>setNodoFiltro("todos")} style={{
-            display:"flex", flexDirection:"column", alignItems:"center", gap:8, padding:"16px 20px", borderRadius:12, cursor:"pointer", minWidth:110,
+            display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"20px 24px", borderRadius:14, cursor:"pointer", minWidth:150,
             background: nodoFiltro==="todos" ? "#1e293b" : "#fff",
             border: `1px solid ${nodoFiltro==="todos" ? "#1e293b" : "#e5e7eb"}`,
-            boxShadow: nodoFiltro==="todos" ? "0 4px 12px rgba(0,0,0,.15)" : "0 1px 3px rgba(0,0,0,.06)",
+            boxShadow: nodoFiltro==="todos" ? "0 4px 14px rgba(0,0,0,.18)" : "0 1px 3px rgba(0,0,0,.06)",
           }}>
-            <MiniDonut {...statsGlobal} size={64}/>
+            <MiniDonut {...statsGlobal} size={90}/>
             <div style={{ textAlign:"center" }}>
-              <div style={{ fontSize:14, fontWeight:700, color: nodoFiltro==="todos" ? "#fff" : "#111827" }}>Todos</div>
-              <div style={{ fontSize:11, color: nodoFiltro==="todos" ? "#94a3b8" : "#9ca3af" }}>{clientes.length} clientes</div>
+              <div style={{ fontSize:15, fontWeight:700, color: nodoFiltro==="todos" ? "#fff" : "#111827" }}>Todos</div>
+              <div style={{ fontSize:12, color: nodoFiltro==="todos" ? "#94a3b8" : "#9ca3af", marginTop:2 }}>{clientes.length} clientes</div>
             </div>
           </button>
 
@@ -295,16 +295,16 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
             const activo=nodoFiltro===nodo;
             return (
               <button key={nodo} onClick={()=>setNodoFiltro(activo?"todos":nodo)} style={{
-                display:"flex", flexDirection:"column", alignItems:"center", gap:8, padding:"16px 20px", borderRadius:12, cursor:"pointer", minWidth:110,
+                display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"20px 24px", borderRadius:14, cursor:"pointer", minWidth:150,
                 background: activo ? "#1e293b" : "#fff",
                 border:`1px solid ${activo?"#1e293b":"#e5e7eb"}`,
-                boxShadow: activo ? "0 4px 12px rgba(0,0,0,.15)" : "0 1px 3px rgba(0,0,0,.06)",
+                boxShadow: activo ? "0 4px 14px rgba(0,0,0,.18)" : "0 1px 3px rgba(0,0,0,.06)",
               }}>
-                <MiniDonut {...st} size={64}/>
+                <MiniDonut {...st} size={90}/>
                 <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:14, fontWeight:700, color: activo?"#fff":"#111827" }}>{nodo}</div>
-                  <div style={{ fontSize:11, color: activo?"#94a3b8":"#9ca3af" }}>{tot} clientes</div>
-                  {st.critico>0 && <div style={{ fontSize:10, color: activo?"#fca5a5":"#ef4444", fontWeight:600, marginTop:2 }}>{st.critico} críticos</div>}
+                  <div style={{ fontSize:15, fontWeight:700, color: activo?"#fff":"#111827" }}>{nodo}</div>
+                  <div style={{ fontSize:12, color: activo?"#94a3b8":"#9ca3af", marginTop:2 }}>{tot} clientes</div>
+                  {st.critico>0 && <div style={{ fontSize:11, color: activo?"#fca5a5":"#ef4444", fontWeight:600, marginTop:3 }}>{st.critico} críticos</div>}
                 </div>
               </button>
             );
