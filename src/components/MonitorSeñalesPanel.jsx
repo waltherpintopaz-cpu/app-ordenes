@@ -176,7 +176,7 @@ export default function MonitorSeñalesPanel({ onCrearOrden }) {
     setLoading(true);
     const { data } = await supabase
       .from("clientes")
-      .select("id, nombre, nodo, sn_onu, rx_signal, tx_signal, signal_updated_at, vlan")
+      .select("id, nombre, nodo, sn_onu, rx_signal, tx_signal, signal_updated_at, vlan, celular, dni")
       .not("sn_onu", "is", null).neq("sn_onu", "")
       .order("rx_signal", { ascending: true, nullsFirst: false })
       .limit(2000);
