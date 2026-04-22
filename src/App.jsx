@@ -18189,7 +18189,7 @@ export default function App() {
                   {infoRow("Contraseña", cli.passwordUsuario, true, true)}
                   {infoRow("Cód. etiqueta", cli.codigoEtiqueta)}
                   {infoRow("SN ONU", cli.snOnu, true)}
-                  {cli.vlan && infoRow("VLAN", `${cli.vlan} — ${cli.vlan === 500 || cli.vlan === "500" ? "Nod_06_A" : "Nod_06_B"}`)}
+                  {cli.vlan && infoRow("VLAN", `${cli.vlan} — ${cli.vlan == 500 ? "Nod_06_A" : cli.vlan == 100 ? "Nod_06_B" : cli.vlan == 200 ? "Nod_04_A" : cli.vlan}`)}
                 </div>
 
                 {/* NAP */}
