@@ -2533,11 +2533,7 @@ export default function App() {
     void cargarHistorialAppsheetEquipos();
   }, [vistaActiva]);
 
-  useEffect(() => {
-    if (vistaActiva !== "clientes") return;
-    const id = setInterval(() => { void refrescarTodosNod6(); }, 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [vistaActiva]);
+  // Auto-refresh de señales eliminado: el VPS actualiza Supabase automáticamente
 
   useEffect(() => {
     if (vistaActiva !== "historialAppsheet") return;
