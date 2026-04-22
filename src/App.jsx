@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -234,42 +235,45 @@ const DIAGNOSTICO_SERVICIO_PERMISOS_ACCESS_KEYS = DIAGNOSTICO_SERVICIO_PERMISOS_
   (item) => `${DIAGNOSTICO_SERVICIO_PERMISOS_PREFIX}${item.key}`
 );
 
-const MENU_ICON_PATHS = {
-  dashboard: "M3 3H10V10H3V3ZM14 3H21V10H14V3ZM3 14H10V21H3V14ZM14 14H21V21H14V14Z",
-  crear: "M12 5V19M5 12H19",
-  pendientes: "M8 7H16M8 12H16M8 17H13M6 7H6.01M6 12H6.01M6 17H6.01",
-  historial: "M12 8V12L15 14M21 12A9 9 0 1 1 3 12A9 9 0 0 1 21 12Z",
-  recuperaciones: "M4 12L8 8M4 12L8 16M4 12H14M20 6V18M14 6H20M14 18H20",
-  historialAppsheet: "M5 4H19V20H5V4ZM9 9H15M9 13H15M9 17H13",
-  diagnosticoServicio: "M3 12H6L8 17L12 7L15 14L17 12H21",
-  reportes: "M5 19V12M12 19V8M19 19V5",
-  mapa: "M9 4L3 6V20L9 18M9 4L15 6M9 4V18M15 6L21 4V18L15 20M15 6V20",
-  consultaApi: "M8 9L5 12L8 15M16 9L19 12L16 15M13 7L11 17",
-  smartOlt: "M3 9C5.5 6 8.5 4.5 12 4.5C15.5 4.5 18.5 6 21 9M6 12C7.7 10.2 9.7 9.2 12 9.2C14.3 9.2 16.3 10.2 18 12M9.5 15.2C10.2 14.5 11 14.1 12 14.1C13 14.1 13.8 14.5 14.5 15.2M12 19H12.01",
-  seguimientoTecnicos: "M4 20H20M6 16L10 12L13 14L18 8",
-  plantaExterna: "M4 20H20M6 20V10L12 6L18 10V20",
-  inventario: "M3 7H21V19H3V7ZM8 7V19M3 12H21",
-  almacenes: "M12 3L3 8L12 13L21 8L12 3ZM3 16L12 21L21 16",
-  usuarios: "M16 10A4 4 0 1 1 8 10A4 4 0 0 1 16 10ZM4 20C5.6 16.9 8.4 15.3 12 15.3C15.6 15.3 18.4 16.9 20 20",
-  clientes: "M4 6H20V18H4V6ZM8 10H16M8 14H13",
-  whatsapp: "M21 11.5C21 16.747 16.747 21 11.5 21C9.83 21 8.255 20.578 6.888 19.835L3 21L4.165 17.112C3.422 15.745 3 14.17 3 12.5C3 7.253 7.253 3 12.5 3C16.747 3 20.322 5.526 21 11.5ZM9 10H8V14H9V10ZM13 10H12C11.448 10 11 10.448 11 11V13C11 13.552 11.448 14 12 14H13C13.552 14 14 13.552 14 13V11C14 10.448 13.552 10 13 10ZM17 10H15V14H16V12.5H17V10Z",
-  metaPlantillas: "M4 4H20V16H4V4ZM8 20H16M12 16V20M8 9H16M8 13H12",
-  mkwEstado: "M9 3H15M12 3V7M3 12H7M17 12H21M12 17V21M5.636 5.636L8.465 8.465M15.535 15.535L18.364 18.364M5.636 18.364L8.465 15.535M15.535 8.465L18.364 5.636",
-  wispro: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
-  nap: "M12 2L4 6V12C4 15.31 7.58 19.2 12 21C16.42 19.2 20 15.31 20 12V6L12 2ZM10 17L6 13L7.41 11.59L10 14.17L16.59 7.58L18 9L10 17Z",
-  cobertura: "M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01",
+const MENU_LUCIDE_ICONS = {
+  dashboard:           LayoutDashboard,
+  crear:               PlusCircle,
+  pendientes:          Clock,
+  historial:           History,
+  recuperaciones:      RefreshCw,
+  historialAppsheet:   FileSpreadsheet,
+  diagnosticoServicio: Stethoscope,
+  reportes:            BarChart2,
+  mapa:                MapIcon,
+  consultaApi:         Search,
+  smartOlt:            Signal,
+  seguimientoTecnicos: Users2,
+  plantaExterna:       MapPin,
+  inventario:          Package,
+  almacenes:           Warehouse,
+  usuarios:            UserCog,
+  clientes:            Contact,
+  whatsapp:            MessageCircle,
+  metaPlantillas:      FileText,
+  mkwEstado:           Activity,
+  wispro:              Bell,
+  nap:                 Radio,
+  cobertura:           Radio,
+  monitorSenales:      Signal,
+  logs:                ScrollText,
+  recordatorios:       Bell,
 };
 
-const HIST_APPSHEET_SUBMENU_ICON_PATHS = {
-  equipos: "M4 7H20V17H4V7ZM7 7V5H17V7",
-  liquidaciones: "M5 4H19V20H5V4ZM9 9H15M9 13H15M9 17H13",
-  materialesLiquidacion: "M3 7H21V17H3V7ZM7 7V5H17V7M8 12H16",
-  articulos: "M5 5H19V19H5V5ZM9 9H15M9 13H15M9 17H13",
-  pdf: "M6 3H14L19 8V21H6V3ZM14 3V8H19",
-  extracto: "M5 4H19V20H5V4ZM9 9H15M9 13H15M9 17H12",
-  movimientos: "M4 18L9 12L13 15L20 8",
-  ordenesBaseData: "M5 4H19V20H5V4ZM8 8H16M8 12H16M8 16H14",
-  conciliacionOnus: "M4 7H20V17H4V7ZM8 11H16M8 15H13M14.5 4.5L16.5 6.5L12 11",
+const HIST_APPSHEET_LUCIDE_ICONS = {
+  equipos:               Cpu,
+  liquidaciones:         FileText,
+  materialesLiquidacion: Package,
+  articulos:             ScrollText,
+  pdf:                   FileText,
+  extracto:              FileText,
+  movimientos:           Activity,
+  ordenesBaseData:       Database,
+  conciliacionOnus:      Cpu,
 };
 
 const REPORTES_SUBMENU_ITEMS = [
@@ -282,15 +286,15 @@ const REPORTES_SUBMENU_ITEMS = [
   { key: "ordenes",        label: "Órdenes",        sideLabel: "Órdenes"        },
   { key: "mikrowisp",      label: "MikroWisp",      sideLabel: "MikroWisp"      },
 ];
-const REPORTES_SUBMENU_ICON_PATHS = {
-  ejecutivo:     "M3 3H10V10H3V3ZM14 3H21V10H14V3ZM3 14H10V21H3V14ZM14 14H21V21H14V14Z",
-  general:       "M5 19V12M12 19V8M19 19V5",
-  tecnicos:      "M4 20H20M6 16L10 12L13 14L18 8",
-  instalaciones: "M3 12H6M18 12H21M12 3V6M12 18V21M6.34 6.34L8.46 8.46M15.54 15.54L17.66 17.66",
-  gestoras:      "M16 10A4 4 0 1 1 8 10A4 4 0 0 1 16 10ZM4 20C5.6 16.9 8.4 15.3 12 15.3C15.6 15.3 18.4 16.9 20 20",
-  chatwoot:      "M8 9H16M8 13H14M6 3H18A2 2 0 0 1 20 5V15A2 2 0 0 1 18 17H7L3 21V5A2 2 0 0 1 5 3Z",
-  ordenes:       "M9 5H7A2 2 0 0 0 5 7V19A2 2 0 0 0 7 21H17A2 2 0 0 0 19 19V7A2 2 0 0 0 17 5H15M9 5A2 2 0 0 1 11 3H13A2 2 0 0 1 15 5",
-  mikrowisp:     "M3 12H6L8 17L12 7L15 14L17 12H21",
+const REPORTES_LUCIDE_ICONS = {
+  ejecutivo:     LayoutDashboard,
+  general:       BarChart2,
+  tecnicos:      Users2,
+  instalaciones: MapPin,
+  gestoras:      UserCog,
+  chatwoot:      MessageCircle,
+  ordenes:       ScrollText,
+  mikrowisp:     Activity,
 };
 
 function escapeRegExp(value = "") {
@@ -12160,26 +12164,28 @@ export default function App() {
 
   const topbarStyle = {
     gridArea: "topbar",
-    background: "#ffffff",
-    borderBottom: "1px solid #eceef5",
+    background: "#1B6EC4",
+    borderBottom: "none",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     gap: "12px",
     padding: "10px 14px",
     position: "sticky",
     top: 0,
     zIndex: 20,
-    boxShadow: "0 8px 20px -22px rgba(43, 45, 80, 0.35)",
   };
 
   const sessionMenuButtonStyle = {
     ...secondaryButton,
-    padding: "10px 14px",
+    padding: "8px 14px",
     display: "inline-flex",
     alignItems: "center",
     gap: "8px",
     fontWeight: 600,
+    background: "rgba(255,255,255,0.15)",
+    color: "#ffffff",
+    border: "none",
   };
 
   const sessionDropdownStyle = {
@@ -12200,7 +12206,7 @@ export default function App() {
     gridArea: "sidebar",
     background: "#ffffff",
     color: "#69728a",
-    borderRight: "1px solid #eceef5",
+    borderRight: "none",
     display: isMobile ? "none" : "flex",
     flexDirection: "column",
     minHeight: "100vh",
@@ -12208,8 +12214,8 @@ export default function App() {
 
   const sidebarHeaderStyle = {
     padding: "14px 16px",
-    borderBottom: "1px solid #eceef5",
-    background: "#ffffff",
+    borderBottom: "1px solid rgba(255,255,255,0.15)",
+    background: "#1B6EC4",
   };
 
   const userCardStyle = {
@@ -12225,54 +12231,66 @@ export default function App() {
     gap: "4px",
   };
 
-  const sideMenuButton = (active, nested = false) => ({
-    width: "100%",
+  const sideMenuButton = (active) => ({
+    width: "calc(100% - 16px)",
+    margin: "1px 8px",
     textAlign: "left",
-    border: active ? "1px solid #ffd9a0" : "1px solid transparent",
-    background: active ? "#fff6e9" : "transparent",
-    color: active ? "#d98908" : "#5c657d",
-    borderRadius: "10px",
-    padding: nested ? "8px 10px 8px 26px" : "10px 12px",
-    fontSize: nested ? "13px" : "15px",
-    fontWeight: active ? 700 : 500,
+    border: "none",
+    background: active ? "#dbeafe" : "transparent",
+    color: active ? "#1B6EC4" : "#374151",
+    borderRadius: "8px",
+    padding: "9px 12px",
+    fontSize: "13.5px",
+    fontWeight: active ? 600 : 500,
     cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    transition: "background 0.15s, color 0.15s",
   });
 
   const sideHistorialAppsheetButtonStyle = (active) => ({
-    width: "100%",
+    width: "calc(100% - 16px)",
+    margin: "1px 8px",
     textAlign: "left",
-    border: active ? "1px solid #ffd9a0" : "1px solid transparent",
-    background: active ? "#fff6e9" : "transparent",
-    color: active ? "#d98908" : "#5c657d",
-    borderRadius: "10px",
-    padding: "10px 12px",
+    border: "none",
+    background: active ? "#dbeafe" : "transparent",
+    color: active ? "#1B6EC4" : "#374151",
+    borderRadius: "8px",
+    padding: "9px 12px",
+    fontSize: "13.5px",
+    fontWeight: active ? 600 : 500,
     cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
     boxShadow: "none",
+    transition: "background 0.15s, color 0.15s",
   });
 
   const sideHistorialAppsheetSubmenuWrapStyle = {
-    margin: "2px 0 4px 14px",
-    padding: "2px 0 0 14px",
-    borderLeft: "1px solid #eceef5",
+    marginLeft: "36px",
     display: "grid",
-    gap: "4px",
+    gap: "1px",
+    padding: "2px 0",
   };
 
   const sideHistorialAppsheetSubmenuButtonStyle = (active) => ({
-    width: "100%",
+    width: "calc(100% - 16px)",
+    margin: "1px 8px",
     textAlign: "left",
-    border: active ? "1px solid #ffd9a0" : "1px solid transparent",
-    background: active ? "#fff6e9" : "transparent",
-    color: active ? "#d98908" : "#7a859e",
-    borderRadius: "10px",
-    padding: "8px 10px",
-    fontSize: "13px",
-    fontWeight: active ? 700 : 600,
+    border: "none",
+    background: active ? "#dbeafe" : "transparent",
+    color: active ? "#1B6EC4" : "#4b5563",
+    borderRadius: "7px",
+    padding: "7px 10px",
+    fontSize: "12.5px",
+    fontWeight: active ? 600 : 500,
     cursor: "pointer",
-    display: "grid",
-    gridTemplateColumns: "10px 1fr",
+    display: "flex",
     alignItems: "center",
     gap: "8px",
+    transition: "background 0.15s, color 0.15s",
   });
 
   const contentWrapStyle = {
@@ -12289,64 +12307,32 @@ export default function App() {
     minHeight: "calc(100vh - 96px)",
   };
 
-  const renderSidebarIcon = (key, active = false, size = 14) => {
-    const path = MENU_ICON_PATHS[key];
-    const color = active ? "#d98908" : "#8b94ac";
+  const renderSidebarIcon = (key, active = false, size = 16) => {
+    const Icon = MENU_LUCIDE_ICONS[key] || LayoutDashboard;
+    const color = active ? "#1B6EC4" : "#6b7280";
     return (
-      <span
-        aria-hidden="true"
-        style={{
-          width: "22px",
-          height: "22px",
-          borderRadius: "7px",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: active ? "1px solid #ffd9a0" : "1px solid #edf0f7",
-          background: active ? "#fff2dc" : "#ffffff",
-          flexShrink: 0,
-        }}
-      >
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d={path || "M12 5V19M5 12H19"} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+      <span aria-hidden="true" style={{ width: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={size} color={color} strokeWidth={1.6} />
       </span>
     );
   };
 
-  const renderHistSubmenuIcon = (key, active = false, size = 12) => {
-    const path = HIST_APPSHEET_SUBMENU_ICON_PATHS[key];
-    const color = active ? "#d98908" : "#9ca7bf";
+  const renderHistSubmenuIcon = (key, active = false, size = 13) => {
+    const Icon = HIST_APPSHEET_LUCIDE_ICONS[key] || FileText;
+    const color = active ? "#1B6EC4" : "#6b7280";
     return (
-      <span
-        aria-hidden="true"
-        style={{
-          width: "18px",
-          height: "18px",
-          borderRadius: "6px",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          border: active ? "1px solid #ffd9a0" : "1px solid #edf0f7",
-          background: active ? "#fff2dc" : "#ffffff",
-          flexShrink: 0,
-        }}
-      >
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d={path || "M5 4H19V20H5V4"} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+      <span aria-hidden="true" style={{ width: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={size} color={color} strokeWidth={1.7} />
       </span>
     );
   };
 
-  const renderReportesSubmenuIcon = (key, active = false, size = 12) => {
-    const path = REPORTES_SUBMENU_ICON_PATHS[key];
-    const color = active ? "#d98908" : "#9ca7bf";
+  const renderReportesSubmenuIcon = (key, active = false, size = 13) => {
+    const Icon = REPORTES_LUCIDE_ICONS[key] || BarChart2;
+    const color = active ? "#1B6EC4" : "#6b7280";
     return (
-      <span aria-hidden="true" style={{ width: "18px", height: "18px", borderRadius: "6px", display: "inline-flex", alignItems: "center", justifyContent: "center", border: active ? "1px solid #ffd9a0" : "1px solid #edf0f7", background: active ? "#fff2dc" : "#ffffff", flexShrink: 0 }}>
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d={path || "M5 19V12M12 19V8M19 19V5"} stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+      <span aria-hidden="true" style={{ width: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={size} color={color} strokeWidth={1.7} />
       </span>
     );
   };
@@ -12375,70 +12361,86 @@ export default function App() {
 
   if (!usuarioSesion) {
     return (
-      <div style={pageStyle}>
-        <div style={{ ...containerStyle, maxWidth: "460px", margin: "40px auto" }}>
-          <div style={cardStyle}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
-              <img
-                src="/americanet-logo-clean.png"
-                alt="Americanet"
-                style={{ width: "220px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
-              />
-            </div>
-            <h1 style={{ ...titleStyle, marginBottom: "8px", fontSize: "30px" }}>Portal de ingreso</h1>
-            <p style={{ ...subtitleStyle, marginBottom: "18px" }}>
-              Ingresa con tu usuario y contrasena para continuar.
-            </p>
+      <div style={{ minHeight: "100vh", display: "flex", fontFamily: '"Inter", "Segoe UI", sans-serif' }}>
 
-            <div style={{ display: "grid", gap: "12px" }}>
+        {/* Panel izquierdo — visual azul */}
+        <div style={{ flex: 1, background: "linear-gradient(145deg, #1249a0 0%, #1B6EC4 45%, #2389e0 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px", position: "relative", overflow: "hidden" }}>
+          {/* Círculos decorativos */}
+          <div style={{ position: "absolute", top: "-80px", left: "-80px", width: "340px", height: "340px", borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
+          <div style={{ position: "absolute", bottom: "-60px", right: "-60px", width: "280px", height: "280px", borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+          <div style={{ position: "absolute", top: "40%", left: "60%", width: "180px", height: "180px", borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
+
+          <div style={{ position: "relative", zIndex: 1, textAlign: "center", maxWidth: "380px" }}>
+            <img
+              src="/americanet-logo-clean.png"
+              alt="Americanet"
+              style={{ width: "220px", maxWidth: "100%", height: "auto", objectFit: "contain", filter: "brightness(0) invert(1)", marginBottom: "40px" }}
+            />
+            <div style={{ fontSize: "38px", fontWeight: 800, color: "#ffffff", lineHeight: 1.15, marginBottom: "16px", letterSpacing: "-0.02em" }}>
+              Bienvenido.
+            </div>
+            <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.72)", lineHeight: 1.6, fontWeight: 400 }}>
+              Sistema de gestión de órdenes de trabajo para el equipo Americanet.
+            </div>
+          </div>
+        </div>
+
+        {/* Panel derecho — formulario */}
+        <div style={{ width: "420px", flexShrink: 0, background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 40px" }}>
+          <div style={{ width: "100%" }}>
+            <div style={{ marginBottom: "36px" }}>
+              <div style={{ fontSize: "24px", fontWeight: 700, color: "#1a2332", marginBottom: "6px" }}>Iniciar sesión</div>
+              <div style={{ fontSize: "14px", color: "#6b7280" }}>Ingresa tus credenciales para continuar</div>
+            </div>
+
+            <div style={{ display: "grid", gap: "18px" }}>
               <div>
-                <label style={labelStyle}>Usuario</label>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "7px" }}>Usuario</label>
                 <input
-                  style={inputStyle}
+                  style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid #e5e7eb", borderRadius: "8px", padding: "12px 14px", fontSize: "14px", color: "#1a2332", outline: "none", background: "#fafafa" }}
                   value={credencialesLogin.username}
                   onChange={(e) => setCredencialesLogin((prev) => ({ ...prev, username: e.target.value }))}
-                  placeholder="usuario"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") iniciarSesion();
-                  }}
+                  placeholder="nombre de usuario"
+                  autoComplete="username"
+                  onKeyDown={(e) => { if (e.key === "Enter") iniciarSesion(); }}
                 />
               </div>
-
               <div>
-                <label style={labelStyle}>Contrasena</label>
+                <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "7px" }}>Contraseña</label>
                 <input
                   type="password"
-                  style={inputStyle}
+                  style={{ width: "100%", boxSizing: "border-box", border: "1.5px solid #e5e7eb", borderRadius: "8px", padding: "12px 14px", fontSize: "14px", color: "#1a2332", outline: "none", background: "#fafafa" }}
                   value={credencialesLogin.password}
                   onChange={(e) => setCredencialesLogin((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder="******"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") iniciarSesion();
-                  }}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  onKeyDown={(e) => { if (e.key === "Enter") iniciarSesion(); }}
                 />
               </div>
             </div>
 
             {errorLogin ? (
-              <div style={{ marginTop: "12px", color: "#b91c1c", fontSize: "13px", fontWeight: 600 }}>
+              <div style={{ marginTop: "14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", color: "#b91c1c", fontSize: "13px", fontWeight: 500 }}>
                 {errorLogin}
               </div>
             ) : null}
 
             {usuariosActivos.length === 0 ? (
-              <div style={{ marginTop: "12px", color: "#b91c1c", fontSize: "13px", fontWeight: 600 }}>
-                No hay usuarios activos para ingresar.
+              <div style={{ marginTop: "14px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "10px 14px", color: "#b91c1c", fontSize: "13px", fontWeight: 500 }}>
+                No hay usuarios activos disponibles.
               </div>
             ) : null}
 
-            <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end" }}>
-              <button
-                onClick={iniciarSesion}
-                style={primaryButton}
-                disabled={!credencialesLogin.username || !credencialesLogin.password || usuariosActivos.length === 0}
-              >
-                Ingresar
-              </button>
+            <button
+              onClick={iniciarSesion}
+              disabled={!credencialesLogin.username || !credencialesLogin.password || usuariosActivos.length === 0}
+              style={{ marginTop: "26px", width: "100%", background: !credencialesLogin.username || !credencialesLogin.password || usuariosActivos.length === 0 ? "#93c5fd" : "#1B6EC4", color: "#ffffff", border: "none", borderRadius: "8px", padding: "13px", fontSize: "15px", fontWeight: 600, cursor: !credencialesLogin.username || !credencialesLogin.password || usuariosActivos.length === 0 ? "not-allowed" : "pointer", transition: "background 0.15s", letterSpacing: "0.01em" }}
+            >
+              Ingresar
+            </button>
+
+            <div style={{ marginTop: "28px", textAlign: "center", fontSize: "12px", color: "#9ca3af" }}>
+              © {new Date().getFullYear()} Americanet · Sistema de Órdenes
             </div>
           </div>
         </div>
@@ -12454,16 +12456,19 @@ export default function App() {
             <img
               src="/americanet-logo-clean.png"
               alt="Americanet"
-              style={{ width: "180px", maxWidth: "100%", height: "auto", objectFit: "contain" }}
+              style={{ width: "180px", maxWidth: "100%", height: "auto", objectFit: "contain", filter: "brightness(0) invert(1)" }}
             />
           </div>
         </div>
         <div style={userCardStyle}>
-          <div style={{ display: "grid", gap: "6px" }}>
-            <div style={{ color: "#1d2e4f", fontWeight: 700, fontSize: "18px", letterSpacing: "-0.01em", lineHeight: 1.1 }}>
-              {usuarioSesion?.nombre || "Sin sesion"}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "#1B6EC4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "15px", flexShrink: 0 }}>
+              {(usuarioSesion?.nombre || "?")[0].toUpperCase()}
             </div>
-            <div style={{ color: "#7c88a4", fontSize: "13px", fontWeight: 600 }}>{rolSesion}</div>
+            <div>
+              <div style={{ color: "#1d2e4f", fontWeight: 600, fontSize: "13.5px", lineHeight: 1.2 }}>{usuarioSesion?.nombre || "Sin sesion"}</div>
+              <div style={{ color: "#7c88a4", fontSize: "12px", fontWeight: 500 }}>{rolSesion}</div>
+            </div>
           </div>
         </div>
         <div style={{ padding: "8px 12px", color: "#9ba4bb", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -12485,7 +12490,7 @@ export default function App() {
                       <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                         {renderSidebarIcon(item.key, isHistorialAppsheetActive)}
                         <span style={{ display: "grid", gap: "2px", minWidth: 0 }}>
-                          <span style={{ fontSize: "15px", fontWeight: isHistorialAppsheetActive ? 700 : 500 }}>{item.label}</span>
+                          <span style={{ fontSize: "13.5px", fontWeight: isHistorialAppsheetActive ? 600 : 500 }}>{item.label}</span>
                           {isHistorialAppsheetActive && historialAppsheetSubmenuActual ? (
                             <span style={{ fontSize: "11px", color: "#98a3b9", letterSpacing: "0.02em" }}>
                               {historialAppsheetSubmenuActual.sideLabel || historialAppsheetSubmenuActual.label}
@@ -12506,21 +12511,19 @@ export default function App() {
                       </span>
                     </span>
                   </button>
-                  {isHistorialAppsheetActive ? (
-                    <div style={sideHistorialAppsheetSubmenuWrapStyle}>
-                      {historialAppsheetSubmenuItemsPermitidos.map((submenu) => (
-                        <button
-                          key={`sub-hist-${submenu.key}`}
-                          type="button"
-                          style={sideHistorialAppsheetSubmenuButtonStyle(historialAppsheetSubmenu === submenu.key)}
-                          onClick={() => setHistorialAppsheetSubmenu(submenu.key)}
-                        >
-                          {renderHistSubmenuIcon(submenu.key, historialAppsheetSubmenu === submenu.key)}
-                          <span>{submenu.sideLabel || submenu.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  <div style={{ ...sideHistorialAppsheetSubmenuWrapStyle, maxHeight: isHistorialAppsheetActive ? "400px" : "0", overflow: "hidden", transition: "max-height 0.28s ease" }}>
+                    {historialAppsheetSubmenuItemsPermitidos.map((submenu) => (
+                      <button
+                        key={`sub-hist-${submenu.key}`}
+                        type="button"
+                        style={sideHistorialAppsheetSubmenuButtonStyle(historialAppsheetSubmenu === submenu.key)}
+                        onClick={() => setHistorialAppsheetSubmenu(submenu.key)}
+                      >
+                        {renderHistSubmenuIcon(submenu.key, historialAppsheetSubmenu === submenu.key)}
+                        <span>{submenu.sideLabel || submenu.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               );
             }
@@ -12539,7 +12542,7 @@ export default function App() {
                       <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
                         {renderSidebarIcon(item.key, isReportesActive)}
                         <span style={{ display: "grid", gap: "2px", minWidth: 0 }}>
-                          <span style={{ fontSize: "15px", fontWeight: isReportesActive ? 700 : 500 }}>{item.label}</span>
+                          <span style={{ fontSize: "13.5px", fontWeight: isReportesActive ? 600 : 500 }}>{item.label}</span>
                           {isReportesActive && reportesSubmenuActual ? (
                             <span style={{ fontSize: "11px", color: "#98a3b9", letterSpacing: "0.02em" }}>
                               {reportesSubmenuActual.sideLabel || reportesSubmenuActual.label}
@@ -12550,21 +12553,19 @@ export default function App() {
                       <span style={{ fontSize: "12px", lineHeight: 1, color: isReportesActive ? "#d98908" : "#a4afc5", transform: isReportesActive ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 140ms ease" }}>{">"}</span>
                     </span>
                   </button>
-                  {isReportesActive ? (
-                    <div style={sideHistorialAppsheetSubmenuWrapStyle}>
-                      {reportesSubmenuItemsPermitidos.map((submenu) => (
-                        <button
-                          key={`sub-rep-${submenu.key}`}
-                          type="button"
-                          style={sideHistorialAppsheetSubmenuButtonStyle(reportesSubmenu === submenu.key)}
-                          onClick={() => setReportesSubmenu(submenu.key)}
-                        >
-                          {renderReportesSubmenuIcon(submenu.key, reportesSubmenu === submenu.key)}
-                          <span>{submenu.sideLabel || submenu.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  <div style={{ ...sideHistorialAppsheetSubmenuWrapStyle, maxHeight: isReportesActive ? "400px" : "0", overflow: "hidden", transition: "max-height 0.28s ease" }}>
+                    {reportesSubmenuItemsPermitidos.map((submenu) => (
+                      <button
+                        key={`sub-rep-${submenu.key}`}
+                        type="button"
+                        style={sideHistorialAppsheetSubmenuButtonStyle(reportesSubmenu === submenu.key)}
+                        onClick={() => setReportesSubmenu(submenu.key)}
+                      >
+                        {renderReportesSubmenuIcon(submenu.key, reportesSubmenu === submenu.key)}
+                        <span>{submenu.sideLabel || submenu.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               );
             }
@@ -12584,14 +12585,11 @@ export default function App() {
       </aside>
 
       <header style={topbarStyle}>
-        <div style={{ fontSize: "22px", fontWeight: 700, color: "#2a3140", letterSpacing: "-0.01em" }}>
-          {vistaActiva === "historialAppsheet" ? "Historial AppSheet" : vistaActiva === "reportes" ? `Reportes — ${reportesSubmenuActual?.label || ""}` : "Gestión de Órdenes"}
-        </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{ position: "relative" }} ref={sessionMenuRef}>
             <button type="button" onClick={() => setMostrarMenuSesion((prev) => !prev)} style={sessionMenuButtonStyle}>
-              <span style={{ color: "#1d2e4f", fontWeight: 700 }}>{usuarioSesion?.nombre || "Sesión"}</span>
-              <span style={{ color: "#7c88a4", fontSize: "12px" }}>{mostrarMenuSesion ? "▲" : "▼"}</span>
+              <span style={{ color: "#ffffff", fontWeight: 600 }}>{usuarioSesion?.nombre || "Sesión"}</span>
+              <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "12px" }}>{mostrarMenuSesion ? "▲" : "▼"}</span>
             </button>
             {mostrarMenuSesion ? (
               <div style={sessionDropdownStyle}>

@@ -21,7 +21,7 @@
 
 body {
   margin: 0;
-  font-family: "Manrope", "Segoe UI", "Noto Sans", sans-serif;
+  font-family: "Inter", "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.45;
