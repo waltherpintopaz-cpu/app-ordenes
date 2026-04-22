@@ -2730,7 +2730,7 @@ export default function App() {
       }
       if (!q) return true;
       // Búsqueda por palabras sueltas (cualquier orden)
-      const texto = [c.codigoCliente, c.dni, c.nombre, c.celular, c.direccion, c.usuarioNodo, c.nodo, c.empresa, c.estado, c.velocidad, c.codigoEtiqueta].join(" ");
+      const texto = [c.codigoCliente, c.dni, c.nombre, c.celular, c.direccion, c.usuarioNodo, c.nodo, c.empresa, c.estado, c.velocidad, c.codigoEtiqueta, c.snOnu].join(" ");
       return matchWords(texto);
     });
     if (sortClientes.col) {
