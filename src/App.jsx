@@ -3734,6 +3734,19 @@ export default function App() {
     try {
       const sn = String(cli.snOnu || "").trim();
       if (!sn) throw new Error("Cliente sin SN ONU.");
+      const isHuawei = HUAWEI_NODOS.includes(String(cli.nodo || ""));
+      if (isHuawei) {
+        const res = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!json.ok) throw new Error(json.error || "Sin datos de señal Huawei");
+        const rx = json.rxPower ?? "-";
+        const tx = json.txPower ?? "-";
+        const now = new Date().toISOString();
+        setClienteSenal({ rx: String(rx), tx: String(tx), queried_at: now });
+        setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: rx, txSignal: tx, signalUpdatedAt: now } : prev);
+        await supabase.from("clientes").update({ rx_signal: rx, tx_signal: tx, signal_updated_at: now }).eq("id", cli.id);
+        return;
+      }
       if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
       const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
       const res = await fetch(url, {
