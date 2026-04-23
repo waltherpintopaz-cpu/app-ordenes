@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
 const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API     || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
-const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "http://localhost:3003").trim().replace(/\/$/, "");
+const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "https://amnet-huawei-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 const HUAWEI_NODOS    = new Set(["Nod_01", "Nod_02", "Nod_03"]);
 
 function nivelSenal(rx) {
