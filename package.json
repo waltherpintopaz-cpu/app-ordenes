@@ -10,6 +10,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "start": "serve -s dist",
     "audit:integrity": "node scripts/audit-integrity.mjs",
     "migrate:appsheet:csv": "node supabase/migrate_appsheet_csv_to_supabase.mjs"
   },
