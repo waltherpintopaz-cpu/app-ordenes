@@ -4,7 +4,9 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
-const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API     || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "http://localhost:3003").trim().replace(/\/$/, "");
+const HUAWEI_NODOS    = new Set(["Nod_01", "Nod_02", "Nod_03"]);
 
 function nivelSenal(rx) {
   if (rx == null || isNaN(rx)) return "sin_datos";
@@ -168,10 +170,17 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
     const sn=String(cli.sn_onu||"").trim(); if(!sn) return;
     setRefreshing(p=>({...p,[cli.id]:true}));
     try{
-      const params=new URLSearchParams({sn});
-      if(cli.vlan) params.set("vlan",String(cli.vlan));
-      if(cli.nodo) params.set("nodo",String(cli.nodo));
-      const json=await fetch(`${OLT_SSH_API}/signal?${params}`).then(r=>r.json()).catch(()=>({}));
+      let json={};
+      if(HUAWEI_NODOS.has(cli.nodo)){
+        // Huawei MA5800 — señal via huawei-signal.js
+        json=await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`).then(r=>r.json()).catch(()=>({}));
+      } else {
+        // VSOL / resto de nodos
+        const params=new URLSearchParams({sn});
+        if(cli.vlan) params.set("vlan",String(cli.vlan));
+        if(cli.nodo) params.set("nodo",String(cli.nodo));
+        json=await fetch(`${OLT_SSH_API}/signal?${params}`).then(r=>r.json()).catch(()=>({}));
+      }
       if(json.ok){
         const now=new Date().toISOString();
         await supabase.from("clientes").update({rx_signal:json.rxPower,tx_signal:json.txPower,signal_updated_at:now}).eq("id",cli.id);

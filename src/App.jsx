@@ -3792,7 +3792,9 @@ export default function App() {
 
   const SMART_OLT_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
   const OLT_SSH_NODOS   = ["Nod_06", "Nod_04"];
+  const HUAWEI_NODOS    = ["Nod_01", "Nod_02", "Nod_03"];
   const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+  const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "http://localhost:3003").trim().replace(/\/$/, "");
 
   // Consulta señal via SSH API (Nod_06) — desde ficha de cliente
   const consultarSenalOltSsh = async (cli) => {
@@ -3836,6 +3838,28 @@ export default function App() {
       const now = new Date().toISOString();
       setCliSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
       await supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, olt_ip: json.oltName, pon: `${json.slot}/${json.port}`, onu_id: json.onuId, signal_updated_at: now }).eq("id", id);
+    } catch (e) {
+      setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
+    } finally {
+      setCliSenalLoading(p => ({ ...p, [id]: false }));
+    }
+  };
+
+  // Consulta señal Huawei (Nod_01/02/03) — desde fila de tabla
+  const consultarSenalHuaweiTabla = async (cli) => {
+    const id = cli?.id;
+    if (!id) return;
+    const sn = String(cli.snOnu || "").trim();
+    if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
+    setCliSenalLoading(p => ({ ...p, [id]: true }));
+    setCliSenalError(p => ({ ...p, [id]: "" }));
+    try {
+      const res  = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      const now = new Date().toISOString();
+      setCliSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+      await supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, signal_updated_at: now }).eq("id", id);
     } catch (e) {
       setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
     } finally {
@@ -17686,19 +17710,24 @@ export default function App() {
                               )}
                               {/* ── Señal RX ── */}
                               {(() => {
-                                const isOltSsh = OLT_SSH_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu;
-                                if (!isOltSsh) return <td style={{ padding: "8px 14px" }}><span style={{ color: "#e2e8f0", fontSize: 11 }}>—</span></td>;
-                                const sd = cliSenalData[cliente.id];
+                                const isHuawei = HUAWEI_NODOS.includes(String(cliente.nodo || ""));
+                                const isOltSsh = OLT_SSH_NODOS.includes(String(cliente.nodo || ""));
+                                const hasSignal = (isHuawei || isOltSsh) && cliente.snOnu;
+                                if (!hasSignal) return <td style={{ padding: "8px 14px" }}><span style={{ color: "#e2e8f0", fontSize: 11 }}>—</span></td>;
+                                const sd      = cliSenalData[cliente.id];
                                 const loading = !!cliSenalLoading[cliente.id];
-                                const hasErr = !!cliSenalError[cliente.id];
-                                const rx = sd ? parseFloat(sd.rx) : null;
-                                const rxOk = rx != null && !isNaN(rx);
+                                const hasErr  = !!cliSenalError[cliente.id];
+                                // Para Huawei: live si disponible, sino valor de DB
+                                const rxRaw = sd ? parseFloat(sd.rx) : (isHuawei && cliente.rxSignal != null ? cliente.rxSignal : null);
+                                const rx    = rxRaw != null && !isNaN(rxRaw) ? rxRaw : null;
+                                const rxOk  = rx != null;
                                 const level = rxOk ? (rx >= -18 ? 4 : rx >= -22 ? 3 : rx >= -25 ? 2 : 1) : 0;
                                 const color = rxOk ? (rx >= -22 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#cbd5e1");
-                                const dim = "#e2e8f0";
+                                const dim   = "#e2e8f0";
+                                const handleClick = () => isHuawei ? void consultarSenalHuaweiTabla(cliente) : void consultarSenalOltSshTabla(cliente);
                                 return (
                                   <td style={{ padding: "6px 14px", textAlign: "center" }}>
-                                    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer" }} onClick={() => void consultarSenalOltSshTabla(cliente)} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
+                                    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer" }} onClick={handleClick} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
                                       {loading ? (
                                         <span style={{ fontSize: 15, color: "#94a3b8", lineHeight: 1 }}>⏳</span>
                                       ) : (
