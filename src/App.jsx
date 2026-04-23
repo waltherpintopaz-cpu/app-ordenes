@@ -3741,14 +3741,16 @@ export default function App() {
         headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" },
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+      if (!res.ok) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
       const base =
         (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+        (json?.response?.full_status_json && typeof json.response.full_status_json === "object" ? json.response.full_status_json : null) ||
         (Array.isArray(json?.response) ? json.response[0] : null) ||
         (json?.response && typeof json.response === "object" ? json.response : null) ||
         json;
-      const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
-      const tx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
+      const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? base?.rx_power ?? "-";
+      const tx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? base?.olt_rx_power ?? "-";
+      if (rx === "-" && tx === "-" && json?.status !== true) throw new Error(json?.message || `Sin datos de señal (status: ${json?.status})`);
       const now = new Date().toISOString();
       setClienteSenal({ rx: String(rx), tx: String(tx), queried_at: now });
       setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: String(rx), txSignal: String(tx), signalUpdatedAt: now } : prev);
