@@ -185,6 +185,7 @@ const MENU_VISTAS_WEB = [
   { key: "recordatorios", label: "Recordatorios" },
   { key: "logs", label: "Logs" },
   { key: "monitorSenales", label: "Monitor Señales", gestoraVisible: true },
+  { key: "noc", label: "NOC Equipos DIM" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
