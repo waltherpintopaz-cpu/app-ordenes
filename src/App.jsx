@@ -3739,6 +3739,7 @@ export default function App() {
       const res = await fetch(url, {
         method: "GET",
         headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" },
+        cache: "no-store",
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
