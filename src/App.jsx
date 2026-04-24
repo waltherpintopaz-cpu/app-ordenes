@@ -2169,22 +2169,32 @@ export default function App() {
   // Pre-cargar señales almacenadas en clientes para todas las órdenes con snOnu
   useEffect(() => {
     if (!ordenes.length) return;
-    const NODOS_SENAL = new Set([...["Nod_01","Nod_02","Nod_03"], ...["Nod_06","Nod_04"]]);
+    const NODOS_SENAL = new Set(["Nod_01","Nod_02","Nod_03","Nod_06","Nod_04"]);
     const targets = ordenes.filter(o => o.snOnu && NODOS_SENAL.has(String(o.nodo || "")));
     if (!targets.length) return;
-    const sns = [...new Set(targets.map(o => o.snOnu))];
+    // Normalizar a mayúsculas para matching consistente
+    const snsUpper = [...new Set(targets.map(o => String(o.snOnu).toUpperCase()))];
+    const snsLower = snsUpper.map(s => s.toLowerCase());
+    const snsAll   = [...new Set([...snsUpper, ...snsLower])];
     supabase
       .from("clientes")
       .select("sn_onu,rx_signal,tx_signal,signal_updated_at")
-      .in("sn_onu", sns)
+      .in("sn_onu", snsAll)
       .then(({ data }) => {
         if (!data?.length) return;
         const bySnOnu = {};
-        data.forEach(c => { if (c.rx_signal != null) bySnOnu[c.sn_onu] = { rx: String(c.rx_signal), tx: String(c.tx_signal ?? "-"), at: c.signal_updated_at }; });
+        // Indexar por SN uppercase para matching case-insensitive
+        data.forEach(c => {
+          const snUp = String(c.sn_onu || "").toUpperCase();
+          if (snUp && c.rx_signal != null) {
+            bySnOnu[snUp] = { rx: String(c.rx_signal), tx: String(c.tx_signal ?? "-"), at: c.signal_updated_at };
+          }
+        });
         setPendSenalData(prev => {
           const next = { ...prev };
           targets.forEach(o => {
-            if (!next[o.id] && bySnOnu[o.snOnu]) next[o.id] = bySnOnu[o.snOnu];
+            const snUp = String(o.snOnu).toUpperCase();
+            if (!next[o.id] && bySnOnu[snUp]) next[o.id] = bySnOnu[snUp];
           });
           return next;
         });
