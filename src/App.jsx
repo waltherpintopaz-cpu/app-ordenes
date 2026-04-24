@@ -437,6 +437,37 @@ function todayIsoLocal() {
   return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
 }
 
+// Convierte "17:00" → "5:00 PM"  |  "07:30" → "7:30 AM"
+function formatHora12(hora24) {
+  if (!hora24) return "";
+  const [hhStr, mmStr] = String(hora24).split(":");
+  const hh = parseInt(hhStr, 10);
+  const mm = parseInt(mmStr || "0", 10);
+  if (isNaN(hh)) return hora24;
+  const period = hh >= 12 ? "PM" : "AM";
+  const h12 = hh % 12 || 12;
+  return `${h12}:${String(mm).padStart(2, "0")} ${period}`;
+}
+
+// Convierte hora (1-12) + minutos + ampm → "HH:MM" 24h
+// Lógica negocio 7AM-6PM: 1-6 → PM, 7-11 → AM, 12 → PM
+function smartHora24(h, mm, ampm) {
+  let h24 = parseInt(h, 10);
+  if (isNaN(h24) || h24 < 1 || h24 > 12) return "";
+  if (ampm === "PM") h24 = h24 === 12 ? 12 : h24 + 12;
+  else h24 = h24 === 12 ? 0 : h24;
+  return `${String(h24).padStart(2, "0")}:${String(parseInt(mm || "0", 10)).padStart(2, "0")}`;
+}
+
+// Auto-detecta AM/PM según horario de negocio (7AM-6PM)
+function autoAmpm(h) {
+  const n = parseInt(h, 10);
+  if (isNaN(n)) return "AM";
+  if (n >= 1 && n <= 6) return "PM";   // 1-6 → siempre PM (no hay servicio 1-6 AM)
+  if (n === 12) return "PM";            // 12 → mediodía
+  return "AM";                          // 7-11 → AM (no hay servicio 7-11 PM, máximo 6PM)
+}
+
 function formatMikrotikUptime(value = "") {
   const raw = String(value || "").trim();
   if (!raw) return "-";
@@ -13160,7 +13191,57 @@ export default function App() {
 
                   <div>
                     <label style={labelStyle}>Hora</label>
-                    <input type="time" style={inputStyle} value={orden.hora} onChange={(e) => handleChange("hora", e.target.value)} />
+                    {(() => {
+                      const h24 = String(orden.hora || "");
+                      const [hhStr, mmStr] = h24.split(":");
+                      const hh24 = parseInt(hhStr || "0", 10);
+                      const cur12 = hh24 === 0 ? 12 : hh24 > 12 ? hh24 - 12 : hh24;
+                      const curAmpm = hh24 >= 12 ? "PM" : "AM";
+                      const curMm = mmStr || "00";
+                      return (
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <input
+                            type="number" min="1" max="12"
+                            style={{ ...inputStyle, width: 60, textAlign: "center" }}
+                            value={h24 ? cur12 : ""}
+                            placeholder="H"
+                            onChange={(e) => {
+                              const h = e.target.value;
+                              const ampm = autoAmpm(h);
+                              handleChange("hora", smartHora24(h, curMm, ampm));
+                            }}
+                            onBlur={(e) => {
+                              const h = parseInt(e.target.value, 10);
+                              if (!h || h < 1 || h > 12) return;
+                              const ampm = autoAmpm(h);
+                              handleChange("hora", smartHora24(h, curMm, ampm));
+                            }}
+                          />
+                          <span style={{ fontWeight: 700, color: "#475569" }}>:</span>
+                          <input
+                            type="number" min="0" max="59"
+                            style={{ ...inputStyle, width: 60, textAlign: "center" }}
+                            value={h24 ? curMm : ""}
+                            placeholder="MM"
+                            onChange={(e) => {
+                              const mm = String(parseInt(e.target.value || "0", 10)).padStart(2, "0");
+                              handleChange("hora", smartHora24(cur12, mm, curAmpm));
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newAmpm = curAmpm === "AM" ? "PM" : "AM";
+                              handleChange("hora", smartHora24(cur12, curMm, newAmpm));
+                            }}
+                            style={{ padding: "8px 14px", borderRadius: 8, border: `2px solid ${curAmpm === "PM" ? "#f59e0b" : "#3b82f6"}`, background: curAmpm === "PM" ? "#fef3c7" : "#eff6ff", color: curAmpm === "PM" ? "#92400e" : "#1e40af", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                          >
+                            {h24 ? curAmpm : "AM/PM"}
+                          </button>
+                          {h24 && <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{formatHora12(h24)}</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>
@@ -13817,7 +13898,7 @@ export default function App() {
                           {/* HORA — destacada */}
                           {horaTexto ? (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: esPasada ? "#fef2f2" : "#fff7ed", color: esPasada ? "#dc2626" : "#c2410c", border: `1px solid ${esPasada ? "#fca5a5" : "#fed7aa"}` }}>
-                              🕐 {horaTexto}
+                              🕐 {formatHora12(horaTexto)}
                             </span>
                           ) : (
                             <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "#f1f5f9", color: "#94a3b8", border: "1px solid #e2e8f0" }}>Sin hora</span>
