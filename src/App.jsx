@@ -2166,6 +2166,31 @@ export default function App() {
     void cargarOrdenesDesdeSupabase({ silent: true });
   }, []);
 
+  // Pre-cargar señales almacenadas en clientes para todas las órdenes con snOnu
+  useEffect(() => {
+    if (!ordenes.length) return;
+    const NODOS_SENAL = new Set([...["Nod_01","Nod_02","Nod_03"], ...["Nod_06","Nod_04"]]);
+    const targets = ordenes.filter(o => o.snOnu && NODOS_SENAL.has(String(o.nodo || "")));
+    if (!targets.length) return;
+    const sns = [...new Set(targets.map(o => o.snOnu))];
+    supabase
+      .from("clientes")
+      .select("sn_onu,rx_signal,tx_signal,signal_updated_at")
+      .in("sn_onu", sns)
+      .then(({ data }) => {
+        if (!data?.length) return;
+        const bySnOnu = {};
+        data.forEach(c => { if (c.rx_signal != null) bySnOnu[c.sn_onu] = { rx: String(c.rx_signal), tx: String(c.tx_signal ?? "-"), at: c.signal_updated_at }; });
+        setPendSenalData(prev => {
+          const next = { ...prev };
+          targets.forEach(o => {
+            if (!next[o.id] && bySnOnu[o.snOnu]) next[o.id] = bySnOnu[o.snOnu];
+          });
+          return next;
+        });
+      });
+  }, [ordenes]);
+
   useEffect(() => {
     void cargarEquiposCatalogoDesdeSupabase();
   }, []);
@@ -3925,13 +3950,15 @@ export default function App() {
     setPendSenalError(p => ({ ...p, [id]: "" }));
     setPendSenalData(p => ({ ...p, [id]: null }));
     const nodo = String(item?.nodo || "");
+    const now = new Date().toISOString();
     try {
       if (HUAWEI_NODOS.includes(nodo)) {
         // Nod_01 / 02 / 03 → Huawei API
         const res  = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
         if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
-        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-"), at: now } }));
+        supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, signal_updated_at: now }).eq("sn_onu", sn).then(() => {});
       } else if (OLT_SSH_NODOS.includes(nodo)) {
         // Nod_04 / 06 → SSH API
         const params = new URLSearchParams({ sn });
@@ -3939,7 +3966,8 @@ export default function App() {
         const res  = await fetch(`${OLT_SSH_API}/signal?${params}`, { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
         if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
-        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-"), at: now } }));
+        supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, signal_updated_at: now }).eq("sn_onu", sn).then(() => {});
       } else {
         // SmartOLT fallback
         if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
@@ -3953,7 +3981,8 @@ export default function App() {
           (json?.response && typeof json.response === "object" ? json.response : null) || json;
         const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
         const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
-        setPendSenalData(p => ({ ...p, [id]: { rx, tx } }));
+        setPendSenalData(p => ({ ...p, [id]: { rx, tx, at: now } }));
+        supabase.from("clientes").update({ rx_signal: rx, tx_signal: tx, signal_updated_at: now }).eq("sn_onu", sn).then(() => {});
       }
     } catch (e) {
       setPendSenalError(p => ({ ...p, [id]: String(e?.message || "Error al consultar señal.") }));
@@ -13795,22 +13824,27 @@ export default function App() {
                           {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
                           {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
                           {item?.snOnu && (HUAWEI_NODOS.includes(String(item?.nodo || "")) || OLT_SSH_NODOS.includes(String(item?.nodo || "")) || SMART_OLT_NODOS.includes(String(item?.nodo || ""))) && (
-                            <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                              📡 {pendSenalLoading[item.id] ? "..." : pendSenalData[item.id] ? `${pendSenalData[item.id].rx} dBm` : "Señal"}
+                            <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} title="Actualizar señal" style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                              📡 {pendSenalLoading[item.id] ? "..." : "Actualizar"}
                             </button>
                           )}
                           {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
                           {puedeEliminarOrden && !bloqueadoPorNodo && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
                         </div>
-                        {/* Resultado señal SmartOLT */}
+                        {/* Señal siempre visible si hay datos; error si falla actualización */}
                         {(pendSenalData[item.id] || pendSenalError[item.id]) && (
-                          <div style={{ padding: "4px 14px 6px", fontSize: 11 }}>
+                          <div style={{ padding: "4px 14px 6px", fontSize: 11, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                             {pendSenalError[item.id] && <span style={{ color: "#dc2626" }}>⚠ {pendSenalError[item.id]}</span>}
-                            {pendSenalData[item.id] && (
-                              <span style={{ color: "#1d4ed8", fontWeight: 600 }}>
-                                📡 RX ONU: {pendSenalData[item.id].rx} dBm · TX: {pendSenalData[item.id].tx} dBm
-                              </span>
-                            )}
+                            {pendSenalData[item.id] && (() => {
+                              const rx = parseFloat(pendSenalData[item.id].rx);
+                              const color = isNaN(rx) ? "#6b7280" : rx >= -25 ? "#16a34a" : rx >= -28 ? "#d97706" : "#dc2626";
+                              return (
+                                <span style={{ color, fontWeight: 700 }}>
+                                  📡 RX: {pendSenalData[item.id].rx} dBm · TX: {pendSenalData[item.id].tx} dBm
+                                  {pendSenalData[item.id].at && <span style={{ color: "#94a3b8", fontWeight: 400, marginLeft: 6 }}>{new Date(pendSenalData[item.id].at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}</span>}
+                                </span>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
