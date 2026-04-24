@@ -13831,23 +13831,24 @@ export default function App() {
                           {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
                           {puedeEliminarOrden && !bloqueadoPorNodo && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
                         </div>
-                        {/* Señal siempre visible si hay datos; error si falla actualización */}
-                        {(pendSenalData[item.id] || pendSenalError[item.id]) && (
-                          <div style={{ padding: "4px 14px 6px", fontSize: 11, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                            {pendSenalError[item.id] && <span style={{ color: "#dc2626" }}>⚠ {pendSenalError[item.id]}</span>}
-                            {pendSenalData[item.id] && (() => {
-                              const rx = parseFloat(pendSenalData[item.id].rx);
-                              const color = isNaN(rx) ? "#6b7280" : rx >= -25 ? "#16a34a" : rx >= -28 ? "#d97706" : "#dc2626";
-                              return (
-                                <span style={{ color, fontWeight: 700 }}>
-                                  📡 RX: {pendSenalData[item.id].rx} dBm · TX: {pendSenalData[item.id].tx} dBm
-                                  {pendSenalData[item.id].at && <span style={{ color: "#94a3b8", fontWeight: 400, marginLeft: 6 }}>{new Date(pendSenalData[item.id].at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}</span>}
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        )}
                       </div>
+
+                      {/* ── Señal ── */}
+                      {(pendSenalData[item.id] || pendSenalError[item.id]) && (
+                        <div style={{ padding: "5px 14px 6px", fontSize: 11, display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #f1f5f9", background: "#f8faff" }}>
+                          {pendSenalError[item.id] && <span style={{ color: "#dc2626" }}>⚠ {pendSenalError[item.id]}</span>}
+                          {pendSenalData[item.id] && (() => {
+                            const rx = parseFloat(pendSenalData[item.id].rx);
+                            const color = isNaN(rx) ? "#6b7280" : rx >= -25 ? "#16a34a" : rx >= -28 ? "#d97706" : "#dc2626";
+                            return (
+                              <span style={{ color, fontWeight: 700 }}>
+                                📡 RX: {pendSenalData[item.id].rx} dBm · TX: {pendSenalData[item.id].tx} dBm
+                                {pendSenalData[item.id].at && <span style={{ color: "#94a3b8", fontWeight: 400, marginLeft: 6 }}>{new Date(pendSenalData[item.id].at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}</span>}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
 
                       {/* ── Fila inferior: info + contacto ── */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "10px 14px", alignItems: "center" }}>
