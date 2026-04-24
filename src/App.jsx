@@ -13202,7 +13202,7 @@ export default function App() {
                         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                           <input
                             type="number" min="1" max="12"
-                            style={{ ...inputStyle, width: 60, textAlign: "center" }}
+                            style={{ ...inputStyle, width: 75, textAlign: "center" }}
                             value={h24 ? cur12 : ""}
                             placeholder="H"
                             onChange={(e) => {
@@ -13220,7 +13220,7 @@ export default function App() {
                           <span style={{ fontWeight: 700, color: "#475569" }}>:</span>
                           <input
                             type="number" min="0" max="59"
-                            style={{ ...inputStyle, width: 60, textAlign: "center" }}
+                            style={{ ...inputStyle, width: 75, textAlign: "center" }}
                             value={h24 ? curMm : ""}
                             placeholder="MM"
                             onChange={(e) => {
