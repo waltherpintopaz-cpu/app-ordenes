@@ -3921,22 +3921,40 @@ export default function App() {
     if (!id) return;
     const sn = String(item?.snOnu || item?.sn_onu || "").trim();
     if (!sn) { setPendSenalError(p => ({ ...p, [id]: "Sin SN ONU en la orden." })); return; }
-    if (!SMART_OLT_TOKEN) { setPendSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setPendSenalLoading(p => ({ ...p, [id]: true }));
     setPendSenalError(p => ({ ...p, [id]: "" }));
     setPendSenalData(p => ({ ...p, [id]: null }));
+    const nodo = String(item?.nodo || "");
     try {
-      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
-      const res = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
-      const base =
-        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
-        (Array.isArray(json?.response) ? json.response[0] : null) ||
-        (json?.response && typeof json.response === "object" ? json.response : null) || json;
-      const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
-      const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
-      setPendSenalData(p => ({ ...p, [id]: { rx, tx } }));
+      if (HUAWEI_NODOS.includes(nodo)) {
+        // Nod_01 / 02 / 03 → Huawei API
+        const res  = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+      } else if (OLT_SSH_NODOS.includes(nodo)) {
+        // Nod_04 / 06 → SSH API
+        const params = new URLSearchParams({ sn });
+        if (item.vlan) params.set("vlan", String(item.vlan));
+        const res  = await fetch(`${OLT_SSH_API}/signal?${params}`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
+      } else {
+        // SmartOLT fallback
+        if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
+        const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
+        const res  = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+        const base =
+          (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+          (Array.isArray(json?.response) ? json.response[0] : null) ||
+          (json?.response && typeof json.response === "object" ? json.response : null) || json;
+        const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
+        const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
+        setPendSenalData(p => ({ ...p, [id]: { rx, tx } }));
+      }
     } catch (e) {
       setPendSenalError(p => ({ ...p, [id]: String(e?.message || "Error al consultar señal.") }));
     } finally {
@@ -13776,7 +13794,7 @@ export default function App() {
                           <button onClick={async () => { if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; } setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Ver</button>
                           {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
                           {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
-                          {SMART_OLT_NODOS.includes(String(item?.nodo || "")) && item?.snOnu && (
+                          {item?.snOnu && (HUAWEI_NODOS.includes(String(item?.nodo || "")) || OLT_SSH_NODOS.includes(String(item?.nodo || "")) || SMART_OLT_NODOS.includes(String(item?.nodo || ""))) && (
                             <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                               📡 {pendSenalLoading[item.id] ? "..." : pendSenalData[item.id] ? `${pendSenalData[item.id].rx} dBm` : "Señal"}
                             </button>
