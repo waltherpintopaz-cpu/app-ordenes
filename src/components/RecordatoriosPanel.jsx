@@ -160,13 +160,16 @@ export default function RecordatoriosPanel({ sessionUser }) {
       const ahora = new Date().toISOString();
       const payload = { titulo: formNota.titulo.trim(), contenido: formNota.contenido.trim(), color: formNota.color, categoria: formNota.categoria.trim() || null, autor_id: userId, autor_nombre: autorNombre, updated_at: ahora };
       if (editNotaId) {
-        await supabase.from("notas").update(payload).eq("id", editNotaId);
-        setNotas((prev) => prev.map((n) => n.id === editNotaId ? { ...n, ...payload } : n));
+        const { error } = await supabase.from("notas").update(payload).eq("id", editNotaId);
+        if (error) throw new Error(error.message);
       } else {
-        const { data: nd } = await supabase.from("notas").insert({ ...payload, created_at: ahora }).select().maybeSingle();
-        if (nd) setNotas((prev) => [nd, ...prev]);
+        const { error } = await supabase.from("notas").insert({ ...payload, created_at: ahora });
+        if (error) throw new Error(error.message);
       }
       setModalNota(false);
+      await cargarNotas();
+    } catch (e) {
+      alert("Error al guardar nota: " + (e?.message || "desconocido"));
     } finally { setSavingNota(false); }
   };
 

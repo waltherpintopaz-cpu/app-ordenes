@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -27,6 +27,7 @@ import InstalacionesReportesPanel from "./components/InstalacionesReportesPanel"
 import GestorasReportesPanel from "./components/GestorasReportesPanel";
 import DashboardEjecutivoPanel from "./components/DashboardEjecutivoPanel";
 import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
+import IptvPanel from "./components/IptvPanel";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -186,12 +187,13 @@ const MENU_VISTAS_WEB = [
   { key: "logs", label: "Logs" },
   { key: "monitorSenales", label: "Monitor Señales", gestoraVisible: true },
   { key: "noc", label: "NOC Equipos DIM" },
+  { key: "iptv", label: "Panel IPTV" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "whatsapp", "recordatorios"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "whatsapp", "recordatorios", "iptv"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
 };
@@ -263,6 +265,7 @@ const MENU_LUCIDE_ICONS = {
   monitorSenales:      Signal,
   logs:                ScrollText,
   recordatorios:       Bell,
+  iptv:                Tv,
 };
 
 const HIST_APPSHEET_LUCIDE_ICONS = {
@@ -18127,6 +18130,10 @@ export default function App() {
         )}
 
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
+
+        {vistaActiva === "iptv" && (esAdminSesion || esGestorSesion) && (
+          <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} />
+        )}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
           const cli = clienteSeleccionado;
