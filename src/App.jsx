@@ -103,6 +103,7 @@ const NODO_USUARIO_RULES = {
   NOD_02: { prefix: "usuario_", start: 600, suffix: "" },
   NOD_03: { prefix: "", start: 501, suffix: "@americanet", pad: 4 },
   NOD_04: { prefix: "user", start: 467, suffix: "@fiber" },
+  NOD_05: { prefix: "", start: 1, suffix: "@dim", pad: 3 },
   NOD_06: { prefix: "", start: 130, suffix: "@amnet" },
 };
 
@@ -111,13 +112,14 @@ const NODO_PASSWORD_RULES = {
   NOD_02: "speedy2000",
   NOD_03: "aqp0021",
   NOD_04: "uchumayo0021",
+  NOD_05: "selva0021",
   NOD_06: "apipa0021",
 };
 
 const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen"];
 const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
 const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
-const DIM_NODOS_WEB = new Set(["nod_04", "nod_06"]);
+const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06"]);
 const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(nodo || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {
@@ -1964,6 +1966,9 @@ export default function App() {
   const [stockTecnico, setStockTecnico] = useState([]);
   const [cargandoStockTecnico, setCargandoStockTecnico] = useState(false);
   const [recuperacionesSubmenu, setRecuperacionesSubmenu] = useState("ejecuciones");
+  const [verRecuperacionId, setVerRecuperacionId] = useState(null);
+  const [ordenRecuperacionData, setOrdenRecuperacionData] = useState({});
+  const [ordenRecuperacionCargando, setOrdenRecuperacionCargando] = useState({});
   const [ingresandoStockId, setIngresandoStockId] = useState(null);
   const [observacionIngreso, setObservacionIngreso] = useState("");
   const [fotoRecepcion, setFotoRecepcion] = useState("");
@@ -9456,6 +9461,47 @@ export default function App() {
           return;
         }
       }
+      // Insertar también en liquidaciones para que aparezca en el historial
+      const liqIdRecojo = await _upsertLiquidacion({
+        codigo:            payload.orden_codigo,
+        codigo_orden:      payload.orden_codigo,
+        tipo_actuacion:    "RECUPERACION DE EQUIPO",
+        fecha_liquidacion: payload.fecha_ejecucion,
+        tecnico_liquida:   payload.tecnico_ejecuta,
+        tecnico:           payload.tecnico_ejecuta,
+        resultado_final:   payload.resultado,
+        observacion_final: payload.observacion || "",
+        nombre:            payload.nombre_cliente,
+        dni:               payload.dni,
+        direccion:         payload.direccion,
+        nodo:              payload.nodo,
+        estado:            "Liquidada",
+        orden_original_id: payload.orden_id,
+        autor_orden:       payload.creado_por,
+      }, payload.orden_codigo);
+      if (liqIdRecojo) {
+        const fotosRecojo = Array.isArray(payload.fotos) ? payload.fotos : [];
+        if (fotosRecojo.length > 0) {
+          await _insertRows("liquidacion_fotos", fotosRecojo.map((url) => ({
+            liquidacion_id: liqIdRecojo,
+            foto_url: String(url),
+          })));
+        }
+        const equiposRecojo = Array.isArray(payload.equipos_recuperados) ? payload.equipos_recuperados : [];
+        if (equiposRecojo.length > 0) {
+          await _insertRows("liquidacion_equipos", equiposRecojo.map((eq) => ({
+            liquidacion_id:  liqIdRecojo,
+            tipo:            String(eq?.tipo || ""),
+            serial:          String(eq?.serial || ""),
+            marca:           String(eq?.marca || ""),
+            modelo:          String(eq?.modelo || ""),
+            accion:          "Recuperado",
+            codigo:          String(eq?.serial || eq?.tipo || ""),
+            foto_referencia: Array.isArray(eq?.fotos) && eq.fotos.length > 0 ? eq.fotos[0] : "",
+          })));
+        }
+      }
+
       // Solo marcar Liquidada si el stock se guardó correctamente
       if (Number.isFinite(payload.orden_id)) {
         const esCompletada = String(liquidacion.resultadoFinal || "Completada") === "Completada";
@@ -9498,6 +9544,84 @@ export default function App() {
       // silencioso
     } finally {
       setCargandoRecuperaciones(false);
+    }
+  };
+
+  const migrarRecuperacionesAHistorial = async () => {
+    if (!isSupabaseConfigured) return;
+    if (!window.confirm("¿Migrar todas las recuperaciones existentes al historial?\n\nIncluye fotos y equipos. No se duplicarán registros que ya existan.")) return;
+    try {
+      const { data: recs, error: e1 } = await supabase
+        .from("ordenes_recuperacion_ejecucion")
+        .select("*")
+        .order("fecha_ejecucion", { ascending: true });
+      if (e1) throw e1;
+      if (!recs?.length) { alert("No hay recuperaciones para migrar."); return; }
+
+      const codigos = [...new Set(recs.map((r) => r.orden_codigo).filter(Boolean))];
+      const { data: existentes } = await supabase
+        .from("liquidaciones")
+        .select("codigo")
+        .in("codigo", codigos);
+      const yaExisten = new Set((existentes || []).map((e) => e.codigo));
+
+      const nuevas = recs.filter((r) => r.orden_codigo && !yaExisten.has(r.orden_codigo));
+      if (!nuevas.length) { alert("✓ Todas las recuperaciones ya están en el historial."); return; }
+
+      let migrados = 0;
+      let errores = 0;
+      for (const r of nuevas) {
+        try {
+          const liqId = await _upsertLiquidacion({
+            codigo:            r.orden_codigo,
+            codigo_orden:      r.orden_codigo,
+            tipo_actuacion:    "RECUPERACION DE EQUIPO",
+            fecha_liquidacion: r.fecha_ejecucion || new Date().toISOString(),
+            tecnico_liquida:   r.tecnico_ejecuta || "",
+            tecnico:           r.tecnico_ejecuta || "",
+            resultado_final:   r.resultado || "Completada",
+            observacion_final: r.observacion || "",
+            nombre:            r.nombre_cliente || "",
+            dni:               r.dni || "",
+            direccion:         r.direccion || "",
+            nodo:              r.nodo || "",
+            estado:            "Liquidada",
+            orden_original_id: r.orden_id || null,
+            autor_orden:       r.creado_por || "",
+          }, r.orden_codigo);
+
+          const fotos = Array.isArray(r.fotos) ? r.fotos : [];
+          if (fotos.length > 0) {
+            await _insertRows("liquidacion_fotos", fotos.map((url) => ({
+              liquidacion_id: liqId,
+              foto_url: String(url),
+            })));
+          }
+
+          const equipos = Array.isArray(r.equipos_recuperados) ? r.equipos_recuperados : [];
+          if (equipos.length > 0) {
+            await _insertRows("liquidacion_equipos", equipos.map((eq) => ({
+              liquidacion_id:  liqId,
+              tipo:            String(eq?.tipo || ""),
+              serial:          String(eq?.serial || ""),
+              marca:           String(eq?.marca || ""),
+              modelo:          String(eq?.modelo || ""),
+              accion:          "Recuperado",
+              codigo:          String(eq?.serial || eq?.tipo || ""),
+              foto_referencia: Array.isArray(eq?.fotos) && eq.fotos.length > 0 ? eq.fotos[0] : "",
+            })));
+          }
+
+          migrados++;
+        } catch (_) {
+          errores++;
+        }
+      }
+
+      alert(`✓ Migrados ${migrados} de ${nuevas.length} registros al historial${errores > 0 ? ` (${errores} con error)` : ""}.`);
+      void cargarLiquidacionesDesdeSupabase({ silent: true });
+    } catch (err) {
+      alert("Error en la migración: " + (err?.message || err));
     }
   };
 
@@ -20284,47 +20408,83 @@ export default function App() {
         )}
 
         {vistaActiva === "recuperaciones" && (
-          <div style={{ display: "grid", gap: "20px" }}>
-            {/* Submenú */}
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: "24px" }}>
+
+            {/* ── Encabezado de página ── */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                  <div style={{ width: "40px", height: "40px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", flexShrink: 0 }}>🔄</div>
+                  <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#111827", margin: 0 }}>Recuperaciones</h1>
+                </div>
+                <p style={{ color: "#6b7280", fontSize: "13px", margin: "0 0 0 50px" }}>Historial de ejecuciones y custodia técnica de equipos</p>
+              </div>
+              {rolSesion === "Administrador" && (
+                <button
+                  onClick={migrarRecuperacionesAHistorial}
+                  style={{ display: "flex", alignItems: "center", gap: "6px", padding: "9px 16px", borderRadius: "10px", border: "1px solid #c4b5fd", background: "#f5f3ff", color: "#6d28d9", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+                  title="Copiar registros existentes al Historial"
+                >
+                  📤 Migrar al historial
+                </button>
+              )}
+            </div>
+
+            {/* ── Tabs ── */}
+            <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "14px", padding: "5px", gap: "4px" }}>
               {[
-                { key: "ejecuciones", label: "Ejecuciones" },
-                { key: "stock", label: `Custodia Técnica (${stockTecnico.filter((s) => !s.ingresado_almacen).length} pendientes)` },
+                { key: "ejecuciones", label: "Ejecuciones", icon: "📋" },
+                { key: "stock", label: "Custodia Técnica", icon: "📦", badge: stockTecnico.filter((s) => !s.ingresado_almacen).length },
               ].map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setRecuperacionesSubmenu(tab.key)}
                   style={{
-                    padding: "8px 18px",
-                    borderRadius: "999px",
-                    border: "1px solid",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    background: recuperacionesSubmenu === tab.key ? "#1e40af" : "#f8fafc",
-                    color: recuperacionesSubmenu === tab.key ? "#fff" : "#374151",
-                    borderColor: recuperacionesSubmenu === tab.key ? "#1e40af" : "#e5e7eb",
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
+                    padding: "10px 18px", borderRadius: "10px", border: "none", cursor: "pointer",
+                    fontSize: "13px", fontWeight: 700, transition: "all 0.15s",
+                    background: recuperacionesSubmenu === tab.key ? "#fff" : "transparent",
+                    color: recuperacionesSubmenu === tab.key ? "#1e40af" : "#64748b",
+                    boxShadow: recuperacionesSubmenu === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none",
                   }}
                 >
-                  {tab.label}
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  {tab.badge > 0 && (
+                    <span style={{ background: "#f59e0b", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px", fontWeight: 800, lineHeight: "18px" }}>{tab.badge}</span>
+                  )}
                 </button>
               ))}
             </div>
 
-            {/* EJECUCIONES */}
+            {/* ── EJECUCIONES ── */}
             {recuperacionesSubmenu === "ejecuciones" && (
-              <div style={cardStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
-                  <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Historial de recuperaciones</h2>
-                  <button style={secondaryButton} onClick={cargarHistorialRecuperaciones} disabled={cargandoRecuperaciones}>
-                    {cargandoRecuperaciones ? "Cargando..." : "Actualizar"}
+              <div style={{ display: "grid", gap: "16px" }}>
+                {/* Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+                  <div>
+                    <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#111827", margin: "0 0 2px" }}>Historial de ejecuciones</h2>
+                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>{historialRecuperaciones.length} registro{historialRecuperaciones.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <button
+                    style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                    onClick={cargarHistorialRecuperaciones}
+                    disabled={cargandoRecuperaciones}
+                  >
+                    {cargandoRecuperaciones ? <><span style={{ fontSize: "12px" }}>⏳</span> Cargando…</> : <><span>↻</span> Actualizar</>}
                   </button>
                 </div>
+
                 {cargandoRecuperaciones ? (
-                  <div style={{ color: "#6b7280", padding: "16px" }}>Cargando...</div>
+                  <div style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", padding: "48px", textAlign: "center", color: "#9ca3af" }}>
+                    <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
+                    <div style={{ fontWeight: 600 }}>Cargando registros…</div>
+                  </div>
                 ) : historialRecuperaciones.length === 0 ? (
-                  <div style={{ border: "1px dashed #cbd5e1", borderRadius: "14px", padding: "24px", color: "#6b7280", background: "#f8fafc", textAlign: "center" }}>
-                    No hay recuperaciones registradas aún.
+                  <div style={{ background: "#fff", borderRadius: "16px", border: "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
+                    <div style={{ fontSize: "32px", marginBottom: "8px" }}>📋</div>
+                    <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Sin registros aún</div>
+                    <div style={{ fontSize: "13px", color: "#9ca3af" }}>Las ejecuciones de recuperación aparecerán aquí.</div>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
@@ -20334,60 +20494,195 @@ export default function App() {
                       const fecha = rec.fecha_ejecucion ? new Date(rec.fecha_ejecucion).toLocaleString("es-PE") : "";
                       const resultadoColor = rec.resultado === "Completada" ? "#166534" : rec.resultado === "Reprogramada" ? "#92400e" : "#991b1b";
                       const resultadoBg = rec.resultado === "Completada" ? "#dcfce7" : rec.resultado === "Reprogramada" ? "#fef3c7" : "#fee2e2";
+                      const resultadoIcon = rec.resultado === "Completada" ? "✓" : rec.resultado === "Reprogramada" ? "↻" : "✗";
+                      const accentColor = rec.resultado === "Completada" ? "#22c55e" : rec.resultado === "Reprogramada" ? "#f59e0b" : "#ef4444";
+                      const recId = rec.id || idx;
+                      const expandido = verRecuperacionId === recId;
                       return (
-                        <div key={rec.id || idx} style={{ border: "1px solid #e5e7eb", borderRadius: "14px", padding: "16px", background: "#fff" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
-                            <div>
-                              <div style={{ fontWeight: 700, fontSize: "15px" }}>{rec.nombre_cliente || "-"}</div>
-                              <div style={{ fontSize: "13px", color: "#6b7280" }}>{rec.direccion} {rec.nodo ? `· ${rec.nodo}` : ""}</div>
-                              <div style={{ fontSize: "12px", color: "#94a3b8" }}>{rec.orden_codigo} · {fecha}</div>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-                              <span style={{ background: resultadoBg, color: resultadoColor, borderRadius: "999px", padding: "3px 10px", fontSize: "12px", fontWeight: 700 }}>{rec.resultado}</span>
-                              <span style={{ fontSize: "12px", color: "#64748b" }}>{rec.tecnico_ejecuta}</span>
-                            </div>
-                          </div>
-                          {equipos.length > 0 && (
-                            <div style={{ marginBottom: "10px" }}>
-                              <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>Equipos recuperados ({equipos.length})</div>
-                              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                {equipos.map((eq, ei) => (
-                                  <div key={ei} style={{ background: "#f1f5f9", borderRadius: "8px", padding: "6px 10px", fontSize: "12px", display: "flex", flexDirection: "column", gap: "2px" }}>
-                                    <span style={{ fontWeight: 700 }}>{eq.tipo}</span>
-                                    <span style={{ color: eq.estado === "Bueno" ? "#166534" : eq.estado === "Dañado" ? "#991b1b" : "#92400e", fontWeight: 600 }}>{eq.estado}</span>
-                                    {eq.serial && <span style={{ fontSize: "11px", color: "#0369a1", fontFamily: "monospace" }}>S/N: {eq.serial}</span>}
-                                    {eq.fotos && eq.fotos.length > 0 && (
-                                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginTop: "4px" }}>
-                                        {eq.fotos.map((f, fi) => (
-                                          <img key={fi} src={f} alt="equipo" style={{ width: "70px", height: "55px", objectFit: "cover", borderRadius: "6px", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${eq.tipo} foto ${fi + 1}`)} />
-                                        ))}
-                                      </div>
-                                    )}
+                        <div key={recId} style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
+                          <div style={{ height: "4px", background: accentColor }} />
+                          <div style={{ padding: "16px 18px" }}>
+
+                            {/* Fila superior — siempre visible */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 800, fontSize: "15px", color: "#111827", marginBottom: "3px" }}>{rec.nombre_cliente || "—"}</div>
+                                {rec.direccion && (
+                                  <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                                    {rec.direccion}
+                                    {rec.nodo && <span style={{ marginLeft: "6px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{rec.nodo}</span>}
                                   </div>
-                                ))}
+                                )}
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
+                                  {rec.orden_codigo && (
+                                    <span
+                                      title="Ver orden en historial"
+                                      onClick={() => { setBusquedaHistorial(rec.orden_codigo); setVistaActiva("historial"); }}
+                                      style={{ fontSize: "11px", fontFamily: "monospace", background: "#eff6ff", color: "#1d4ed8", borderRadius: "6px", padding: "1px 7px", fontWeight: 700, cursor: "pointer", textDecoration: "underline dotted" }}
+                                    >
+                                      {rec.orden_codigo}
+                                    </span>
+                                  )}
+                                  {fecha && <span style={{ fontSize: "11px", color: "#9ca3af" }}>🕐 {fecha}</span>}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px", flexShrink: 0 }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: resultadoBg, color: resultadoColor, borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>
+                                  {resultadoIcon} {rec.resultado}
+                                </span>
+                                {rec.tecnico_ejecuta && <span style={{ fontSize: "12px", color: "#6b7280" }}>👤 {rec.tecnico_ejecuta}</span>}
+                                {/* Botón Ver / Ocultar */}
+                                <button
+                                  onClick={() => setVerRecuperacionId(expandido ? null : recId)}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: "5px",
+                                    padding: "6px 14px", borderRadius: "8px", fontSize: "12px", fontWeight: 700,
+                                    cursor: "pointer", border: "1px solid",
+                                    background: expandido ? "#1e40af" : "#fff",
+                                    color: expandido ? "#fff" : "#1e40af",
+                                    borderColor: "#1e40af",
+                                  }}
+                                >
+                                  {expandido ? "▲ Ocultar" : "▼ Ver"}
+                                </button>
                               </div>
                             </div>
-                          )}
-                          {rec.observacion && <div style={{ fontSize: "13px", color: "#374151", marginBottom: "8px" }}><strong>Obs:</strong> {rec.observacion}</div>}
-                          {fotos.length > 0 && (
-                            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
-                              {fotos.map((f, fi) => (
-                                <img key={fi} src={f} alt={`foto-${fi}`} style={{ width: "90px", height: "70px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `Foto ${fi + 1}`)} />
-                              ))}
-                            </div>
-                          )}
-                          <button
-                            style={dangerButton}
-                            onClick={async () => {
-                              if (!window.confirm("¿Eliminar esta ejecución de recuperación?")) return;
-                              if (isSupabaseConfigured && rec.id) {
-                                await supabase.from("ordenes_recuperacion_ejecucion").delete().eq("id", rec.id);
-                              }
-                              setHistorialRecuperaciones((prev) => prev.filter((r) => r.id !== rec.id));
-                            }}
-                          >
-                            Eliminar
-                          </button>
+
+                            {/* Detalle expandible */}
+                            {expandido && (
+                              <div style={{ marginTop: "16px", display: "grid", gap: "12px" }}>
+                                <div style={{ height: "1px", background: "#f1f5f9" }} />
+
+                                {/* Equipos recuperados */}
+                                {equipos.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Equipos recuperados ({equipos.length})</div>
+                                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                                      {equipos.map((eq, ei) => (
+                                        <div key={ei} style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "8px 12px", fontSize: "12px", minWidth: "100px" }}>
+                                          <div style={{ fontWeight: 700, color: "#111827", marginBottom: "2px" }}>{eq.tipo}</div>
+                                          <div style={{ fontSize: "11px", fontWeight: 600, color: eq.estado === "Bueno" ? "#16a34a" : eq.estado === "Dañado" ? "#dc2626" : "#d97706" }}>{eq.estado}</div>
+                                          {eq.serial && <div style={{ fontSize: "10px", color: "#0369a1", fontFamily: "monospace", marginTop: "2px" }}>S/N: {eq.serial}</div>}
+                                          {eq.fotos && eq.fotos.length > 0 && (
+                                            <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
+                                              {eq.fotos.map((f, fi) => (
+                                                <img key={fi} src={f} alt="equipo" style={{ width: "52px", height: "42px", objectFit: "cover", borderRadius: "6px", cursor: "pointer", border: "1px solid #e5e7eb" }} onClick={() => abrirFotoZoom(f, `${eq.tipo} foto ${fi + 1}`)} />
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Observación */}
+                                {rec.observacion && (
+                                  <div style={{ display: "flex", gap: "8px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "8px 12px", fontSize: "12px", color: "#78350f" }}>
+                                    <span>📝</span><span>{rec.observacion}</span>
+                                  </div>
+                                )}
+
+                                {/* Fotos */}
+                                {fotos.length > 0 && (
+                                  <div>
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Fotos ({fotos.length})</div>
+                                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                                      {fotos.map((f, fi) => (
+                                        <img key={fi} src={f} alt={`foto-${fi}`} style={{ width: "80px", height: "64px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `Foto ${fi + 1}`)} />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Detalle de la orden */}
+                                {rec.orden_codigo && (
+                                  <div>
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Detalle de la orden</div>
+                                    {!ordenRecuperacionData[rec.orden_codigo] ? (
+                                      <button
+                                        disabled={ordenRecuperacionCargando[rec.orden_codigo]}
+                                        onClick={async () => {
+                                          setOrdenRecuperacionCargando((p) => ({ ...p, [rec.orden_codigo]: true }));
+                                          const { data } = await supabase.from(ORDENES_TABLE).select("*").eq("codigo", rec.orden_codigo).maybeSingle();
+                                          setOrdenRecuperacionData((p) => ({ ...p, [rec.orden_codigo]: data || null }));
+                                          setOrdenRecuperacionCargando((p) => ({ ...p, [rec.orden_codigo]: false }));
+                                        }}
+                                        style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 16px", borderRadius: "9px", border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}
+                                      >
+                                        {ordenRecuperacionCargando[rec.orden_codigo] ? "⏳ Cargando…" : "🔍 Ver detalle de la orden"}
+                                      </button>
+                                    ) : ordenRecuperacionData[rec.orden_codigo] === null ? (
+                                      <div style={{ fontSize: "12px", color: "#9ca3af", background: "#f8fafc", borderRadius: "10px", padding: "10px 14px" }}>No se encontró la orden <strong>{rec.orden_codigo}</strong> en el sistema.</div>
+                                    ) : (() => {
+                                      const o = deserializeOrderFromSupabase(ordenRecuperacionData[rec.orden_codigo]);
+                                      const estadoColor = o.estado === "Completada" ? "#166534" : o.estado === "Pendiente" ? "#92400e" : o.estado === "Cancelada" ? "#991b1b" : "#1d4ed8";
+                                      const estadoBg   = o.estado === "Completada" ? "#dcfce7" : o.estado === "Pendiente" ? "#fef3c7" : o.estado === "Cancelada" ? "#fee2e2" : "#dbeafe";
+                                      return (
+                                        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px 16px", display: "grid", gap: "10px" }}>
+                                          {/* Cabecera orden */}
+                                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                              <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: "13px", color: "#1d4ed8" }}>{o.codigo}</span>
+                                              {o.orden && <span style={{ fontSize: "11px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 7px", fontWeight: 600 }}>{o.orden}</span>}
+                                              {o.tipoActuacion && <span style={{ fontSize: "11px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 7px", fontWeight: 600 }}>{o.tipoActuacion}</span>}
+                                            </div>
+                                            <span style={{ fontSize: "11px", fontWeight: 700, background: estadoBg, color: estadoColor, borderRadius: "999px", padding: "3px 10px" }}>{o.estado}</span>
+                                          </div>
+                                          {/* Grid de datos */}
+                                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "6px 20px", fontSize: "12px" }}>
+                                            {o.nombre      && <div><span style={{ color: "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: "#111827" }}>{o.nombre}</span></div>}
+                                            {o.dni         && <div><span style={{ color: "#9ca3af" }}>DNI: </span><span style={{ fontWeight: 600 }}>{o.dni}</span></div>}
+                                            {o.celular     && <div><span style={{ color: "#9ca3af" }}>Celular: </span><span style={{ fontWeight: 600 }}>{o.celular}</span></div>}
+                                            {o.direccion   && <div><span style={{ color: "#9ca3af" }}>Dirección: </span><span style={{ fontWeight: 600 }}>{o.direccion}</span></div>}
+                                            {o.nodo        && <div><span style={{ color: "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600 }}>{o.nodo}</span></div>}
+                                            {o.tecnico     && <div><span style={{ color: "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600 }}>{o.tecnico}</span></div>}
+                                            {o.fechaActuacion && <div><span style={{ color: "#9ca3af" }}>Fecha programada: </span><span style={{ fontWeight: 600 }}>{o.fechaActuacion}{o.hora ? ` ${o.hora}` : ""}</span></div>}
+                                            {o.prioridad   && <div><span style={{ color: "#9ca3af" }}>Prioridad: </span><span style={{ fontWeight: 600 }}>{o.prioridad}</span></div>}
+                                            {o.velocidad   && <div><span style={{ color: "#9ca3af" }}>Plan: </span><span style={{ fontWeight: 600 }}>{o.velocidad}</span></div>}
+                                            {o.autorOrden  && <div><span style={{ color: "#9ca3af" }}>Creado por: </span><span style={{ fontWeight: 600 }}>{o.autorOrden}</span></div>}
+                                            {o.fechaCreacion && <div><span style={{ color: "#9ca3af" }}>Fecha creación: </span><span style={{ fontWeight: 600 }}>{o.fechaCreacion}</span></div>}
+                                          </div>
+                                          {o.descripcion && (
+                                            <div style={{ display: "flex", gap: "8px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", color: "#374151" }}>
+                                              <span>📋</span><span>{o.descripcion}</span>
+                                            </div>
+                                          )}
+                                          {o.motivoCancelacion && (
+                                            <div style={{ display: "flex", gap: "8px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", color: "#991b1b" }}>
+                                              <span>⚠️</span><span><strong>Motivo cancelación:</strong> {o.motivoCancelacion}</span>
+                                            </div>
+                                          )}
+                                          <button
+                                            onClick={() => setOrdenRecuperacionData((p) => ({ ...p, [rec.orden_codigo]: undefined }))}
+                                            style={{ alignSelf: "flex-start", padding: "4px 12px", borderRadius: "7px", border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                                          >
+                                            Ocultar
+                                          </button>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
+
+                                {/* Botón eliminar */}
+                                <div>
+                                  <button
+                                    style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid #fca5a5", background: "#fff", color: "#dc2626", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                                    onClick={async () => {
+                                      if (!window.confirm("¿Eliminar esta ejecución de recuperación?")) return;
+                                      if (isSupabaseConfigured && rec.id) {
+                                        await supabase.from("ordenes_recuperacion_ejecucion").delete().eq("id", rec.id);
+                                      }
+                                      setHistorialRecuperaciones((prev) => prev.filter((r) => r.id !== rec.id));
+                                    }}
+                                  >
+                                    🗑 Eliminar
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -20396,27 +20691,33 @@ export default function App() {
               </div>
             )}
 
-            {/* STOCK TÉCNICO */}
+            {/* ── STOCK TÉCNICO ── */}
             {recuperacionesSubmenu === "stock" && (
               <div style={{ display: "grid", gap: "20px" }}>
+
                 {/* Stats header */}
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: "10px", flex: 1, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "12px", padding: "10px 16px", minWidth: "110px" }}>
-                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#d97706" }}>{stockTecnico.filter((s) => !s.ingresado_almacen).length}</span>
-                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#92400e", lineHeight: 1.2 }}>Pendientes<br/>de ingreso</span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px" }}>
+                  {[
+                    { n: stockTecnico.filter((s) => !s.ingresado_almacen).length, label: "Pendientes de ingreso", icon: "⏳", bg: "#fffbeb", border: "#fde68a", numColor: "#d97706", labelColor: "#92400e" },
+                    { n: stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega).length, label: "Con solicitud de entrega", icon: "📤", bg: "#eff6ff", border: "#bfdbfe", numColor: "#1e40af", labelColor: "#1e3a5f" },
+                    { n: stockTecnico.filter((s) => s.ingresado_almacen).length, label: "Ingresados a almacén", icon: "✅", bg: "#f0fdf4", border: "#86efac", numColor: "#16a34a", labelColor: "#166534" },
+                  ].map((st, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "14px", background: st.bg, border: `1.5px solid ${st.border}`, borderRadius: "14px", padding: "14px 18px" }}>
+                      <span style={{ fontSize: "28px", lineHeight: 1 }}>{st.icon}</span>
+                      <div>
+                        <div style={{ fontSize: "26px", fontWeight: 900, color: st.numColor, lineHeight: 1 }}>{st.n}</div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: st.labelColor, lineHeight: 1.3, marginTop: "3px" }}>{st.label}</div>
+                      </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: "12px", padding: "10px 16px", minWidth: "110px" }}>
-                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#16a34a" }}>{stockTecnico.filter((s) => s.ingresado_almacen).length}</span>
-                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#166534", lineHeight: 1.2 }}>Ingresados<br/>a almacén</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: "12px", padding: "10px 16px", minWidth: "110px" }}>
-                      <span style={{ fontSize: "22px", fontWeight: 800, color: "#1e40af" }}>{stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega).length}</span>
-                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#1e3a5f", lineHeight: 1.2 }}>Con solicitud<br/>de entrega</span>
-                    </div>
-                  </div>
-                  <button style={secondaryButton} onClick={cargarStockTecnico} disabled={cargandoStockTecnico}>
-                    {cargandoStockTecnico ? "Cargando..." : "↻ Actualizar"}
+                  ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                    onClick={cargarStockTecnico}
+                    disabled={cargandoStockTecnico}
+                  >
+                    {cargandoStockTecnico ? <><span>⏳</span> Cargando…</> : <><span>↻</span> Actualizar</>}
                   </button>
                 </div>
 
