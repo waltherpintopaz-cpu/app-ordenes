@@ -2208,7 +2208,7 @@ export default function App() {
   // Pre-cargar señales almacenadas en clientes para todas las órdenes con snOnu
   useEffect(() => {
     if (!ordenes.length) return;
-    const NODOS_SENAL = new Set(["Nod_01","Nod_02","Nod_03","Nod_06","Nod_04"]);
+    const NODOS_SENAL = new Set(["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"]);
     const targets = ordenes.filter(o => o.snOnu && NODOS_SENAL.has(String(o.nodo || "")));
     if (!targets.length) return;
     // Normalizar a mayúsculas para matching consistente
@@ -14115,7 +14115,7 @@ export default function App() {
             { key: "instalacion",  label: "Instalación",  color: "#16A34A", bg: "#F0FDF4" },
             { key: "recuperacion", label: "Recuperación", color: "#9333EA", bg: "#FDF4FF" },
           ];
-          const nodosDisp = ["TODOS", ...NODOS_BASE_WEB.filter((n) => n !== "Nod_05")];
+          const nodosDisp = ["TODOS", ...NODOS_BASE_WEB];
           const tipoInfo = (tipo = "") => {
             const t = String(tipo).toLowerCase();
             if (t.includes("incidencia"))   return { color: "#EA580C", bg: "#FFF7ED", border: "#FED7AA" };
@@ -16624,7 +16624,7 @@ export default function App() {
                         value={diagnosticoServicioManualNodo}
                         onChange={(e) => setDiagnosticoServicioManualNodo(e.target.value)}
                       >
-                        {NODOS_BASE_WEB.filter((nodo) => nodo !== "Nod_05").map((nodo) => (
+                        {NODOS_BASE_WEB.map((nodo) => (
                           <option key={nodo} value={nodo}>
                             {nodo}
                           </option>
@@ -16720,7 +16720,7 @@ export default function App() {
                     value={diagnosticoSuspensionManualNodo}
                     onChange={(e) => setDiagnosticoSuspensionManualNodo(e.target.value)}
                   >
-                    {NODOS_BASE_WEB.filter((nodo) => nodo !== "Nod_05").map((nodo) => (
+                    {NODOS_BASE_WEB.map((nodo) => (
                       <option key={`susp-manual-${nodo}`} value={nodo}>
                         {nodo}
                       </option>
