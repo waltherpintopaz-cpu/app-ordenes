@@ -10965,7 +10965,9 @@ export default function App() {
   }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden]);
 
   const nodosReporte = useMemo(() => {
-    return Array.from(new Set(liquidaciones.map((x) => String(x.nodo || "").trim()).filter(Boolean))).sort();
+    const fromData = new Set(liquidaciones.map((x) => String(x.nodo || "").trim()).filter(Boolean));
+    const all = new Set([...NODOS_BASE_WEB, ...fromData]);
+    return Array.from(all).sort();
   }, [liquidaciones]);
 
   const tecnicosReporte = useMemo(() => {
