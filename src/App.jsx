@@ -2953,7 +2953,7 @@ export default function App() {
   const MIKROWISP_NODOS = ["Nod_01", "Nod_03", "Nod_04"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
   const MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
-  const MIKROWISP_NOD04_URL = "http://dimfiber.com/api/v1/GetClientsDetails";
+  const MIKROWISP_NOD04_URL = "https://app.dimfiber.com/api/v1/GetClientsDetails";
   const DIAGNO_BASE = (import.meta.env.DEV ? "" : "https://amnet-diagno.0lthka.easypanel.host");
 
   // mkFetch para Nod_01/Nod_03 (americanet) — proxy diagno
