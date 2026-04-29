@@ -1,13 +1,21 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Tv, Server, Users, Package, Plus, Edit2, Trash2, RefreshCw, Eye, EyeOff, CheckCircle, XCircle, Clock, Copy, MessageCircle, Search, CalendarPlus } from "lucide-react";
+import { Tv, Server, Users, Package, Plus, Edit2, Trash2, RefreshCw, Eye, EyeOff, CheckCircle, XCircle, Clock, Copy, MessageCircle, Search, CalendarPlus, UserCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 const TABS = [
   { key: "dashboard", label: "Dashboard", icon: Tv },
   { key: "clientes", label: "Clientes", icon: Users },
+  { key: "perfiles", label: "Perfiles", icon: UserCircle },
   { key: "servidores", label: "Servidores", icon: Server },
   { key: "paquetes", label: "Paquetes", icon: Package },
 ];
+
+const AVATAR_COLORS = [
+  "#00D679","#E53935","#1E88E5","#FB8C00","#8E24AA",
+  "#00ACC1","#43A047","#F4511E","#6D4C41","#546E7A",
+];
+
+const EMPTY_PROFILE = { client_id: "", nombre: "", avatar_color: "#00D679" };
 
 const EMPTY_CLIENT = { nombre: "", username: "", password: "", server_id: "", package_id: "", fecha_expiracion: "", activo: true, notas: "", cliente_ref: "" };
 const EMPTY_SERVER = { nombre: "", url: "", xtream_user: "", xtream_pass: "", notas: "" };
@@ -95,6 +103,12 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   const [showPass, setShowPass] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Perfiles
+  const [perfiles, setPerfiles] = useState([]);
+  const [filtroClientePerfil, setFiltroClientePerfil] = useState("");
+  const [modalPerfil, setModalPerfil] = useState(null);
+  const [formPerfil, setFormPerfil] = useState(EMPTY_PROFILE);
+
   // Toast
   const [toast, setToast] = useState("");
   const toastRef = useRef(null);
@@ -107,14 +121,16 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   const cargar = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [{ data: cli }, { data: srv }, { data: pkg }] = await Promise.all([
+      const [{ data: cli }, { data: srv }, { data: pkg }, { data: prfs }] = await Promise.all([
         supabase.from("iptv_clients").select("*").order("created_at", { ascending: false }),
         supabase.from("iptv_servers").select("*").order("nombre"),
         supabase.from("iptv_packages").select("*").order("nombre"),
+        supabase.from("profiles").select("*").order("created_at", { ascending: true }),
       ]);
       setClientes(cli || []);
       setServidores(srv || []);
       setPaquetes(pkg || []);
+      setPerfiles(prfs || []);
     } catch (e) { setError("Error cargando datos: " + e.message); }
     setLoading(false);
   }, []);
@@ -198,6 +214,44 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
     showToast(c.activo ? "Cliente suspendido" : "✅ Cliente activado");
     cargar();
   };
+
+  // ── PERFILES ──
+  const abrirNuevoPerfil = (clientId = "") => {
+    setFormPerfil({ ...EMPTY_PROFILE, client_id: clientId });
+    setModalPerfil("nuevo");
+  };
+
+  const guardarPerfil = async () => {
+    if (!formPerfil.client_id || !formPerfil.nombre.trim()) {
+      alert("Selecciona un cliente e ingresa un nombre."); return;
+    }
+    const clientePerfiles = perfiles.filter(p => p.client_id === formPerfil.client_id);
+    if (clientePerfiles.length >= 5) {
+      alert("Este cliente ya tiene 5 perfiles (límite máximo)."); return;
+    }
+    setSaving(true);
+    await supabase.from("profiles").insert([{
+      client_id: formPerfil.client_id,
+      nombre: formPerfil.nombre.trim(),
+      avatar_color: formPerfil.avatar_color,
+      favoritos: [],
+    }]);
+    setSaving(false);
+    setModalPerfil(null);
+    showToast("✅ Perfil creado");
+    cargar();
+  };
+
+  const eliminarPerfil = async (id, nombre) => {
+    if (!confirm(`¿Eliminar el perfil "${nombre}"?`)) return;
+    await supabase.from("profiles").delete().eq("id", id);
+    showToast("Perfil eliminado");
+    cargar();
+  };
+
+  const perfilesFiltrados = filtroClientePerfil
+    ? perfiles.filter(p => p.client_id === filtroClientePerfil)
+    : perfiles;
 
   // ── SERVIDORES ──
   const abrirNuevoServidor = () => { setFormServidor(EMPTY_SERVER); setModalServidor("nuevo"); };
@@ -424,6 +478,119 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
         </div>
       )}
 
+      {/* ── PERFILES ── */}
+      {!loading && tab === "perfiles" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+            {/* Filtro por cliente */}
+            <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+              <select
+                style={{ ...inputSt, background: "#fff" }}
+                value={filtroClientePerfil}
+                onChange={e => setFiltroClientePerfil(e.target.value)}
+              >
+                <option value="">Todos los clientes ({perfiles.length} perfiles)</option>
+                {clientes.map(c => {
+                  const cnt = perfiles.filter(p => p.client_id === c.id).length;
+                  return <option key={c.id} value={c.id}>{c.nombre} — {cnt}/5</option>;
+                })}
+              </select>
+            </div>
+            <button onClick={() => abrirNuevoPerfil(filtroClientePerfil)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+              <Plus size={14} /> Nuevo perfil
+            </button>
+          </div>
+
+          {perfilesFiltrados.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "48px 24px", color: "#9ca3af" }}>
+              <UserCircle size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
+              <div style={{ fontSize: 14 }}>
+                {filtroClientePerfil ? "Este cliente no tiene perfiles aún." : "No hay perfiles creados."}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+              {perfilesFiltrados.map(p => {
+                const cliente = clientes.find(c => c.id === p.client_id);
+                const favCnt = Array.isArray(p.favoritos) ? p.favoritos.length : 0;
+                return (
+                  <div key={p.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 14 }}>
+                    {/* Avatar */}
+                    <div style={{ width: 52, height: 52, borderRadius: 10, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#000", flexShrink: 0 }}>
+                      {p.nombre[0].toUpperCase()}
+                    </div>
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{p.nombre}</div>
+                      <div style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {cliente?.nombre || "—"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>
+                        ❤ {favCnt} favoritos · {new Date(p.created_at).toLocaleDateString("es-PE")}
+                      </div>
+                    </div>
+                    {/* Actions */}
+                    <button onClick={() => eliminarPerfil(p.id, p.nombre)} style={btnDanger} title="Eliminar">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Resumen por cliente */}
+          {!filtroClientePerfil && clientes.length > 0 && (
+            <div style={{ marginTop: 28 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#6b7280", marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Perfiles por cliente</h3>
+              <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc" }}>
+                      {["Cliente", "Usuario", "Perfiles", ""].map(h => (
+                        <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientes.filter(c => c.activo).map(c => {
+                      const cPerfiles = perfiles.filter(p => p.client_id === c.id);
+                      return (
+                        <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "10px 14px", fontWeight: 600 }}>{c.nombre}</td>
+                          <td style={{ padding: "10px 14px", color: "#6b7280", fontFamily: "monospace", fontSize: 12 }}>{c.username}</td>
+                          <td style={{ padding: "10px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              {/* Avatars */}
+                              <div style={{ display: "flex", gap: 4 }}>
+                                {cPerfiles.map(p => (
+                                  <div key={p.id} title={p.nombre} style={{ width: 26, height: 26, borderRadius: 6, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#000" }}>
+                                    {p.nombre[0].toUpperCase()}
+                                  </div>
+                                ))}
+                                {cPerfiles.length === 0 && <span style={{ color: "#9ca3af", fontSize: 12 }}>Sin perfiles</span>}
+                              </div>
+                              <span style={{ fontSize: 11, color: "#9ca3af" }}>{cPerfiles.length}/5</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: "10px 14px" }}>
+                            {cPerfiles.length < 5 && (
+                              <button onClick={() => abrirNuevoPerfil(c.id)} style={{ ...btnEdit, display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                                <Plus size={12} /> Agregar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── SERVIDORES ── */}
       {!loading && tab === "servidores" && (
         <div>
@@ -590,6 +757,53 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
             <button onClick={() => setModalServidor(null)} style={btnSecondary}>Cancelar</button>
             <button onClick={guardarServidor} style={btnPrimary} disabled={saving}>{saving ? "Guardando..." : "Guardar"}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ══ MODAL PERFIL ══ */}
+      {modalPerfil !== null && (
+        <Modal title="Nuevo perfil" onClose={() => setModalPerfil(null)}>
+          <div style={fieldSt}>
+            <label style={labelSt}>Cliente *</label>
+            <select style={inputSt} value={formPerfil.client_id} onChange={e => setFormPerfil(p => ({ ...p, client_id: e.target.value }))}>
+              <option value="">Seleccionar cliente...</option>
+              {clientes.map(c => {
+                const cnt = perfiles.filter(p => p.client_id === c.id).length;
+                return <option key={c.id} value={c.id} disabled={cnt >= 5}>{c.nombre} ({cnt}/5){cnt >= 5 ? " — LLENO" : ""}</option>;
+              })}
+            </select>
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>Nombre del perfil *</label>
+            <input style={inputSt} value={formPerfil.nombre} onChange={e => setFormPerfil(p => ({ ...p, nombre: e.target.value }))} placeholder="Ej: Mamá, Papá, Niños..." maxLength={20} />
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>Color del avatar</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
+              {AVATAR_COLORS.map(color => (
+                <div
+                  key={color}
+                  onClick={() => setFormPerfil(p => ({ ...p, avatar_color: color }))}
+                  style={{ width: 34, height: 34, borderRadius: 17, background: color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, border: formPerfil.avatar_color === color ? "3px solid #111" : "3px solid transparent", boxSizing: "border-box" }}
+                >
+                  {formPerfil.avatar_color === color ? "✓" : ""}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Preview */}
+          {formPerfil.nombre && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, marginBottom: 16 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 9, background: formPerfil.avatar_color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, color: "#000" }}>
+                {formPerfil.nombre[0].toUpperCase()}
+              </div>
+              <span style={{ fontWeight: 600, fontSize: 15 }}>{formPerfil.nombre}</span>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <button onClick={() => setModalPerfil(null)} style={btnSecondary}>Cancelar</button>
+            <button onClick={guardarPerfil} style={btnPrimary} disabled={saving}>{saving ? "Guardando..." : "Crear perfil"}</button>
           </div>
         </Modal>
       )}
