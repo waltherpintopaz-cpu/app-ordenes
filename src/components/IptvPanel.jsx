@@ -15,7 +15,7 @@ const AVATAR_COLORS = [
   "#00ACC1","#43A047","#F4511E","#6D4C41","#546E7A",
 ];
 
-const EMPTY_PROFILE = { client_id: "", nombre: "", avatar_color: "#00D679" };
+const EMPTY_PROFILE = { client_id: "", nombre: "", avatar_color: "#00D679", pin: "" };
 
 const EMPTY_CLIENT = { nombre: "", username: "", password: "", server_id: "", package_id: "", fecha_expiracion: "", activo: true, notas: "", cliente_ref: "" };
 const EMPTY_SERVER = { nombre: "", url: "", xtream_user: "", xtream_pass: "", notas: "" };
@@ -108,6 +108,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   const [filtroClientePerfil, setFiltroClientePerfil] = useState("");
   const [modalPerfil, setModalPerfil] = useState(null);
   const [formPerfil, setFormPerfil] = useState(EMPTY_PROFILE);
+  const [showPin, setShowPin] = useState(false);
 
   // Toast
   const [toast, setToast] = useState("");
@@ -218,27 +219,43 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   // ── PERFILES ──
   const abrirNuevoPerfil = (clientId = "") => {
     setFormPerfil({ ...EMPTY_PROFILE, client_id: clientId });
+    setShowPin(false);
     setModalPerfil("nuevo");
+  };
+
+  const abrirEditarPerfil = (p) => {
+    setFormPerfil({ client_id: p.client_id, nombre: p.nombre, avatar_color: p.avatar_color, pin: p.pin || "" });
+    setShowPin(false);
+    setModalPerfil(p);
   };
 
   const guardarPerfil = async () => {
     if (!formPerfil.client_id || !formPerfil.nombre.trim()) {
       alert("Selecciona un cliente e ingresa un nombre."); return;
     }
-    const clientePerfiles = perfiles.filter(p => p.client_id === formPerfil.client_id);
-    if (clientePerfiles.length >= 5) {
-      alert("Este cliente ya tiene 5 perfiles (límite máximo)."); return;
+    if (formPerfil.pin && !/^\d{4}$/.test(formPerfil.pin)) {
+      alert("El PIN debe ser exactamente 4 dígitos numéricos."); return;
+    }
+    const esNuevo = modalPerfil === "nuevo";
+    if (esNuevo) {
+      const clientePerfiles = perfiles.filter(p => p.client_id === formPerfil.client_id);
+      if (clientePerfiles.length >= 5) { alert("Este cliente ya tiene 5 perfiles (límite máximo)."); return; }
     }
     setSaving(true);
-    await supabase.from("profiles").insert([{
+    const payload = {
       client_id: formPerfil.client_id,
       nombre: formPerfil.nombre.trim(),
       avatar_color: formPerfil.avatar_color,
-      favoritos: [],
-    }]);
+      pin: formPerfil.pin || null,
+    };
+    if (esNuevo) {
+      await supabase.from("profiles").insert([{ ...payload, favoritos: [] }]);
+    } else {
+      await supabase.from("profiles").update(payload).eq("id", modalPerfil.id);
+    }
     setSaving(false);
     setModalPerfil(null);
-    showToast("✅ Perfil creado");
+    showToast(esNuevo ? "✅ Perfil creado" : "✅ Perfil actualizado");
     cargar();
   };
 
@@ -516,12 +533,21 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                 return (
                   <div key={p.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 14 }}>
                     {/* Avatar */}
-                    <div style={{ width: 52, height: 52, borderRadius: 10, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#000", flexShrink: 0 }}>
-                      {p.nombre[0].toUpperCase()}
+                    <div style={{ position: "relative", flexShrink: 0 }}>
+                      <div style={{ width: 52, height: 52, borderRadius: 10, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#000" }}>
+                        {p.nombre[0].toUpperCase()}
+                      </div>
+                      {p.pin && (
+                        <div title="Tiene PIN" style={{ position: "absolute", bottom: -4, right: -4, background: "#374151", borderRadius: 8, width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <span style={{ fontSize: 10 }}>🔒</span>
+                        </div>
+                      )}
                     </div>
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{p.nombre}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                        {p.nombre}
+                      </div>
                       <div style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {cliente?.nombre || "—"}
                       </div>
@@ -530,9 +556,10 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                       </div>
                     </div>
                     {/* Actions */}
-                    <button onClick={() => eliminarPerfil(p.id, p.nombre)} style={btnDanger} title="Eliminar">
-                      <Trash2 size={13} />
-                    </button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => abrirEditarPerfil(p)} style={btnEdit} title="Editar / cambiar PIN"><Edit2 size={13} /></button>
+                      <button onClick={() => eliminarPerfil(p.id, p.nombre)} style={btnDanger} title="Eliminar"><Trash2 size={13} /></button>
+                    </div>
                   </div>
                 );
               })}
@@ -763,14 +790,14 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
       {/* ══ MODAL PERFIL ══ */}
       {modalPerfil !== null && (
-        <Modal title="Nuevo perfil" onClose={() => setModalPerfil(null)}>
+        <Modal title={modalPerfil === "nuevo" ? "Nuevo perfil" : "Editar perfil"} onClose={() => setModalPerfil(null)}>
           <div style={fieldSt}>
             <label style={labelSt}>Cliente *</label>
-            <select style={inputSt} value={formPerfil.client_id} onChange={e => setFormPerfil(p => ({ ...p, client_id: e.target.value }))}>
+            <select style={inputSt} value={formPerfil.client_id} onChange={e => setFormPerfil(p => ({ ...p, client_id: e.target.value }))} disabled={modalPerfil !== "nuevo"}>
               <option value="">Seleccionar cliente...</option>
               {clientes.map(c => {
                 const cnt = perfiles.filter(p => p.client_id === c.id).length;
-                return <option key={c.id} value={c.id} disabled={cnt >= 5}>{c.nombre} ({cnt}/5){cnt >= 5 ? " — LLENO" : ""}</option>;
+                return <option key={c.id} value={c.id} disabled={modalPerfil === "nuevo" && cnt >= 5}>{c.nombre} ({cnt}/5){modalPerfil === "nuevo" && cnt >= 5 ? " — LLENO" : ""}</option>;
               })}
             </select>
           </div>
@@ -782,28 +809,53 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             <label style={labelSt}>Color del avatar</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
               {AVATAR_COLORS.map(color => (
-                <div
-                  key={color}
-                  onClick={() => setFormPerfil(p => ({ ...p, avatar_color: color }))}
-                  style={{ width: 34, height: 34, borderRadius: 17, background: color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, border: formPerfil.avatar_color === color ? "3px solid #111" : "3px solid transparent", boxSizing: "border-box" }}
-                >
+                <div key={color} onClick={() => setFormPerfil(p => ({ ...p, avatar_color: color }))}
+                  style={{ width: 34, height: 34, borderRadius: 17, background: color, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, border: formPerfil.avatar_color === color ? "3px solid #111" : "3px solid transparent", boxSizing: "border-box" }}>
                   {formPerfil.avatar_color === color ? "✓" : ""}
                 </div>
               ))}
             </div>
           </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>PIN de seguridad (4 dígitos, opcional)</label>
+            <div style={{ position: "relative" }}>
+              <input
+                style={{ ...inputSt, paddingRight: 40 }}
+                type={showPin ? "text" : "password"}
+                inputMode="numeric"
+                value={formPerfil.pin}
+                onChange={e => setFormPerfil(p => ({ ...p, pin: e.target.value.replace(/\D/g,"").slice(0,4) }))}
+                placeholder="Dejar vacío = sin PIN"
+                maxLength={4}
+              />
+              <button onClick={() => setShowPin(v => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}>
+                {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {formPerfil.pin && formPerfil.pin.length !== 4 && (
+              <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>Debe tener exactamente 4 dígitos</div>
+            )}
+          </div>
           {/* Preview */}
           {formPerfil.nombre && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, marginBottom: 16 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 9, background: formPerfil.avatar_color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, color: "#000" }}>
-                {formPerfil.nombre[0].toUpperCase()}
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 9, background: formPerfil.avatar_color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, color: "#000" }}>
+                  {formPerfil.nombre[0].toUpperCase()}
+                </div>
+                {formPerfil.pin?.length === 4 && (
+                  <div style={{ position: "absolute", bottom: -4, right: -4, background: "#374151", borderRadius: 8, width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>🔒</div>
+                )}
               </div>
-              <span style={{ fontWeight: 600, fontSize: 15 }}>{formPerfil.nombre}</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{formPerfil.nombre}</div>
+                <div style={{ fontSize: 11, color: "#9ca3af" }}>{formPerfil.pin?.length === 4 ? "Con PIN activado" : "Sin PIN"}</div>
+              </div>
             </div>
           )}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <button onClick={() => setModalPerfil(null)} style={btnSecondary}>Cancelar</button>
-            <button onClick={guardarPerfil} style={btnPrimary} disabled={saving}>{saving ? "Guardando..." : "Crear perfil"}</button>
+            <button onClick={guardarPerfil} style={btnPrimary} disabled={saving}>{saving ? "Guardando..." : modalPerfil === "nuevo" ? "Crear perfil" : "Guardar cambios"}</button>
           </div>
         </Modal>
       )}
