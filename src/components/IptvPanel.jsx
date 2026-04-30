@@ -79,6 +79,9 @@ const btnDanger = { background: "#fee2e2", color: "#dc2626", border: "none", bor
 const btnEdit = { background: "#eff6ff", color: "#2563eb", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const btnGreen = { background: "#dcfce7", color: "#166534", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const btnWa = { background: "#dcfce7", color: "#166534", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
+const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
+const tdSt = { padding: "10px 14px", verticalAlign: "middle" };
+const PERFILES_POR_PAGINA = 15;
 
 export default function IptvPanel({ esAdmin, sessionUser }) {
   const [tab, setTab] = useState("dashboard");
@@ -106,6 +109,8 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   // Perfiles
   const [perfiles, setPerfiles] = useState([]);
   const [filtroClientePerfil, setFiltroClientePerfil] = useState("");
+  const [busquedaPerfil, setBusquedaPerfil] = useState("");
+  const [paginaPerfil, setPaginaPerfil] = useState(0);
   const [modalPerfil, setModalPerfil] = useState(null);
   const [formPerfil, setFormPerfil] = useState(EMPTY_PROFILE);
   const [showPin, setShowPin] = useState(false);
@@ -266,9 +271,17 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
     cargar();
   };
 
-  const perfilesFiltrados = filtroClientePerfil
-    ? perfiles.filter(p => p.client_id === filtroClientePerfil)
-    : perfiles;
+  const perfilesFiltrados = perfiles.filter(p => {
+    if (filtroClientePerfil && p.client_id !== filtroClientePerfil) return false;
+    if (busquedaPerfil) {
+      const q = busquedaPerfil.toLowerCase();
+      const cliente = clientes.find(c => c.id === p.client_id);
+      if (!p.nombre.toLowerCase().includes(q) && !(cliente?.nombre.toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
+  const totalPaginasPerfil = Math.ceil(perfilesFiltrados.length / PERFILES_POR_PAGINA);
+  const perfilesPaginados = perfilesFiltrados.slice(paginaPerfil * PERFILES_POR_PAGINA, (paginaPerfil + 1) * PERFILES_POR_PAGINA);
 
   // ── SERVIDORES ──
   const abrirNuevoServidor = () => { setFormServidor(EMPTY_SERVER); setModalServidor("nuevo"); };
@@ -498,114 +511,102 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
       {/* ── PERFILES ── */}
       {!loading && tab === "perfiles" && (
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
-            {/* Filtro por cliente */}
-            <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
-              <select
-                style={{ ...inputSt, background: "#fff" }}
-                value={filtroClientePerfil}
-                onChange={e => setFiltroClientePerfil(e.target.value)}
-              >
-                <option value="">Todos los clientes ({perfiles.length} perfiles)</option>
-                {clientes.map(c => {
-                  const cnt = perfiles.filter(p => p.client_id === c.id).length;
-                  return <option key={c.id} value={c.id}>{c.nombre} — {cnt}/5</option>;
-                })}
-              </select>
+          {/* Toolbar */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ position: "relative", flex: 2, minWidth: 200 }}>
+              <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9ca3af", pointerEvents: "none" }} />
+              <input
+                placeholder="Buscar por perfil o cliente..."
+                value={busquedaPerfil}
+                onChange={e => { setBusquedaPerfil(e.target.value); setPaginaPerfil(0); }}
+                style={{ ...inputSt, paddingLeft: 32 }}
+              />
             </div>
-            <button onClick={() => abrirNuevoPerfil(filtroClientePerfil)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+            <select
+              style={{ ...inputSt, flex: 1, minWidth: 180, background: "#fff" }}
+              value={filtroClientePerfil}
+              onChange={e => { setFiltroClientePerfil(e.target.value); setPaginaPerfil(0); }}
+            >
+              <option value="">Todos los clientes</option>
+              {clientes.map(c => {
+                const cnt = perfiles.filter(p => p.client_id === c.id).length;
+                return <option key={c.id} value={c.id}>{c.nombre} ({cnt}/5)</option>;
+              })}
+            </select>
+            <button onClick={() => abrirNuevoPerfil(filtroClientePerfil)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
               <Plus size={14} /> Nuevo perfil
             </button>
           </div>
 
+          {/* Stats row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: "#6b7280" }}>
+              {perfilesFiltrados.length} perfil{perfilesFiltrados.length !== 1 ? "es" : ""}
+              {(busquedaPerfil || filtroClientePerfil) ? " encontrados" : ` · ${perfiles.length} total`}
+            </span>
+            {(busquedaPerfil || filtroClientePerfil) && (
+              <button
+                onClick={() => { setBusquedaPerfil(""); setFiltroClientePerfil(""); setPaginaPerfil(0); }}
+                style={{ fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                ✕ Limpiar filtros
+              </button>
+            )}
+          </div>
+
+          {/* Table */}
           {perfilesFiltrados.length === 0 ? (
             <div style={{ textAlign: "center", padding: "48px 24px", color: "#9ca3af" }}>
               <UserCircle size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
-              <div style={{ fontSize: 14 }}>
-                {filtroClientePerfil ? "Este cliente no tiene perfiles aún." : "No hay perfiles creados."}
-              </div>
+              <div style={{ fontSize: 14 }}>No se encontraron perfiles.</div>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
-              {perfilesFiltrados.map(p => {
-                const cliente = clientes.find(c => c.id === p.client_id);
-                const favCnt = Array.isArray(p.favoritos) ? p.favoritos.length : 0;
-                return (
-                  <div key={p.id} style={{ background: "#fff", borderRadius: 14, padding: "16px 18px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 14 }}>
-                    {/* Avatar */}
-                    <div style={{ position: "relative", flexShrink: 0 }}>
-                      <div style={{ width: 52, height: 52, borderRadius: 10, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#000" }}>
-                        {p.nombre[0].toUpperCase()}
-                      </div>
-                      {p.pin && (
-                        <div title="Tiene PIN" style={{ position: "absolute", bottom: -4, right: -4, background: "#374151", borderRadius: 8, width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <span style={{ fontSize: 10 }}>🔒</span>
-                        </div>
-                      )}
-                    </div>
-                    {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-                        {p.nombre}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {cliente?.nombre || "—"}
-                      </div>
-                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>
-                        ❤ {favCnt} favoritos · {new Date(p.created_at).toLocaleDateString("es-PE")}
-                      </div>
-                    </div>
-                    {/* Actions */}
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => abrirEditarPerfil(p)} style={btnEdit} title="Editar / cambiar PIN"><Edit2 size={13} /></button>
-                      <button onClick={() => eliminarPerfil(p.id, p.nombre)} style={btnDanger} title="Eliminar"><Trash2 size={13} /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Resumen por cliente */}
-          {!filtroClientePerfil && clientes.length > 0 && (
-            <div style={{ marginTop: 28 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#6b7280", marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>Perfiles por cliente</h3>
+            <>
               <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ background: "#f8fafc" }}>
-                      {["Cliente", "Usuario", "Perfiles", ""].map(h => (
-                        <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
-                      ))}
+                      <th style={thSt}>Perfil</th>
+                      <th style={thSt}>Cliente</th>
+                      <th style={{ ...thSt, textAlign: "center" }}>PIN</th>
+                      <th style={{ ...thSt, textAlign: "center" }}>Favoritos</th>
+                      <th style={thSt}>Creado</th>
+                      <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {clientes.filter(c => c.activo).map(c => {
-                      const cPerfiles = perfiles.filter(p => p.client_id === c.id);
+                    {perfilesPaginados.map((p, idx) => {
+                      const cliente = clientes.find(c => c.id === p.client_id);
+                      const favCnt = Array.isArray(p.favoritos) ? p.favoritos.length : 0;
                       return (
-                        <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "10px 14px", fontWeight: 600 }}>{c.nombre}</td>
-                          <td style={{ padding: "10px 14px", color: "#6b7280", fontFamily: "monospace", fontSize: 12 }}>{c.username}</td>
-                          <td style={{ padding: "10px 14px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              {/* Avatars */}
-                              <div style={{ display: "flex", gap: 4 }}>
-                                {cPerfiles.map(p => (
-                                  <div key={p.id} title={p.nombre} style={{ width: 26, height: 26, borderRadius: 6, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#000" }}>
-                                    {p.nombre[0].toUpperCase()}
-                                  </div>
-                                ))}
-                                {cPerfiles.length === 0 && <span style={{ color: "#9ca3af", fontSize: 12 }}>Sin perfiles</span>}
+                        <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
+                          <td style={tdSt}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ position: "relative", flexShrink: 0 }}>
+                                <div style={{ width: 34, height: 34, borderRadius: 8, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#000" }}>
+                                  {p.nombre[0].toUpperCase()}
+                                </div>
                               </div>
-                              <span style={{ fontSize: 11, color: "#9ca3af" }}>{cPerfiles.length}/5</span>
+                              <span style={{ fontWeight: 600 }}>{p.nombre}</span>
                             </div>
                           </td>
-                          <td style={{ padding: "10px 14px" }}>
-                            {cPerfiles.length < 5 && (
-                              <button onClick={() => abrirNuevoPerfil(c.id)} style={{ ...btnEdit, display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                                <Plus size={12} /> Agregar
-                              </button>
-                            )}
+                          <td style={{ ...tdSt, color: "#6b7280" }}>{cliente?.nombre || "—"}</td>
+                          <td style={{ ...tdSt, textAlign: "center" }}>
+                            {p.pin
+                              ? <span title="Tiene PIN" style={{ fontSize: 14 }}>🔒</span>
+                              : <span style={{ color: "#d1d5db", fontSize: 16 }}>—</span>}
+                          </td>
+                          <td style={{ ...tdSt, textAlign: "center", color: "#6b7280" }}>
+                            {favCnt > 0
+                              ? <span style={{ background: "#eff6ff", color: "#2563eb", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 12 }}>{favCnt}</span>
+                              : <span style={{ color: "#d1d5db" }}>0</span>}
+                          </td>
+                          <td style={{ ...tdSt, color: "#9ca3af", fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString("es-PE")}</td>
+                          <td style={{ ...tdSt, textAlign: "right" }}>
+                            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                              <button onClick={() => abrirEditarPerfil(p)} style={btnEdit} title="Editar / cambiar PIN"><Edit2 size={13} /></button>
+                              <button onClick={() => eliminarPerfil(p.id, p.nombre)} style={btnDanger} title="Eliminar"><Trash2 size={13} /></button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -613,7 +614,26 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                   </tbody>
                 </table>
               </div>
-            </div>
+
+              {/* Pagination */}
+              {totalPaginasPerfil > 1 && (
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 16 }}>
+                  <button
+                    onClick={() => setPaginaPerfil(p => Math.max(0, p - 1))}
+                    disabled={paginaPerfil === 0}
+                    style={{ ...btnSecondary, padding: "6px 16px", opacity: paginaPerfil === 0 ? 0.4 : 1 }}
+                  >‹ Anterior</button>
+                  <span style={{ fontSize: 13, color: "#6b7280", minWidth: 100, textAlign: "center" }}>
+                    Pág {paginaPerfil + 1} de {totalPaginasPerfil}
+                  </span>
+                  <button
+                    onClick={() => setPaginaPerfil(p => Math.min(totalPaginasPerfil - 1, p + 1))}
+                    disabled={paginaPerfil >= totalPaginasPerfil - 1}
+                    style={{ ...btnSecondary, padding: "6px 16px", opacity: paginaPerfil >= totalPaginasPerfil - 1 ? 0.4 : 1 }}
+                  >Siguiente ›</button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
