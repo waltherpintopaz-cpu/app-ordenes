@@ -83,6 +83,19 @@ const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSiz
 const tdSt = { padding: "10px 14px", verticalAlign: "middle" };
 const PERFILES_POR_PAGINA = 15;
 
+function countryFlag(code) {
+  if (!code || code.length !== 2) return "";
+  return code.toUpperCase().replace(/./g, c => String.fromCodePoint(0x1F1E0 - 65 + c.charCodeAt(0)));
+}
+
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
+  if (diff < 60) return "justo ahora";
+  if (diff < 3600) return `hace ${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `hace ${Math.floor(diff / 3600)}h`;
+  return `hace ${Math.floor(diff / 86400)}d`;
+}
+
 export default function IptvPanel({ esAdmin, sessionUser }) {
   const [tab, setTab] = useState("dashboard");
   const [clientes, setClientes] = useState([]);
@@ -118,6 +131,9 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   // Vista detalle cliente (al estilo Max Player)
   const [clienteDetalle, setClienteDetalle] = useState(null);
   const [tabDetalle, setTabDetalle] = useState("credenciales");
+  const [devices, setDevices] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
 
   // Toast
   const [toast, setToast] = useState("");
@@ -131,19 +147,33 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   const cargar = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [{ data: cli }, { data: srv }, { data: pkg }, { data: prfs }] = await Promise.all([
+      const [{ data: cli }, { data: srv }, { data: pkg }, { data: prfs }, { data: devs }] = await Promise.all([
         supabase.from("iptv_clients").select("*").order("created_at", { ascending: false }),
         supabase.from("iptv_servers").select("*").order("nombre"),
         supabase.from("iptv_packages").select("*").order("nombre"),
         supabase.from("profiles").select("*").order("created_at", { ascending: true }),
+        supabase.from("devices").select("*").order("last_seen", { ascending: false }),
       ]);
       setClientes(cli || []);
       setServidores(srv || []);
       setPaquetes(pkg || []);
       setPerfiles(prfs || []);
+      setDevices(devs || []);
     } catch (e) { setError("Error cargando datos: " + e.message); }
     setLoading(false);
   }, []);
+
+  const cargarActivity = async (clientId) => {
+    setLoadingActivity(true);
+    const { data } = await supabase
+      .from("activity_log")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setActivityLog(data || []);
+    setLoadingActivity(false);
+  };
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -524,10 +554,13 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
         const c = clienteDetalle;
         const expirado = estaExpirado(c.fecha_expiracion);
         const cPerfiles = perfiles.filter(p => p.client_id === c.id);
+        const cDevices = devices.filter(d => d.client_id === c.id);
         const totalFavs = cPerfiles.reduce((acc, p) => acc + (Array.isArray(p.favoritos) ? p.favoritos.length : 0), 0);
         const DETAIL_TABS = [
           { key: "credenciales", label: "Credenciales" },
           { key: "perfiles", label: `Perfiles (${cPerfiles.length}/5)` },
+          { key: "devices", label: `Dispositivos (${cDevices.length})` },
+          { key: "actividad", label: "Actividad" },
         ];
         const avatarColors = ["#2563eb","#7c3aed","#db2777","#059669","#d97706","#dc2626"];
         const avatarColor = avatarColors[c.nombre.charCodeAt(0) % avatarColors.length];
@@ -535,7 +568,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
           <div>
             {/* Breadcrumb */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, fontSize: 13, color: "#6b7280" }}>
-              <button onClick={() => setClienteDetalle(null)}
+              <button onClick={() => { setClienteDetalle(null); setActivityLog([]); }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", fontWeight: 600, fontSize: 13, padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
                 ← Clientes
               </button>
@@ -579,16 +612,21 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                 </div>
                 {c.fecha_expiracion && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Vence {new Date(c.fecha_expiracion).toLocaleDateString("es-PE")}</div>}
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140, cursor: "pointer" }}
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130, cursor: "pointer" }}
                 onClick={() => setTabDetalle("perfiles")}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Perfiles</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{cPerfiles.length}<span style={{ fontSize: 13, color: "#9ca3af", fontWeight: 400 }}>/5</span></div>
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130, cursor: "pointer" }}
+                onClick={() => setTabDetalle("devices")}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Dispositivos</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{cDevices.length}</div>
+              </div>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Favoritos</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{totalFavs}</div>
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Paquete</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{paqueteNombre(c.package_id)}</div>
               </div>
@@ -597,7 +635,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             {/* Sub-tabs */}
             <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "2px solid #f3f4f6" }}>
               {DETAIL_TABS.map(t => (
-                <button key={t.key} onClick={() => setTabDetalle(t.key)}
+                <button key={t.key} onClick={() => { if (t.key === "actividad") { setActivityLog([]); } setTabDetalle(t.key); }}
                   style={{ padding: "10px 20px", border: "none", background: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
                     color: tabDetalle === t.key ? "#2563eb" : "#6b7280",
                     borderBottom: tabDetalle === t.key ? "2px solid #2563eb" : "2px solid transparent",
@@ -702,6 +740,69 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                 )}
               </div>
             )}
+
+            {/* Devices tab */}
+            {tabDetalle === "devices" && (
+              <div>
+                {cDevices.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 24px", color: "#9ca3af" }}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>📱</div>
+                    <div style={{ fontSize: 14 }}>Sin dispositivos registrados. El cliente debe abrir la app para que aparezcan.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+                    {cDevices.map(d => (
+                      <div key={d.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ background: "#eff6ff", borderRadius: 10, width: 42, height: 42, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>
+                          {d.tipo === "iOS" ? "🍎" : "🤖"}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{d.nombre || "Device"} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>{d.tipo}</span></div>
+                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                            {countryFlag(d.pais)} {d.ciudad ? `${d.ciudad} · ` : ""}{d.ip}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{timeAgo(d.last_seen)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Activity tab */}
+            {tabDetalle === "actividad" && (() => {
+              if (activityLog.length === 0 && !loadingActivity) {
+                cargarActivity(c.id);
+              }
+              return (
+                <div>
+                  {loadingActivity ? (
+                    <div style={{ textAlign: "center", padding: 32, color: "#9ca3af" }}>Cargando actividad...</div>
+                  ) : activityLog.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "40px 24px", color: "#9ca3af" }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>🕐</div>
+                      <div style={{ fontSize: 14 }}>Sin actividad registrada aún.</div>
+                    </div>
+                  ) : (
+                    <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                      {activityLog.map((a, idx) => (
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderTop: idx > 0 ? "1px solid #f3f4f6" : "none" }}>
+                          <div style={{ background: "#eff6ff", borderRadius: 8, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16 }}>🤖</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{a.device_name || "Dispositivo"}</div>
+                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                              {countryFlag(a.pais)} {a.ciudad ? `${a.ciudad} · ` : ""}{a.ip}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#9ca3af", whiteSpace: "nowrap" }}>{timeAgo(a.created_at)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
