@@ -115,6 +115,10 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
   const [formPerfil, setFormPerfil] = useState(EMPTY_PROFILE);
   const [showPin, setShowPin] = useState(false);
 
+  // Vista detalle cliente (al estilo Max Player)
+  const [clienteDetalle, setClienteDetalle] = useState(null);
+  const [tabDetalle, setTabDetalle] = useState("credenciales");
+
   // Toast
   const [toast, setToast] = useState("");
   const toastRef = useRef(null);
@@ -205,6 +209,9 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
     }
     setSaving(false); setModalCliente(null);
     showToast(modalCliente === "nuevo" ? "✅ Cliente creado" : "✅ Cliente actualizado");
+    if (clienteDetalle && modalCliente !== "nuevo" && modalCliente.id === clienteDetalle.id) {
+      setClienteDetalle({ ...clienteDetalle, ...payload });
+    }
     cargar();
   };
 
@@ -422,10 +429,9 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
       )}
 
       {/* ── CLIENTES ── */}
-      {!loading && tab === "clientes" && (
+      {!loading && tab === "clientes" && !clienteDetalle && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
-            {/* Búsqueda */}
             <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
               <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
               <input
@@ -447,56 +453,61 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#f8fafc" }}>
-                  {["Nombre", "Credenciales", "Servidor", "Paquete", "Vencimiento", "Estado", "Acciones"].map(h => (
+                  {["Cliente", "Usuario", "Servidor", "Vencimiento", "Estado", "Acciones"].map(h => (
                     <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {clientesFiltrados.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: "#9ca3af" }}>
+                  <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "#9ca3af" }}>
                     {busqueda ? "Sin resultados para la búsqueda." : "Sin clientes registrados."}
                   </td></tr>
                 )}
                 {clientesFiltrados.map(c => {
                   const expirado = estaExpirado(c.fecha_expiracion);
+                  const cPerfiles = perfiles.filter(p => p.client_id === c.id);
                   return (
-                    <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "11px 14px" }}>
-                        <div style={{ fontWeight: 600 }}>{c.nombre}</div>
+                    <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6", cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                      onMouseLeave={e => e.currentTarget.style.background = ""}
+                    >
+                      <td style={{ padding: "11px 14px" }}
+                        onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
+                        <div style={{ fontWeight: 700, color: "#2563eb" }}>{c.nombre}</div>
                         {c.cliente_ref && <div style={{ fontSize: 11, color: "#9ca3af" }}>Ref: {c.cliente_ref}</div>}
                       </td>
-                      <td style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontFamily: "monospace", fontSize: 12, color: "#374151" }}>{c.username}</span>
-                            <CopyBtn text={c.username} label="user" />
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontFamily: "monospace", fontSize: 12, color: "#374151" }}>••••••••</span>
-                            <CopyBtn text={c.password} label="pass" />
-                          </div>
-                        </div>
+                      <td style={{ padding: "11px 14px" }}
+                        onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 12, color: "#374151" }}>{c.username}</span>
                       </td>
-                      <td style={{ padding: "11px 14px", color: "#6b7280" }}>{serverNombre(c.server_id)}</td>
-                      <td style={{ padding: "11px 14px", color: "#6b7280" }}>{paqueteNombre(c.package_id)}</td>
-                      <td style={{ padding: "11px 14px" }}>
-                        <div style={{ color: expirado ? "#dc2626" : "#374151", fontWeight: expirado ? 700 : 400 }}>
+                      <td style={{ padding: "11px 14px", color: "#6b7280" }}
+                        onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
+                        {serverNombre(c.server_id)}
+                      </td>
+                      <td style={{ padding: "11px 14px" }}
+                        onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
+                        <div style={{ color: expirado ? "#dc2626" : "#374151", fontWeight: expirado ? 700 : 400, fontSize: 12 }}>
                           {c.fecha_expiracion ? new Date(c.fecha_expiracion).toLocaleDateString("es-PE") : "Sin límite"}
                         </div>
                       </td>
-                      <td style={{ padding: "11px 14px" }}>
-                        <Badge activo={c.activo} expirado={expirado} />
+                      <td style={{ padding: "11px 14px" }}
+                        onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Badge activo={c.activo} expirado={expirado} />
+                          {cPerfiles.length > 0 && (
+                            <span style={{ fontSize: 11, color: "#6b7280" }}>
+                              <UserCircle size={11} style={{ display: "inline", marginRight: 3 }} />{cPerfiles.length}/5
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                          <button onClick={() => abrirEditarCliente(c)} style={btnEdit} title="Editar"><Edit2 size={13} /></button>
-                          <button onClick={() => abrirRenovar(c)} style={btnGreen} title="Renovar"><CalendarPlus size={13} /></button>
-                          <button onClick={() => enviarWhatsApp(c)} style={btnWa} title="Enviar por WhatsApp"><MessageCircle size={13} /></button>
-                          <button onClick={() => toggleActivo(c)} style={{ ...btnSecondary, padding: "7px 10px", fontSize: 13 }} title={c.activo ? "Suspender" : "Activar"}>
-                            {c.activo ? <XCircle size={13} /> : <CheckCircle size={13} />}
-                          </button>
-                          {esAdmin && <button onClick={() => eliminarCliente(c.id)} style={btnDanger} title="Eliminar"><Trash2 size={13} /></button>}
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <button onClick={e => { e.stopPropagation(); abrirRenovar(c); }} style={btnGreen} title="Renovar"><CalendarPlus size={13} /></button>
+                          <button onClick={e => { e.stopPropagation(); enviarWhatsApp(c); }} style={btnWa} title="WhatsApp"><MessageCircle size={13} /></button>
+                          <button onClick={e => { e.stopPropagation(); abrirEditarCliente(c); }} style={btnEdit} title="Editar"><Edit2 size={13} /></button>
+                          {esAdmin && <button onClick={e => { e.stopPropagation(); eliminarCliente(c.id); }} style={btnDanger} title="Eliminar"><Trash2 size={13} /></button>}
                         </div>
                       </td>
                     </tr>
@@ -507,6 +518,193 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
           </div>
         </div>
       )}
+
+      {/* ── DETALLE CLIENTE ── */}
+      {!loading && tab === "clientes" && clienteDetalle && (() => {
+        const c = clienteDetalle;
+        const expirado = estaExpirado(c.fecha_expiracion);
+        const cPerfiles = perfiles.filter(p => p.client_id === c.id);
+        const totalFavs = cPerfiles.reduce((acc, p) => acc + (Array.isArray(p.favoritos) ? p.favoritos.length : 0), 0);
+        const DETAIL_TABS = [
+          { key: "credenciales", label: "Credenciales" },
+          { key: "perfiles", label: `Perfiles (${cPerfiles.length}/5)` },
+        ];
+        const avatarColors = ["#2563eb","#7c3aed","#db2777","#059669","#d97706","#dc2626"];
+        const avatarColor = avatarColors[c.nombre.charCodeAt(0) % avatarColors.length];
+        return (
+          <div>
+            {/* Breadcrumb */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, fontSize: 13, color: "#6b7280" }}>
+              <button onClick={() => setClienteDetalle(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", fontWeight: 600, fontSize: 13, padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                ← Clientes
+              </button>
+              <span>›</span>
+              <span style={{ color: "#111", fontWeight: 600 }}>{c.nombre}</span>
+            </div>
+
+            {/* Header card */}
+            <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <div style={{ width: 52, height: 52, borderRadius: 12, background: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
+                  {c.nombre[0].toUpperCase()}
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 18, fontWeight: 800 }}>{c.nombre}</span>
+                    <Badge activo={c.activo} expirado={expirado} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>
+                    <span style={{ fontFamily: "monospace" }}>{c.username}</span>
+                    {c.cliente_ref && <span style={{ marginLeft: 10 }}>· Ref: {c.cliente_ref}</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => abrirEditarCliente(c)} style={{ ...btnEdit, display: "flex", alignItems: "center", gap: 5 }}><Edit2 size={13} /> Editar</button>
+                <button onClick={() => abrirRenovar(c)} style={{ ...btnGreen, display: "flex", alignItems: "center", gap: 5 }}><CalendarPlus size={13} /> Renovar</button>
+                <button onClick={() => enviarWhatsApp(c)} style={{ ...btnWa, display: "flex", alignItems: "center", gap: 5 }}><MessageCircle size={13} /> WA</button>
+                <button onClick={() => toggleActivo(c)} style={{ ...btnSecondary, padding: "7px 12px", fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>
+                  {c.activo ? <><XCircle size={13} /> Suspender</> : <><CheckCircle size={13} /> Activar</>}
+                </button>
+              </div>
+            </div>
+
+            {/* Stat cards */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Suscripción</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: expirado ? "#dc2626" : c.activo ? "#16a34a" : "#d97706" }}>
+                  {expirado ? "Expirado" : c.activo ? "Activo" : "Suspendido"}
+                </div>
+                {c.fecha_expiracion && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Vence {new Date(c.fecha_expiracion).toLocaleDateString("es-PE")}</div>}
+              </div>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140, cursor: "pointer" }}
+                onClick={() => setTabDetalle("perfiles")}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Perfiles</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{cPerfiles.length}<span style={{ fontSize: 13, color: "#9ca3af", fontWeight: 400 }}>/5</span></div>
+              </div>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Favoritos</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{totalFavs}</div>
+              </div>
+              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Paquete</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{paqueteNombre(c.package_id)}</div>
+              </div>
+            </div>
+
+            {/* Sub-tabs */}
+            <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "2px solid #f3f4f6" }}>
+              {DETAIL_TABS.map(t => (
+                <button key={t.key} onClick={() => setTabDetalle(t.key)}
+                  style={{ padding: "10px 20px", border: "none", background: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
+                    color: tabDetalle === t.key ? "#2563eb" : "#6b7280",
+                    borderBottom: tabDetalle === t.key ? "2px solid #2563eb" : "2px solid transparent",
+                    marginBottom: -2 }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Credenciales tab */}
+            {tabDetalle === "credenciales" && (
+              <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 32px" }}>
+                  {[
+                    { label: "Servidor", value: serverNombre(c.server_id) },
+                    { label: "URL del servidor", value: servidores.find(s => s.id === c.server_id)?.url || "—" },
+                    { label: "Usuario", value: c.username, copy: true },
+                    { label: "Contraseña", value: c.password, copy: true, mask: true },
+                    { label: "Vencimiento", value: c.fecha_expiracion ? new Date(c.fecha_expiracion).toLocaleDateString("es-PE") : "Sin límite" },
+                    { label: "Paquete", value: paqueteNombre(c.package_id) },
+                  ].map(f => (
+                    <div key={f.label} style={{ borderBottom: "1px solid #f3f4f6", paddingBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{f.label}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontFamily: f.copy ? "monospace" : "inherit", fontSize: 13, color: "#111", wordBreak: "break-all" }}>
+                          {f.mask ? "••••••••" : f.value}
+                        </span>
+                        {f.copy && <CopyBtn text={f.value} label="Copiar" />}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {c.notas && (
+                  <div style={{ marginTop: 16, padding: "12px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 13, color: "#6b7280" }}>
+                    <span style={{ fontWeight: 700, color: "#374151" }}>Notas: </span>{c.notas}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Perfiles tab */}
+            {tabDetalle === "perfiles" && (
+              <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+                  {cPerfiles.length < 5 && (
+                    <button onClick={() => abrirNuevoPerfil(c.id)} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Plus size={14} /> Nuevo perfil
+                    </button>
+                  )}
+                </div>
+                {cPerfiles.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 24px", color: "#9ca3af" }}>
+                    <UserCircle size={36} style={{ marginBottom: 10, opacity: 0.35 }} />
+                    <div style={{ fontSize: 14 }}>Sin perfiles. Crea el primero.</div>
+                  </div>
+                ) : (
+                  <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc" }}>
+                          <th style={thSt}>Perfil</th>
+                          <th style={{ ...thSt, textAlign: "center" }}>PIN</th>
+                          <th style={{ ...thSt, textAlign: "center" }}>Favoritos</th>
+                          <th style={thSt}>Creado</th>
+                          <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cPerfiles.map((p, idx) => {
+                          const favCnt = Array.isArray(p.favoritos) ? p.favoritos.length : 0;
+                          return (
+                            <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
+                              <td style={tdSt}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <div style={{ width: 34, height: 34, borderRadius: 8, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#000", flexShrink: 0 }}>
+                                    {p.nombre[0].toUpperCase()}
+                                  </div>
+                                  <span style={{ fontWeight: 600 }}>{p.nombre}</span>
+                                </div>
+                              </td>
+                              <td style={{ ...tdSt, textAlign: "center" }}>
+                                {p.pin ? <span title="Con PIN">🔒</span> : <span style={{ color: "#d1d5db" }}>—</span>}
+                              </td>
+                              <td style={{ ...tdSt, textAlign: "center" }}>
+                                {favCnt > 0
+                                  ? <span style={{ background: "#eff6ff", color: "#2563eb", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 12 }}>{favCnt}</span>
+                                  : <span style={{ color: "#d1d5db" }}>0</span>}
+                              </td>
+                              <td style={{ ...tdSt, color: "#9ca3af", fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString("es-PE")}</td>
+                              <td style={{ ...tdSt, textAlign: "right" }}>
+                                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                                  <button onClick={() => abrirEditarPerfil(p)} style={btnEdit} title="Editar"><Edit2 size={13} /></button>
+                                  <button onClick={() => eliminarPerfil(p.id, p.nombre)} style={btnDanger} title="Eliminar"><Trash2 size={13} /></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── PERFILES ── */}
       {!loading && tab === "perfiles" && (
