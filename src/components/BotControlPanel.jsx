@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { Bot, Zap, AlertTriangle, CheckCircle, Power, PowerOff } from "lucide-react";
+import { Bot, Zap, AlertTriangle, CheckCircle, Power, PowerOff, Radio } from "lucide-react";
 
 const DEFAULT_CONFIG = {
   bot_activo: true,
@@ -9,28 +9,57 @@ const DEFAULT_CONFIG = {
   averia_tiempo_estimado: "",
 };
 
+const NODOS = [1, 2, 3, 4, 5, 6];
+const nodoLabel = (n) => `Nodo ${String(n).padStart(2, "0")}`;
+
 export default function BotControlPanel() {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [sectores, setSectores] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingNodo, setSavingNodo] = useState(null);
   const [msg, setMsg] = useState(null);
 
-  useEffect(() => { loadConfig(); }, []);
+  useEffect(() => { loadAll(); }, []);
 
-  async function loadConfig() {
+  async function loadAll() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("bot_config")
-        .select("*")
-        .eq("id", 1)
-        .maybeSingle();
-      if (error) throw error;
-      if (data) setConfig(data);
+      const [{ data: cfg, error: e1 }, { data: secs, error: e2 }] = await Promise.all([
+        supabase.from("bot_config").select("*").eq("id", 1).maybeSingle(),
+        supabase.from("averias_sectores").select("*").order("nodo"),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
+      if (cfg) setConfig(cfg);
+      if (secs) {
+        const map = {};
+        secs.forEach(s => { map[s.nodo] = s; });
+        setSectores(map);
+      }
     } catch (e) {
       setMsg({ type: "error", text: "Error al cargar configuración: " + e.message });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveNodo(nodo, patch) {
+    setSavingNodo(nodo);
+    const current = sectores[nodo] || { nodo, averia_activa: false, contexto: "", tiempo_estimado: "" };
+    const next = { ...current, ...patch };
+    try {
+      const { error } = await supabase
+        .from("averias_sectores")
+        .upsert({ ...next, nodo }, { onConflict: "nodo" });
+      if (error) throw error;
+      setSectores(prev => ({ ...prev, [nodo]: next }));
+      setMsg({ type: "ok", text: `${nodoLabel(nodo)} guardado` });
+      setTimeout(() => setMsg(null), 2000);
+    } catch (e) {
+      setMsg({ type: "error", text: "Error: " + e.message });
+    } finally {
+      setSavingNodo(null);
     }
   }
 
@@ -261,9 +290,103 @@ export default function BotControlPanel() {
         </button>
       </div>
 
+      {/* ── Averías por nodo ── */}
+      <div style={cardStyle}>
+        <div style={sectionTitle}>
+          <Radio size={18} color="#0891b2" />
+          Averías por nodo / sector
+        </div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+          Activa una avería en un nodo específico. El bot responderá automáticamente a clientes de ese sector que reporten sin servicio.
+        </div>
+
+        {NODOS.map(nodo => {
+          const s = sectores[nodo] || { averia_activa: false, contexto: "", tiempo_estimado: "" };
+          const activa = s.averia_activa === true;
+          return (
+            <div key={nodo} style={{
+              border: `1px solid ${activa ? "#fca5a5" : "#e5e7eb"}`,
+              borderRadius: 10,
+              padding: "16px",
+              marginBottom: 12,
+              background: activa ? "#fff7f7" : "#fafafa",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: activa ? 12 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{
+                    width: 10, height: 10, borderRadius: "50%",
+                    background: activa ? "#dc2626" : "#d1d5db",
+                  }} />
+                  <span style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>
+                    {nodoLabel(nodo)}
+                  </span>
+                  {activa && <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 500 }}>⚠️ Avería activa</span>}
+                </div>
+                <button
+                  onClick={() => saveNodo(nodo, { averia_activa: !activa })}
+                  disabled={savingNodo === nodo}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: savingNodo === nodo ? "not-allowed" : "pointer",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    background: activa ? "#dcfce7" : "#fee2e2",
+                    color: activa ? "#16a34a" : "#dc2626",
+                  }}
+                >
+                  {activa ? "Resolver" : "Activar"}
+                </button>
+              </div>
+
+              {activa && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <textarea
+                    value={s.contexto || ""}
+                    onChange={e => setSectores(prev => ({ ...prev, [nodo]: { ...s, contexto: e.target.value } }))}
+                    placeholder="Contexto para la IA (ej: fibra cortada en calle X)"
+                    rows={2}
+                    style={{
+                      width: "100%", padding: "8px 10px", border: "1px solid #d1d5db",
+                      borderRadius: 6, fontSize: 13, fontFamily: "inherit",
+                      resize: "vertical", boxSizing: "border-box", color: "#111827"
+                    }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      value={s.tiempo_estimado || ""}
+                      onChange={e => setSectores(prev => ({ ...prev, [nodo]: { ...s, tiempo_estimado: e.target.value } }))}
+                      placeholder="Tiempo estimado (opcional)"
+                      style={{
+                        flex: 1, padding: "8px 10px", border: "1px solid #d1d5db",
+                        borderRadius: 6, fontSize: 13, fontFamily: "inherit",
+                        boxSizing: "border-box", color: "#111827"
+                      }}
+                    />
+                    <button
+                      onClick={() => saveNodo(nodo, { contexto: s.contexto, tiempo_estimado: s.tiempo_estimado })}
+                      disabled={savingNodo === nodo}
+                      style={{
+                        padding: "8px 14px", borderRadius: 6, border: "none",
+                        background: "#6366f1", color: "#fff", fontWeight: 600,
+                        fontSize: 13, cursor: savingNodo === nodo ? "not-allowed" : "pointer"
+                      }}
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
       {/* ── Info ── */}
       <div style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.6 }}>
-        <strong>Modo avería:</strong> La IA responde hasta 2 veces por conversación usando el contexto ingresado. Al tercer mensaje del cliente, escala automáticamente a un asesor.
+        <strong>Avería global:</strong> afecta a todos los clientes. <strong>Avería por nodo:</strong> solo responde a clientes de ese sector cuando reportan sin servicio. La IA responde hasta 2 veces por conversación, luego escala a asesor.
       </div>
     </div>
   );
