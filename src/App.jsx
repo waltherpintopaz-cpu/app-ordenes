@@ -11,6 +11,7 @@ import MapaPanel from "./components/MapaPanel";
 import SmartOltPanel from "./components/SmartOltPanel";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
+import BotControlPanel from "./components/BotControlPanel";
 import MetaPlantillasPanel from "./components/MetaPlantillasPanel";
 import MkwEstadoPanel from "./components/MkwEstadoPanel";
 import WisproPanel from "./components/WisproPanel";
@@ -180,6 +181,7 @@ const MENU_VISTAS_WEB = [
   { key: "usuarios", label: "Usuarios" },
   { key: "clientes", label: "Clientes" },
   { key: "whatsapp", label: "WhatsApp" },
+  { key: "botControl", label: "Control Bot" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
   { key: "mkwEstado", label: "Estado MikroWisp" },
   { key: "wispro", label: "WisPro Notif." },
@@ -18187,6 +18189,10 @@ export default function App() {
 
         {vistaActiva === "whatsapp" && (
           <WhatsAppConfigPanel />
+        )}
+
+        {vistaActiva === "botControl" && (
+          <BotControlPanel />
         )}
 
         {vistaActiva === "metaPlantillas" && (
