@@ -25,6 +25,7 @@ const DEFAULT = {
     "🕐 Gracias por contactarnos.\n\nNuestro horario de atención es:\n📅 *Lunes a Sábado: 8:00 am - 9:00 pm*\n\nTu mensaje quedó registrado y un asesor te responderá cuando estemos disponibles. 🙏",
   mensaje_espera_asesor:
     "⏳ Un asesor revisará tu caso y te responderá en breve.\n\nNuestro horario es *Lunes a Sábado de 8:00 am a 9:00 pm*. 🙏",
+  inboxes_excluidos: "DIM Ventas, Ventas Meta",
   nod06_yape_numero: "980 196 764",
   nod06_yape_titular: "Gustavo Ramírez",
   nod06_bcp_cuenta: "21515064826092",
@@ -281,6 +282,22 @@ export default function BotConfigPanel() {
             />
             <div style={hint}>
               Se envía cuando el bot no puede resolver el caso y transfiere a un asesor humano.
+            </div>
+          </div>
+
+          <div style={card}>
+            <label style={{ ...label, fontSize: 15, fontWeight: 700, color: "#111827" }}>
+              Inboxes excluidos del bot
+            </label>
+            <input
+              type="text"
+              value={cfg.inboxes_excluidos}
+              onChange={(e) => set("inboxes_excluidos", e.target.value)}
+              style={input}
+              placeholder="DIM Ventas, Ventas Meta"
+            />
+            <div style={hint}>
+              Nombres exactos de los inboxes separados por coma. El bot no responderá en estos canales.
             </div>
           </div>
         </>
