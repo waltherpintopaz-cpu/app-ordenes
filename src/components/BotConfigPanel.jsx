@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
-import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle, Power, AlertOctagon, Menu } from "lucide-react";
+import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle, Power, AlertOctagon, Menu, Pencil, Lock } from "lucide-react";
 
 const DIAS = [
   { val: 1, label: "Lun" },
@@ -199,6 +199,15 @@ export default function BotConfigPanel() {
 
   // Helpers para beneficiarios
   const beneficiarios = Array.isArray(cfg.beneficiarios) ? cfg.beneficiarios : [];
+  const [editingBenef, setEditingBenef] = useState(new Set());
+
+  function toggleEditBenef(idx) {
+    setEditingBenef(prev => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+  }
 
   function setBenef(idx, key, val) {
     const next = beneficiarios.map((b, i) => i === idx ? { ...b, [key]: val } : b);
@@ -206,7 +215,9 @@ export default function BotConfigPanel() {
   }
 
   function addBenef() {
+    const newIdx = beneficiarios.length;
     set("beneficiarios", [...beneficiarios, { nombre: "", tokens: "", nodos: "todos", nodo_notificar: "", pasarela: "", accion: "SI" }]);
+    setTimeout(() => setEditingBenef(prev => new Set([...prev, newIdx])), 0);
   }
 
   function removeBenef(idx) {
@@ -733,78 +744,111 @@ export default function BotConfigPanel() {
               Nombres aceptados en comprobantes. El bot valida que al menos 2 tokens coincidan (tolerancia OCR).
             </div>
 
-            {beneficiarios.map((b, idx) => (
-              <div key={idx} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, marginBottom: 12, background: "#f9fafb" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Beneficiario {idx + 1}</span>
-                  <button
-                    onClick={() => removeBenef(idx)}
-                    style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 4 }}
-                    title="Eliminar"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
+            {beneficiarios.map((b, idx) => {
+              const isEditing = editingBenef.has(idx);
+              const readonlyInput = {
+                ...input,
+                background: "#f3f4f6",
+                color: "#6b7280",
+                cursor: "default",
+                border: "1px solid #e5e7eb",
+              };
+              return (
+                <div key={idx} style={{ border: `1px solid ${isEditing ? "#6366f1" : "#e5e7eb"}`, borderRadius: 10, padding: 14, marginBottom: 12, background: isEditing ? "#fafafe" : "#f9fafb" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Beneficiario {idx + 1}</span>
+                      {!isEditing && <Lock size={12} color="#9ca3af" />}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        onClick={() => toggleEditBenef(idx)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 5,
+                          padding: "5px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600,
+                          background: isEditing ? "#eef2ff" : "#f3f4f6",
+                          color: isEditing ? "#4f46e5" : "#374151",
+                        }}
+                      >
+                        {isEditing ? <><CheckCircle size={13} /> Listo</> : <><Pencil size={13} /> Editar</>}
+                      </button>
+                      {isEditing && (
+                        <button
+                          onClick={() => { removeBenef(idx); setEditingBenef(prev => { const n = new Set(prev); n.delete(idx); return n; }); }}
+                          style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 4 }}
+                          title="Eliminar"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                <div style={{ marginBottom: 8 }}>
-                  <label style={label}>Nombre completo</label>
-                  <input
-                    type="text"
-                    value={b.nombre}
-                    onChange={e => setBenef(idx, "nombre", e.target.value)}
-                    style={input}
-                    placeholder="Walter Ernesto Pinto Paz"
-                  />
-                </div>
-
-                <div style={{ marginBottom: 8 }}>
-                  <label style={label}>Tokens de validación <span style={{ color: "#9ca3af", fontWeight: 400 }}>(separados por coma)</span></label>
-                  <input
-                    type="text"
-                    value={b.tokens}
-                    onChange={e => setBenef(idx, "tokens", e.target.value)}
-                    style={input}
-                    placeholder="walter,ernesto,pinto,paz"
-                  />
-                  <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>
-                </div>
-
-                <div style={{ marginBottom: 8 }}>
-                  <label style={label}>Pasarela de pago</label>
-                  <input
-                    type="text"
-                    value={b.pasarela || ""}
-                    onChange={e => setBenef(idx, "pasarela", e.target.value)}
-                    style={input}
-                    placeholder="Ej: Walter Pinto, Americanet, Pagos DIM"
-                  />
-                  <div style={hint}>Valor exacto que se enviará a la API al registrar el pago.</div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={label}>Nodos válidos</label>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={label}>Nombre completo</label>
                     <input
                       type="text"
-                      value={b.nodos}
-                      onChange={e => setBenef(idx, "nodos", e.target.value)}
-                      style={input}
-                      placeholder="todos  ó  1,2,3,5"
+                      value={b.nombre}
+                      onChange={e => isEditing && setBenef(idx, "nombre", e.target.value)}
+                      readOnly={!isEditing}
+                      style={isEditing ? input : readonlyInput}
+                      placeholder="Walter Ernesto Pinto Paz"
                     />
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={label}>Nodo que genera NOTIFICAR</label>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={label}>Tokens de validación <span style={{ color: "#9ca3af", fontWeight: 400 }}>(separados por coma)</span></label>
                     <input
                       type="text"
-                      value={b.nodo_notificar || ""}
-                      onChange={e => setBenef(idx, "nodo_notificar", e.target.value)}
-                      style={input}
-                      placeholder="11  (dejar vacío si no aplica)"
+                      value={b.tokens}
+                      onChange={e => isEditing && setBenef(idx, "tokens", e.target.value)}
+                      readOnly={!isEditing}
+                      style={isEditing ? input : readonlyInput}
+                      placeholder="walter,ernesto,pinto,paz"
                     />
+                    {isEditing && <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>}
+                  </div>
+
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={label}>Pasarela de pago</label>
+                    <input
+                      type="text"
+                      value={b.pasarela || ""}
+                      onChange={e => isEditing && setBenef(idx, "pasarela", e.target.value)}
+                      readOnly={!isEditing}
+                      style={isEditing ? input : readonlyInput}
+                      placeholder="Ej: Walter Pinto, Americanet, Pagos DIM"
+                    />
+                    {isEditing && <div style={hint}>Valor exacto que se enviará a la API al registrar el pago.</div>}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={label}>Nodos válidos</label>
+                      <input
+                        type="text"
+                        value={b.nodos}
+                        onChange={e => isEditing && setBenef(idx, "nodos", e.target.value)}
+                        readOnly={!isEditing}
+                        style={isEditing ? input : readonlyInput}
+                        placeholder="todos  ó  1,2,3,5"
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={label}>Nodo que genera NOTIFICAR</label>
+                      <input
+                        type="text"
+                        value={b.nodo_notificar || ""}
+                        onChange={e => isEditing && setBenef(idx, "nodo_notificar", e.target.value)}
+                        readOnly={!isEditing}
+                        style={isEditing ? input : readonlyInput}
+                        placeholder="11  (dejar vacío si no aplica)"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             <button
               onClick={addBenef}
