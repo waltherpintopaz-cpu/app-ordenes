@@ -96,6 +96,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const [botError,     setBotError]     = useState(null);
   const [botDesde,     setBotDesde]     = useState(isoAgo(30));
   const [botHasta,     setBotHasta]     = useState(isoToday());
+  const [botDetalle,   setBotDetalle]   = useState(null); // null | "SI" | "NO" | "NOTIFICAR"
 
   /* ── Filtros globales ── */
   const [filtroNodo,   setFiltroNodo]   = useState("todos");
@@ -186,7 +187,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
     const nodoIds = NODOS.find(n => n.value === filtroNodo)?.ids || [];
     let q = supabase
       .from("bot_pagos_log")
-      .select("resultado, fecha, telefono, nodo, cliente")
+      .select("resultado, fecha, telefono, nodo, cliente, banco, beneficiario, motivo, conv_id")
       .gte("fecha", botDesde + "T00:00:00")
       .lte("fecha", botHasta + "T23:59:59");
     if (nodoIds.length > 0) q = q.in("nodo", nodoIds);
@@ -636,17 +637,23 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
           <div style={{ color: "#94a3b8", fontSize: 13 }}>Cargando registros del bot…</div>
         ) : (
           <>
-            {/* Metric cards */}
+            {/* Metric cards — clickeables para ver detalle */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 24 }}>
               {[
-                { label: "Aprobados (SI)",    count: botCounts.SI,        bg: "#f0fdf4", color: "#16a34a", icon: "✓" },
-                { label: "Rechazados (NO)",   count: botCounts.NO,        bg: "#fef2f2", color: "#dc2626", icon: "✗" },
-                { label: "Notificar",         count: botCounts.NOTIFICAR, bg: "#fffbeb", color: "#d97706", icon: "!" },
+                { key: "SI",        label: "Aprobados (SI)",    count: botCounts.SI,        bg: "#f0fdf4", color: "#16a34a", icon: "✓" },
+                { key: "NO",        label: "Rechazados (NO)",   count: botCounts.NO,        bg: "#fef2f2", color: "#dc2626", icon: "✗" },
+                { key: "NOTIFICAR", label: "Notificar",         count: botCounts.NOTIFICAR, bg: "#fffbeb", color: "#d97706", icon: "!" },
               ].map(m => (
-                <div key={m.label} style={{
-                  background: m.bg, border: `1px solid ${m.color}33`,
-                  borderRadius: 10, padding: "16px 20px",
-                }}>
+                <div
+                  key={m.label}
+                  onClick={() => setBotDetalle(prev => prev === m.key ? null : m.key)}
+                  style={{
+                    background: m.bg, border: `2px solid ${botDetalle === m.key ? m.color : m.color + "33"}`,
+                    borderRadius: 10, padding: "16px 20px", cursor: "pointer",
+                    boxShadow: botDetalle === m.key ? `0 0 0 3px ${m.color}22` : "none",
+                    transition: "all 0.15s",
+                  }}
+                >
                   <div style={{ fontSize: 11, fontWeight: 700, color: m.color, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
                     {m.icon} {m.label}
                   </div>
@@ -655,6 +662,9 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
                   </div>
                   <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
                     {botLogs.length > 0 ? `${Math.round((m.count / botLogs.length) * 100)}% del total` : "—"}
+                  </div>
+                  <div style={{ fontSize: 10, color: m.color, marginTop: 6, fontWeight: 600 }}>
+                    {botDetalle === m.key ? "▲ Ocultar detalle" : "▼ Ver detalle"}
                   </div>
                 </div>
               ))}
@@ -692,6 +702,57 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
                 Sin registros del bot para el rango seleccionado.
               </div>
             )}
+
+            {/* Tabla de detalle al hacer clic en una tarjeta */}
+            {botDetalle && (() => {
+              const COLOR = { SI: "#16a34a", NO: "#dc2626", NOTIFICAR: "#d97706" };
+              const BG    = { SI: "#f0fdf4", NO: "#fef2f2", NOTIFICAR: "#fffbeb" };
+              const LABEL = { SI: "Aprobados", NO: "Rechazados", NOTIFICAR: "Notificar" };
+              const color = COLOR[botDetalle];
+              const rows  = botLogs.filter(r => r.resultado === botDetalle)
+                                   .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+              return (
+                <div style={{ marginTop: 20, border: `1px solid ${color}44`, borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ background: BG[botDetalle], padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, color, fontSize: 14 }}>
+                      {LABEL[botDetalle]} — {rows.length} registro{rows.length !== 1 ? "s" : ""}
+                    </span>
+                    <button onClick={() => setBotDetalle(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "#6b7280", fontSize: 18, lineHeight: 1 }}>×</button>
+                  </div>
+                  {rows.length === 0 ? (
+                    <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>Sin registros.</div>
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: "#f8fafc" }}>
+                            {["Fecha", "Cliente", "Teléfono", "Nodo", "Banco", "Beneficiario", "Motivo"].map(h => (
+                              <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r, i) => {
+                            const fecha = r.fecha ? new Date(r.fecha).toLocaleString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+                            return (
+                              <tr key={i} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                                <td style={{ padding: "7px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fecha}</td>
+                                <td style={{ padding: "7px 10px", fontWeight: 600, color: "#111827", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.cliente}>{r.cliente || "—"}</td>
+                                <td style={{ padding: "7px 10px", color: "#374151" }}>{r.telefono || "—"}</td>
+                                <td style={{ padding: "7px 10px", color: "#374151" }}>{r.nodo || "—"}</td>
+                                <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.banco || "—"}</td>
+                                <td style={{ padding: "7px 10px", color: "#374151", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.beneficiario}>{r.beneficiario || "—"}</td>
+                                <td style={{ padding: "7px 10px", color: "#6b7280", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.motivo}>{r.motivo || "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </>
         )}
       </div>
