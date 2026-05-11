@@ -97,6 +97,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const [botDesde,     setBotDesde]     = useState(isoAgo(30));
   const [botHasta,     setBotHasta]     = useState(isoToday());
   const [botDetalle,   setBotDetalle]   = useState(null); // null | "SI" | "NO" | "NOTIFICAR"
+  const [botRowsExp,   setBotRowsExp]   = useState([]);  // índices de filas expandidas
 
   /* ── Filtros globales ── */
   const [filtroNodo,   setFiltroNodo]   = useState("todos");
@@ -646,7 +647,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
               ].map(m => (
                 <div
                   key={m.label}
-                  onClick={() => setBotDetalle(prev => prev === m.key ? null : m.key)}
+                  onClick={() => { setBotDetalle(prev => prev === m.key ? null : m.key); setBotRowsExp([]); }}
                   style={{
                     background: m.bg, border: `2px solid ${botDetalle === m.key ? m.color : m.color + "33"}`,
                     borderRadius: 10, padding: "16px 20px", cursor: "pointer",
@@ -717,7 +718,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
                     <span style={{ fontWeight: 700, color, fontSize: 14 }}>
                       {LABEL[botDetalle]} — {rows.length} registro{rows.length !== 1 ? "s" : ""}
                     </span>
-                    <button onClick={() => setBotDetalle(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "#6b7280", fontSize: 18, lineHeight: 1 }}>×</button>
+                    <button onClick={() => { setBotDetalle(null); setBotRowsExp([]); }} style={{ border: "none", background: "none", cursor: "pointer", color: "#6b7280", fontSize: 18, lineHeight: 1 }}>×</button>
                   </div>
                   {rows.length === 0 ? (
                     <div style={{ padding: 20, color: "#9ca3af", fontSize: 13 }}>Sin registros.</div>
@@ -734,16 +735,38 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
                         <tbody>
                           {rows.map((r, i) => {
                             const fecha = r.fecha ? new Date(r.fecha).toLocaleString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+                            const expandido = botRowsExp.includes(i);
+                            const toggleRow = () => setBotRowsExp(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i]);
                             return (
-                              <tr key={i} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                                <td style={{ padding: "7px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fecha}</td>
-                                <td style={{ padding: "7px 10px", fontWeight: 600, color: "#111827", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.cliente}>{r.cliente || "—"}</td>
-                                <td style={{ padding: "7px 10px", color: "#374151" }}>{r.telefono || "—"}</td>
-                                <td style={{ padding: "7px 10px", color: "#374151" }}>{r.nodo || "—"}</td>
-                                <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.banco || "—"}</td>
-                                <td style={{ padding: "7px 10px", color: "#374151", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.beneficiario}>{r.beneficiario || "—"}</td>
-                                <td style={{ padding: "7px 10px", color: "#6b7280", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.motivo}>{r.motivo || "—"}</td>
-                              </tr>
+                              <>
+                                <tr
+                                  key={i}
+                                  onClick={toggleRow}
+                                  style={{ borderBottom: expandido ? "none" : "1px solid #f1f5f9", background: expandido ? BG[botDetalle] : i % 2 === 0 ? "#fff" : "#fafafa", cursor: "pointer" }}
+                                >
+                                  <td style={{ padding: "7px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fecha}</td>
+                                  <td style={{ padding: "7px 10px", fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>{r.cliente || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.telefono || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#374151" }}>{r.nodo || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.banco || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.beneficiario || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#6b7280", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.motivo || "—"}</td>
+                                </tr>
+                                {expandido && (
+                                  <tr key={i + "_exp"} style={{ background: BG[botDetalle], borderBottom: "1px solid #f1f5f9" }}>
+                                    <td colSpan={7} style={{ padding: "10px 16px" }}>
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", fontSize: 12 }}>
+                                        <div><span style={{ fontWeight: 600, color: "#374151" }}>Cliente: </span><span style={{ color: "#111827" }}>{r.cliente || "—"}</span></div>
+                                        <div><span style={{ fontWeight: 600, color: "#374151" }}>Teléfono: </span><span style={{ color: "#111827" }}>{r.telefono || "—"}</span></div>
+                                        <div><span style={{ fontWeight: 600, color: "#374151" }}>Banco: </span><span style={{ color: "#111827" }}>{r.banco || "—"}</span></div>
+                                        <div><span style={{ fontWeight: 600, color: "#374151" }}>Beneficiario: </span><span style={{ color: "#111827" }}>{r.beneficiario || "—"}</span></div>
+                                        <div style={{ gridColumn: "1 / -1" }}><span style={{ fontWeight: 600, color: "#374151" }}>Motivo: </span><span style={{ color: "#111827" }}>{r.motivo || "—"}</span></div>
+                                        {r.conv_id && <div style={{ gridColumn: "1 / -1" }}><span style={{ fontWeight: 600, color: "#374151" }}>Conv ID: </span><span style={{ color: "#6b7280", fontFamily: "monospace" }}>{r.conv_id}</span></div>}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
                             );
                           })}
                         </tbody>
