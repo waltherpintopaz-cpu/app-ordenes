@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle, Power, AlertOctagon, Menu, Pencil, Lock } from "lucide-react";
 
@@ -199,14 +199,14 @@ export default function BotConfigPanel() {
 
   // Helpers para beneficiarios
   const beneficiarios = Array.isArray(cfg.beneficiarios) ? cfg.beneficiarios : [];
-  const [editingBenef, setEditingBenef] = useState(new Set());
+  const [editingBenef, setEditingBenef] = useState([]);
+
+  function isEditing(idx) { return editingBenef.includes(idx); }
 
   function toggleEditBenef(idx) {
-    setEditingBenef(prev => {
-      const next = new Set(prev);
-      next.has(idx) ? next.delete(idx) : next.add(idx);
-      return next;
-    });
+    setEditingBenef(prev =>
+      prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+    );
   }
 
   function setBenef(idx, key, val) {
@@ -217,7 +217,7 @@ export default function BotConfigPanel() {
   function addBenef() {
     const newIdx = beneficiarios.length;
     set("beneficiarios", [...beneficiarios, { nombre: "", tokens: "", nodos: "todos", nodo_notificar: "", pasarela: "", accion: "SI" }]);
-    setTimeout(() => setEditingBenef(prev => new Set([...prev, newIdx])), 0);
+    setEditingBenef(prev => [...prev, newIdx]);
   }
 
   function removeBenef(idx) {
@@ -745,7 +745,7 @@ export default function BotConfigPanel() {
             </div>
 
             {beneficiarios.map((b, idx) => {
-              const isEditing = editingBenef.has(idx);
+              const editing = isEditing(idx);
               const readonlyInput = {
                 ...input,
                 background: "#f3f4f6",
@@ -754,11 +754,11 @@ export default function BotConfigPanel() {
                 border: "1px solid #e5e7eb",
               };
               return (
-                <div key={idx} style={{ border: `1px solid ${isEditing ? "#6366f1" : "#e5e7eb"}`, borderRadius: 10, padding: 14, marginBottom: 12, background: isEditing ? "#fafafe" : "#f9fafb" }}>
+                <div key={idx} style={{ border: `1px solid ${editing ? "#6366f1" : "#e5e7eb"}`, borderRadius: 10, padding: 14, marginBottom: 12, background: editing ? "#fafafe" : "#f9fafb" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Beneficiario {idx + 1}</span>
-                      {!isEditing && <Lock size={12} color="#9ca3af" />}
+                      {!editing && <Lock size={12} color="#9ca3af" />}
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button
@@ -766,13 +766,13 @@ export default function BotConfigPanel() {
                         style={{
                           display: "flex", alignItems: "center", gap: 5,
                           padding: "5px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600,
-                          background: isEditing ? "#eef2ff" : "#f3f4f6",
-                          color: isEditing ? "#4f46e5" : "#374151",
+                          background: editing ? "#eef2ff" : "#f3f4f6",
+                          color: editing ? "#4f46e5" : "#374151",
                         }}
                       >
-                        {isEditing ? <><CheckCircle size={13} /> Listo</> : <><Pencil size={13} /> Editar</>}
+                        {editing ? <><CheckCircle size={13} /> Listo</> : <><Pencil size={13} /> Editar</>}
                       </button>
-                      {isEditing && (
+                      {editing && (
                         <button
                           onClick={() => { removeBenef(idx); setEditingBenef(prev => { const n = new Set(prev); n.delete(idx); return n; }); }}
                           style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 4 }}
@@ -789,9 +789,9 @@ export default function BotConfigPanel() {
                     <input
                       type="text"
                       value={b.nombre}
-                      onChange={e => isEditing && setBenef(idx, "nombre", e.target.value)}
-                      readOnly={!isEditing}
-                      style={isEditing ? input : readonlyInput}
+                      onChange={e => editing && setBenef(idx, "nombre", e.target.value)}
+                      readOnly={!editing}
+                      style={editing ? input : readonlyInput}
                       placeholder="Walter Ernesto Pinto Paz"
                     />
                   </div>
@@ -801,12 +801,12 @@ export default function BotConfigPanel() {
                     <input
                       type="text"
                       value={b.tokens}
-                      onChange={e => isEditing && setBenef(idx, "tokens", e.target.value)}
-                      readOnly={!isEditing}
-                      style={isEditing ? input : readonlyInput}
+                      onChange={e => editing && setBenef(idx, "tokens", e.target.value)}
+                      readOnly={!editing}
+                      style={editing ? input : readonlyInput}
                       placeholder="walter,ernesto,pinto,paz"
                     />
-                    {isEditing && <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>}
+                    {editing && <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>}
                   </div>
 
                   <div style={{ marginBottom: 8 }}>
@@ -814,12 +814,12 @@ export default function BotConfigPanel() {
                     <input
                       type="text"
                       value={b.pasarela || ""}
-                      onChange={e => isEditing && setBenef(idx, "pasarela", e.target.value)}
-                      readOnly={!isEditing}
-                      style={isEditing ? input : readonlyInput}
+                      onChange={e => editing && setBenef(idx, "pasarela", e.target.value)}
+                      readOnly={!editing}
+                      style={editing ? input : readonlyInput}
                       placeholder="Ej: Walter Pinto, Americanet, Pagos DIM"
                     />
-                    {isEditing && <div style={hint}>Valor exacto que se enviará a la API al registrar el pago.</div>}
+                    {editing && <div style={hint}>Valor exacto que se enviará a la API al registrar el pago.</div>}
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
@@ -828,9 +828,9 @@ export default function BotConfigPanel() {
                       <input
                         type="text"
                         value={b.nodos}
-                        onChange={e => isEditing && setBenef(idx, "nodos", e.target.value)}
-                        readOnly={!isEditing}
-                        style={isEditing ? input : readonlyInput}
+                        onChange={e => editing && setBenef(idx, "nodos", e.target.value)}
+                        readOnly={!editing}
+                        style={editing ? input : readonlyInput}
                         placeholder="todos  ó  1,2,3,5"
                       />
                     </div>
@@ -839,9 +839,9 @@ export default function BotConfigPanel() {
                       <input
                         type="text"
                         value={b.nodo_notificar || ""}
-                        onChange={e => isEditing && setBenef(idx, "nodo_notificar", e.target.value)}
-                        readOnly={!isEditing}
-                        style={isEditing ? input : readonlyInput}
+                        onChange={e => editing && setBenef(idx, "nodo_notificar", e.target.value)}
+                        readOnly={!editing}
+                        style={editing ? input : readonlyInput}
                         placeholder="11  (dejar vacío si no aplica)"
                       />
                     </div>
