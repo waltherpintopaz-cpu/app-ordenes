@@ -5,11 +5,7 @@ import {
   ResponsiveContainer, Cell, PieChart, Pie, Legend,
 } from "recharts";
 
-/* ─── Chatwoot config ─────────────────────────────── */
-const CW_BASE  = "https://chat.americanet.club";
-const CW_TOKEN = "Wm9K5UiCrfJPcgFJrWgxftYv";
-const CW_ACCT  = 1;
-const CW_HEADERS = { "api_access_token": CW_TOKEN, "Content-Type": "application/json" };
+/* Datos en tiempo real vienen de Supabase (sincronizado por n8n cada 5 min) */
 
 /* ─── helpers ──────────────────────────────────────── */
 function isoToday() { return new Date().toISOString().split("T")[0]; }
@@ -70,6 +66,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const [agents,       setAgents]       = useState([]);
   const [openConvs,    setOpenConvs]    = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [unassignedRt, setUnassignedRt] = useState(0);
   const [rtLoading,    setRtLoading]    = useState(true);
   const [rtError,      setRtError]      = useState(null);
   const [lastRefresh,  setLastRefresh]  = useState(null);
@@ -90,39 +87,44 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const [botHasta,     setBotHasta]     = useState(isoToday());
 
   /* ═══════════════════════════════════════════════════
-     Real-time fetch (agents + open convs + pending)
+     Real-time fetch — lee de Supabase (n8n sincroniza cada 5 min)
   ═══════════════════════════════════════════════════ */
   const fetchRealtime = useCallback(() => {
     setRtLoading(true);
     setRtError(null);
 
-    const agentsP = fetch(`${CW_BASE}/api/v1/accounts/${CW_ACCT}/agents`, { headers: CW_HEADERS })
-      .then(r => { if (!r.ok) throw new Error(`Agents ${r.status}`); return r.json(); });
-
-    const openP = fetch(
-      `${CW_BASE}/api/v1/accounts/${CW_ACCT}/conversations?status=open&page=1`,
-      { headers: CW_HEADERS }
-    ).then(r => { if (!r.ok) throw new Error(`Open ${r.status}`); return r.json(); });
-
-    const pendingP = fetch(
-      `${CW_BASE}/api/v1/accounts/${CW_ACCT}/conversations?status=pending&page=1`,
-      { headers: CW_HEADERS }
-    ).then(r => { if (!r.ok) throw new Error(`Pending ${r.status}`); return r.json(); });
-
-    Promise.all([agentsP, openP, pendingP])
-      .then(([agentsData, openData, pendingData]) => {
-        setAgents(Array.isArray(agentsData) ? agentsData : []);
-        const payload = openData?.data?.payload || [];
-        setOpenConvs(Array.isArray(payload) ? payload : []);
-        setPendingCount(pendingData?.data?.meta?.all_count ?? 0);
-        setLastRefresh(new Date());
-        setElapsed(0);
+    Promise.all([
+      supabase.from("bot_agentes_estado").select("*").order("agent_name"),
+      supabase.from("bot_conversaciones_espera").select("*").order("waiting_since"),
+      supabase.from("bot_chat_totales").select("*").eq("id", 1).maybeSingle(),
+    ]).then(([{ data: agentsData, error: e1 }, { data: esperaData, error: e2 }, { data: totales, error: e3 }]) => {
+      if (e1 || e2 || e3) {
+        setRtError("Error al cargar datos: " + (e1?.message || e2?.message || e3?.message));
         setRtLoading(false);
-      })
-      .catch(err => {
-        setRtError(err.message || "Error al cargar datos en tiempo real");
-        setRtLoading(false);
-      });
+        return;
+      }
+      // Mapear al formato que espera el resto del componente
+      setAgents((agentsData || []).map(a => ({
+        id: a.agent_id,
+        name: a.agent_name,
+        availability_status: a.availability,
+        _open_count: a.open_count,
+        _waiting_count: a.waiting_count,
+      })));
+      // openConvs: usamos bot_conversaciones_espera para la sección de espera
+      setOpenConvs((esperaData || []).map(c => ({
+        id: c.conv_id,
+        meta: { assignee: { id: c.assignee_id, name: c.assignee_name } },
+        waiting_since: c.waiting_since,
+        created_at: c.created_at,
+        inbox_id: c.inbox_id,
+      })));
+      setPendingCount(totales?.pending_total ?? 0);
+      setUnassignedRt(totales?.unassigned ?? 0);
+      setLastRefresh(new Date());
+      setElapsed(0);
+      setRtLoading(false);
+    });
   }, []);
 
   /* first load + 60s auto-refresh */
@@ -186,21 +188,14 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
     [agents]
   );
 
-  /* map agent name → open conv count */
+  /* map agent name → open conv count (viene directo del campo _open_count) */
   const convsByAgent = useMemo(() => {
     const map = {};
-    openConvs.forEach(c => {
-      const name = c.meta?.assignee?.name;
-      if (name) map[name] = (map[name] || 0) + 1;
-    });
+    agents.forEach(a => { map[a.name] = a._open_count || 0; });
     return map;
-  }, [openConvs]);
+  }, [agents]);
 
-  /* unassigned open convs */
-  const unassignedCount = useMemo(
-    () => openConvs.filter(c => !c.meta?.assignee).length,
-    [openConvs]
-  );
+  const unassignedCount = unassignedRt;
 
   /* waiting convs (waiting_since set) sorted oldest first, top 10 */
   const waitingConvs = useMemo(() => {
