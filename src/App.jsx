@@ -30,6 +30,7 @@ import GestorasReportesPanel from "./components/GestorasReportesPanel";
 import DashboardEjecutivoPanel from "./components/DashboardEjecutivoPanel";
 import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
 import IptvPanel from "./components/IptvPanel";
+import AgentesDashboard from "./components/AgentesDashboard";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
@@ -295,6 +296,7 @@ const REPORTES_SUBMENU_ITEMS = [
   { key: "chatwoot",       label: "Chatwoot",       sideLabel: "Chatwoot"       },
   { key: "ordenes",        label: "Órdenes",        sideLabel: "Órdenes"        },
   { key: "mikrowisp",      label: "MikroWisp",      sideLabel: "MikroWisp"      },
+  { key: "agentes",        label: "Agentes",        sideLabel: "Agentes"        },
 ];
 const REPORTES_LUCIDE_ICONS = {
   ejecutivo:     LayoutDashboard,
@@ -305,6 +307,7 @@ const REPORTES_LUCIDE_ICONS = {
   chatwoot:      MessageCircle,
   ordenes:       ScrollText,
   mikrowisp:     Activity,
+  agentes:       Users2,
 };
 
 function escapeRegExp(value = "") {
@@ -18265,6 +18268,10 @@ export default function App() {
 
         {vistaActiva === "reportes" && reportesSubmenu === "mikrowisp" && esAdminSesion && (
           <MikrowispReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "reportes" && reportesSubmenu === "agentes" && (
+          <AgentesDashboard cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
