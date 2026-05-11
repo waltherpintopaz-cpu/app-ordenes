@@ -7,6 +7,17 @@ import {
 
 /* Datos en tiempo real vienen de Supabase (sincronizado por n8n cada 5 min) */
 
+/* ─── Mapeo nodo lógico → nodos mikrowisp ─────────── */
+const NODOS = [
+  { label: "Todos",  value: "todos", ids: [] },
+  { label: "Nod_01", value: "Nod_01", ids: [1, 7, 8, 9] },
+  { label: "Nod_02", value: "Nod_02", ids: [2] },
+  { label: "Nod_03", value: "Nod_03", ids: [3, 10] },
+  { label: "Nod_04", value: "Nod_04", ids: [5, 6] },
+  { label: "Nod_06", value: "Nod_06", ids: [11] },
+];
+const NODO_MAP = { 1:"Nod_01",7:"Nod_01",8:"Nod_01",9:"Nod_01",2:"Nod_02",3:"Nod_03",10:"Nod_03",5:"Nod_04",6:"Nod_04",11:"Nod_06" };
+
 /* ─── helpers ──────────────────────────────────────── */
 function isoToday() { return new Date().toISOString().split("T")[0]; }
 function isoAgo(days) {
@@ -86,6 +97,10 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const [botDesde,     setBotDesde]     = useState(isoAgo(30));
   const [botHasta,     setBotHasta]     = useState(isoToday());
 
+  /* ── Filtros globales ── */
+  const [filtroNodo,   setFiltroNodo]   = useState("todos");
+  const [filtroTel,    setFiltroTel]    = useState("");
+
   /* ═══════════════════════════════════════════════════
      Real-time fetch — lee de Supabase (n8n sincroniza cada 5 min)
   ═══════════════════════════════════════════════════ */
@@ -146,17 +161,19 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const fetchHist = useCallback(() => {
     setHistLoading(true);
     setHistError(null);
-    supabase
+    const nodoIds = NODOS.find(n => n.value === filtroNodo)?.ids || [];
+    let q = supabase
       .from("chatwoot_stats")
-      .select("agent_name, conversation_count, resolved_count, open_count, pending_count")
+      .select("agent_name, conversation_count, resolved_count, open_count, pending_count, nodo")
       .gte("fecha", histDesde)
-      .lte("fecha", histHasta)
-      .then(({ data, error }) => {
-        if (error) setHistError(error.message);
-        else setHistStats(data || []);
-        setHistLoading(false);
-      });
-  }, [histDesde, histHasta]);
+      .lte("fecha", histHasta);
+    if (nodoIds.length > 0) q = q.in("nodo", nodoIds);
+    q.then(({ data, error }) => {
+      if (error) setHistError(error.message);
+      else setHistStats(data || []);
+      setHistLoading(false);
+    });
+  }, [histDesde, histHasta, filtroNodo]);
 
   useEffect(() => { fetchHist(); }, [fetchHist]);
 
@@ -166,17 +183,20 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   const fetchBot = useCallback(() => {
     setBotLoading(true);
     setBotError(null);
-    supabase
+    const nodoIds = NODOS.find(n => n.value === filtroNodo)?.ids || [];
+    let q = supabase
       .from("bot_pagos_log")
-      .select("resultado, fecha")
+      .select("resultado, fecha, telefono, nodo, cliente")
       .gte("fecha", botDesde + "T00:00:00")
-      .lte("fecha", botHasta + "T23:59:59")
-      .then(({ data, error }) => {
-        if (error) setBotError(error.message);
-        else setBotLogs(data || []);
-        setBotLoading(false);
-      });
-  }, [botDesde, botHasta]);
+      .lte("fecha", botHasta + "T23:59:59");
+    if (nodoIds.length > 0) q = q.in("nodo", nodoIds);
+    if (filtroTel.trim().length >= 7) q = q.ilike("telefono", `%${filtroTel.trim()}%`);
+    q.then(({ data, error }) => {
+      if (error) setBotError(error.message);
+      else setBotLogs(data || []);
+      setBotLoading(false);
+    });
+  }, [botDesde, botHasta, filtroNodo, filtroTel]);
 
   useEffect(() => { fetchBot(); }, [fetchBot]);
 
@@ -259,6 +279,39 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
   /* ─── Render ─────────────────────────────── */
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "4px 0 40px" }}>
+
+      {/* ── Filtros globales ─────────────────────────── */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>Nodo</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {NODOS.map(n => (
+              <button
+                key={n.value}
+                onClick={() => setFiltroNodo(n.value)}
+                style={{
+                  padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "2px solid",
+                  borderColor: filtroNodo === n.value ? "#6366f1" : "#e5e7eb",
+                  background:  filtroNodo === n.value ? "#eef2ff" : "#f9fafb",
+                  color:       filtroNodo === n.value ? "#4f46e5" : "#6b7280",
+                }}
+              >
+                {n.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginLeft: "auto" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>Teléfono (bot de pagos)</div>
+          <input
+            type="text"
+            value={filtroTel}
+            onChange={e => setFiltroTel(e.target.value)}
+            placeholder="Ej: 956123456"
+            style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, width: 180, color: "#111827" }}
+          />
+        </div>
+      </div>
 
       {/* ── Auto-refresh indicator ────────────────────── */}
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -443,7 +496,12 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
       ══════════════════════════════════════════════════ */}
       <div style={cs}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
-          <div style={sts}>Productividad Histórica por Agente</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={sts}>Productividad Histórica por Agente</span>
+            {filtroNodo !== "todos" && (
+              <span style={{ padding: "2px 10px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{filtroNodo}</span>
+            )}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Desde</label>
             <input
@@ -540,7 +598,15 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
       ══════════════════════════════════════════════════ */}
       <div style={cs}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
-          <div style={sts}>Bot de Pagos — Resultados</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={sts}>Bot de Pagos — Resultados</span>
+            {filtroNodo !== "todos" && (
+              <span style={{ padding: "2px 10px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{filtroNodo}</span>
+            )}
+            {filtroTel.trim().length >= 7 && (
+              <span style={{ padding: "2px 10px", borderRadius: 20, background: "#f0fdf4", color: "#166534", fontSize: 12, fontWeight: 700 }}>📱 {filtroTel.trim()}</span>
+            )}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Desde</label>
             <input
