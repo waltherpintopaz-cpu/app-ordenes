@@ -606,7 +606,7 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
       <div style={cs}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={sts}>Bot de Pagos — Resultados</span>
+            <span style={sts}>Bot de Pagos</span>
             {filtroNodo !== "todos" && (
               <span style={{ padding: "2px 10px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 700 }}>{filtroNodo}</span>
             )}
@@ -745,12 +745,12 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
                                   style={{ borderBottom: expandido ? "none" : "1px solid #f1f5f9", background: expandido ? BG[botDetalle] : i % 2 === 0 ? "#fff" : "#fafafa", cursor: "pointer" }}
                                 >
                                   <td style={{ padding: "7px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fecha}</td>
-                                  <td style={{ padding: "7px 10px", fontWeight: 600, color: "#111827", whiteSpace: "nowrap" }}>{r.cliente || "—"}</td>
+                                  <td style={{ padding: "7px 10px", fontWeight: 600, color: "#111827", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.cliente || "—"}</td>
                                   <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.telefono || "—"}</td>
                                   <td style={{ padding: "7px 10px", color: "#374151" }}>{r.nodo || "—"}</td>
-                                  <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.banco || "—"}</td>
-                                  <td style={{ padding: "7px 10px", color: "#374151", whiteSpace: "nowrap" }}>{r.beneficiario || "—"}</td>
-                                  <td style={{ padding: "7px 10px", color: "#6b7280", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.motivo || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#374151", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.banco || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#374151", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.beneficiario || "—"}</td>
+                                  <td style={{ padding: "7px 10px", color: "#6b7280", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.motivo || "—"}</td>
                                 </tr>
                                 {expandido && (
                                   <tr key={i + "_exp"} style={{ background: BG[botDetalle], borderBottom: "1px solid #f1f5f9" }}>
