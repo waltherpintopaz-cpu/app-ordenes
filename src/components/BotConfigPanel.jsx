@@ -105,6 +105,9 @@ export default function BotConfigPanel() {
   const [histFiltro, setHistFiltro] = useState("todos");
   const [histFecha, setHistFecha] = useState("");
 
+  // Edición de beneficiarios — debe estar aquí arriba, antes de cualquier early return
+  const [editingBenef, setEditingBenef] = useState([]);
+
   const loadHistorial = useCallback(async () => {
     setHistLoading(true);
     let q = supabase
@@ -199,7 +202,6 @@ export default function BotConfigPanel() {
 
   // Helpers para beneficiarios
   const beneficiarios = Array.isArray(cfg.beneficiarios) ? cfg.beneficiarios : [];
-  const [editingBenef, setEditingBenef] = useState([]);
 
   function isEditing(idx) { return editingBenef.includes(idx); }
 
