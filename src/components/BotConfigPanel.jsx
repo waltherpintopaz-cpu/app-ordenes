@@ -774,7 +774,7 @@ export default function BotConfigPanel() {
                       </button>
                       {editing && (
                         <button
-                          onClick={() => { removeBenef(idx); setEditingBenef(prev => { const n = new Set(prev); n.delete(idx); return n; }); }}
+                          onClick={() => { removeBenef(idx); setEditingBenef(prev => prev.filter(i => i !== idx)); }}
                           style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 4 }}
                           title="Eliminar"
                         >
