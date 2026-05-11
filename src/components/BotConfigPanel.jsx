@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
-import { Clock, MessageSquare, Save, CreditCard, Banknote } from "lucide-react";
+import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 
 const DIAS = [
   { val: 1, label: "Lun" },
@@ -32,6 +32,15 @@ const DEFAULT = {
   nod06_bcp_cci: "00221511506482609227",
   nod06_bcp_titular: "Gustavo Ramírez",
   nod06_comprobante_numero: "+51 980 196 764",
+  notif_grupo_principal: "120363420240336066@g.us",
+  notif_numeros_adicionales: "",
+  beneficiarios: [
+    { nombre: "Walter Ernesto Pinto Paz", tokens: "walter,ernesto,pinto,paz", nodos: "todos", nodo_notificar: "", accion: "SI" },
+    { nombre: "Americanet Fiber Solutions Sac", tokens: "americanet", nodos: "1,2,3,4,5,6,7,8,9,10", nodo_notificar: "11", accion: "SI" },
+    { nombre: "Cynthia Hua / Cynthia L Huanqui M", tokens: "cynthia,hua,huanqui", nodos: "5", nodo_notificar: "", accion: "SI" },
+  ],
+  comprobante_dias_max: 7,
+  bancos_excepcion_anio: "Scotiabank",
   amer_metodos_1:
     "💳 ::::: MÉTODOS DE PAGO 01 :::::\n🏦 BCP: 215 9869509 0 24\n💰 CCI BCP: 00221500986950902425\n📱 YAPE: 961 725 715\n👤 Americanet Fiber Solutions S.A.C.",
   amer_metodos_2:
@@ -69,12 +78,42 @@ const input = {
 
 const hint = { fontSize: 12, color: "#9ca3af", marginTop: 4 };
 
+const RESULTADO_STYLES = {
+  SI:        { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0", icon: <CheckCircle size={13} /> },
+  NO:        { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", icon: <XCircle size={13} /> },
+  NOTIFICAR: { bg: "#fffbeb", color: "#92400e", border: "#fde68a", icon: <AlertTriangle size={13} /> },
+};
+
 export default function BotConfigPanel() {
   const [tab, setTab] = useState("horario");
   const [cfg, setCfg] = useState(DEFAULT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  // Historial state
+  const [historial, setHistorial] = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+  const [histFiltro, setHistFiltro] = useState("todos");
+  const [histFecha, setHistFecha] = useState("");
+
+  const loadHistorial = useCallback(async () => {
+    setHistLoading(true);
+    let q = supabase
+      .from("bot_pagos_log")
+      .select("*")
+      .order("fecha", { ascending: false })
+      .limit(100);
+    if (histFiltro !== "todos") q = q.eq("resultado", histFiltro);
+    if (histFecha) q = q.gte("fecha", histFecha + "T00:00:00").lte("fecha", histFecha + "T23:59:59");
+    const { data } = await q;
+    setHistorial(data || []);
+    setHistLoading(false);
+  }, [histFiltro, histFecha]);
+
+  useEffect(() => {
+    if (tab === "historial") loadHistorial();
+  }, [tab, loadHistorial]);
 
   useEffect(() => { load(); }, []);
 
@@ -133,7 +172,29 @@ export default function BotConfigPanel() {
     { key: "mensajes", label: "Mensajes", icon: <MessageSquare size={15} /> },
     { key: "metodos", label: "Métodos de pago", icon: <Banknote size={15} /> },
     { key: "nod06", label: "Pagos Nod-06", icon: <CreditCard size={15} /> },
+    { key: "pagos", label: "Validación pagos", icon: <ShieldCheck size={15} /> },
+    { key: "historial", label: "Historial", icon: <History size={15} /> },
   ];
+
+  // Helpers para beneficiarios
+  const beneficiarios = Array.isArray(cfg.beneficiarios) ? cfg.beneficiarios : [];
+
+  function setBenef(idx, key, val) {
+    const next = beneficiarios.map((b, i) => i === idx ? { ...b, [key]: val } : b);
+    set("beneficiarios", next);
+  }
+
+  function addBenef() {
+    set("beneficiarios", [...beneficiarios, { nombre: "", tokens: "", nodos: "todos", nodo_notificar: "", accion: "SI" }]);
+  }
+
+  function removeBenef(idx) {
+    set("beneficiarios", beneficiarios.filter((_, i) => i !== idx));
+  }
+
+  // Parse números adicionales para preview
+  const numerosAdicionales = (cfg.notif_numeros_adicionales || "")
+    .split(",").map(s => s.trim()).filter(Boolean);
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "24px 16px" }}>
@@ -435,10 +496,294 @@ export default function BotConfigPanel() {
         </>
       )}
 
-      {/* Botón guardar */}
+      {/* ── TAB: Validación pagos ── */}
+      {tab === "pagos" && (
+        <>
+          {/* Beneficiarios */}
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+              <ShieldCheck size={16} color="#6366f1" /> Beneficiarios válidos
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
+              Nombres aceptados en comprobantes. El bot valida que al menos 2 tokens coincidan (tolerancia OCR).
+            </div>
+
+            {beneficiarios.map((b, idx) => (
+              <div key={idx} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, marginBottom: 12, background: "#f9fafb" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Beneficiario {idx + 1}</span>
+                  <button
+                    onClick={() => removeBenef(idx)}
+                    style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 4 }}
+                    title="Eliminar"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <label style={label}>Nombre completo</label>
+                  <input
+                    type="text"
+                    value={b.nombre}
+                    onChange={e => setBenef(idx, "nombre", e.target.value)}
+                    style={input}
+                    placeholder="Walter Ernesto Pinto Paz"
+                  />
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <label style={label}>Tokens de validación <span style={{ color: "#9ca3af", fontWeight: 400 }}>(separados por coma)</span></label>
+                  <input
+                    type="text"
+                    value={b.tokens}
+                    onChange={e => setBenef(idx, "tokens", e.target.value)}
+                    style={input}
+                    placeholder="walter,ernesto,pinto,paz"
+                  />
+                  <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>
+                </div>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={label}>Nodos válidos</label>
+                    <input
+                      type="text"
+                      value={b.nodos}
+                      onChange={e => setBenef(idx, "nodos", e.target.value)}
+                      style={input}
+                      placeholder="todos  ó  1,2,3,5"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={label}>Nodo que genera NOTIFICAR</label>
+                    <input
+                      type="text"
+                      value={b.nodo_notificar || ""}
+                      onChange={e => setBenef(idx, "nodo_notificar", e.target.value)}
+                      style={input}
+                      placeholder="11  (dejar vacío si no aplica)"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <button
+              onClick={addBenef}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "9px 16px", borderRadius: 8,
+                border: "2px dashed #c7d2fe", background: "#eef2ff",
+                color: "#4f46e5", fontWeight: 600, fontSize: 14, cursor: "pointer", width: "100%",
+                justifyContent: "center",
+              }}
+            >
+              <Plus size={15} /> Agregar beneficiario
+            </button>
+          </div>
+
+          {/* Parámetros de validación */}
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 16 }}>
+              Parámetros de validación
+            </div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={label}>Antigüedad máxima del comprobante</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number"
+                    min={1} max={30}
+                    value={cfg.comprobante_dias_max}
+                    onChange={e => set("comprobante_dias_max", Number(e.target.value))}
+                    style={{ ...input, width: 80 }}
+                  />
+                  <span style={{ fontSize: 14, color: "#6b7280" }}>días</span>
+                </div>
+                <div style={hint}>Comprobantes más antiguos serán rechazados.</div>
+              </div>
+            </div>
+
+            <div>
+              <label style={label}>Bancos con excepción de año <span style={{ color: "#9ca3af", fontWeight: 400 }}>(separados por coma)</span></label>
+              <input
+                type="text"
+                value={cfg.bancos_excepcion_anio}
+                onChange={e => set("bancos_excepcion_anio", e.target.value)}
+                style={input}
+                placeholder="Scotiabank, BCP"
+              />
+              <div style={hint}>Para estos bancos el bot corrige automáticamente el año si aparece incorrecto en el comprobante.</div>
+            </div>
+          </div>
+
+          {/* Notificaciones */}
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+              <Bell size={16} color="#6366f1" /> Notificaciones de pago
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
+              Destinos donde el bot envía avisos cuando llega un comprobante (revisión o beneficiario incorrecto).
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={label}>Grupo principal de WhatsApp</label>
+              <input
+                type="text"
+                value={cfg.notif_grupo_principal}
+                onChange={e => set("notif_grupo_principal", e.target.value)}
+                style={input}
+                placeholder="120363420240336066@g.us"
+              />
+              <div style={hint}>ID del grupo en formato Evolution API. Termina en @g.us para grupos.</div>
+            </div>
+
+            <div>
+              <label style={label}>Números adicionales <span style={{ color: "#9ca3af", fontWeight: 400 }}>(separados por coma)</span></label>
+              <input
+                type="text"
+                value={cfg.notif_numeros_adicionales}
+                onChange={e => set("notif_numeros_adicionales", e.target.value)}
+                style={input}
+                placeholder="51980196764, 51949529785"
+              />
+              <div style={hint}>Números personales que también recibirán el aviso. Sin + ni espacios.</div>
+
+              {numerosAdicionales.length > 0 && (
+                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {numerosAdicionales.map((n, i) => (
+                    <span key={i} style={{
+                      padding: "3px 10px", borderRadius: 20, background: "#eef2ff",
+                      color: "#4f46e5", fontSize: 12, fontWeight: 600,
+                    }}>
+                      📱 {n}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── TAB: Historial ── */}
+      {tab === "historial" && (
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>
+              <History size={16} color="#6366f1" /> Historial de validaciones
+            </div>
+            <button
+              onClick={loadHistorial}
+              disabled={histLoading}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 13, color: "#374151" }}
+            >
+              <RefreshCw size={13} style={{ animation: histLoading ? "spin 1s linear infinite" : "none" }} />
+              Actualizar
+            </button>
+          </div>
+
+          {/* Filtros */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+            <div>
+              <label style={{ ...label, marginBottom: 4 }}>Resultado</label>
+              <select
+                value={histFiltro}
+                onChange={e => setHistFiltro(e.target.value)}
+                style={{ ...input, width: "auto", minWidth: 130 }}
+              >
+                <option value="todos">Todos</option>
+                <option value="SI">✅ Aprobados</option>
+                <option value="NO">❌ Rechazados</option>
+                <option value="NOTIFICAR">⚠️ Notificar</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ ...label, marginBottom: 4 }}>Fecha</label>
+              <input
+                type="date"
+                value={histFecha}
+                onChange={e => setHistFecha(e.target.value)}
+                style={{ ...input, width: "auto" }}
+              />
+            </div>
+            {histFecha && (
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <button
+                  onClick={() => setHistFecha("")}
+                  style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 13, color: "#6b7280" }}
+                >
+                  Limpiar fecha
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Contadores del día */}
+          {historial.length > 0 && (
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              {["SI", "NO", "NOTIFICAR"].map(r => {
+                const count = historial.filter(h => h.resultado === r).length;
+                const s = RESULTADO_STYLES[r];
+                return (
+                  <div key={r} style={{ flex: 1, padding: "10px 14px", borderRadius: 8, background: s.bg, border: `1px solid ${s.border}`, textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{count}</div>
+                    <div style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{r === "SI" ? "Aprobados" : r === "NO" ? "Rechazados" : "Notificar"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Tabla */}
+          {histLoading ? (
+            <div style={{ textAlign: "center", padding: 32, color: "#6b7280", fontSize: 14 }}>Cargando...</div>
+          ) : historial.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 32, color: "#9ca3af", fontSize: 14 }}>Sin registros para los filtros seleccionados.</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f3f4f6" }}>
+                    {["Fecha", "Cliente", "Nodo", "Banco", "Beneficiario", "Resultado", "Motivo"].map(h => (
+                      <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {historial.map((row, i) => {
+                    const s = RESULTADO_STYLES[row.resultado] || RESULTADO_STYLES.NO;
+                    const fechaLocal = row.fecha ? new Date(row.fecha).toLocaleString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-";
+                    return (
+                      <tr key={row.id} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fechaLocal}</td>
+                        <td style={{ padding: "8px 10px", fontWeight: 600, color: "#111827", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.cliente}>{row.cliente || "-"}</td>
+                        <td style={{ padding: "8px 10px", color: "#374151" }}>{row.nodo || "-"}</td>
+                        <td style={{ padding: "8px 10px", color: "#374151", whiteSpace: "nowrap" }}>{row.banco || "-"}</td>
+                        <td style={{ padding: "8px 10px", color: "#374151", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.beneficiario}>{row.beneficiario || "-"}</td>
+                        <td style={{ padding: "8px 10px" }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontWeight: 700, fontSize: 12 }}>
+                            {s.icon} {row.resultado}
+                          </span>
+                        </td>
+                        <td style={{ padding: "8px 10px", color: "#6b7280", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.motivo}>{row.motivo || "-"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div style={{ ...hint, textAlign: "right", marginTop: 8 }}>Últimos {historial.length} registros</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Botón guardar — oculto en pestaña historial */}
       <button
         onClick={save}
-        disabled={saving}
+        disabled={saving || tab === "historial"}
+        style={{ display: tab === "historial" ? "none" : undefined }}
         style={{
           width: "100%",
           padding: "12px 20px",
