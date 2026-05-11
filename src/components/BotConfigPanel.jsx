@@ -21,6 +21,7 @@ const DEFAULT = {
   horario_inicio: 8,
   horario_fin: 21,
   horario_dias: "1,2,3,4,5,6",
+  feriados: [],
   mensaje_fuera_horario:
     "🕐 Gracias por contactarnos.\n\nNuestro horario de atención es:\n📅 *Lunes a Sábado: 8:00 am - 9:00 pm*\n\nTu mensaje quedó registrado y un asesor te responderá cuando estemos disponibles. 🙏",
   mensaje_espera_asesor:
@@ -124,7 +125,11 @@ export default function BotConfigPanel() {
       .select("*")
       .eq("id", 1)
       .maybeSingle();
-    if (!error && data) setCfg({ ...DEFAULT, ...data });
+    if (!error && data) {
+      // Filtrar nulls para que los DEFAULT no sean sobreescritos por valores nulos de Supabase
+      const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== null && v !== undefined));
+      setCfg({ ...DEFAULT, ...clean });
+    }
     setLoading(false);
   }
 
@@ -324,6 +329,60 @@ export default function BotConfigPanel() {
             <div style={hint}>
               Este mensaje se envía automáticamente cuando el cliente escribe fuera del horario configurado.
             </div>
+          </div>
+
+          {/* Feriados */}
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+              📅 Feriados
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>
+              En estas fechas el bot responderá como si fuera fuera de horario, independientemente del día de la semana.
+            </div>
+
+            {/* Agregar feriado */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <input
+                type="date"
+                id="input-feriado"
+                style={{ ...input, width: "auto", flex: 1 }}
+              />
+              <button
+                onClick={() => {
+                  const inp = document.getElementById("input-feriado");
+                  const val = inp?.value;
+                  if (!val) return;
+                  const feriados = Array.isArray(cfg.feriados) ? cfg.feriados : [];
+                  if (!feriados.includes(val)) set("feriados", [...feriados, val].sort());
+                  inp.value = "";
+                }}
+                style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "#6366f1", color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                + Agregar
+              </button>
+            </div>
+
+            {/* Lista de feriados */}
+            {Array.isArray(cfg.feriados) && cfg.feriados.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {cfg.feriados.map((f) => {
+                  const [y, m, d] = f.split("-");
+                  const label = `${d}/${m}/${y}`;
+                  return (
+                    <span key={f} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: "#f3f4f6", border: "1px solid #e5e7eb", fontSize: 13, color: "#374151" }}>
+                      📅 {label}
+                      <button
+                        onClick={() => set("feriados", cfg.feriados.filter((x) => x !== f))}
+                        style={{ border: "none", background: "none", cursor: "pointer", color: "#ef4444", padding: 0, lineHeight: 1, fontSize: 15 }}
+                        title="Quitar"
+                      >×</button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#9ca3af" }}>Sin feriados configurados.</div>
+            )}
           </div>
         </>
       )}
