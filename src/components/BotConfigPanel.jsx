@@ -36,9 +36,9 @@ const DEFAULT = {
   notif_grupo_principal: "120363420240336066@g.us",
   notif_numeros_adicionales: "",
   beneficiarios: [
-    { nombre: "Walter Ernesto Pinto Paz", tokens: "walter,ernesto,pinto,paz", nodos: "todos", nodo_notificar: "", accion: "SI" },
-    { nombre: "Americanet Fiber Solutions Sac", tokens: "americanet", nodos: "1,2,3,4,5,6,7,8,9,10", nodo_notificar: "11", accion: "SI" },
-    { nombre: "Cynthia Hua / Cynthia L Huanqui M", tokens: "cynthia,hua,huanqui", nodos: "5", nodo_notificar: "", accion: "SI" },
+    { nombre: "Walter Ernesto Pinto Paz", tokens: "walter,ernesto,pinto,pin,paz", nodos: "todos", nodo_notificar: "", pasarela: "Walter Pinto", accion: "SI" },
+    { nombre: "Americanet Fiber Solutions Sac", tokens: "americanet", nodos: "1,2,3,4,5,6,7,8,9,10", nodo_notificar: "11", pasarela: "Americanet", accion: "SI" },
+    { nombre: "Cynthia Hua / Cynthia L Huanqui M", tokens: "cynthia,hua,huanqui", nodos: "5", nodo_notificar: "", pasarela: "Pagos DIM", accion: "SI" },
   ],
   comprobante_dias_max: 7,
   bancos_excepcion_anio: "Scotiabank",
@@ -199,7 +199,7 @@ export default function BotConfigPanel() {
   }
 
   function addBenef() {
-    set("beneficiarios", [...beneficiarios, { nombre: "", tokens: "", nodos: "todos", nodo_notificar: "", accion: "SI" }]);
+    set("beneficiarios", [...beneficiarios, { nombre: "", tokens: "", nodos: "todos", nodo_notificar: "", pasarela: "", accion: "SI" }]);
   }
 
   function removeBenef(idx) {
@@ -760,6 +760,18 @@ export default function BotConfigPanel() {
                     placeholder="walter,ernesto,pinto,paz"
                   />
                   <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <label style={label}>Pasarela de pago</label>
+                  <input
+                    type="text"
+                    value={b.pasarela || ""}
+                    onChange={e => setBenef(idx, "pasarela", e.target.value)}
+                    style={input}
+                    placeholder="Ej: Walter Pinto, Americanet, Pagos DIM"
+                  />
+                  <div style={hint}>Valor exacto que se enviará a la API al registrar el pago.</div>
                 </div>
 
                 <div style={{ display: "flex", gap: 10 }}>
