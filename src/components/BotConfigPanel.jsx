@@ -133,8 +133,15 @@ export default function BotConfigPanel() {
       .eq("id", 1)
       .maybeSingle();
     if (!error && data) {
-      // Filtrar nulls para que los DEFAULT no sean sobreescritos por valores nulos de Supabase
       const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== null && v !== undefined));
+      // Si beneficiarios vienen de Supabase sin `pasarela`, completar desde DEFAULT por nombre
+      if (Array.isArray(clean.beneficiarios)) {
+        clean.beneficiarios = clean.beneficiarios.map(b => {
+          if (b.pasarela) return b;
+          const def = DEFAULT.beneficiarios.find(d => d.nombre === b.nombre);
+          return { ...b, pasarela: def?.pasarela || "" };
+        });
+      }
       setCfg({ ...DEFAULT, ...clean });
     }
     setLoading(false);
