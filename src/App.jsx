@@ -183,8 +183,7 @@ const MENU_VISTAS_WEB = [
   { key: "usuarios", label: "Usuarios" },
   { key: "clientes", label: "Clientes" },
   { key: "whatsapp", label: "WhatsApp" },
-  { key: "botControl", label: "Control Bot" },
-  { key: "botConfig", label: "Config Bot" },
+  { key: "bot", label: "Bot" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
   { key: "mkwEstado", label: "Estado MikroWisp" },
   { key: "wispro", label: "WisPro Notif." },
@@ -273,6 +272,7 @@ const MENU_LUCIDE_ICONS = {
   logs:                ScrollText,
   recordatorios:       Bell,
   iptv:                Tv,
+  bot:                 Cpu,
 };
 
 const HIST_APPSHEET_LUCIDE_ICONS = {
@@ -308,6 +308,17 @@ const REPORTES_LUCIDE_ICONS = {
   ordenes:       ScrollText,
   mikrowisp:     Activity,
   agentes:       Users2,
+};
+
+const BOT_SUBMENU_ITEMS = [
+  { key: "botControl", label: "Control Bot", sideLabel: "Control Bot" },
+  { key: "botConfig",  label: "Config Bot",  sideLabel: "Config Bot"  },
+  { key: "agentes",    label: "Agentes",     sideLabel: "Agentes"     },
+];
+const BOT_LUCIDE_ICONS = {
+  botControl: Activity,
+  botConfig:  Cpu,
+  agentes:    Users2,
 };
 
 function escapeRegExp(value = "") {
@@ -1727,6 +1738,7 @@ export default function App() {
   });
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
   const [reportesSubmenu, setReportesSubmenu] = useState("general");
+  const [botSubmenu, setBotSubmenu] = useState("botControl");
   const [historialAppsheetEquipos, setHistorialAppsheetEquipos] = useState([]);
   const [historialAppsheetLiquidaciones, setHistorialAppsheetLiquidaciones] = useState([]);
   const [historialAppsheetLoading, setHistorialAppsheetLoading] = useState(false);
@@ -2469,6 +2481,10 @@ export default function App() {
   const reportesSubmenuActual = useMemo(
     () => reportesSubmenuItemsPermitidos.find(item => item.key === reportesSubmenu) || reportesSubmenuItemsPermitidos[0] || null,
     [reportesSubmenu, reportesSubmenuItemsPermitidos]
+  );
+  const botSubmenuActual = useMemo(
+    () => BOT_SUBMENU_ITEMS.find(item => item.key === botSubmenu) || BOT_SUBMENU_ITEMS[0],
+    [botSubmenu]
   );
 
   const tieneAccesoNodoSesion = useCallback(
@@ -12598,6 +12614,16 @@ export default function App() {
     );
   };
 
+  const renderBotSubmenuIcon = (key, active = false, size = 13) => {
+    const Icon = BOT_LUCIDE_ICONS[key] || Cpu;
+    const color = active ? "#1B6EC4" : "#6b7280";
+    return (
+      <span aria-hidden="true" style={{ width: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={size} color={color} strokeWidth={1.7} />
+      </span>
+    );
+  };
+
   const mainMenuItems = MENU_VISTAS_WEB.filter((item) => {
     if (!accesosSesion.includes(item.key)) return false;
     if (item.key === "almacenes" && !esAdminSesion) return false;
@@ -12823,6 +12849,55 @@ export default function App() {
                         onClick={() => setReportesSubmenu(submenu.key)}
                       >
                         {renderReportesSubmenuIcon(submenu.key, reportesSubmenu === submenu.key)}
+                        <span>{submenu.sideLabel || submenu.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (item.key === "bot") {
+              const isBotActive = vistaActiva === "bot";
+              return (
+                <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "4px" }}>
+                  <button
+                    key={`side-${item.key}`}
+                    type="button"
+                    style={sideHistorialAppsheetButtonStyle(isBotActive)}
+                    onClick={() => setVistaActiva("bot")}
+                  >
+                    <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                        {renderSidebarIcon(item.key, isBotActive)}
+                        <span style={{ display: "grid", gap: "2px", minWidth: 0 }}>
+                          <span style={{ fontSize: "13.5px", fontWeight: isBotActive ? 600 : 500 }}>{item.label}</span>
+                          {isBotActive && botSubmenuActual ? (
+                            <span style={{ fontSize: "11px", color: "#98a3b9", letterSpacing: "0.02em" }}>
+                              {botSubmenuActual.sideLabel || botSubmenuActual.label}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: "12px", lineHeight: 1, color: isBotActive ? "#d98908" : "#a4afc5", transform: isBotActive ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 140ms ease" }}>{">"}</span>
+                    </span>
+                  </button>
+                  <div style={{ ...sideHistorialAppsheetSubmenuWrapStyle, maxHeight: isBotActive ? "200px" : "0", overflow: "hidden", transition: "max-height 0.28s ease" }}>
+                    {BOT_SUBMENU_ITEMS.map((submenu) => (
+                      <button
+                        key={`sub-bot-${submenu.key}`}
+                        type="button"
+                        style={sideHistorialAppsheetSubmenuButtonStyle(isBotActive && botSubmenu === submenu.key)}
+                        onClick={() => {
+                          if (submenu.key === "agentes") {
+                            setVistaActiva("reportes");
+                            setReportesSubmenu("agentes");
+                          } else {
+                            setBotSubmenu(submenu.key);
+                          }
+                        }}
+                      >
+                        {renderBotSubmenuIcon(submenu.key, isBotActive && botSubmenu === submenu.key)}
                         <span>{submenu.sideLabel || submenu.label}</span>
                       </button>
                     ))}
@@ -18196,11 +18271,11 @@ export default function App() {
           <WhatsAppConfigPanel />
         )}
 
-        {vistaActiva === "botControl" && (
+        {vistaActiva === "bot" && botSubmenu === "botControl" && (
           <BotControlPanel />
         )}
 
-        {vistaActiva === "botConfig" && (
+        {vistaActiva === "bot" && botSubmenu === "botConfig" && (
           <BotConfigPanel />
         )}
 
