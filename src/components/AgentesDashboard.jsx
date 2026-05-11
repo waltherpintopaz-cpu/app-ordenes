@@ -217,15 +217,20 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
 
   const unassignedCount = unassignedRt;
 
-  /* waiting convs (waiting_since set) sorted oldest first, top 10 */
+  /* nodo activo label */
+  const nodoLabel = filtroNodo === "todos" ? null : filtroNodo;
+  const nodoIds   = NODOS.find(n => n.value === filtroNodo)?.ids || [];
+
+  /* waiting convs filtradas por nodo si aplica */
   const waitingConvs = useMemo(() => {
     const now = Math.floor(Date.now() / 1000);
     return openConvs
       .filter(c => c.waiting_since != null && c.waiting_since > 0)
+      .filter(c => nodoIds.length === 0 || nodoIds.includes(c.nodo))
       .map(c => ({ ...c, waitSec: now - c.waiting_since }))
       .sort((a, b) => b.waitSec - a.waitSec)
       .slice(0, 10);
-  }, [openConvs]);
+  }, [openConvs, nodoIds]);
 
   /* historical: aggregate per agent */
   const histByAgent = useMemo(() => {
