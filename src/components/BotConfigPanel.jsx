@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
-import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle, Power, AlertOctagon, Menu } from "lucide-react";
 
 const DIAS = [
   { val: 1, label: "Lun" },
@@ -42,6 +42,13 @@ const DEFAULT = {
   ],
   comprobante_dias_max: 7,
   bancos_excepcion_anio: "Scotiabank",
+  bot_activo: true,
+  averia_activa: false,
+  averia_contexto: "",
+  averia_tiempo_estimado: "",
+  menu_principal: "═══════════════════════════\n*Soporte en línea*\n═══════════════════════════\n¿En qué te ayudamos?\n\n1️⃣ Validar pago\n2️⃣ Métodos de pago\n3️⃣ Soporte técnico\n4️⃣ Contactar asesor\n5️⃣ Planes y servicios\n6️⃣ Prórroga de pago\n7️⃣ Mi cuenta\n\n_Responde del 1 al 7_",
+  menu_opcion_invalida: "⚠️ Opción no válida. Por favor responde del *1 al 7*:\n\n1️⃣ Validar pago\n2️⃣ Métodos de pago\n3️⃣ Soporte técnico\n4️⃣ Contactar asesor\n5️⃣ Planes y servicios\n6️⃣ Prórroga de pago\n7️⃣ Mi cuenta",
+  menu_micuenta: "📊 *Mi cuenta*\n\n¿Qué deseas consultar?\n\n❶ Estado de cuenta\n❷ Métodos de pago\n❸ App de TV\n❹ Volver al menú\n\n_Responde del 1 al 4 — o escribe *menu* para salir_",
   amer_metodos_1:
     "💳 ::::: MÉTODOS DE PAGO 01 :::::\n🏦 BCP: 215 9869509 0 24\n💰 CCI BCP: 00221500986950902425\n📱 YAPE: 961 725 715\n👤 Americanet Fiber Solutions S.A.C.",
   amer_metodos_2:
@@ -173,7 +180,9 @@ export default function BotConfigPanel() {
     );
 
   const TABS = [
+    { key: "estado", label: "Estado", icon: <Power size={15} /> },
     { key: "horario", label: "Horario", icon: <Clock size={15} /> },
+    { key: "menu", label: "Menú", icon: <Menu size={15} /> },
     { key: "mensajes", label: "Mensajes", icon: <MessageSquare size={15} /> },
     { key: "metodos", label: "Métodos de pago", icon: <Banknote size={15} /> },
     { key: "nod06", label: "Pagos Nod-06", icon: <CreditCard size={15} /> },
@@ -244,6 +253,102 @@ export default function BotConfigPanel() {
         }}>
           {msg.text}
         </div>
+      )}
+
+      {/* ── TAB: Estado del bot ── */}
+      {tab === "estado" && (
+        <>
+          {/* Bot ON/OFF */}
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <Power size={16} color={cfg.bot_activo ? "#16a34a" : "#dc2626"} />
+                  Estado del bot
+                </div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                  {cfg.bot_activo ? "El bot está activo y respondiendo mensajes automáticamente." : "El bot está desactivado. Todos los mensajes irán directo a asesores."}
+                </div>
+              </div>
+              <button
+                onClick={() => set("bot_activo", !cfg.bot_activo)}
+                style={{
+                  width: 52, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
+                  background: cfg.bot_activo ? "#16a34a" : "#d1d5db",
+                  position: "relative", transition: "background 0.2s", flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  position: "absolute", top: 3, left: cfg.bot_activo ? 27 : 3,
+                  width: 22, height: 22, borderRadius: "50%", background: "#fff",
+                  transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }} />
+              </button>
+            </div>
+            {!cfg.bot_activo && (
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", fontSize: 13, color: "#991b1b" }}>
+                ⚠️ El bot está desactivado. Guarda los cambios para que el ajuste se refleje.
+              </div>
+            )}
+          </div>
+
+          {/* Avería */}
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <AlertOctagon size={16} color={cfg.averia_activa ? "#d97706" : "#9ca3af"} />
+                  Modo avería
+                </div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                  {cfg.averia_activa ? "Activo — el bot notifica a los clientes sobre la avería." : "Inactivo — operación normal."}
+                </div>
+              </div>
+              <button
+                onClick={() => set("averia_activa", !cfg.averia_activa)}
+                style={{
+                  width: 52, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
+                  background: cfg.averia_activa ? "#d97706" : "#d1d5db",
+                  position: "relative", transition: "background 0.2s", flexShrink: 0,
+                }}
+              >
+                <span style={{
+                  position: "absolute", top: 3, left: cfg.averia_activa ? 27 : 3,
+                  width: 22, height: 22, borderRadius: "50%", background: "#fff",
+                  transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }} />
+              </button>
+            </div>
+
+            {cfg.averia_activa && (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={label}>Descripción de la avería</label>
+                  <textarea
+                    value={cfg.averia_contexto}
+                    onChange={e => set("averia_contexto", e.target.value)}
+                    rows={3}
+                    style={{ ...input, resize: "vertical" }}
+                    placeholder="Ej: Avería en fibra principal sector norte. Técnicos trabajando en la solución."
+                  />
+                </div>
+                <div>
+                  <label style={label}>Tiempo estimado de resolución</label>
+                  <input
+                    type="text"
+                    value={cfg.averia_tiempo_estimado}
+                    onChange={e => set("averia_tiempo_estimado", e.target.value)}
+                    style={input}
+                    placeholder="Ej: 2 horas, antes de las 6pm, mañana por la mañana"
+                  />
+                </div>
+                <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 13, color: "#92400e" }}>
+                  🔔 Con avería activa el bot informa a los clientes afectados y evita registrar pagos hasta que se resuelva.
+                </div>
+              </>
+            )}
+          </div>
+        </>
       )}
 
       {/* ── TAB: Horario ── */}
@@ -383,6 +488,60 @@ export default function BotConfigPanel() {
             ) : (
               <div style={{ fontSize: 13, color: "#9ca3af" }}>Sin feriados configurados.</div>
             )}
+          </div>
+        </>
+      )}
+
+      {/* ── TAB: Menú ── */}
+      {tab === "menu" && (
+        <>
+          <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8 }}>
+            💡 Usa <b>*texto*</b> para negrita y <b>_texto_</b> para cursiva (formato WhatsApp). Los cambios se reflejan en máx 5 min.
+          </div>
+
+          <div style={card}>
+            <label style={{ ...label, fontSize: 15, fontWeight: 700, color: "#111827" }}>
+              Menú principal
+            </label>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+              Se muestra cuando el cliente escribe por primera vez o escribe "menu".
+            </div>
+            <textarea
+              value={cfg.menu_principal}
+              onChange={e => set("menu_principal", e.target.value)}
+              rows={12}
+              style={{ ...input, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            />
+          </div>
+
+          <div style={card}>
+            <label style={{ ...label, fontSize: 15, fontWeight: 700, color: "#111827" }}>
+              Menú "Mi cuenta"
+            </label>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+              Se muestra cuando el cliente elige la opción 7 (Mi cuenta).
+            </div>
+            <textarea
+              value={cfg.menu_micuenta}
+              onChange={e => set("menu_micuenta", e.target.value)}
+              rows={10}
+              style={{ ...input, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            />
+          </div>
+
+          <div style={card}>
+            <label style={{ ...label, fontSize: 15, fontWeight: 700, color: "#111827" }}>
+              Mensaje opción inválida
+            </label>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+              Se muestra cuando el cliente responde algo que no es una opción válida del menú.
+            </div>
+            <textarea
+              value={cfg.menu_opcion_invalida}
+              onChange={e => set("menu_opcion_invalida", e.target.value)}
+              rows={10}
+              style={{ ...input, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            />
           </div>
         </>
       )}
@@ -841,9 +1000,9 @@ export default function BotConfigPanel() {
       {/* Botón guardar — oculto en pestaña historial */}
       <button
         onClick={save}
-        disabled={saving || tab === "historial"}
-        style={{ display: tab === "historial" ? "none" : undefined }}
+        disabled={saving}
         style={{
+          display: tab === "historial" ? "none" : "flex",
           width: "100%",
           padding: "12px 20px",
           borderRadius: 10,
@@ -851,7 +1010,6 @@ export default function BotConfigPanel() {
           cursor: saving ? "not-allowed" : "pointer",
           fontWeight: 700,
           fontSize: 15,
-          display: "flex",
           alignItems: "center",
           justifyContent: "center",
           gap: 8,
