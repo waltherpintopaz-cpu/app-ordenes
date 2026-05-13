@@ -16065,10 +16065,14 @@ export default function App() {
                                 {reporteMateriales.map((mat) => {
                                   const margenActual = reporteConfigMargenPorMat[mat.material] !== undefined ? reporteConfigMargenPorMat[mat.material] : "";
                                   const precioActual = reporteConfigPrecioBaseMat[mat.material] !== undefined ? reporteConfigPrecioBaseMat[mat.material] : "";
+                                  const precioBase = precioActual !== "" ? Number(precioActual) : Number(mat.costoUnit || 0);
+                                  const margenNum = margenActual !== "" ? Number(margenActual) : Number(reporteConfigMargenGlobal || 0);
+                                  const precioVenta = precioBase * (1 + margenNum / 100);
                                   return (
                                     <div key={mat.material} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", border: "1px solid #dcfce7" }}>
-                                      <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 600, marginBottom: 6 }}>
-                                        {mat.material} <span style={{ color: "#94a3b8", fontWeight: 400 }}>×{mat.cantidad}</span>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                        <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{mat.material} <span style={{ color: "#94a3b8", fontWeight: 400 }}>×{mat.cantidad}</span></span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>= S/ {precioVenta.toFixed(2)}/u</span>
                                       </div>
                                       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                                         <div style={{ flex: 1 }}>
@@ -16132,10 +16136,14 @@ export default function App() {
                                   const label = [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(" ");
                                   const margenActual = reporteConfigMargenPorEq[eq.key] !== undefined ? reporteConfigMargenPorEq[eq.key] : "";
                                   const precioActual = reporteConfigPrecioBaseEq[eq.key] !== undefined ? reporteConfigPrecioBaseEq[eq.key] : "";
+                                  const precioBaseEq = precioActual !== "" ? Number(precioActual) : Number(eq.precioUnit || 0);
+                                  const margenNumEq = margenActual !== "" ? Number(margenActual) : Number(reporteConfigMargenEquipos || 0);
+                                  const precioVentaEq = precioBaseEq * (1 + margenNumEq / 100);
                                   return (
                                     <div key={eq.key} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", border: "1px solid #bfdbfe" }}>
-                                      <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 600, marginBottom: 6 }}>
-                                        {label} <span style={{ color: "#94a3b8", fontWeight: 400 }}>×{eq.cantidad}</span>
+                                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                        <span style={{ fontSize: 12, color: "#0f172a", fontWeight: 600 }}>{label} <span style={{ color: "#94a3b8", fontWeight: 400 }}>×{eq.cantidad}</span></span>
+                                        <span style={{ fontSize: 12, fontWeight: 700, color: "#2563eb" }}>= S/ {precioVentaEq.toFixed(2)}</span>
                                       </div>
                                       <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                                         <div style={{ flex: 1 }}>
