@@ -2079,6 +2079,7 @@ export default function App() {
   const [reporteMargenModal, setReporteMargenModal] = useState(false);
   const [reporteConfigMargenGlobal, setReporteConfigMargenGlobal] = useState(() => { try { return Number(localStorage.getItem("rpt_margenGlobal") ?? 0) || 0; } catch { return 0; } });
   const [reporteConfigMargenPorMat, setReporteConfigMargenPorMat] = useState(() => { try { return JSON.parse(localStorage.getItem("rpt_margenPorMat") || "{}"); } catch { return {}; } });
+  const [reporteConfigPrecioBaseMat, setReporteConfigPrecioBaseMat] = useState(() => { try { return JSON.parse(localStorage.getItem("rpt_precioBaseMat") || "{}"); } catch { return {}; } });
   const [reporteConfigCostoInstal, setReporteConfigCostoInstal] = useState(() => { try { const v = localStorage.getItem("rpt_costoInstal"); return v !== null ? Number(v) : 60; } catch { return 60; } });
   const [reporteConfigCostoInciden, setReporteConfigCostoInciden] = useState(() => { try { const v = localStorage.getItem("rpt_costoInciden"); return v !== null ? Number(v) : 25; } catch { return 25; } });
   const [reporteConfigCostoRecuperacion, setReporteConfigCostoRecuperacion] = useState(() => { try { const v = localStorage.getItem("rpt_costoRecuperacion"); return v !== null ? Number(v) : 25; } catch { return 25; } });
@@ -2211,6 +2212,7 @@ export default function App() {
           const v = data.valor;
           if (v.margenGlobal !== undefined) setReporteConfigMargenGlobal(Number(v.margenGlobal) || 0);
           if (v.margenPorMat !== undefined) setReporteConfigMargenPorMat(v.margenPorMat || {});
+          if (v.precioBaseMat !== undefined) setReporteConfigPrecioBaseMat(v.precioBaseMat || {});
           if (v.costoInstal !== undefined) setReporteConfigCostoInstal(Number(v.costoInstal) || 60);
           if (v.costoInciden !== undefined) setReporteConfigCostoInciden(Number(v.costoInciden) || 25);
           if (v.nota !== undefined) setReporteConfigNota(v.nota || "");
@@ -11316,7 +11318,7 @@ export default function App() {
     const totalGeneralVenta = reporteMateriales.reduce((acc, item) => {
       const nombre = String(item.material || "").trim();
       const margen = Number(reporteConfigMargenPorMat?.[nombre] ?? reporteConfigMargenGlobal ?? 0);
-      const pu = Number(item.costoUnit || 0);
+      const pu = reporteConfigPrecioBaseMat[nombre] !== undefined ? reporteConfigPrecioBaseMat[nombre] : Number(item.costoUnit || 0);
       const cant = Number(item.cantidad || 0);
       return acc + pu * (1 + margen / 100) * cant;
     }, 0);
@@ -11328,8 +11330,8 @@ export default function App() {
     const rows = reporteMateriales.map((item, idx) => {
       const cant = Number(item.cantidad || 0);
       const costo = Number(item.costo || 0);
-      const pu = Number(item.costoUnit || 0);
       const nombre = String(item.material || "").trim();
+      const pu = reporteConfigPrecioBaseMat[nombre] !== undefined ? reporteConfigPrecioBaseMat[nombre] : Number(item.costoUnit || 0);
       const margen = Number(reporteConfigMargenPorMat?.[nombre] ?? reporteConfigMargenGlobal ?? 0);
       const puVenta = pu * (1 + margen / 100);
       const totalVenta = puVenta * cant;
@@ -11507,7 +11509,8 @@ export default function App() {
       mats.forEach((m) => {
         const nombre = String(m?.material || m?.nombre || "?");
         const cant = Number(m?.cantidad ?? 0);
-        const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+        const cuOrig = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
+        const cu = reporteConfigPrecioBaseMat[nombre] !== undefined ? reporteConfigPrecioBaseMat[nombre] : cuOrig;
         const margen = Number(reporteConfigMargenPorMat?.[nombre] ?? reporteConfigMargenGlobal ?? 0);
         matVenta += cu * (1 + margen / 100) * cant;
         matDetalle += `${escHtml(nombre)} x${cant}<br/>`;
@@ -16056,30 +16059,57 @@ export default function App() {
                           {/* Margen por material */}
                           {reporteMateriales.length > 0 && (
                             <div style={{ marginTop: 14 }}>
-                              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 8 }}>Ajuste por material (sobreescribe el global)</div>
-                              <div style={{ display: "grid", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 4 }}>Ajuste por material (sobreescribe el global)</div>
+                              <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 8 }}>Los materiales mostrados corresponden al período filtrado activo.</div>
+                              <div style={{ display: "grid", gap: 8, maxHeight: 240, overflowY: "auto" }}>
                                 {reporteMateriales.map((mat) => {
                                   const margenActual = reporteConfigMargenPorMat[mat.material] !== undefined ? reporteConfigMargenPorMat[mat.material] : "";
+                                  const precioActual = reporteConfigPrecioBaseMat[mat.material] !== undefined ? reporteConfigPrecioBaseMat[mat.material] : "";
                                   return (
-                                    <div key={mat.material} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 8, padding: "6px 10px", border: "1px solid #dcfce7" }}>
-                                      <span style={{ flex: 1, fontSize: 12, color: "#0f172a", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mat.material}</span>
-                                      <span style={{ fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" }}>S/{Number(mat.costoUnit || 0).toFixed(2)}/u</span>
-                                      <input
-                                        type="number" min="0" max="500" step="1"
-                                        placeholder={String(reporteConfigMargenGlobal)}
-                                        value={margenActual}
-                                        onChange={e => {
-                                          const val = e.target.value === "" ? undefined : Number(e.target.value);
-                                          setReporteConfigMargenPorMat(prev => {
-                                            const next = { ...prev };
-                                            if (val === undefined) delete next[mat.material];
-                                            else next[mat.material] = val;
-                                            return next;
-                                          });
-                                        }}
-                                        style={{ width: 64, padding: "4px 6px", border: "1.5px solid #86efac", borderRadius: 6, fontSize: 12, textAlign: "center" }}
-                                      />
-                                      <span style={{ fontSize: 11, color: "#64748b" }}>%</span>
+                                    <div key={mat.material} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", border: "1px solid #dcfce7" }}>
+                                      <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 600, marginBottom: 6 }}>
+                                        {mat.material} <span style={{ color: "#94a3b8", fontWeight: 400 }}>×{mat.cantidad}</span>
+                                      </div>
+                                      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Precio base (S/)</label>
+                                          <input
+                                            type="number" min="0" step="0.01"
+                                            placeholder={String(Number(mat.costoUnit || 0).toFixed(2))}
+                                            value={precioActual}
+                                            onChange={e => {
+                                              const val = e.target.value === "" ? undefined : Number(e.target.value);
+                                              setReporteConfigPrecioBaseMat(prev => {
+                                                const next = { ...prev };
+                                                if (val === undefined) delete next[mat.material];
+                                                else next[mat.material] = val;
+                                                try { localStorage.setItem("rpt_precioBaseMat", JSON.stringify(next)); } catch {}
+                                                return next;
+                                              });
+                                            }}
+                                            style={{ width: "100%", padding: "5px 8px", border: "1.5px solid #86efac", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }}
+                                          />
+                                        </div>
+                                        <div style={{ width: 72 }}>
+                                          <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Margen %</label>
+                                          <input
+                                            type="number" min="0" max="500" step="1"
+                                            placeholder={String(reporteConfigMargenGlobal)}
+                                            value={margenActual}
+                                            onChange={e => {
+                                              const val = e.target.value === "" ? undefined : Number(e.target.value);
+                                              setReporteConfigMargenPorMat(prev => {
+                                                const next = { ...prev };
+                                                if (val === undefined) delete next[mat.material];
+                                                else next[mat.material] = val;
+                                                return next;
+                                              });
+                                            }}
+                                            style={{ width: "100%", padding: "5px 8px", border: "1.5px solid #86efac", borderRadius: 6, fontSize: 12, textAlign: "center", boxSizing: "border-box" }}
+                                          />
+                                        </div>
+                                        <span style={{ fontSize: 11, color: "#64748b", paddingBottom: 6 }}>%</span>
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -16185,6 +16215,7 @@ export default function App() {
                           const cfg = {
                             margenGlobal: reporteConfigMargenGlobal,
                             margenPorMat: reporteConfigMargenPorMat,
+                            precioBaseMat: reporteConfigPrecioBaseMat,
                             costoInstal: reporteConfigCostoInstal,
                             costoInciden: reporteConfigCostoInciden,
                             costoRecuperacion: reporteConfigCostoRecuperacion,
