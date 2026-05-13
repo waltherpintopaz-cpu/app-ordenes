@@ -18,6 +18,7 @@ import MkwEstadoPanel from "./components/MkwEstadoPanel";
 import WisproPanel from "./components/WisproPanel";
 import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
+import FinanzasPanel from "./components/FinanzasPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import LogsPanel from "./components/LogsPanel";
 import CoberturaPanel from "./components/CoberturaPanel";
@@ -194,6 +195,7 @@ const MENU_VISTAS_WEB = [
   { key: "monitorSenales", label: "Monitor Señales", gestoraVisible: true },
   { key: "noc", label: "NOC Equipos DIM" },
   { key: "iptv", label: "Panel IPTV" },
+  { key: "finanzas", label: "Finanzas" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -272,6 +274,7 @@ const MENU_LUCIDE_ICONS = {
   logs:                ScrollText,
   recordatorios:       Bell,
   iptv:                Tv,
+  finanzas:            BarChart2,
   bot:                 Cpu,
 };
 
@@ -18315,6 +18318,10 @@ export default function App() {
 
         {vistaActiva === "logs" && esAdminSesion && (
           <LogsPanel cardStyle={cardStyle} inputStyle={inputStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "finanzas" && esAdminSesion && (
+          <FinanzasPanel sessionUser={usuarioSesion} />
         )}
 
         {vistaActiva === "reportes" && reportesSubmenu === "tecnicos" && esAdminSesion && (
