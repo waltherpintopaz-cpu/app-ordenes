@@ -2086,6 +2086,7 @@ export default function App() {
   const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarVenta"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarMargen"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMargenEquipos, setReporteConfigMargenEquipos] = useState(() => { try { return Number(localStorage.getItem("rpt_margenEquipos") ?? 0) || 0; } catch { return 0; } });
+  const [reporteConfigRestarPago, setReporteConfigRestarPago] = useState(() => { try { const v = localStorage.getItem("rpt_restarPago"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigGuardando, setReporteConfigGuardando] = useState(false);
   const [reporteConfigGuardadoOk, setReporteConfigGuardadoOk] = useState(false);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
@@ -11522,7 +11523,7 @@ export default function App() {
       </tr>`;
     }).join("");
 
-    const totalACobrar = sumMatVenta + sumEqVenta + sumActuacion - sumPagoRecibido;
+    const totalACobrar = sumMatVenta + sumEqVenta + sumActuacion - (reporteConfigRestarPago ? sumPagoRecibido : 0);
 
     const filtroTecnico = reporteTecnico !== "TODOS" ? reporteTecnico : "Todos";
     const filtroNodo = reporteNodo !== "TODOS" ? reporteNodo : "Todos";
@@ -11611,7 +11612,7 @@ export default function App() {
     <div class="resumen-row"><span>Materiales (venta)</span><span style="color:#15803d;font-weight:700">S/ ${sumMatVenta.toFixed(2)}</span></div>
     <div class="resumen-row"><span>Equipos (venta)</span><span style="color:#1d4ed8;font-weight:700">S/ ${sumEqVenta.toFixed(2)}</span></div>
     <div class="resumen-row"><span>Precio actuaciones</span><span style="color:#7c3aed;font-weight:700">S/ ${sumActuacion.toFixed(2)}</span></div>
-    <div class="resumen-row"><span class="resumen-neg">— Pago recibido</span><span class="resumen-neg" style="font-weight:700">- S/ ${sumPagoRecibido.toFixed(2)}</span></div>
+    ${reporteConfigRestarPago ? `<div class="resumen-row"><span class="resumen-neg">— Pago recibido</span><span class="resumen-neg" style="font-weight:700">- S/ ${sumPagoRecibido.toFixed(2)}</span></div>` : ""}
     <div class="resumen-total"><span>TOTAL A COBRAR</span><span>S/ ${totalACobrar.toFixed(2)}</span></div>
   </div>
 
@@ -16068,6 +16069,7 @@ export default function App() {
                             { key: "costo", label: "Precio costo", val: reporteConfigMostrarCosto, set: setReporteConfigMostrarCosto, lsKey: "rpt_mostrarCosto" },
                             { key: "venta", label: "Precio venta (con margen)", val: reporteConfigMostrarVenta, set: setReporteConfigMostrarVenta, lsKey: "rpt_mostrarVenta" },
                             { key: "margen", label: "% Margen", val: reporteConfigMostrarMargen, set: setReporteConfigMostrarMargen, lsKey: "rpt_mostrarMargen" },
+                            { key: "restarPago", label: "Restar «Pago recibido» del total", val: reporteConfigRestarPago, set: setReporteConfigRestarPago, lsKey: "rpt_restarPago" },
                           ].map(({ key, label, val, set, lsKey }) => (
                             <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #ede9fe" }}>
                               <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 600 }}>{label}</span>
@@ -16100,6 +16102,7 @@ export default function App() {
                             mostrarVenta: reporteConfigMostrarVenta,
                             mostrarMargen: reporteConfigMostrarMargen,
                             margenEquipos: reporteConfigMargenEquipos,
+                            restarPago: reporteConfigRestarPago,
                           };
                           // Guardar también en localStorage como fallback inmediato
                           try { localStorage.setItem("rpt_config", JSON.stringify(cfg)); } catch {}
