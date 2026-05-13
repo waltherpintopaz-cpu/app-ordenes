@@ -11503,6 +11503,12 @@ export default function App() {
         fechaCorta = `${d}/${m}/${y}`;
       }
 
+      // Tipo de actuación (debe declararse primero)
+      const tipo = String(item.tipoActuacion || "").toLowerCase();
+      const costoAct = tipo.includes("instal") ? Number(reporteConfigCostoInstal || 0)
+        : tipo.includes("inciden") ? Number(reporteConfigCostoInciden || 0)
+        : tipo.includes("recup")   ? Number(reporteConfigCostoRecuperacion || 0) : 0;
+
       // Materiales
       let matDetalle = "";
       let matVenta = 0;
@@ -11529,12 +11535,6 @@ export default function App() {
         const margenEqItem = reporteConfigMargenPorEq[eqKey] !== undefined ? reporteConfigMargenPorEq[eqKey] : margenEq;
         eqVenta += precioBase * (1 + margenEqItem / 100);
       });
-
-      // Costo actuación
-      const tipo = String(item.tipoActuacion || "").toLowerCase();
-      const costoAct = tipo.includes("instal") ? Number(reporteConfigCostoInstal || 0)
-        : tipo.includes("inciden") ? Number(reporteConfigCostoInciden || 0)
-        : tipo.includes("recup")   ? Number(reporteConfigCostoRecuperacion || 0) : 0;
 
       sumPagoRecibido += monto;
       sumMatVenta += matVenta;
