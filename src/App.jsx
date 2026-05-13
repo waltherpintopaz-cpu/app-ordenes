@@ -19537,14 +19537,20 @@ export default function App() {
                     </div>
 
                     <div
+                      onClick={() => { const v = diagnosticoRapidoMikrotik?.ip; if (v && v !== "-") { navigator.clipboard.writeText(v).catch(() => {}); } }}
+                      title="Clic para copiar IP"
                       style={{
-                        borderRadius: "14px",
-                        padding: "14px",
-                        background: "#ffffff",
+                        borderRadius: "14px", padding: "14px", background: "#ffffff",
                         border: `1px solid ${diagnosticoRapidoEstadoVisual.tone.border}`,
+                        cursor: diagnosticoRapidoMikrotik?.ip ? "pointer" : "default",
+                        userSelect: "none", transition: "background 0.15s",
                       }}
+                      onMouseEnter={e => { if (diagnosticoRapidoMikrotik?.ip) e.currentTarget.style.background = "#f0fdf4"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "#ffffff"; }}
                     >
-                      <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#64748b" }}>IP activa</div>
+                      <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                        IP activa <span style={{ fontSize: 10, color: "#16a34a" }}>⎘ copiar</span>
+                      </div>
                       <div style={{ marginTop: "8px", fontSize: "24px", fontWeight: 900, color: "#0f172a", lineHeight: 1.1 }}>
                         {diagnosticoRapidoMikrotik?.ip || "-"}
                       </div>
@@ -19563,22 +19569,27 @@ export default function App() {
                     }}
                   >
                     {[
-                      { label: "Caller-ID", value: diagnosticoRapidoMikrotik?.callerId || "-" },
-                      { label: "Profile", value: diagnosticoRapidoMikrotik?.profile || "-" },
-                      { label: "Disabled", value: formatDiagnosticoBoolean(diagnosticoRapidoMikrotik?.disabled) },
-                      { label: "Ultima conexion", value: diagnosticoRapidoMikrotik?.lastLoggedOut || "-" },
+                      { label: "Caller-ID", value: diagnosticoRapidoMikrotik?.callerId || "-", copiable: true },
+                      { label: "Profile", value: diagnosticoRapidoMikrotik?.profile || "-", copiable: false },
+                      { label: "Disabled", value: formatDiagnosticoBoolean(diagnosticoRapidoMikrotik?.disabled), copiable: false },
+                      { label: "Ultima conexion", value: diagnosticoRapidoMikrotik?.lastLoggedOut || "-", copiable: false },
                     ].map((item) => (
                       <div
                         key={`quick-${item.label}`}
+                        onClick={() => { if (item.copiable && item.value && item.value !== "-") { navigator.clipboard.writeText(item.value).catch(() => {}); } }}
+                        title={item.copiable ? "Clic para copiar" : undefined}
                         style={{
-                          borderRadius: "12px",
-                          padding: "12px 13px",
+                          borderRadius: "12px", padding: "12px 13px",
                           background: "rgba(255,255,255,0.84)",
                           border: "1px solid rgba(148, 163, 184, 0.22)",
+                          cursor: item.copiable ? "pointer" : "default",
+                          userSelect: "none", transition: "background 0.15s",
                         }}
+                        onMouseEnter={e => { if (item.copiable) e.currentTarget.style.background = "#f0fdf4"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.84)"; }}
                       >
-                        <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#64748b" }}>
-                          {item.label}
+                        <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                          {item.label} {item.copiable && <span style={{ fontSize: 10, color: "#16a34a" }}>⎘ copiar</span>}
                         </div>
                         <div style={{ marginTop: "6px", fontSize: "15px", fontWeight: 700, color: "#0f172a", lineHeight: 1.35, wordBreak: "break-word" }}>
                           {item.value}
