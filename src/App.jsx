@@ -2081,6 +2081,7 @@ export default function App() {
   const [reporteConfigMargenPorMat, setReporteConfigMargenPorMat] = useState(() => { try { return JSON.parse(localStorage.getItem("rpt_margenPorMat") || "{}"); } catch { return {}; } });
   const [reporteConfigCostoInstal, setReporteConfigCostoInstal] = useState(() => { try { const v = localStorage.getItem("rpt_costoInstal"); return v !== null ? Number(v) : 60; } catch { return 60; } });
   const [reporteConfigCostoInciden, setReporteConfigCostoInciden] = useState(() => { try { const v = localStorage.getItem("rpt_costoInciden"); return v !== null ? Number(v) : 25; } catch { return 25; } });
+  const [reporteConfigCostoRecuperacion, setReporteConfigCostoRecuperacion] = useState(() => { try { const v = localStorage.getItem("rpt_costoRecuperacion"); return v !== null ? Number(v) : 25; } catch { return 25; } });
   const [reporteConfigNota, setReporteConfigNota] = useState(() => { try { return localStorage.getItem("rpt_nota") || ""; } catch { return ""; } });
   const [reporteConfigMostrarCosto, setReporteConfigMostrarCosto] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarCosto"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarVenta"); return v === null ? true : v === "true"; } catch { return true; } });
@@ -10983,13 +10984,16 @@ export default function App() {
     const incidencias = liquidacionesReporte.filter((item) =>
       String(item.tipoActuacion || "").toLowerCase().includes("inciden")
     ).length;
-    const costoActuacion = instalaciones * reporteConfigCostoInstal + incidencias * reporteConfigCostoInciden;
+    const recuperaciones = liquidacionesReporte.filter((item) =>
+      String(item.tipoActuacion || "").toLowerCase().includes("recup")
+    ).length;
+    const costoActuacion = instalaciones * reporteConfigCostoInstal + incidencias * reporteConfigCostoInciden + recuperaciones * reporteConfigCostoRecuperacion;
     const montoCobrado = liquidacionesReporte.reduce((acc, item) => {
       const n = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
-    return { instalaciones, incidencias, costoActuacion, montoCobrado };
-  }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden]);
+    return { instalaciones, incidencias, recuperaciones, costoActuacion, montoCobrado };
+  }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden, reporteConfigCostoRecuperacion]);
 
   const nodosReporte = useMemo(() => {
     const fromData = new Set(liquidaciones.map((x) => String(x.nodo || "").trim()).filter(Boolean));
@@ -11078,7 +11082,8 @@ export default function App() {
       const tipo = String(item.tipoActuacion || "").toLowerCase();
       const esInstal = tipo.includes("instal");
       const esInciden = tipo.includes("inciden");
-      const costoAct = esInstal ? reporteConfigCostoInstal : esInciden ? reporteConfigCostoInciden : 0;
+      const esRecup   = tipo.includes("recup");
+      const costoAct = esInstal ? reporteConfigCostoInstal : esInciden ? reporteConfigCostoInciden : esRecup ? reporteConfigCostoRecuperacion : 0;
       const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
       const costoMat = mats.reduce((acc, m) => {
         const cu = Number(m?.costoUnitario ?? m?.costo_unitario ?? 0);
@@ -11089,7 +11094,7 @@ export default function App() {
       const montoCobrado = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
       return { codigo: item.codigo, nombre: item.nombre, tecnico: item.liquidacion?.tecnicoLiquida || item.tecnico || "-", nodo: item.nodo, fecha: item.fechaLiquidacion, tipoActuacion: item.tipoActuacion, costoAct, costoMat, costoTotal: costoAct + costoMat, montoCobrado };
     });
-  }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden]);
+  }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden, reporteConfigCostoRecuperacion]);
 
   // Detalle: equipos por orden
   const reporteDetalleEquipos = useMemo(() => {
@@ -11501,7 +11506,8 @@ export default function App() {
       // Costo actuación
       const tipo = String(item.tipoActuacion || "").toLowerCase();
       const costoAct = tipo.includes("instal") ? Number(reporteConfigCostoInstal || 0)
-        : tipo.includes("inciden") ? Number(reporteConfigCostoInciden || 0) : 0;
+        : tipo.includes("inciden") ? Number(reporteConfigCostoInciden || 0)
+        : tipo.includes("recup")   ? Number(reporteConfigCostoRecuperacion || 0) : 0;
 
       sumPagoRecibido += monto;
       sumMatVenta += matVenta;
@@ -15997,7 +16003,7 @@ export default function App() {
                         {/* Costos de actuación */}
                         <div style={{ background: "#f8fafc", borderRadius: 12, padding: "16px 18px", marginBottom: 18, border: "1px solid #e2e8f0" }}>
                           <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Costo por actuación</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                             <div>
                               <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>Instalación (S/)</label>
                               <input type="number" min="0" step="0.01" value={reporteConfigCostoInstal} onChange={e => setReporteConfigCostoInstal(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
@@ -16005,6 +16011,10 @@ export default function App() {
                             <div>
                               <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>Incidencia (S/)</label>
                               <input type="number" min="0" step="0.01" value={reporteConfigCostoInciden} onChange={e => setReporteConfigCostoInciden(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e2e8f0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 12, fontWeight: 600, color: "#9333ea", display: "block", marginBottom: 4 }}>Recuperación (S/)</label>
+                              <input type="number" min="0" step="0.01" value={reporteConfigCostoRecuperacion} onChange={e => { const v = Number(e.target.value) || 0; setReporteConfigCostoRecuperacion(v); try { localStorage.setItem("rpt_costoRecuperacion", String(v)); } catch {} }} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e9d5ff", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
                             </div>
                           </div>
                         </div>
@@ -16097,6 +16107,7 @@ export default function App() {
                             margenPorMat: reporteConfigMargenPorMat,
                             costoInstal: reporteConfigCostoInstal,
                             costoInciden: reporteConfigCostoInciden,
+                            costoRecuperacion: reporteConfigCostoRecuperacion,
                             nota: reporteConfigNota,
                             mostrarCosto: reporteConfigMostrarCosto,
                             mostrarVenta: reporteConfigMostrarVenta,
