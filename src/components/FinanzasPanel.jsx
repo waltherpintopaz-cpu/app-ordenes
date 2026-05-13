@@ -7,7 +7,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
   TrendingUp, TrendingDown, Wallet, Plus, Edit2, Trash2, FileText,
-  X, Download, Tag, Layers, BarChart2, RefreshCw, ChevronDown,
+  X, Download, Tag, Layers, BarChart2, RefreshCw, Paperclip, Image, Eye,
 } from "lucide-react";
 
 // ── Configuración de nodos ────────────────────────────────────────────────────
@@ -63,6 +63,7 @@ const emptyForm = {
   descripcion: "",
   monto: "",
   porcentaje_propio: 100,
+  archivos: [],
 };
 
 // ── Estilos base ─────────────────────────────────────────────────────────────
@@ -90,8 +91,10 @@ export default function FinanzasPanel({ sessionUser }) {
   const [movs,      setMovs]      = useState([]);
   const [cats,      setCats]      = useState([]);
   const [periodos,  setPeriodos]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [saving,    setSaving]    = useState(false);
+  const [loading,      setLoading]      = useState(true);
+  const [saving,       setSaving]       = useState(false);
+  const [uploading,    setUploading]    = useState(false);
+  const [lightbox,     setLightbox]     = useState(null); // url imagen preview
 
   // Filtros
   const [filtroAnio, setFiltroAnio] = useState(anioActual);
@@ -174,10 +177,33 @@ export default function FinanzasPanel({ sessionUser }) {
     return { mes: mes.slice(0, 3), ingresos: +ing.toFixed(2), egresos: +egr.toFixed(2) };
   });
 
+  // ── Upload archivos ──────────────────────────────────────────────────────
+  const subirArchivo = useCallback(async (file) => {
+    const esImagen = file.type.startsWith("image/");
+    const esPdf    = file.type === "application/pdf";
+    if (!esImagen && !esPdf) { alert("Solo se aceptan imágenes o PDFs."); return; }
+    setUploading(true);
+    try {
+      const ext      = file.name.split(".").pop().toLowerCase() || "bin";
+      const nombre   = file.name;
+      const fileName = `finanzas/${Date.now()}_${nombre.replace(/\s+/g, "_")}`;
+      const { error } = await supabase.storage.from("fotos").upload(fileName, file, { contentType: file.type, upsert: true });
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from("fotos").getPublicUrl(fileName);
+      const archivo = { url: urlData.publicUrl, nombre, tipo: esImagen ? "imagen" : "pdf" };
+      setForm((f) => ({ ...f, archivos: [...(f.archivos || []), archivo] }));
+    } catch (e) { alert("Error al subir: " + (e?.message || "intenta de nuevo")); }
+    finally { setUploading(false); }
+  }, []);
+
+  const eliminarArchivo = (idx) => {
+    setForm((f) => ({ ...f, archivos: f.archivos.filter((_, i) => i !== idx) }));
+  };
+
   // ── CRUD movimientos ─────────────────────────────────────────────────────
   const abrirModal = (mov = null) => {
     if (mov) {
-      setForm({ ...mov });
+      setForm({ ...mov, archivos: mov.archivos || [] });
       setEditId(mov.id);
     } else {
       const nodo = NODOS[0];
@@ -203,6 +229,7 @@ export default function FinanzasPanel({ sessionUser }) {
       descripcion: form.descripcion || "",
       monto: parseFloat(form.monto),
       porcentaje_propio: parseInt(form.porcentaje_propio),
+      archivos: form.archivos || [],
       creado_por: sessionUser?.nombre || sessionUser?.username || "admin",
     };
     if (editId) {
@@ -223,15 +250,22 @@ export default function FinanzasPanel({ sessionUser }) {
 
   // ── CRUD categorías ──────────────────────────────────────────────────────
   const guardarCat = async () => {
-    if (!formCat.nombre) return;
-    await supabase.from("finanzas_categorias").insert([{ ...formCat, activa: true }]);
+    if (!formCat.nombre.trim()) return;
+    const { error } = await supabase
+      .from("finanzas_categorias")
+      .insert([{ nombre: formCat.nombre.trim(), tipo: formCat.tipo, activa: true }]);
+    if (error) { alert("Error al guardar categoría:\n" + error.message); return; }
     setModalCat(false);
     setFormCat({ nombre: "", tipo: "ingreso" });
     cargarCategorias();
   };
 
   const toggleCat = async (cat) => {
-    await supabase.from("finanzas_categorias").update({ activa: !cat.activa }).eq("id", cat.id);
+    const { error } = await supabase
+      .from("finanzas_categorias")
+      .update({ activa: !cat.activa })
+      .eq("id", cat.id);
+    if (error) { alert("Error: " + error.message); return; }
     cargarCategorias();
   };
 
@@ -468,7 +502,7 @@ export default function FinanzasPanel({ sessionUser }) {
           </div>
 
           {/* Tabla */}
-          <TablaMovimientos movs={movsFiltrados} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} />
+          <TablaMovimientos movs={movsFiltrados} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} onLightbox={setLightbox} />
         </div>
       )}
 
@@ -506,7 +540,7 @@ export default function FinanzasPanel({ sessionUser }) {
             <CardStat label="Balance (tu parte)"  valor={totNodo.balance}    color={totNodo.balance >= 0 ? "#2563EB" : "#DC2626"} Icon={Wallet} />
           </div>
 
-          <TablaMovimientos movs={movsNodo} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} />
+          <TablaMovimientos movs={movsNodo} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} onLightbox={setLightbox} />
         </div>
       )}
 
@@ -657,10 +691,49 @@ export default function FinanzasPanel({ sessionUser }) {
                 Tu parte: S/ {fmt((parseFloat(form.monto) || 0) * (form.porcentaje_propio / 100))}
               </p>
             </div>
+
+            {/* ── Adjuntos ── */}
+            <div style={{ gridColumn: "1 / -1" }}>
+              <span style={label}><Paperclip size={13} style={{ marginRight: 4 }} />Adjuntos (fotos / PDF)</span>
+              <label style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
+                border: "2px dashed #D1D5DB", borderRadius: 10, cursor: "pointer",
+                background: "#FAFAFA", color: "#6B7280", fontSize: 13,
+              }}>
+                <input type="file" accept="image/*,application/pdf" multiple style={{ display: "none" }}
+                  onChange={(e) => { Array.from(e.target.files || []).forEach(subirArchivo); e.target.value = ""; }} />
+                {uploading ? "Subiendo..." : "Haz clic o arrastra fotos / PDFs aquí"}
+              </label>
+              {(form.archivos || []).length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                  {(form.archivos || []).map((a, i) => (
+                    <div key={i} style={{ position: "relative", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+                      {a.tipo === "imagen" ? (
+                        <img src={a.url} alt={a.nombre} style={{ width: 80, height: 80, objectFit: "cover", display: "block" }} />
+                      ) : (
+                        <div style={{ width: 80, height: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, background: "#FEF2F2" }}>
+                          <FileText size={28} color="#DC2626" />
+                          <span style={{ fontSize: 9, color: "#DC2626", textAlign: "center", padding: "0 4px", wordBreak: "break-all" }}>
+                            {a.nombre.slice(0, 15)}
+                          </span>
+                        </div>
+                      )}
+                      <button onClick={() => eliminarArchivo(i)} style={{
+                        position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.55)",
+                        border: "none", borderRadius: "50%", width: 18, height: 18, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                      }}>
+                        <X size={11} color="#fff" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
             <button style={btnGhost} onClick={() => setModal(false)}>Cancelar</button>
-            <button style={btn()} onClick={guardarMov} disabled={saving}>
+            <button style={btn()} onClick={guardarMov} disabled={saving || uploading}>
               {saving ? "Guardando..." : editId ? "Guardar cambios" : "Agregar"}
             </button>
           </div>
@@ -730,6 +803,17 @@ export default function FinanzasPanel({ sessionUser }) {
           </div>
         </Modal>
       )}
+
+      {/* ── LIGHTBOX ─────────────────────────────────────────────────────── */}
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+        >
+          <button onClick={() => setLightbox(null)} style={{ position: "absolute", top: 16, right: 20, background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 28, lineHeight: 1 }}>×</button>
+          <img src={lightbox} alt="preview" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "95vw", maxHeight: "90vh", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,.6)" }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -776,7 +860,7 @@ function FiltrosFecha({ filtroAnio, setFiltroAnio, filtroMes, setFiltroMes, filt
   );
 }
 
-function TablaMovimientos({ movs, onEditar, onEliminar, loading }) {
+function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
   const card = { background: "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
   if (loading) return <div style={{ ...card, textAlign: "center", color: "#9CA3AF", padding: 40 }}>Cargando...</div>;
   if (!movs.length) return <div style={{ ...card, textAlign: "center", color: "#9CA3AF", padding: 40 }}>Sin movimientos para este filtro</div>;
@@ -786,44 +870,74 @@ function TablaMovimientos({ movs, onEditar, onEliminar, loading }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: "2px solid #F3F4F6" }}>
-              {["Fecha","Nodo","Tipo","Categoría","Descripción","Monto","% Tuyo","Tu parte",""].map((h) => (
+              {["Fecha","Nodo","Tipo","Categoría","Descripción","Monto","% Tuyo","Tu parte","Adj.",""].map((h) => (
                 <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#6B7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {movs.map((m) => (
-              <tr key={m.id} style={{ borderBottom: "1px solid #F9FAFB" }}>
-                <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>{fmtFecha(m.fecha)}</td>
-                <td style={{ padding: "9px 10px" }}>
-                  <span style={{ fontSize: 12, background: "#EFF6FF", color: "#1D4ED8", borderRadius: 6, padding: "2px 8px" }}>
-                    {m.nodo}
-                  </span>
-                </td>
-                <td style={{ padding: "9px 10px" }}>
-                  <span style={{
-                    fontSize: 12, borderRadius: 6, padding: "2px 8px",
-                    background: m.tipo === "ingreso" ? "#DCFCE7" : "#FEE2E2",
-                    color: m.tipo === "ingreso" ? "#15803D" : "#B91C1C",
-                  }}>{m.tipo}</span>
-                </td>
-                <td style={{ padding: "9px 10px" }}>{m.categoria}</td>
-                <td style={{ padding: "9px 10px", color: "#6B7280" }}>{m.descripcion || "-"}</td>
-                <td style={{ padding: "9px 10px", fontWeight: 600 }}>S/ {fmt(m.monto)}</td>
-                <td style={{ padding: "9px 10px", color: "#6B7280" }}>{m.porcentaje_propio}%</td>
-                <td style={{ padding: "9px 10px", fontWeight: 700, color: m.tipo === "ingreso" ? "#16A34A" : "#DC2626" }}>
-                  S/ {fmt(monto_propio(m))}
-                </td>
-                <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
-                  <button onClick={() => onEditar(m)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", marginRight: 4 }}>
-                    <Edit2 size={14} />
-                  </button>
-                  <button onClick={() => onEliminar(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626" }}>
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {movs.map((m) => {
+              const archivos = m.archivos || [];
+              const imagenes = archivos.filter((a) => a.tipo === "imagen");
+              const pdfs     = archivos.filter((a) => a.tipo === "pdf");
+              return (
+                <tr key={m.id} style={{ borderBottom: "1px solid #F9FAFB" }}>
+                  <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>{fmtFecha(m.fecha)}</td>
+                  <td style={{ padding: "9px 10px" }}>
+                    <span style={{ fontSize: 12, background: "#EFF6FF", color: "#1D4ED8", borderRadius: 6, padding: "2px 8px" }}>
+                      {m.nodo}
+                    </span>
+                  </td>
+                  <td style={{ padding: "9px 10px" }}>
+                    <span style={{
+                      fontSize: 12, borderRadius: 6, padding: "2px 8px",
+                      background: m.tipo === "ingreso" ? "#DCFCE7" : "#FEE2E2",
+                      color: m.tipo === "ingreso" ? "#15803D" : "#B91C1C",
+                    }}>{m.tipo}</span>
+                  </td>
+                  <td style={{ padding: "9px 10px" }}>{m.categoria}</td>
+                  <td style={{ padding: "9px 10px", color: "#6B7280" }}>{m.descripcion || "-"}</td>
+                  <td style={{ padding: "9px 10px", fontWeight: 600 }}>S/ {fmt(m.monto)}</td>
+                  <td style={{ padding: "9px 10px", color: "#6B7280" }}>{m.porcentaje_propio}%</td>
+                  <td style={{ padding: "9px 10px", fontWeight: 700, color: m.tipo === "ingreso" ? "#16A34A" : "#DC2626" }}>
+                    S/ {fmt(monto_propio(m))}
+                  </td>
+                  {/* Adjuntos */}
+                  <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
+                    {archivos.length === 0 ? (
+                      <span style={{ color: "#D1D5DB" }}>—</span>
+                    ) : (
+                      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                        {imagenes.map((a, i) => (
+                          <img
+                            key={i}
+                            src={a.url}
+                            alt={a.nombre}
+                            title={a.nombre}
+                            onClick={() => onLightbox(a.url)}
+                            style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 4, cursor: "pointer", border: "1px solid #E5E7EB" }}
+                          />
+                        ))}
+                        {pdfs.map((a, i) => (
+                          <a key={i} href={a.url} target="_blank" rel="noreferrer" title={a.nombre}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, background: "#FEF2F2", borderRadius: 4, border: "1px solid #FECACA" }}>
+                            <FileText size={14} color="#DC2626" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
+                    <button onClick={() => onEditar(m)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", marginRight: 4 }}>
+                      <Edit2 size={14} />
+                    </button>
+                    <button onClick={() => onEliminar(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626" }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -873,7 +987,7 @@ function DetallePeriodo({ periodo, movs, onCerrar, onPDF }) {
         </div>
       </div>
 
-      <TablaMovimientos movs={movsP} onEditar={() => {}} onEliminar={() => {}} loading={false} />
+      <TablaMovimientos movs={movsP} onEditar={() => {}} onEliminar={() => {}} loading={false} onLightbox={() => {}} />
     </div>
   );
 }
