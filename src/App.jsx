@@ -11516,14 +11516,15 @@ export default function App() {
       // Equipos
       let eqDetalle = "";
       let eqVenta = 0;
+      const esRecuperacion = tipo.includes("recup");
       eqs.forEach((e) => {
+        const desc = [e?.tipo, e?.marca, e?.modelo].filter(Boolean).join(" ");
+        eqDetalle += `${escHtml(desc || "Equipo")}<br/>`;
+        if (esRecuperacion) return; // equipo recuperado, no se vende
         const eqKey = `${e?.tipo||""}||${e?.marca||""}||${e?.modelo||""}`;
         const precioBase = reporteConfigPrecioBaseEq[eqKey] !== undefined ? reporteConfigPrecioBaseEq[eqKey] : Number(e?.precioUnitario ?? 0);
         const margenEqItem = reporteConfigMargenPorEq[eqKey] !== undefined ? reporteConfigMargenPorEq[eqKey] : margenEq;
-        const puV = precioBase * (1 + margenEqItem / 100);
-        eqVenta += puV;
-        const desc = [e?.tipo, e?.marca, e?.modelo].filter(Boolean).join(" ");
-        eqDetalle += `${escHtml(desc || "Equipo")}<br/>`;
+        eqVenta += precioBase * (1 + margenEqItem / 100);
       });
 
       // Costo actuación
