@@ -2087,6 +2087,8 @@ export default function App() {
   const [reporteConfigMostrarVenta, setReporteConfigMostrarVenta] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarVenta"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMostrarMargen, setReporteConfigMostrarMargen] = useState(() => { try { const v = localStorage.getItem("rpt_mostrarMargen"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigMargenEquipos, setReporteConfigMargenEquipos] = useState(() => { try { return Number(localStorage.getItem("rpt_margenEquipos") ?? 0) || 0; } catch { return 0; } });
+  const [reporteConfigMargenPorEq, setReporteConfigMargenPorEq] = useState(() => { try { return JSON.parse(localStorage.getItem("rpt_margenPorEq") || "{}"); } catch { return {}; } });
+  const [reporteConfigPrecioBaseEq, setReporteConfigPrecioBaseEq] = useState(() => { try { return JSON.parse(localStorage.getItem("rpt_precioBaseEq") || "{}"); } catch { return {}; } });
   const [reporteConfigRestarPago, setReporteConfigRestarPago] = useState(() => { try { const v = localStorage.getItem("rpt_restarPago"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigGuardando, setReporteConfigGuardando] = useState(false);
   const [reporteConfigGuardadoOk, setReporteConfigGuardadoOk] = useState(false);
@@ -2216,6 +2218,8 @@ export default function App() {
           if (v.mostrarVenta !== undefined) setReporteConfigMostrarVenta(v.mostrarVenta !== false);
           if (v.mostrarMargen !== undefined) setReporteConfigMostrarMargen(v.mostrarMargen !== false);
           if (v.margenEquipos !== undefined) setReporteConfigMargenEquipos(Number(v.margenEquipos) || 0);
+          if (v.margenPorEq !== undefined) setReporteConfigMargenPorEq(v.margenPorEq || {});
+          if (v.precioBaseEq !== undefined) setReporteConfigPrecioBaseEq(v.precioBaseEq || {});
         }
       } catch { /* usa valores por defecto */ }
     })();
@@ -11048,6 +11052,21 @@ export default function App() {
       .sort((a, b) => b.cantidad - a.cantidad || b.costo - a.costo);
   }, [liquidacionesReporte]);
 
+  const reporteEquiposResumen = useMemo(() => {
+    const map = new Map();
+    liquidacionesReporte.forEach((item) => {
+      const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
+      eqs.forEach((e) => {
+        const key = `${e.tipo||""}||${e.marca||""}||${e.modelo||""}`;
+        const prev = map.get(key) || { key, tipo: e.tipo||"-", marca: e.marca||"", modelo: e.modelo||"", precioUnit: Number(e.precioUnitario||0), cantidad: 0 };
+        prev.cantidad += 1;
+        if (!prev.precioUnit && e.precioUnitario) prev.precioUnit = Number(e.precioUnitario);
+        map.set(key, prev);
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.cantidad - a.cantidad);
+  }, [liquidacionesReporte]);
+
   const totalPaginasAct = Math.max(1, Math.ceil(liquidacionesReporte.length / REPORTES_PAGE_SIZE));
   const totalPaginasMat = Math.max(1, Math.ceil(reporteMateriales.length / REPORTES_PAGE_SIZE));
   const reporteActuacionesPagina = useMemo(() => {
@@ -11287,7 +11306,9 @@ export default function App() {
     const margenEq = Number(reporteConfigMargenEquipos || 0);
     const totalEquiposCosto = equiposResumen.reduce((a, x) => a + x.total, 0);
     const totalEquiposVenta = equiposResumen.reduce((a, x) => {
-      const pu = x.precioUnit * (1 + margenEq / 100);
+      const precioBase = reporteConfigPrecioBaseEq[x.key] !== undefined ? reporteConfigPrecioBaseEq[x.key] : x.precioUnit;
+      const margenItem = reporteConfigMargenPorEq[x.key] !== undefined ? reporteConfigMargenPorEq[x.key] : margenEq;
+      const pu = precioBase * (1 + margenItem / 100);
       return a + pu * x.cantidad;
     }, 0);
 
@@ -11496,8 +11517,10 @@ export default function App() {
       let eqDetalle = "";
       let eqVenta = 0;
       eqs.forEach((e) => {
-        const pu = Number(e?.precioUnitario ?? 0);
-        const puV = pu * (1 + margenEq / 100);
+        const eqKey = `${e?.tipo||""}||${e?.marca||""}||${e?.modelo||""}`;
+        const precioBase = reporteConfigPrecioBaseEq[eqKey] !== undefined ? reporteConfigPrecioBaseEq[eqKey] : Number(e?.precioUnitario ?? 0);
+        const margenEqItem = reporteConfigMargenPorEq[eqKey] !== undefined ? reporteConfigMargenPorEq[eqKey] : margenEq;
+        const puV = precioBase * (1 + margenEqItem / 100);
         eqVenta += puV;
         const desc = [e?.tipo, e?.marca, e?.modelo].filter(Boolean).join(" ");
         eqDetalle += `${escHtml(desc || "Equipo")}<br/>`;
@@ -16070,6 +16093,62 @@ export default function App() {
                           <label style={{ fontSize: 12, fontWeight: 600, color: "#1d4ed8", display: "block", marginBottom: 4 }}>Margen global equipos %</label>
                           <input type="number" min="0" max="500" step="1" value={reporteConfigMargenEquipos} onChange={e => setReporteConfigMargenEquipos(Number(e.target.value) || 0)} style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #bfdbfe", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }} />
                           <div style={{ fontSize: 11, color: "#2563eb", marginTop: 4 }}>Aplica a todos los equipos en la tabla de equipos por orden</div>
+                          {reporteEquiposResumen.length > 0 && (
+                            <div style={{ marginTop: 14 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginBottom: 8 }}>Ajuste por equipo (sobreescribe el global)</div>
+                              <div style={{ display: "grid", gap: 8, maxHeight: 240, overflowY: "auto" }}>
+                                {reporteEquiposResumen.map((eq) => {
+                                  const label = [eq.tipo, eq.marca, eq.modelo].filter(Boolean).join(" ");
+                                  const margenActual = reporteConfigMargenPorEq[eq.key] !== undefined ? reporteConfigMargenPorEq[eq.key] : "";
+                                  const precioActual = reporteConfigPrecioBaseEq[eq.key] !== undefined ? reporteConfigPrecioBaseEq[eq.key] : "";
+                                  return (
+                                    <div key={eq.key} style={{ background: "#fff", borderRadius: 8, padding: "8px 10px", border: "1px solid #bfdbfe" }}>
+                                      <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 600, marginBottom: 6 }}>
+                                        {label} <span style={{ color: "#94a3b8", fontWeight: 400 }}>×{eq.cantidad}</span>
+                                      </div>
+                                      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                                        <div style={{ flex: 1 }}>
+                                          <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Precio base (S/)</label>
+                                          <input type="number" min="0" step="0.01"
+                                            placeholder={String(eq.precioUnit || 0)}
+                                            value={precioActual}
+                                            onChange={e => {
+                                              const val = e.target.value === "" ? undefined : Number(e.target.value);
+                                              setReporteConfigPrecioBaseEq(prev => {
+                                                const next = { ...prev };
+                                                if (val === undefined) delete next[eq.key]; else next[eq.key] = val;
+                                                try { localStorage.setItem("rpt_precioBaseEq", JSON.stringify(next)); } catch {}
+                                                return next;
+                                              });
+                                            }}
+                                            style={{ width: "100%", padding: "5px 8px", border: "1.5px solid #bfdbfe", borderRadius: 6, fontSize: 12, boxSizing: "border-box" }}
+                                          />
+                                        </div>
+                                        <div style={{ width: 72 }}>
+                                          <label style={{ fontSize: 10, color: "#64748b", display: "block", marginBottom: 2 }}>Margen %</label>
+                                          <input type="number" min="0" max="500" step="1"
+                                            placeholder={String(reporteConfigMargenEquipos)}
+                                            value={margenActual}
+                                            onChange={e => {
+                                              const val = e.target.value === "" ? undefined : Number(e.target.value);
+                                              setReporteConfigMargenPorEq(prev => {
+                                                const next = { ...prev };
+                                                if (val === undefined) delete next[eq.key]; else next[eq.key] = val;
+                                                try { localStorage.setItem("rpt_margenPorEq", JSON.stringify(next)); } catch {}
+                                                return next;
+                                              });
+                                            }}
+                                            style={{ width: "100%", padding: "5px 8px", border: "1.5px solid #bfdbfe", borderRadius: 6, fontSize: 12, textAlign: "center", boxSizing: "border-box" }}
+                                          />
+                                        </div>
+                                        <span style={{ fontSize: 11, color: "#64748b", paddingBottom: 6 }}>%</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* Qué mostrar en el PDF */}
@@ -16113,6 +16192,8 @@ export default function App() {
                             mostrarVenta: reporteConfigMostrarVenta,
                             mostrarMargen: reporteConfigMostrarMargen,
                             margenEquipos: reporteConfigMargenEquipos,
+                            margenPorEq: reporteConfigMargenPorEq,
+                            precioBaseEq: reporteConfigPrecioBaseEq,
                             restarPago: reporteConfigRestarPago,
                           };
                           // Guardar también en localStorage como fallback inmediato
