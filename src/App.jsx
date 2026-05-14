@@ -3202,7 +3202,9 @@ export default function App() {
       if (ok) {
         setMkwCliOk((p) => ({ ...p, [cid]: true }));
         if (isSupabaseConfigured && cliente.id) {
-          await supabase.from(CLIENTES_TABLE).update({ mikrowisp_sync_ok: true }).eq("id", cliente.id);
+          const { error: syncErr } = await supabase.from(CLIENTES_TABLE).update({ mikrowisp_sync_ok: true }).eq("id", cliente.id);
+          if (syncErr) console.error("[sync] Error guardando mikrowisp_sync_ok:", syncErr);
+          else console.log("[sync] mikrowisp_sync_ok=true guardado para id:", cliente.id);
           setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, mikrowisp_sync_ok: true } : c));
         }
       } else window.alert(`Error al guardar: ${msg}`);
