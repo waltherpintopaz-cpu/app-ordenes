@@ -2,7 +2,16 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Package, Settings, FileText, RefreshCw, ChevronDown, ChevronUp, Save, X } from "lucide-react";
+import { Package, Settings, FileText, RefreshCw, Save, X } from "lucide-react";
+
+const LS_PRECIOS_KEY = "inventario_catalogo_precios";
+
+function loadPreciosLS() {
+  try { return JSON.parse(localStorage.getItem(LS_PRECIOS_KEY) || "{}"); } catch { return {}; }
+}
+function savePreciosLS(obj) {
+  try { localStorage.setItem(LS_PRECIOS_KEY, JSON.stringify(obj)); } catch {}
+}
 
 const ESTADO_COLORS = {
   almacen:   { bg: "#dbeafe", text: "#1d4ed8", label: "Almacén" },
@@ -27,13 +36,12 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
   const [filtTipo,    setFiltTipo]    = useState("todos");
   const [filtModelo,  setFiltModelo]  = useState("todos");
   const [filtEstado,  setFiltEstado]  = useState("todos");
-  const [filtTecnico, setFiltTecnico] = useState("todos");
   const [busqueda,    setBusqueda]    = useState("");
 
-  // Configuración de precios
+  // Configuración de precios (solo localStorage, no toca Supabase)
+  const [preciosLocal, setPreciosLocal] = useState(loadPreciosLS);
   const [showConfig,   setShowConfig]   = useState(false);
   const [preciosEdit,  setPreciosEdit]  = useState({});
-  const [savingPrice,  setSavingPrice]  = useState(false);
   const [saveMsg,      setSaveMsg]      = useState("");
 
   useEffect(() => { fetchEquipos(); }, []);
@@ -42,11 +50,17 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     setLoading(true); setError(null);
     const { data, error } = await supabase
       .from("equipos_catalogo")
-      .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado,tecnico")
+      .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado")
       .order("empresa").order("tipo").order("modelo");
     if (error) { setError(error.message); setLoading(false); return; }
     setEquipos(data || []);
     setLoading(false);
+  }
+
+  // Precio efectivo: localStorage tiene prioridad sobre el valor de la DB
+  function getPrecio(e) {
+    const k = `${e.empresa}||${e.tipo}||${e.modelo}`;
+    return preciosLocal[k] !== undefined ? Number(preciosLocal[k]) : Number(e.precio_unitario || 0);
   }
 
   // Opciones dinámicas para selects
@@ -61,15 +75,12 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     if (filtTipo    !== "todos") base = base.filter(e => e.tipo    === filtTipo);
     return ["todos", ...new Set(base.map(e => e.modelo).filter(Boolean))];
   }, [equipos, filtEmpresa, filtTipo]);
-  const tecnicos  = useMemo(() => ["todos", ...new Set(equipos.map(e => e.tecnico).filter(Boolean)).values()].sort(), [equipos]);
-
   const filtrados = useMemo(() => {
     let r = equipos;
     if (filtEmpresa !== "todos") r = r.filter(e => e.empresa === filtEmpresa);
     if (filtTipo    !== "todos") r = r.filter(e => e.tipo    === filtTipo);
     if (filtModelo  !== "todos") r = r.filter(e => e.modelo  === filtModelo);
     if (filtEstado  !== "todos") r = r.filter(e => e.estado  === filtEstado);
-    if (filtTecnico !== "todos") r = r.filter(e => e.tecnico === filtTecnico);
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       r = r.filter(e =>
@@ -80,19 +91,19 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       );
     }
     return r;
-  }, [equipos, filtEmpresa, filtTipo, filtModelo, filtEstado, filtTecnico, busqueda]);
+  }, [equipos, filtEmpresa, filtTipo, filtModelo, filtEstado, busqueda]);
 
-  // KPIs
+  // KPIs — usa precio local
   const kpis = useMemo(() => {
     const total     = filtrados.length;
     const almacen   = filtrados.filter(e => e.estado === "almacen").length;
     const asignado  = filtrados.filter(e => e.estado === "asignado").length;
     const liquidado = filtrados.filter(e => e.estado === "liquidado").length;
-    const totalVal  = filtrados.reduce((s, e) => s + Number(e.precio_unitario || 0), 0);
+    const totalVal  = filtrados.reduce((s, e) => s + getPrecio(e), 0);
     return { total, almacen, asignado, liquidado, totalVal };
-  }, [filtrados]);
+  }, [filtrados, preciosLocal]);
 
-  // Configuración de precios: precios únicos por modelo
+  // Modelos únicos para config — precio efectivo (local > DB)
   const modelosUnicos = useMemo(() => {
     const map = {};
     for (const e of equipos) {
@@ -103,34 +114,22 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
   }, [equipos]);
 
   function openConfig() {
+    const saved = loadPreciosLS();
     const init = {};
     for (const m of modelosUnicos) {
-      init[`${m.empresa}||${m.tipo}||${m.modelo}`] = m.precio_unitario;
+      const k = `${m.empresa}||${m.tipo}||${m.modelo}`;
+      init[k] = saved[k] !== undefined ? saved[k] : m.precio_unitario;
     }
     setPreciosEdit(init);
     setShowConfig(true);
     setSaveMsg("");
   }
 
-  async function guardarPrecios() {
-    setSavingPrice(true); setSaveMsg("");
-    let errores = [];
-    for (const [key, precio] of Object.entries(preciosEdit)) {
-      const [empresa, tipo, modelo] = key.split("||");
-      const { error } = await supabase
-        .from("equipos_catalogo")
-        .update({ precio_unitario: Number(precio) })
-        .eq("empresa", empresa).eq("tipo", tipo).eq("modelo", modelo);
-      if (error) errores.push(modelo);
-    }
-    setSavingPrice(false);
-    if (errores.length) {
-      setSaveMsg(`Error en: ${errores.join(", ")}`);
-    } else {
-      setSaveMsg("Precios guardados correctamente");
-      await fetchEquipos();
-      setTimeout(() => setSaveMsg(""), 3000);
-    }
+  function guardarPrecios() {
+    savePreciosLS(preciosEdit);
+    setPreciosLocal({ ...preciosEdit });
+    setSaveMsg("Precios guardados correctamente");
+    setTimeout(() => { setSaveMsg(""); setShowConfig(false); }, 1500);
   }
 
   function generarPDF() {
@@ -151,23 +150,21 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       filtTipo    !== "todos" ? `Tipo: ${filtTipo}`       : "",
       filtModelo  !== "todos" ? `Modelo: ${filtModelo}`   : "",
       filtEstado  !== "todos" ? `Estado: ${estadoLabel(filtEstado)}` : "",
-      filtTecnico !== "todos" ? `Técnico: ${filtTecnico}` : "",
     ].filter(Boolean).join("  |  ") || "Sin filtros";
     doc.text(`Filtros: ${filtrosDesc}   Fecha: ${now}`, 148, 18, { align: "center" });
 
     // Tabla
-    const cols = ["#", "Empresa", "Tipo", "Marca", "Modelo", "Serial / MAC", "Código QR", "Estado", "Técnico", "Precio"];
+    const cols = ["#", "Empresa", "Tipo", "Marca", "Modelo", "Serial / MAC", "Código QR", "Estado", "Precio"];
     const rows = filtrados.map((e, i) => [
       i + 1,
-      e.empresa   || "—",
-      e.tipo      || "—",
-      e.marca     || "—",
-      e.modelo    || "—",
+      e.empresa    || "—",
+      e.tipo       || "—",
+      e.marca      || "—",
+      e.modelo     || "—",
       e.serial_mac || "—",
       e.codigo_qr  || "—",
       estadoLabel(e.estado),
-      e.tecnico   || "—",
-      fmt$(e.precio_unitario),
+      fmt$(getPrecio(e)),
     ]);
 
     autoTable(doc, {
@@ -177,7 +174,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       styles:      { fontSize: 7.5, cellPadding: 2 },
       headStyles:  { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
       alternateRowStyles: { fillColor: [239, 246, 255] },
-      columnStyles: { 0: { cellWidth: 8 }, 9: { halign: "right", fontStyle: "bold" } },
+      columnStyles: { 0: { cellWidth: 8 }, 8: { halign: "right", fontStyle: "bold" } },
     });
 
     // Total
@@ -270,9 +267,9 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
                 style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid #d1d5db", background: "#f3f4f6", cursor: "pointer", fontSize: 13 }}>
                 Cancelar
               </button>
-              <button onClick={guardarPrecios} disabled={savingPrice}
+              <button onClick={guardarPrecios}
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 18px", borderRadius: 7, border: "none", background: "#1d4ed8", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-                <Save size={14} /> {savingPrice ? "Guardando…" : "Guardar Precios"}
+                <Save size={14} /> Guardar Precios
               </button>
             </div>
           </div>
@@ -317,11 +314,8 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
           <option value="asignado">Asignado</option>
           <option value="liquidado">Liquidado</option>
         </select>
-        <select value={filtTecnico} onChange={e => setFiltTecnico(e.target.value)} style={selStyle}>
-          {tecnicos.map(v => <option key={v} value={v}>{v === "todos" ? "Todos los técnicos" : v}</option>)}
-        </select>
-        {(filtEmpresa !== "todos" || filtTipo !== "todos" || filtModelo !== "todos" || filtEstado !== "todos" || filtTecnico !== "todos" || busqueda) && (
-          <button onClick={() => { setFiltEmpresa("todos"); setFiltTipo("todos"); setFiltModelo("todos"); setFiltEstado("todos"); setFiltTecnico("todos"); setBusqueda(""); }}
+        {(filtEmpresa !== "todos" || filtTipo !== "todos" || filtModelo !== "todos" || filtEstado !== "todos" || busqueda) && (
+          <button onClick={() => { setFiltEmpresa("todos"); setFiltTipo("todos"); setFiltModelo("todos"); setFiltEstado("todos"); setBusqueda(""); }}
             style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 12 }}>
             Limpiar filtros
           </button>
@@ -342,7 +336,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#1d4ed8", color: "#fff" }}>
-                  {["#","Empresa","Tipo","Marca","Modelo","Serial / MAC","Código QR","Estado","Técnico","Precio"].map(h => (
+                  {["#","Empresa","Tipo","Marca","Modelo","Serial / MAC","Código QR","Estado","Precio"].map(h => (
                     <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -358,14 +352,13 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
                     <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>{e.serial_mac || "—"}</td>
                     <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>{e.codigo_qr || "—"}</td>
                     <td style={{ padding: "8px 12px" }}><span style={estadoStyle(e.estado)}>{estadoLabel(e.estado)}</span></td>
-                    <td style={{ padding: "8px 12px" }}>{e.tecnico || "—"}</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#1d4ed8", textAlign: "right" }}>{fmt$(e.precio_unitario)}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: "#1d4ed8", textAlign: "right" }}>{fmt$(getPrecio(e))}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ background: "#eff6ff", fontWeight: 700 }}>
-                  <td colSpan={9} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
+                  <td colSpan={8} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
                     Total ({filtrados.length} equipos)
                   </td>
                   <td style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 14, textAlign: "right" }}>
