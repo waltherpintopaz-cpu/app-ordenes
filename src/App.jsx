@@ -31,6 +31,7 @@ import GestorasReportesPanel from "./components/GestorasReportesPanel";
 import DashboardEjecutivoPanel from "./components/DashboardEjecutivoPanel";
 import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
 import IptvPanel from "./components/IptvPanel";
+import NocEquiposPanel from "./components/NocEquiposPanel";
 import AgentesDashboard from "./components/AgentesDashboard";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
@@ -18506,6 +18507,10 @@ export default function App() {
 
         {vistaActiva === "iptv" && (esAdminSesion || esGestorSesion) && (
           <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} />
+        )}
+
+        {vistaActiva === "noc" && esAdminSesion && (
+          <NocEquiposPanel esAdmin={esAdminSesion} />
         )}
 
         {vistaActiva === "detalleCliente" && clienteSeleccionado && (() => {
