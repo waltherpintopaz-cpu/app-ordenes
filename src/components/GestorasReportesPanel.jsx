@@ -15,6 +15,63 @@ const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
 })();
 
 const pct = (a, b) => b === 0 ? 0 : Math.round((a / b) * 100);
+
+function RenderAnalisis({ text }) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const elements = [];
+  let listItems = [];
+  const flushList = (key) => {
+    if (listItems.length > 0) {
+      elements.push(<ul key={`ul-${key}`} style={{ margin: "6px 0 10px 0", paddingLeft: 20 }}>{listItems.map((li, i) => <li key={i} style={{ marginBottom: 5, lineHeight: 1.6, color: "#374151" }} dangerouslySetInnerHTML={{ __html: li }} />)}</ul>);
+      listItems = [];
+    }
+  };
+  const parseBold = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (!t) { flushList(i); return; }
+    if (t.startsWith("### ") || t.startsWith("## ")) {
+      flushList(i);
+      elements.push(<div key={i} style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginTop: 16, marginBottom: 4, borderBottom: "2px solid #e9d5ff", paddingBottom: 4 }}>{t.replace(/^#{2,3} /, "")}</div>);
+    } else if (t.startsWith("- ") || t.startsWith("• ")) {
+      listItems.push(parseBold(t.slice(2)));
+    } else {
+      flushList(i);
+      elements.push(<p key={i} style={{ margin: "6px 0", lineHeight: 1.7, color: "#374151" }} dangerouslySetInnerHTML={{ __html: parseBold(t) }} />);
+    }
+  });
+  flushList("end");
+  return <div style={{ fontSize: 13 }}>{elements}</div>;
+}
+
+function renderAnalisisPDF(doc, analisisIA) {
+  let y = doc.lastAutoTable.finalY + 14;
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 14, maxW = 180;
+  const check = (n = 8) => { if (y + n > pageH - 14) { doc.addPage(); y = 16; } };
+  check(10);
+  doc.setFontSize(13); doc.setFont("helvetica", "bold"); doc.setTextColor(109, 40, 217);
+  doc.text("Análisis IA — Informe Ejecutivo", margin, y); y += 8; doc.setTextColor(0, 0, 0);
+  for (const line of analisisIA.split("\n")) {
+    const t = line.trim();
+    if (!t) { y += 3; continue; }
+    if (t.startsWith("### ") || t.startsWith("## ")) {
+      y += 4; check(10);
+      doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(30, 41, 59);
+      doc.text(t.replace(/^#{2,3} /, ""), margin, y); y += 5;
+      doc.setDrawColor(200, 180, 255); doc.line(margin, y, margin + maxW, y); y += 4; doc.setTextColor(0, 0, 0);
+    } else if (t.startsWith("- ") || t.startsWith("• ")) {
+      const wrapped = doc.splitTextToSize("• " + t.slice(2).replace(/\*\*(.+?)\*\*/g, "$1"), maxW - 4);
+      check(wrapped.length * 5 + 2); doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      doc.text(wrapped, margin + 3, y); y += wrapped.length * 5 + 1;
+    } else {
+      const wrapped = doc.splitTextToSize(t.replace(/\*\*(.+?)\*\*/g, "$1"), maxW);
+      check(wrapped.length * 5 + 2); doc.setFontSize(9); doc.setFont("helvetica", "normal");
+      doc.text(wrapped, margin, y); y += wrapped.length * 5 + 1;
+    }
+  }
+}
 const diffDias = (a, b) => {
   if (!a || !b) return null;
   const diff = new Date(b) - new Date(a);
@@ -143,7 +200,7 @@ export default function GestorasReportesPanel({ cardStyle, sectionTitleStyle }) 
           model: "gpt-4o-mini",
           messages: [{
             role: "system",
-            content: "Eres analista de operaciones de una empresa ISP. Analiza el rendimiento de las gestoras (personal administrativo que crea y gestiona órdenes de trabajo). Destaca: gestoras con mayor volumen, tasas de liquidación, tiempos de respuesta, y recomendaciones concretas. Usa viñetas."
+            content: "Eres analista de operaciones de una empresa ISP. Analiza el rendimiento de las gestoras (personal administrativo que crea y gestiona órdenes de trabajo). Genera un informe ejecutivo en español con formato markdown: ### para secciones, ** para negritas, - para viñetas. Destaca: gestoras con mayor volumen, tasas de liquidación, tiempos de respuesta, y recomendaciones concretas."
           }, {
             role: "user",
             content: `Período: ${fechaDesde} al ${fechaHasta}\nTotal órdenes: ${total} | Liquidadas: ${liquidadas} (${tasaLiq}%) | Canceladas: ${canceladas} | Prom. días respuesta: ${promDiasGlobal}\n\nPor gestora:\n${res2}`
@@ -173,12 +230,7 @@ export default function GestorasReportesPanel({ cardStyle, sectionTitleStyle }) 
       body: porGestora.map(g => [g.gestora, g.total, g.liquidadas, g.pct_liq+"%", g.canceladas, g.pct_can+"%", g.pendientes, g.promDias+" d", g.tipo_principal]),
       styles: { fontSize: 8 },
     });
-    if (analisisIA) {
-      const ay = doc.lastAutoTable.finalY + 10;
-      doc.setFontSize(12); doc.text("Análisis IA", 14, ay);
-      doc.setFontSize(9);
-      doc.text(doc.splitTextToSize(analisisIA, 180), 14, ay + 8);
-    }
+    if (analisisIA) renderAnalisisPDF(doc, analisisIA);
     doc.save(`reporte_gestoras_${fechaDesde}_${fechaHasta}.pdf`);
   }
 
@@ -348,17 +400,24 @@ export default function GestorasReportesPanel({ cardStyle, sectionTitleStyle }) 
 
           {/* Análisis IA */}
           <div style={{ ...cardStyle }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>Análisis IA</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "#1e293b" }}>🤖 Análisis IA</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Informe ejecutivo generado por inteligencia artificial</div>
+              </div>
               <button onClick={analizarIA} disabled={loadingIA}
-                style={{ background: loadingIA ? "#94a3b8" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: loadingIA ? "not-allowed" : "pointer" }}>
-                {loadingIA ? "Analizando..." : "🤖 Analizar"}
+                style={{ background: loadingIA ? "#94a3b8" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: loadingIA ? "not-allowed" : "pointer" }}>
+                {loadingIA ? "⏳ Analizando..." : "🤖 Generar Análisis"}
               </button>
             </div>
             {analisisIA ? (
-              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: 16, fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{analisisIA}</div>
+              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: "20px 24px" }}>
+                <RenderAnalisis text={analisisIA} />
+              </div>
             ) : (
-              <div style={{ color: "#94a3b8", fontSize: 13 }}>Haz clic en "🤖 Analizar" para análisis de rendimiento por gestora, tiempos de respuesta y recomendaciones.</div>
+              <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 10, padding: "32px 20px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                Haz clic en "🤖 Generar Análisis" para análisis de rendimiento por gestora, tiempos de respuesta y recomendaciones.
+              </div>
             )}
           </div>
         </>
