@@ -3061,13 +3061,6 @@ export default function App() {
         await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cliente.id);
         setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, en_mikrowisp: true } : c));
       }
-      // Sincronizar datos a mikrowisp_clientes después de agregar exitosamente
-      try {
-        const datosSync = await mkwConsultarCedula(dni, esNod04 ? "Nod_04" : "");
-        await mkwUpsert(datosSync, { sobreescribir: true });
-      } catch (syncErr) {
-        console.warn("Sincronización mikrowisp_clientes falló:", syncErr.message);
-      }
       window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a MikroWisp${esNod04 ? " DimFiber" : ""} correctamente.`);
     } catch (e) {
       window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
@@ -18348,11 +18341,15 @@ export default function App() {
                                             const id = String(cliente.id || cliente.dni || "");
                                             const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
                                             const cargando = mikrowisp_loading[id];
+                                            const sincOk = mkwCliOk[id];
                                             return (
-                                              <button onClick={() => { void agregarClienteMikrowisp(cliente); setAbonadosMenuClienteId(null); }} disabled={cargando || yaAgregado}
-                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-                                                <span>{yaAgregado ? "✓" : "+"}</span> {cargando ? "Procesando..." : yaAgregado ? "En MikroWisp" : "Agregar a MikroWisp"}
-                                              </button>
+                                              <div style={{ position: "relative" }}>
+                                                <button onClick={() => { if (!yaAgregado && !cargando) { void agregarClienteMikrowisp(cliente); setAbonadosMenuClienteId(null); } }} disabled={cargando || yaAgregado}
+                                                  style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                  <span>{yaAgregado ? "✓" : "+"}</span> {cargando ? "Procesando..." : yaAgregado ? "En MikroWisp" : "Agregar a MikroWisp"}
+                                                  {sincOk && <span title="Sincronizado" style={{ marginLeft: "auto", width: 16, height: 16, borderRadius: "50%", background: "#f97316", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff", fontWeight: 800 }}>✓</span>}
+                                                </button>
+                                              </div>
                                             );
                                           })()}
                                           {esAdminSesion && cliente.dni && (() => {
@@ -18361,8 +18358,8 @@ export default function App() {
                                             const sincOk = mkwCliOk[cid];
                                             return (
                                               <button onClick={() => { void mkwSincronizarCliente(cliente); setAbonadosMenuClienteId(null); }} disabled={cargando}
-                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: sincOk ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-                                                <span>📱</span> {cargando ? "Sincronizando..." : sincOk ? "Sincronizado MW" : "Sync MikroWisp"}
+                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: sincOk ? "#c2410c" : "#0369a1", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                <span>📱</span> {cargando ? "Sincronizando..." : sincOk ? "✓ Sincronizado MW" : "Sync MikroWisp"}
                                               </button>
                                             );
                                           })()}
@@ -18552,15 +18549,21 @@ export default function App() {
                     const id = String(cli.id || cli.dni || "");
                     const yaAgregado = cli.en_mikrowisp || mikrowisp_ok[id];
                     const cargando = mikrowisp_loading[id];
+                    const sincOk = mkwCliOk[id];
                     return (
-                      <button
-                        onClick={() => void agregarClienteMikrowisp(cli)}
-                        disabled={cargando || yaAgregado}
-                        title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar cliente a Mikrowisp"}
-                        style={{ padding: "8px 15px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", border: `1.5px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 10, color: yaAgregado ? "#16a34a" : "#92400e", fontSize: 12, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer" }}
-                      >
-                        {cargando ? "Agregando..." : yaAgregado ? "✓ En Mikrowisp" : "Mikrowisp +"}
-                      </button>
+                      <div style={{ position: "relative", display: "inline-flex" }}>
+                        <button
+                          onClick={() => void agregarClienteMikrowisp(cli)}
+                          disabled={cargando || yaAgregado}
+                          title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar cliente a Mikrowisp"}
+                          style={{ padding: "8px 15px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", border: `1.5px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 10, color: yaAgregado ? "#16a34a" : "#92400e", fontSize: 12, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer" }}
+                        >
+                          {cargando ? "Agregando..." : yaAgregado ? "✓ En Mikrowisp" : "Mikrowisp +"}
+                        </button>
+                        {sincOk && (
+                          <span title="Sincronizado con MikroWisp" style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#f97316", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", fontWeight: 800, lineHeight: 1 }}>✓</span>
+                        )}
+                      </div>
                     );
                   })()}
                   {esAdminSesion && cli.dni && (() => {
@@ -18572,7 +18575,7 @@ export default function App() {
                         onClick={() => void mkwSincronizarCliente(cli)}
                         disabled={cargando}
                         title="Sincronizar con MikroWisp"
-                        style={{ padding: "8px 15px", background: sincOk ? "#f0fdf4" : "#f0f9ff", color: sincOk ? "#16a34a" : "#0369a1", border: `1.5px solid ${sincOk ? "#86efac" : "#bae6fd"}`, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: cargando ? "wait" : "pointer" }}
+                        style={{ padding: "8px 15px", background: sincOk ? "#fff7ed" : "#f0f9ff", color: sincOk ? "#c2410c" : "#0369a1", border: `1.5px solid ${sincOk ? "#fdba74" : "#bae6fd"}`, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: cargando ? "wait" : "pointer" }}
                       >
                         {cargando ? "⏳ Sincronizando..." : sincOk ? "✓ MW Sincronizado" : "📱 Sync MW"}
                       </button>
