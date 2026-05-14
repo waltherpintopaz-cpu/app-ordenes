@@ -3251,10 +3251,11 @@ export default function App() {
         const res = await mkwUpsert(datos, { sobreescribir: mkwMasivoSobreescribir });
         if (res.ok) {
           ok++; if (!prev) nuevo++;
-          if (isSupabaseConfigured && c.id && !c.en_mikrowisp) {
-            await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", c.id);
-            setClientes(prev => prev.map(x => x.id === c.id ? { ...x, en_mikrowisp: true } : x));
+          if (isSupabaseConfigured && c.id) {
+            await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true, mikrowisp_sync_ok: true }).eq("id", c.id);
+            setClientes(prev => prev.map(x => x.id === c.id ? { ...x, en_mikrowisp: true, mikrowisp_sync_ok: true } : x));
             setMikrowispOk(p => ({ ...p, [String(c.id || c.dni || "")]: true }));
+            setMkwCliOk(p => ({ ...p, [String(c.id || c.dni || "")]: true }));
           }
         }
         else { err++; errList.push({ dni: c.dni, nombre: c.nombre || "—", motivo: res.msg || "Error al guardar" }); }
