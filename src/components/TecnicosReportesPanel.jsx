@@ -16,6 +16,66 @@ const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
 
 const pct = (a, b) => (b === 0 ? 0 : Math.round((a / b) * 100));
 
+// Render markdown-like text to styled JSX
+function RenderAnalisis({ text }) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  const elements = [];
+  let listItems = [];
+
+  const flushList = (key) => {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={`ul-${key}`} style={{ margin: "6px 0 10px 0", paddingLeft: 20 }}>
+          {listItems.map((li, i) => (
+            <li key={i} style={{ marginBottom: 5, lineHeight: 1.6, color: "#374151" }}
+              dangerouslySetInnerHTML={{ __html: li }} />
+          ))}
+        </ul>
+      );
+      listItems = [];
+    }
+  };
+
+  const parseBold = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList(i);
+      return;
+    }
+    if (trimmed.startsWith("### ")) {
+      flushList(i);
+      const title = trimmed.slice(4);
+      elements.push(
+        <div key={i} style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginTop: 16, marginBottom: 4, borderBottom: "2px solid #e9d5ff", paddingBottom: 4 }}>
+          {title}
+        </div>
+      );
+    } else if (trimmed.startsWith("## ")) {
+      flushList(i);
+      const title = trimmed.slice(3);
+      elements.push(
+        <div key={i} style={{ fontWeight: 800, fontSize: 15, color: "#6d28d9", marginTop: 18, marginBottom: 6 }}>
+          {title}
+        </div>
+      );
+    } else if (trimmed.startsWith("- ") || trimmed.startsWith("• ")) {
+      listItems.push(parseBold(trimmed.slice(2)));
+    } else {
+      flushList(i);
+      elements.push(
+        <p key={i} style={{ margin: "6px 0", lineHeight: 1.7, color: "#374151" }}
+          dangerouslySetInnerHTML={{ __html: parseBold(trimmed) }} />
+      );
+    }
+  });
+  flushList("end");
+
+  return <div style={{ fontSize: 13 }}>{elements}</div>;
+}
+
 export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) {
   const [ordenes, setOrdenes]         = useState([]);
   const [dropData, setDropData]       = useState([]);
@@ -62,7 +122,6 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     if (resOrdenes.error) setError(resOrdenes.error.message);
     else setOrdenes(resOrdenes.data || []);
 
-    // Unir materiales con liquidaciones en JS
     const liqMap = Object.fromEntries((resLiqs.data || []).map(l => [l.id, l]));
     const mats = (resMats.data || []).map(m => ({
       ...m,
@@ -92,12 +151,11 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     return true;
   }), [dropData, filtroNodos, filtroTecnicos, fechaDesde, fechaHasta]);
 
-  // Agrupado por técnico (órdenes)
   const porTecnico = useMemo(() => {
     const map = {};
     for (const o of filtrados) {
       const k = o.tecnico || "Sin asignar";
-      if (!map[k]) map[k] = { tecnico: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0, tipos: {}, instalaciones: 0, incidencias: 0 };
+      if (!map[k]) map[k] = { tecnico: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0, tipos: {}, instalaciones: 0, incidencias: 0, recuperaciones: 0 };
       map[k].total++;
       if (o.estado === "Liquidada")  map[k].liquidadas++;
       else if (o.estado === "Pendiente") map[k].pendientes++;
@@ -107,13 +165,13 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       const tipoLow = tipo.toLowerCase();
       if (tipoLow.includes("instalac")) map[k].instalaciones++;
       else if (tipoLow.includes("incidencia") || tipoLow.includes("avería") || tipoLow.includes("averia")) map[k].incidencias++;
+      else if (tipoLow.includes("recup")) map[k].recuperaciones++;
     }
     return Object.values(map)
       .map(r => ({ ...r, pct_liq: pct(r.liquidadas, r.total) }))
       .sort((a, b) => b.liquidadas - a.liquidadas);
   }, [filtrados]);
 
-  // Metros de drop por técnico
   const dropPorTecnico = useMemo(() => {
     const map = {};
     for (const d of dropFiltrado) {
@@ -127,24 +185,20 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       .sort((a, b) => b.totalMetros - a.totalMetros);
   }, [dropFiltrado]);
 
-  // Combinar para tabla unificada
   const dropMap = useMemo(() => Object.fromEntries(dropPorTecnico.map(d => [d.tecnico, d])), [dropPorTecnico]);
 
-  // Gráfico instalaciones vs incidencias
   const instVsIncChart = useMemo(() =>
-    porTecnico.filter(t => t.tecnico !== "Sin asignar" && (t.instalaciones > 0 || t.incidencias > 0))
-      .map(t => ({ tecnico: t.tecnico.split(" ")[0], Instalaciones: t.instalaciones, Incidencias: t.incidencias })),
+    porTecnico.filter(t => t.tecnico !== "Sin asignar" && (t.instalaciones > 0 || t.incidencias > 0 || t.recuperaciones > 0))
+      .map(t => ({ tecnico: t.tecnico.split(" ")[0], Instalaciones: t.instalaciones, Incidencias: t.incidencias, Recuperaciones: t.recuperaciones })),
     [porTecnico]
   );
 
-  // Gráfico metros drop
   const dropChart = useMemo(() =>
     dropPorTecnico.filter(d => d.tecnico !== "Sin asignar")
       .map(d => ({ tecnico: d.tecnico.split(" ")[0], "Total metros": d.totalMetros, "Prom. por trabajo": d.promMetros })),
     [dropPorTecnico]
   );
 
-  // Tendencia diaria top 5
   const top5 = useMemo(() => porTecnico.filter(t => t.tecnico !== "Sin asignar").slice(0, 5).map(t => t.tecnico), [porTecnico]);
   const tendenciaDiaria = useMemo(() => {
     const map = {};
@@ -159,7 +213,6 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     return Object.values(map).sort((a, b) => a.fecha.localeCompare(b.fecha));
   }, [filtrados, top5]);
 
-  // Radar
   const radarData = useMemo(() => {
     const top = porTecnico.filter(t => t.tecnico !== "Sin asignar").slice(0, 6);
     const maxLiq = Math.max(...top.map(t => t.liquidadas), 1);
@@ -172,11 +225,11 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     }));
   }, [porTecnico]);
 
-  // KPIs
   const totalTecnicos      = porTecnico.filter(t => t.tecnico !== "Sin asignar").length;
   const totalLiquidadas    = filtrados.filter(o => o.estado === "Liquidada").length;
   const totalOrdenes       = filtrados.length;
   const totalMetrosGlobal  = dropFiltrado.reduce((s, d) => s + (Number(d.cantidad) || 0), 0);
+  const totalRecuperaciones = filtrados.filter(o => (o.tipo_actuacion || "").toLowerCase().includes("recup")).length;
   const promedioEficiencia = totalTecnicos > 0
     ? Math.round(porTecnico.filter(t => t.tecnico !== "Sin asignar").reduce((s, t) => s + t.pct_liq, 0) / totalTecnicos)
     : 0;
@@ -188,7 +241,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     setLoadingIA(true); setAnalisisIA("");
     const resumenOrdenes = porTecnico.slice(0, 10).map(t => {
       const drop = dropMap[t.tecnico];
-      return `${t.tecnico}: ${t.total} órdenes, ${t.liquidadas} liquidadas (${t.pct_liq}%), ${t.instalaciones} instalaciones, ${t.incidencias} incidencias, canceladas: ${t.canceladas}${drop ? `, metros drop: ${drop.totalMetros}m (prom ${drop.promMetros}m/trabajo)` : ""}`;
+      return `${t.tecnico}: ${t.total} órdenes, ${t.liquidadas} liquidadas (${t.pct_liq}%), ${t.instalaciones} instalaciones, ${t.incidencias} incidencias, ${t.recuperaciones} recuperaciones equipo, canceladas: ${t.canceladas}${drop ? `, metros drop: ${drop.totalMetros}m (prom ${drop.promMetros}m/trabajo)` : ""}`;
     }).join("\n");
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -198,12 +251,12 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
           model: "gpt-4o-mini",
           messages: [{
             role: "system",
-            content: "Eres un analista de operaciones para una empresa ISP. Analiza el rendimiento de los técnicos y genera un informe ejecutivo en español. Incluye análisis de: eficiencia, mix de trabajo (instalaciones vs incidencias), metros de drop (instalaciones largas vs cortas), y recomendaciones concretas de gestión. Usa viñetas y sé directo."
+            content: "Eres un analista de operaciones para una empresa ISP de fibra óptica. Genera un informe ejecutivo en español con formato markdown claro: usa ### para secciones, ** para negritas, y - para viñetas. Analiza: eficiencia de liquidación, mix de trabajo (instalaciones/incidencias/recuperaciones de equipo), metros de drop, y da recomendaciones concretas. Sé directo y profesional."
           }, {
             role: "user",
-            content: `Período: ${fechaDesde} al ${fechaHasta}\nTotal órdenes: ${totalOrdenes} | Total metros drop: ${totalMetrosGlobal}m\n\nPor técnico:\n${resumenOrdenes}`
+            content: `Período: ${fechaDesde} al ${fechaHasta}\nTotal órdenes: ${totalOrdenes} | Liquidadas: ${totalLiquidadas} | Recuperaciones equipo: ${totalRecuperaciones} | Total metros drop: ${totalMetrosGlobal}m\n\nPor técnico:\n${resumenOrdenes}`
           }],
-          max_tokens: 700,
+          max_tokens: 900,
         }),
       });
       const json = await res.json();
@@ -222,21 +275,22 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     doc.text(`Período: ${fechaDesde} al ${fechaHasta}`, 14, y); y += 6;
     if (filtroNodos.length)     { doc.text(`Nodos: ${filtroNodos.join(", ")}`, 14, y); y += 6; }
     if (filtroTecnicos.length)  { doc.text(`Técnicos: ${filtroTecnicos.join(", ")}`, 14, y); y += 6; }
-    doc.text(`Total órdenes: ${totalOrdenes} | Liquidadas: ${totalLiquidadas} | Eficiencia: ${promedioEficiencia}% | Metros drop: ${totalMetrosGlobal}m`, 14, y); y += 4;
+    doc.text(`Total órdenes: ${totalOrdenes} | Liquidadas: ${totalLiquidadas} | Recuperaciones: ${totalRecuperaciones} | Eficiencia: ${promedioEficiencia}% | Metros drop: ${totalMetrosGlobal}m`, 14, y); y += 4;
     autoTable(doc, {
       startY: y + 4,
-      head: [["Técnico", "Total", "Liq.", "% Efic.", "Instal.", "Incid.", "Cancel.", "Metros Drop", "Prom. m/trabajo"]],
+      head: [["Técnico", "Total", "Liq.", "% Efic.", "Instal.", "Incid.", "Recup.", "Cancel.", "Metros Drop", "Prom. m/trab."]],
       body: porTecnico.map(t => {
         const drop = dropMap[t.tecnico];
-        return [t.tecnico, t.total, t.liquidadas, t.pct_liq + "%", t.instalaciones, t.incidencias, t.canceladas, drop ? drop.totalMetros + "m" : "-", drop ? drop.promMetros + "m" : "-"];
+        return [t.tecnico, t.total, t.liquidadas, t.pct_liq + "%", t.instalaciones, t.incidencias, t.recuperaciones, t.canceladas, drop ? drop.totalMetros + "m" : "-", drop ? drop.promMetros + "m" : "-"];
       }),
       styles: { fontSize: 8 },
     });
     if (analisisIA) {
-      const y = doc.lastAutoTable.finalY + 10;
-      doc.setFontSize(12); doc.text("Análisis IA", 14, y);
+      let yAI = doc.lastAutoTable.finalY + 10;
+      doc.setFontSize(12); doc.text("Análisis IA", 14, yAI); yAI += 8;
       doc.setFontSize(9);
-      doc.text(doc.splitTextToSize(analisisIA, 180), 14, y + 8);
+      const plain = analisisIA.replace(/#{1,3} /g, "").replace(/\*\*/g, "");
+      doc.text(doc.splitTextToSize(plain, 180), 14, yAI);
     }
     doc.save(`reporte_tecnicos_${fechaDesde}_${fechaHasta}.pdf`);
   }
@@ -325,6 +379,12 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
               <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>EFICIENCIA PROM.</div>
               <div style={{ fontSize: 32, fontWeight: 800, color: badgeColor(promedioEficiencia) }}>{promedioEficiencia}%</div>
             </div>
+            {totalRecuperaciones > 0 && (
+              <div style={{ ...kpiStyle, background: "#fff7ed", borderColor: "#fed7aa" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>📦 RECUPERACIONES</div>
+                <div style={{ fontSize: 32, fontWeight: 800, color: "#b45309" }}>{totalRecuperaciones}</div>
+              </div>
+            )}
             <div style={{ ...kpiStyle, background: "#eff6ff", borderColor: "#bfdbfe" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>📏 TOTAL METROS DROP</div>
               <div style={{ fontSize: 28, fontWeight: 800, color: "#1d4ed8" }}>{totalMetrosGlobal.toLocaleString()}m</div>
@@ -355,7 +415,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
           {/* Gráficos fila 1 */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             <div style={{ ...cardStyle }}>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Instalaciones vs Incidencias por Técnico</div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Instalaciones / Incidencias / Recuperaciones por Técnico</div>
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={instVsIncChart} layout="vertical" margin={{ left: 10, right: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -363,8 +423,9 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                   <YAxis dataKey="tecnico" type="category" tick={{ fontSize: 11 }} width={75} />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="Instalaciones" fill="#2563eb" radius={[0,4,4,0]} />
-                  <Bar dataKey="Incidencias"   fill="#d97706" radius={[0,4,4,0]} />
+                  <Bar dataKey="Instalaciones"  fill="#2563eb" radius={[0,4,4,0]} />
+                  <Bar dataKey="Incidencias"    fill="#d97706" radius={[0,4,4,0]} />
+                  <Bar dataKey="Recuperaciones" fill="#059669" radius={[0,4,4,0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -431,7 +492,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#f8fafc" }}>
-                    {["#","Técnico","Total","Liquidadas","Instal.","Incid.","Pendientes","Canceladas","% Eficiencia","Metros Drop","Prom. m/trabajo","Tipos"].map(h => (
+                    {["#","Técnico","Total","Liquidadas","Instal.","Incid.","Recup.","Pendientes","Canceladas","% Eficiencia","Metros Drop","Prom. m/trabajo","Tipos"].map(h => (
                       <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 12 }}>{h}</th>
                     ))}
                   </tr>
@@ -448,6 +509,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                         <td style={{ padding: "9px 12px", fontWeight: 700, color: "#16a34a" }}>{t.liquidadas}</td>
                         <td style={{ padding: "9px 12px", color: "#2563eb", fontWeight: 600 }}>{t.instalaciones}</td>
                         <td style={{ padding: "9px 12px", color: "#d97706", fontWeight: 600 }}>{t.incidencias}</td>
+                        <td style={{ padding: "9px 12px", color: "#059669", fontWeight: 600 }}>{t.recuperaciones || 0}</td>
                         <td style={{ padding: "9px 12px", color: "#d97706" }}>{t.pendientes}</td>
                         <td style={{ padding: "9px 12px", color: "#dc2626" }}>{t.canceladas}</td>
                         <td style={{ padding: "9px 12px" }}>
@@ -483,6 +545,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13 }}>
                     <div><span style={{ color: "#6b7280" }}>Instalaciones:</span> <strong style={{ color: "#2563eb" }}>{t.instalaciones}</strong></div>
                     <div><span style={{ color: "#6b7280" }}>Incidencias:</span> <strong style={{ color: "#d97706" }}>{t.incidencias}</strong></div>
+                    <div><span style={{ color: "#6b7280" }}>Recuperaciones:</span> <strong style={{ color: "#059669" }}>{t.recuperaciones}</strong></div>
                     <div><span style={{ color: "#6b7280" }}>Canceladas:</span> <strong style={{ color: "#dc2626" }}>{t.canceladas}</strong></div>
                     {drop && <>
                       <div><span style={{ color: "#6b7280" }}>Total metros drop:</span> <strong style={{ color: "#7c3aed" }}>{drop.totalMetros}m</strong></div>
@@ -496,19 +559,24 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
 
           {/* Análisis IA */}
           <div style={{ ...cardStyle }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#1e293b" }}>Análisis IA</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "#1e293b" }}>🤖 Análisis IA</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Informe ejecutivo generado por inteligencia artificial basado en los datos del período</div>
+              </div>
               <button onClick={analizarIA} disabled={loadingIA}
-                style={{ background: loadingIA ? "#94a3b8" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: loadingIA ? "not-allowed" : "pointer" }}>
-                {loadingIA ? "Analizando..." : "🤖 Analizar"}
+                style={{ background: loadingIA ? "#94a3b8" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: loadingIA ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
+                {loadingIA ? "⏳ Analizando..." : "🤖 Generar Análisis"}
               </button>
             </div>
             {analisisIA ? (
-              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: 16, fontSize: 13, color: "#374151", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-                {analisisIA}
+              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: "20px 24px" }}>
+                <RenderAnalisis text={analisisIA} />
               </div>
             ) : (
-              <div style={{ color: "#94a3b8", fontSize: 13 }}>Haz clic en "🤖 Analizar" para obtener un análisis del rendimiento del equipo técnico, incluyendo complejidad de instalaciones por metros de drop.</div>
+              <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 10, padding: "32px 20px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                Haz clic en "🤖 Generar Análisis" para obtener un informe ejecutivo con análisis de eficiencia, mix de trabajo, recuperaciones de equipo y recomendaciones de gestión.
+              </div>
             )}
           </div>
         </>
