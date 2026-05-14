@@ -286,11 +286,51 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       styles: { fontSize: 8 },
     });
     if (analisisIA) {
-      let yAI = doc.lastAutoTable.finalY + 10;
-      doc.setFontSize(12); doc.text("Análisis IA", 14, yAI); yAI += 8;
-      doc.setFontSize(9);
-      const plain = analisisIA.replace(/#{1,3} /g, "").replace(/\*\*/g, "");
-      doc.text(doc.splitTextToSize(plain, 180), 14, yAI);
+      let yAI = doc.lastAutoTable.finalY + 14;
+      const pageH = doc.internal.pageSize.getHeight();
+      const margin = 14;
+      const maxW = 180;
+
+      const checkPage = (needed = 8) => {
+        if (yAI + needed > pageH - 14) { doc.addPage(); yAI = 16; }
+      };
+
+      // Título sección
+      checkPage(10);
+      doc.setFontSize(13); doc.setFont("helvetica", "bold");
+      doc.setTextColor(109, 40, 217);
+      doc.text("Análisis IA — Informe Ejecutivo", margin, yAI); yAI += 8;
+      doc.setTextColor(0, 0, 0);
+
+      const lines = analisisIA.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) { yAI += 3; continue; }
+
+        if (trimmed.startsWith("### ") || trimmed.startsWith("## ")) {
+          const title = trimmed.replace(/^#{2,3} /, "");
+          checkPage(10);
+          yAI += 4;
+          doc.setFontSize(10); doc.setFont("helvetica", "bold");
+          doc.setTextColor(30, 41, 59);
+          doc.text(title, margin, yAI); yAI += 5;
+          doc.setDrawColor(200, 180, 255);
+          doc.line(margin, yAI, margin + maxW, yAI); yAI += 4;
+          doc.setTextColor(0, 0, 0);
+        } else if (trimmed.startsWith("- ") || trimmed.startsWith("• ")) {
+          const bullet = trimmed.slice(2).replace(/\*\*(.+?)\*\*/g, "$1");
+          const wrapped = doc.splitTextToSize("• " + bullet, maxW - 4);
+          checkPage(wrapped.length * 5 + 2);
+          doc.setFontSize(9); doc.setFont("helvetica", "normal");
+          doc.text(wrapped, margin + 3, yAI); yAI += wrapped.length * 5 + 1;
+        } else {
+          const plain = trimmed.replace(/\*\*(.+?)\*\*/g, "$1");
+          const wrapped = doc.splitTextToSize(plain, maxW);
+          checkPage(wrapped.length * 5 + 2);
+          doc.setFontSize(9); doc.setFont("helvetica", "normal");
+          doc.text(wrapped, margin, yAI); yAI += wrapped.length * 5 + 1;
+        }
+      }
     }
     doc.save(`reporte_tecnicos_${fechaDesde}_${fechaHasta}.pdf`);
   }
