@@ -18314,10 +18314,11 @@ export default function App() {
                                     const id = String(cliente.id || cliente.dni || "");
                                     const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
                                     const cargando = mikrowisp_loading[id];
+                                    const sincOk = mkwCliOk[id];
                                     if (!yaAgregado && !cargando) return null;
                                     return (
-                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", height: 30, background: "#f0fdf4", color: "#16a34a", border: "1px solid #86efac", borderRadius: 7, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
-                                        {cargando ? "⏳" : "✓ MW"}
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", height: 30, background: cargando ? "#f8fafc" : sincOk ? "#f97316" : "#f0fdf4", color: cargando ? "#94a3b8" : sincOk ? "#fff" : "#16a34a", border: sincOk ? "none" : "1px solid #86efac", borderRadius: 7, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", boxShadow: sincOk ? "0 1px 4px rgba(249,115,22,0.4)" : "none" }}>
+                                        {cargando ? "⏳" : sincOk ? "✓ MW ↕" : "✓ MW"}
                                       </span>
                                     );
                                   })()}
