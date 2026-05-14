@@ -24,7 +24,7 @@ const estadoStyle  = (e) => ESTADO_COLORS[e]
   ? { background: ESTADO_COLORS[e].bg, color: ESTADO_COLORS[e].text, borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 600 }
   : { background: "#f3f4f6", color: "#374151", borderRadius: 6, padding: "2px 8px", fontSize: 12 };
 
-const fmt$ = (v) => `$${Number(v || 0).toFixed(2)}`;
+const fmt$ = (v) => `S/ ${Number(v || 0).toFixed(2)}`;
 
 export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }) {
   const [equipos, setEquipos]         = useState([]);
