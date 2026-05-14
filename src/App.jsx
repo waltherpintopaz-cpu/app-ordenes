@@ -3199,8 +3199,13 @@ export default function App() {
     try {
       const datos = await mkwConsultarCedula(dni, nodo);
       const { ok, msg } = await mkwUpsert(datos);
-      if (ok) setMkwCliOk((p) => ({ ...p, [cid]: true }));
-      else window.alert(`Error al guardar: ${msg}`);
+      if (ok) {
+        setMkwCliOk((p) => ({ ...p, [cid]: true }));
+        if (isSupabaseConfigured && cliente.id) {
+          await supabase.from(CLIENTES_TABLE).update({ mikrowisp_sync_ok: true }).eq("id", cliente.id);
+          setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, mikrowisp_sync_ok: true } : c));
+        }
+      } else window.alert(`Error al guardar: ${msg}`);
     } catch (e) { window.alert(e.message); }
     finally { setMkwCliLoading((p) => ({ ...p, [cid]: false })); }
   };
@@ -4801,7 +4806,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
@@ -4816,6 +4821,10 @@ export default function App() {
         if (!dedupMap.has(k)) dedupMap.set(k, c);
       });
       const mappedDedup = Array.from(dedupMap.values());
+      // Inicializar mkwCliOk desde el campo persistido en BD
+      const syncOkInit = {};
+      mappedDedup.forEach((c) => { if (c.mikrowisp_sync_ok) syncOkInit[String(c.id || c.dni || "")] = true; });
+      if (Object.keys(syncOkInit).length > 0) setMkwCliOk((prev) => ({ ...syncOkInit, ...prev }));
       clientesHydratingRef.current = true;
       setClientes(mappedDedup);
       setTimeout(() => {
