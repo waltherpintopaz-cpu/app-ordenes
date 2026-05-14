@@ -4514,6 +4514,7 @@ export default function App() {
         mikrotikSuspensionIp: row.mikrotik_suspension_ip || p.mikrotikSuspensionIp || "",
         mikrotikUltimaAccion: row.mikrotik_ultima_accion || p.mikrotikUltimaAccion || "",
         en_mikrowisp: row.en_mikrowisp || p.en_mikrowisp || false,
+        mikrowisp_sync_ok: row.mikrowisp_sync_ok || p.mikrowisp_sync_ok || false,
         ...signalFields,
       };
     }
@@ -4549,6 +4550,7 @@ export default function App() {
       mikrotikSuspensionIp: row.mikrotik_suspension_ip || "",
       mikrotikUltimaAccion: row.mikrotik_ultima_accion || "",
       en_mikrowisp: row.en_mikrowisp || false,
+      mikrowisp_sync_ok: row.mikrowisp_sync_ok || false,
       ...signalFields,
     };
   };
