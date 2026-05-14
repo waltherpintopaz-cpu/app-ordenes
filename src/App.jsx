@@ -18343,13 +18343,12 @@ export default function App() {
                                             const cargando = mikrowisp_loading[id];
                                             const sincOk = mkwCliOk[id];
                                             return (
-                                              <div style={{ position: "relative" }}>
-                                                <button onClick={() => { if (!yaAgregado && !cargando) { void agregarClienteMikrowisp(cliente); setAbonadosMenuClienteId(null); } }} disabled={cargando || yaAgregado}
-                                                  style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-                                                  <span>{yaAgregado ? "✓" : "+"}</span> {cargando ? "Procesando..." : yaAgregado ? "En MikroWisp" : "Agregar a MikroWisp"}
-                                                  {sincOk && <span title="Sincronizado" style={{ marginLeft: "auto", width: 16, height: 16, borderRadius: "50%", background: "#f97316", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#fff", fontWeight: 800 }}>✓</span>}
-                                                </button>
-                                              </div>
+                                              <button onClick={() => { if (!yaAgregado && !cargando) { void agregarClienteMikrowisp(cliente); setAbonadosMenuClienteId(null); } }} disabled={cargando || yaAgregado}
+                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                <span>{yaAgregado ? "✓" : "+"}</span>
+                                                {cargando ? "Procesando..." : yaAgregado ? "En MikroWisp" : "Agregar a MikroWisp"}
+                                                {sincOk && <span style={{ marginLeft: "auto", background: "#f97316", color: "#fff", borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 800 }}>✓ sync</span>}
+                                              </button>
                                             );
                                           })()}
                                           {(esAdminSesion || esGestorSesion) && cliente.dni && (() => {
@@ -18551,19 +18550,15 @@ export default function App() {
                     const cargando = mikrowisp_loading[id];
                     const sincOk = mkwCliOk[id];
                     return (
-                      <div style={{ position: "relative", display: "inline-flex" }}>
-                        <button
-                          onClick={() => void agregarClienteMikrowisp(cli)}
-                          disabled={cargando || yaAgregado}
-                          title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar cliente a Mikrowisp"}
-                          style={{ padding: "8px 15px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", border: `1.5px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 10, color: yaAgregado ? "#16a34a" : "#92400e", fontSize: 12, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer" }}
-                        >
-                          {cargando ? "Agregando..." : yaAgregado ? "✓ En Mikrowisp" : "Mikrowisp +"}
-                        </button>
-                        {sincOk && (
-                          <span title="Sincronizado con MikroWisp" style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#f97316", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", fontWeight: 800, lineHeight: 1 }}>✓</span>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => void agregarClienteMikrowisp(cli)}
+                        disabled={cargando || yaAgregado}
+                        title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar cliente a Mikrowisp"}
+                        style={{ padding: "8px 15px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", border: `1.5px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 10, color: yaAgregado ? "#16a34a" : "#92400e", fontSize: 12, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}
+                      >
+                        {cargando ? "Agregando..." : yaAgregado ? "✓ En Mikrowisp" : "Mikrowisp +"}
+                        {sincOk && <span title="Sincronizado" style={{ background: "#f97316", color: "#fff", borderRadius: 6, padding: "1px 5px", fontSize: 10, fontWeight: 800 }}>✓ sync</span>}
+                      </button>
                     );
                   })()}
                   {(esAdminSesion || esGestorSesion) && cli.dni && (() => {
