@@ -18352,7 +18352,7 @@ export default function App() {
                                               </div>
                                             );
                                           })()}
-                                          {esAdminSesion && cliente.dni && (() => {
+                                          {(esAdminSesion || esGestorSesion) && cliente.dni && (() => {
                                             const cid = String(cliente.id || cliente.dni || "");
                                             const cargando = mkwCliLoading[cid];
                                             const sincOk = mkwCliOk[cid];
@@ -18566,7 +18566,7 @@ export default function App() {
                       </div>
                     );
                   })()}
-                  {esAdminSesion && cli.dni && (() => {
+                  {(esAdminSesion || esGestorSesion) && cli.dni && (() => {
                     const cid = String(cli.id || cli.dni || "");
                     const cargando = mkwCliLoading[cid];
                     const sincOk = mkwCliOk[cid];
