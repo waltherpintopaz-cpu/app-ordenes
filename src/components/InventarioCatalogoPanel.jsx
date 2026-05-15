@@ -32,11 +32,12 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
   const [error, setError]             = useState(null);
 
   // Filtros
-  const [filtEmpresa, setFiltEmpresa] = useState("todos");
-  const [filtTipo,    setFiltTipo]    = useState("todos");
-  const [filtModelo,  setFiltModelo]  = useState("todos");
-  const [filtEstado,  setFiltEstado]  = useState("todos");
-  const [busqueda,    setBusqueda]    = useState("");
+  const [filtEmpresa,  setFiltEmpresa]  = useState("todos");
+  const [filtTipo,     setFiltTipo]     = useState("todos");
+  const [filtModelo,   setFiltModelo]   = useState("todos");
+  const [filtEstado,   setFiltEstado]   = useState("todos");
+  const [filtTecnico,  setFiltTecnico]  = useState("todos");
+  const [busqueda,     setBusqueda]     = useState("");
 
   // Configuración de precios (solo localStorage, no toca Supabase)
   const [preciosLocal, setPreciosLocal] = useState(loadPreciosLS);
@@ -50,7 +51,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     setLoading(true); setError(null);
     const { data, error } = await supabase
       .from("equipos_catalogo")
-      .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado")
+      .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado,tecnico_asignado")
       .order("empresa").order("tipo").order("modelo");
     if (error) { setError(error.message); setLoading(false); return; }
     setEquipos(data || []);
@@ -75,23 +76,27 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     if (filtTipo    !== "todos") base = base.filter(e => e.tipo    === filtTipo);
     return ["todos", ...new Set(base.map(e => e.modelo).filter(Boolean))];
   }, [equipos, filtEmpresa, filtTipo]);
+  const tecnicos  = useMemo(() => ["todos", ...new Set(equipos.map(e => e.tecnico_asignado).filter(Boolean))].sort(), [equipos]);
+
   const filtrados = useMemo(() => {
     let r = equipos;
-    if (filtEmpresa !== "todos") r = r.filter(e => e.empresa === filtEmpresa);
-    if (filtTipo    !== "todos") r = r.filter(e => e.tipo    === filtTipo);
-    if (filtModelo  !== "todos") r = r.filter(e => e.modelo  === filtModelo);
-    if (filtEstado  !== "todos") r = r.filter(e => e.estado  === filtEstado);
+    if (filtEmpresa !== "todos") r = r.filter(e => e.empresa          === filtEmpresa);
+    if (filtTipo    !== "todos") r = r.filter(e => e.tipo             === filtTipo);
+    if (filtModelo  !== "todos") r = r.filter(e => e.modelo           === filtModelo);
+    if (filtEstado  !== "todos") r = r.filter(e => e.estado           === filtEstado);
+    if (filtTecnico !== "todos") r = r.filter(e => e.tecnico_asignado === filtTecnico);
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       r = r.filter(e =>
-        (e.codigo_qr  || "").toLowerCase().includes(q) ||
-        (e.serial_mac || "").toLowerCase().includes(q) ||
-        (e.modelo     || "").toLowerCase().includes(q) ||
-        (e.marca      || "").toLowerCase().includes(q)
+        (e.codigo_qr       || "").toLowerCase().includes(q) ||
+        (e.serial_mac      || "").toLowerCase().includes(q) ||
+        (e.modelo          || "").toLowerCase().includes(q) ||
+        (e.marca           || "").toLowerCase().includes(q) ||
+        (e.tecnico_asignado|| "").toLowerCase().includes(q)
       );
     }
     return r;
-  }, [equipos, filtEmpresa, filtTipo, filtModelo, filtEstado, busqueda]);
+  }, [equipos, filtEmpresa, filtTipo, filtModelo, filtEstado, filtTecnico, busqueda]);
 
   // KPIs — usa precio local
   const kpis = useMemo(() => {
@@ -146,24 +151,26 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     const filtrosDesc = [
-      filtEmpresa !== "todos" ? `Empresa: ${filtEmpresa}` : "",
-      filtTipo    !== "todos" ? `Tipo: ${filtTipo}`       : "",
-      filtModelo  !== "todos" ? `Modelo: ${filtModelo}`   : "",
-      filtEstado  !== "todos" ? `Estado: ${estadoLabel(filtEstado)}` : "",
+      filtEmpresa !== "todos" ? `Empresa: ${filtEmpresa}`           : "",
+      filtTipo    !== "todos" ? `Tipo: ${filtTipo}`                 : "",
+      filtModelo  !== "todos" ? `Modelo: ${filtModelo}`             : "",
+      filtEstado  !== "todos" ? `Estado: ${estadoLabel(filtEstado)}`: "",
+      filtTecnico !== "todos" ? `Técnico: ${filtTecnico}`           : "",
     ].filter(Boolean).join("  |  ") || "Sin filtros";
     doc.text(`Filtros: ${filtrosDesc}   Fecha: ${now}`, 148, 18, { align: "center" });
 
     // Tabla
-    const cols = ["#", "Empresa", "Tipo", "Marca", "Modelo", "Serial / MAC", "Código QR", "Estado", "Precio"];
+    const cols = ["#", "Empresa", "Tipo", "Marca", "Modelo", "Serial / MAC", "Código QR", "Estado", "Técnico Asignado", "Precio"];
     const rows = filtrados.map((e, i) => [
       i + 1,
-      e.empresa    || "—",
-      e.tipo       || "—",
-      e.marca      || "—",
-      e.modelo     || "—",
-      e.serial_mac || "—",
-      e.codigo_qr  || "—",
+      e.empresa           || "—",
+      e.tipo              || "—",
+      e.marca             || "—",
+      e.modelo            || "—",
+      e.serial_mac        || "—",
+      e.codigo_qr         || "—",
       estadoLabel(e.estado),
+      e.tecnico_asignado  || "—",
       fmt$(getPrecio(e)),
     ]);
 
@@ -171,10 +178,10 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       startY: 26,
       head:   [cols],
       body:   rows,
-      styles:      { fontSize: 7.5, cellPadding: 2 },
+      styles:      { fontSize: 7, cellPadding: 2 },
       headStyles:  { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
       alternateRowStyles: { fillColor: [239, 246, 255] },
-      columnStyles: { 0: { cellWidth: 8 }, 8: { halign: "right", fontStyle: "bold" } },
+      columnStyles: { 0: { cellWidth: 7 }, 9: { halign: "right", fontStyle: "bold" } },
     });
 
     // Total
@@ -314,8 +321,11 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
           <option value="asignado">Asignado</option>
           <option value="liquidado">Liquidado</option>
         </select>
-        {(filtEmpresa !== "todos" || filtTipo !== "todos" || filtModelo !== "todos" || filtEstado !== "todos" || busqueda) && (
-          <button onClick={() => { setFiltEmpresa("todos"); setFiltTipo("todos"); setFiltModelo("todos"); setFiltEstado("todos"); setBusqueda(""); }}
+        <select value={filtTecnico} onChange={e => setFiltTecnico(e.target.value)} style={selStyle}>
+          {tecnicos.map(v => <option key={v} value={v}>{v === "todos" ? "Todos los técnicos" : v}</option>)}
+        </select>
+        {(filtEmpresa !== "todos" || filtTipo !== "todos" || filtModelo !== "todos" || filtEstado !== "todos" || filtTecnico !== "todos" || busqueda) && (
+          <button onClick={() => { setFiltEmpresa("todos"); setFiltTipo("todos"); setFiltModelo("todos"); setFiltEstado("todos"); setFiltTecnico("todos"); setBusqueda(""); }}
             style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #fca5a5", background: "#fef2f2", color: "#dc2626", cursor: "pointer", fontSize: 12 }}>
             Limpiar filtros
           </button>
@@ -336,7 +346,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#1d4ed8", color: "#fff" }}>
-                  {["#","Empresa","Tipo","Marca","Modelo","Serial / MAC","Código QR","Estado","Precio"].map(h => (
+                  {["#","Empresa","Tipo","Marca","Modelo","Serial / MAC","Código QR","Estado","Técnico Asignado","Precio"].map(h => (
                     <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -352,13 +362,14 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
                     <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>{e.serial_mac || "—"}</td>
                     <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>{e.codigo_qr || "—"}</td>
                     <td style={{ padding: "8px 12px" }}><span style={estadoStyle(e.estado)}>{estadoLabel(e.estado)}</span></td>
+                    <td style={{ padding: "8px 12px", fontSize: 12 }}>{e.tecnico_asignado || "—"}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#1d4ed8", textAlign: "right" }}>{fmt$(getPrecio(e))}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ background: "#eff6ff", fontWeight: 700 }}>
-                  <td colSpan={8} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
+                  <td colSpan={9} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
                     Total ({filtrados.length} equipos)
                   </td>
                   <td style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 14, textAlign: "right" }}>
