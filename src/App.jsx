@@ -1892,6 +1892,7 @@ export default function App() {
   const [filtroEstadoCliente, setFiltroEstadoCliente] = useState("TODOS");
   const [filtroSuspendidosMk, setFiltroSuspendidosMk] = useState(false);
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
+  const [filtroIptv, setFiltroIptv] = useState(false);
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
     try { return JSON.parse(localStorage.getItem("colsClientesVisibles") || "null") || { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, snOnu: false, usuarioPppoe: false, registrado: false }; }
@@ -2841,6 +2842,7 @@ export default function App() {
       if (filtroNodoCliente !== "TODOS") {
         if (String(c.nodo || "").trim() !== filtroNodoCliente) return false;
       }
+      if (filtroIptv && !c.iptv_usuario) return false;
       if (!q) return true;
       // Búsqueda por palabras sueltas (cualquier orden)
       const texto = [c.codigoCliente, c.dni, c.nombre, c.celular, c.direccion, c.usuarioNodo, c.nodo, c.empresa, c.estado, c.velocidad, c.codigoEtiqueta, c.snOnu].join(" ");
@@ -2868,7 +2870,7 @@ export default function App() {
       });
     }
     return lista;
-  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente, filtroNodoCliente, sortClientes, filtroSuspendidosMk]);
+  }, [clientesPorNodo, busquedaClientes, filtroEstadoCliente, filtroNodoCliente, sortClientes, filtroSuspendidosMk, filtroIptv]);
 
   const conteosEstadoCliente = useMemo(() => {
     const base = filtroNodoCliente === "TODOS" ? clientesPorNodo : clientesPorNodo.filter(c => String(c.nodo || "").trim() === filtroNodoCliente);
@@ -4843,7 +4845,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
@@ -18095,6 +18097,9 @@ export default function App() {
                   })}
                   <button type="button" onClick={() => setFiltroSuspendidosMk(v => !v)} style={{ padding: "7px 12px", border: "1.5px solid", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: filtroSuspendidosMk ? "#dc2626" : "#f8fafc", borderColor: filtroSuspendidosMk ? "#dc2626" : "#e2e8f0", color: filtroSuspendidosMk ? "#fff" : "#475569" }}>
                     ⏸ MikroTik
+                  </button>
+                  <button type="button" onClick={() => setFiltroIptv(v => !v)} style={{ padding: "7px 12px", border: "1.5px solid", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, background: filtroIptv ? "#7c3aed" : "#f8fafc", borderColor: filtroIptv ? "#7c3aed" : "#e2e8f0", color: filtroIptv ? "#fff" : "#475569" }}>
+                    📺 IPTV
                   </button>
                 </div>
               </div>
