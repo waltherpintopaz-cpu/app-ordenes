@@ -18207,11 +18207,19 @@ export default function App() {
                                   </div>
                                   <div style={{ minWidth: 0 }}>
                                     <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.nombre || "-"}</div>
-                                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, display: "flex", gap: 5, alignItems: "center" }}>
+                                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
                                       <span>{cliente.codigoAbonado || cliente.codigoCliente || ""}</span>
                                       {dniServiciosCount[String(cliente.dni || "").trim()] > 1 && (
                                         <span style={{ background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "1px 6px", fontSize: 9, fontWeight: 800 }}>
                                           {dniServiciosCount[String(cliente.dni || "").trim()]} serv.
+                                        </span>
+                                      )}
+                                      {cliente.iptv_usuario && (
+                                        <span
+                                          onClick={() => abrirModalIptv(cliente)}
+                                          title={`IPTV: ${cliente.iptv_usuario}${cliente.iptv_perfil ? ` — ${cliente.iptv_perfil}` : ""}`}
+                                          style={{ background: "#f5f3ff", color: "#7c3aed", borderRadius: 999, padding: "1px 7px", fontSize: 9, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
+                                          📺 {cliente.iptv_usuario}
                                         </span>
                                       )}
                                     </div>
