@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { Bot, Zap, AlertTriangle, CheckCircle, Power, PowerOff, Radio } from "lucide-react";
+import { Bot, Zap, AlertTriangle, CheckCircle, Power, PowerOff, Radio, List, Sparkles } from "lucide-react";
 
 const DEFAULT_CONFIG = {
   bot_activo: true,
   averia_activa: false,
   averia_contexto: "",
   averia_tiempo_estimado: "",
+  modo_bot: "lista",
 };
 
 const NODOS = [1, 2, 3, 4, 5, 6];
@@ -170,6 +171,84 @@ export default function BotControlPanel() {
               : <><Power size={16} /> Activar bot</>}
           </button>
         </div>
+      </div>
+
+      {/* ── Modo del Bot ── */}
+      <div style={cardStyle}>
+        <div style={sectionTitle}>
+          <Sparkles size={18} color="#7c3aed" />
+          Modo de atención
+        </div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+          Elige cómo responde el bot a los clientes. El cambio aplica de inmediato en las conversaciones nuevas.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {/* Opción: Lista Interactiva */}
+          <button
+            onClick={() => save({ modo_bot: "lista" })}
+            disabled={saving || config.modo_bot === "lista"}
+            style={{
+              padding: "18px 14px",
+              borderRadius: 10,
+              border: `2px solid ${config.modo_bot === "lista" ? "#6366f1" : "#e5e7eb"}`,
+              background: config.modo_bot === "lista" ? "#eef2ff" : "#fafafa",
+              cursor: config.modo_bot === "lista" ? "default" : "pointer",
+              textAlign: "left",
+              transition: "all 0.15s",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <List size={20} color={config.modo_bot === "lista" ? "#6366f1" : "#9ca3af"} />
+              <span style={{ fontWeight: 700, fontSize: 14, color: config.modo_bot === "lista" ? "#4338ca" : "#374151" }}>
+                Lista Interactiva
+              </span>
+              {config.modo_bot === "lista" && (
+                <span style={{ marginLeft: "auto", background: "#6366f1", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>
+                  ACTIVO
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+              Menú numerado clásico (1. Pagos, 2. Soporte, 3. Consulta…). El cliente navega paso a paso por opciones fijas.
+            </div>
+          </button>
+
+          {/* Opción: Asistente IA */}
+          <button
+            onClick={() => save({ modo_bot: "ia" })}
+            disabled={saving || config.modo_bot === "ia"}
+            style={{
+              padding: "18px 14px",
+              borderRadius: 10,
+              border: `2px solid ${config.modo_bot === "ia" ? "#7c3aed" : "#e5e7eb"}`,
+              background: config.modo_bot === "ia" ? "#f5f3ff" : "#fafafa",
+              cursor: config.modo_bot === "ia" ? "default" : "pointer",
+              textAlign: "left",
+              transition: "all 0.15s",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Sparkles size={20} color={config.modo_bot === "ia" ? "#7c3aed" : "#9ca3af"} />
+              <span style={{ fontWeight: 700, fontSize: 14, color: config.modo_bot === "ia" ? "#6d28d9" : "#374151" }}>
+                Asistente IA
+              </span>
+              {config.modo_bot === "ia" && (
+                <span style={{ marginLeft: "auto", background: "#7c3aed", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>
+                  ACTIVO
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+              Conversación natural con IA. El cliente escribe libremente y el agente entiende, busca su cuenta y resuelve sin menús.
+            </div>
+          </button>
+        </div>
+
+        {config.modo_bot === "ia" && (
+          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "#fef3c7", border: "1px solid #fde68a", fontSize: 12, color: "#92400e" }}>
+            ⚡ <strong>Modo IA activo:</strong> el agente conversacional responde en lenguaje natural. Tiene acceso a datos del cliente, facturas, pagos y prórrogas. Escala a humano si no puede resolver.
+          </div>
+        )}
       </div>
 
       {/* ── Avería masiva ── */}
