@@ -1933,6 +1933,10 @@ export default function App() {
   const [mkwLimpiezaInfo, setMkwLimpiezaInfo] = useState("");
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
+  const [modalIptv, setModalIptv]       = useState(null);  // cliente objeto
+  const [iptvForm, setIptvForm]         = useState({ usuario: "", perfil: "", notas: "" });
+  const [iptvSaving, setIptvSaving]     = useState(false);
+  const [iptvMsg, setIptvMsg]           = useState("");
   const [modalLiqCliente, setModalLiqCliente] = useState(null);  // cliente objeto
   const [modalSelCelular, setModalSelCelular] = useState(null); // { cliente, numeros: [] }
   const [modalSelectorServicio, setModalSelectorServicio] = useState(null); // { servicios: [], dni }
@@ -3018,6 +3022,26 @@ export default function App() {
     });
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
+  };
+
+  const abrirModalIptv = (cliente) => {
+    setIptvForm({ usuario: cliente.iptv_usuario || "", perfil: cliente.iptv_perfil || "", notas: cliente.iptv_notas || "" });
+    setIptvMsg("");
+    setModalIptv(cliente);
+  };
+
+  const guardarIptv = async () => {
+    if (!modalIptv) return;
+    setIptvSaving(true); setIptvMsg("");
+    const { error } = await supabase
+      .from(CLIENTES_TABLE)
+      .update({ iptv_usuario: iptvForm.usuario, iptv_perfil: iptvForm.perfil })
+      .eq("id", modalIptv.id);
+    setIptvSaving(false);
+    if (error) { setIptvMsg("Error: " + error.message); return; }
+    setClientes(prev => prev.map(c => c.id === modalIptv.id ? { ...c, iptv_usuario: iptvForm.usuario, iptv_perfil: iptvForm.perfil } : c));
+    setIptvMsg("Guardado correctamente");
+    setTimeout(() => { setModalIptv(null); setIptvMsg(""); }, 1000);
   };
 
   const agregarClienteMikrowisp = async (cliente) => {
@@ -4520,6 +4544,8 @@ export default function App() {
         mikrotikUltimaAccion: row.mikrotik_ultima_accion || p.mikrotikUltimaAccion || "",
         en_mikrowisp: row.en_mikrowisp || p.en_mikrowisp || false,
         mikrowisp_sync_ok: row.mikrowisp_sync_ok || p.mikrowisp_sync_ok || false,
+        iptv_usuario: row.iptv_usuario || p.iptv_usuario || "",
+        iptv_perfil: row.iptv_perfil || p.iptv_perfil || "",
         ...signalFields,
       };
     }
@@ -4556,6 +4582,8 @@ export default function App() {
       mikrotikUltimaAccion: row.mikrotik_ultima_accion || "",
       en_mikrowisp: row.en_mikrowisp || false,
       mikrowisp_sync_ok: row.mikrowisp_sync_ok || false,
+      iptv_usuario: row.iptv_usuario || "",
+      iptv_perfil: row.iptv_perfil || "",
       ...signalFields,
     };
   };
@@ -18381,6 +18409,12 @@ export default function App() {
                                               </button>
                                             );
                                           })()}
+                                          <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0" }} />
+                                          <button onClick={() => { abrirModalIptv(cliente); setAbonadosMenuClienteId(null); }}
+                                            style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: cliente.iptv_usuario ? "#7c3aed" : "#0f172a", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                            <span>📺</span>
+                                            {cliente.iptv_usuario ? `IPTV: ${cliente.iptv_usuario}` : "Agregar IPTV"}
+                                          </button>
                                           {esAdminSesion && (
                                             <>
                                               <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0" }} />
@@ -18945,6 +18979,57 @@ export default function App() {
             </div>
           );
         })()}
+
+        {/* ── Modal IPTV ── */}
+        {modalIptv && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: 28, width: 420, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+                <span style={{ fontSize: 22 }}>📺</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>IPTV — {modalIptv.nombre}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{modalIptv.dni}</div>
+                </div>
+                <button onClick={() => setModalIptv(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#94a3b8" }}>✕</button>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>Usuario IPTV</label>
+                <input
+                  type="text"
+                  placeholder="usuario@ejemplo.com"
+                  value={iptvForm.usuario}
+                  onChange={e => setIptvForm(f => ({ ...f, usuario: e.target.value }))}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "9px 12px", fontSize: 14, boxSizing: "border-box" }}
+                />
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>Perfil asignado</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Full HD, Básico, Premium..."
+                  value={iptvForm.perfil}
+                  onChange={e => setIptvForm(f => ({ ...f, perfil: e.target.value }))}
+                  style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 8, padding: "9px 12px", fontSize: 14, boxSizing: "border-box" }}
+                />
+              </div>
+              {iptvMsg && (
+                <div style={{ marginBottom: 14, padding: "8px 12px", borderRadius: 7, background: iptvMsg.startsWith("Error") ? "#fee2e2" : "#dcfce7", color: iptvMsg.startsWith("Error") ? "#dc2626" : "#16a34a", fontSize: 13 }}>
+                  {iptvMsg}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setModalIptv(null)}
+                  style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid #d1d5db", background: "#f3f4f6", cursor: "pointer", fontSize: 13 }}>
+                  Cancelar
+                </button>
+                <button onClick={guardarIptv} disabled={iptvSaving}
+                  style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                  {iptvSaving ? "Guardando…" : "Guardar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Modal selector de celular al crear orden ── */}
         {modalSelCelular && (() => {
