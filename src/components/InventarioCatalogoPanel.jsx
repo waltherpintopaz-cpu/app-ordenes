@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Package, Settings, FileText, RefreshCw, Save, X } from "lucide-react";
+import { Package, Settings, FileText, RefreshCw, Save, X, Pencil } from "lucide-react";
 
 const LS_PRECIOS_KEY = "inventario_catalogo_precios";
 
@@ -47,6 +47,51 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("asc"); }
+  }
+
+  // Edición de equipo
+  const [editEquipo,   setEditEquipo]   = useState(null);
+  const [editForm,     setEditForm]     = useState({});
+  const [editSaving,   setEditSaving]   = useState(false);
+  const [editMsg,      setEditMsg]      = useState("");
+
+  function openEdit(e) {
+    setEditEquipo(e);
+    setEditForm({
+      empresa:          e.empresa          || "",
+      tipo:             e.tipo             || "",
+      marca:            e.marca            || "",
+      modelo:           e.modelo           || "",
+      precio_unitario:  e.precio_unitario  ?? "",
+      codigo_qr:        e.codigo_qr        || "",
+      serial_mac:       e.serial_mac       || "",
+      estado:           normalizeEstado(e.estado),
+      tecnico_asignado: e.tecnico_asignado || "",
+    });
+    setEditMsg("");
+  }
+
+  async function guardarEdicion() {
+    setEditSaving(true); setEditMsg("");
+    const { error } = await supabase
+      .from("equipos_catalogo")
+      .update({
+        empresa:          editForm.empresa,
+        tipo:             editForm.tipo,
+        marca:            editForm.marca,
+        modelo:           editForm.modelo,
+        precio_unitario:  editForm.precio_unitario !== "" ? Number(editForm.precio_unitario) : null,
+        codigo_qr:        editForm.codigo_qr,
+        serial_mac:       editForm.serial_mac,
+        estado:           editForm.estado,
+        tecnico_asignado: editForm.tecnico_asignado,
+      })
+      .eq("id", editEquipo.id);
+    setEditSaving(false);
+    if (error) { setEditMsg("Error: " + error.message); return; }
+    setEditMsg("Guardado correctamente");
+    await fetchEquipos();
+    setTimeout(() => { setEditEquipo(null); setEditMsg(""); }, 1000);
   }
 
   // Configuración de precios (solo localStorage, no toca Supabase)
@@ -244,6 +289,60 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
         </div>
       </div>
 
+      {/* Modal Editar Equipo */}
+      {editEquipo && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 560, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 20, gap: 8 }}>
+              <Pencil size={18} color="#1d4ed8" />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Editar Equipo — {editEquipo.codigo_qr}</h3>
+              <button onClick={() => setEditEquipo(null)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
+            </div>
+            {[
+              { label: "Empresa",          key: "empresa",          type: "select", opts: ["DIM","Americanet"] },
+              { label: "Tipo",             key: "tipo",             type: "text" },
+              { label: "Marca",            key: "marca",            type: "text" },
+              { label: "Modelo",           key: "modelo",           type: "text" },
+              { label: "Precio Unitario",  key: "precio_unitario",  type: "number" },
+              { label: "Código QR",        key: "codigo_qr",        type: "text" },
+              { label: "Serial / MAC",     key: "serial_mac",       type: "text" },
+              { label: "Estado",           key: "estado",           type: "select", opts: ["almacen","asignado","liquidado"] },
+              { label: "Técnico Asignado", key: "tecnico_asignado", type: "text" },
+            ].map(({ label, key, type, opts }) => (
+              <div key={key} style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 12, color: "#6b7280", marginBottom: 4, fontWeight: 600 }}>{label}</label>
+                {type === "select" ? (
+                  <select value={editForm[key]} onChange={ev => setEditForm(f => ({ ...f, [key]: ev.target.value }))}
+                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 7, padding: "7px 10px", fontSize: 14 }}>
+                    {opts.map(o => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1)}</option>)}
+                  </select>
+                ) : (
+                  <input type={type} value={editForm[key]}
+                    onChange={ev => setEditForm(f => ({ ...f, [key]: ev.target.value }))}
+                    style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 7, padding: "7px 10px", fontSize: 14, boxSizing: "border-box" }}
+                  />
+                )}
+              </div>
+            ))}
+            {editMsg && (
+              <div style={{ padding: "8px 12px", borderRadius: 6, marginBottom: 12, background: editMsg.startsWith("Error") ? "#fee2e2" : "#dcfce7", color: editMsg.startsWith("Error") ? "#dc2626" : "#16a34a", fontSize: 13 }}>
+                {editMsg}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setEditEquipo(null)}
+                style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid #d1d5db", background: "#f3f4f6", cursor: "pointer", fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={guardarEdicion} disabled={editSaving}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 18px", borderRadius: 7, border: "none", background: "#1d4ed8", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                <Save size={14} /> {editSaving ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Configurar Precios */}
       {showConfig && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -368,6 +467,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
               <thead>
                 <tr style={{ background: "#1d4ed8", color: "#fff" }}>
                   {[
+                    { label: "",                col: null },
                     { label: "#",               col: null },
                     { label: "Empresa",         col: "empresa" },
                     { label: "Tipo",            col: "tipo" },
@@ -391,6 +491,12 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
               <tbody>
                 {filtrados.map((e, i) => (
                   <tr key={e.id} style={{ background: i % 2 === 0 ? "#fff" : "#f8faff", borderBottom: "1px solid #e5e7eb" }}>
+                    <td style={{ padding: "6px 8px", width: 36 }}>
+                      <button onClick={() => openEdit(e)} title="Editar"
+                        style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 5, padding: "3px 6px", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                        <Pencil size={13} color="#1d4ed8" />
+                      </button>
+                    </td>
                     <td style={{ padding: "8px 12px", color: "#9ca3af" }}>{i + 1}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 600 }}>{e.empresa || "—"}</td>
                     <td style={{ padding: "8px 12px" }}>{e.tipo || "—"}</td>
@@ -406,7 +512,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
               </tbody>
               <tfoot>
                 <tr style={{ background: "#eff6ff", fontWeight: 700 }}>
-                  <td colSpan={9} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
+                  <td colSpan={10} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
                     Total ({filtrados.length} equipos)
                   </td>
                   <td style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 14, textAlign: "right" }}>
