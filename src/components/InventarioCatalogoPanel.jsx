@@ -19,8 +19,9 @@ const ESTADO_COLORS = {
   liquidado: { bg: "#fef9c3", text: "#b45309", label: "Liquidado" },
 };
 
-const estadoLabel  = (e) => ESTADO_COLORS[e]?.label || e || "—";
-const estadoStyle  = (e) => ESTADO_COLORS[e]
+const normalizeEstado = (e) => (e || "").toLowerCase();
+const estadoLabel  = (e) => ESTADO_COLORS[normalizeEstado(e)]?.label || e || "—";
+const estadoStyle  = (e) => ESTADO_COLORS[normalizeEstado(e)]
   ? { background: ESTADO_COLORS[e].bg, color: ESTADO_COLORS[e].text, borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 600 }
   : { background: "#f3f4f6", color: "#374151", borderRadius: 6, padding: "2px 8px", fontSize: 12 };
 
@@ -83,7 +84,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     if (filtEmpresa !== "todos") r = r.filter(e => e.empresa          === filtEmpresa);
     if (filtTipo    !== "todos") r = r.filter(e => e.tipo             === filtTipo);
     if (filtModelo  !== "todos") r = r.filter(e => e.modelo           === filtModelo);
-    if (filtEstado  !== "todos") r = r.filter(e => e.estado           === filtEstado);
+    if (filtEstado  !== "todos") r = r.filter(e => normalizeEstado(e.estado) === filtEstado);
     if (filtTecnico !== "todos") r = r.filter(e => e.tecnico_asignado === filtTecnico);
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
@@ -101,9 +102,9 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
   // KPIs — usa precio local
   const kpis = useMemo(() => {
     const total     = filtrados.length;
-    const almacen   = filtrados.filter(e => e.estado === "almacen").length;
-    const asignado  = filtrados.filter(e => e.estado === "asignado").length;
-    const liquidado = filtrados.filter(e => e.estado === "liquidado").length;
+    const almacen   = filtrados.filter(e => normalizeEstado(e.estado) === "almacen").length;
+    const asignado  = filtrados.filter(e => normalizeEstado(e.estado) === "asignado").length;
+    const liquidado = filtrados.filter(e => normalizeEstado(e.estado) === "liquidado").length;
     const totalVal  = filtrados.reduce((s, e) => s + getPrecio(e), 0);
     return { total, almacen, asignado, liquidado, totalVal };
   }, [filtrados, preciosLocal]);
