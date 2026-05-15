@@ -40,6 +40,15 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
   const [filtTecnico,  setFiltTecnico]  = useState("todos");
   const [busqueda,     setBusqueda]     = useState("");
 
+  // Ordenamiento
+  const [sortCol, setSortCol]   = useState(null);
+  const [sortDir, setSortDir]   = useState("asc");
+
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  }
+
   // Configuración de precios (solo localStorage, no toca Supabase)
   const [preciosLocal, setPreciosLocal] = useState(loadPreciosLS);
   const [showConfig,   setShowConfig]   = useState(false);
@@ -96,8 +105,19 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
         (e.tecnico_asignado|| "").toLowerCase().includes(q)
       );
     }
+    if (sortCol) {
+      r = [...r].sort((a, b) => {
+        let va = sortCol === "precio" ? getPrecio(a) : (a[sortCol] || "");
+        let vb = sortCol === "precio" ? getPrecio(b) : (b[sortCol] || "");
+        if (typeof va === "string") va = va.toLowerCase();
+        if (typeof vb === "string") vb = vb.toLowerCase();
+        if (va < vb) return sortDir === "asc" ? -1 : 1;
+        if (va > vb) return sortDir === "asc" ?  1 : -1;
+        return 0;
+      });
+    }
     return r;
-  }, [equipos, filtEmpresa, filtTipo, filtModelo, filtEstado, filtTecnico, busqueda]);
+  }, [equipos, filtEmpresa, filtTipo, filtModelo, filtEstado, filtTecnico, busqueda, sortCol, sortDir]);
 
   // KPIs — usa precio local
   const kpis = useMemo(() => {
@@ -347,8 +367,24 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ background: "#1d4ed8", color: "#fff" }}>
-                  {["#","Empresa","Tipo","Marca","Modelo","Serial / MAC","Código QR","Estado","Técnico Asignado","Precio"].map(h => (
-                    <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                  {[
+                    { label: "#",               col: null },
+                    { label: "Empresa",         col: "empresa" },
+                    { label: "Tipo",            col: "tipo" },
+                    { label: "Marca",           col: "marca" },
+                    { label: "Modelo",          col: "modelo" },
+                    { label: "Serial / MAC",    col: "serial_mac" },
+                    { label: "Código QR",       col: "codigo_qr" },
+                    { label: "Estado",          col: "estado" },
+                    { label: "Técnico Asignado",col: "tecnico_asignado" },
+                    { label: "Precio",          col: "precio" },
+                  ].map(({ label, col }) => (
+                    <th key={label}
+                      onClick={() => col && toggleSort(col)}
+                      style={{ padding: "10px 12px", textAlign: "left", fontWeight: 600, whiteSpace: "nowrap", cursor: col ? "pointer" : "default", userSelect: "none" }}>
+                      {label}
+                      {col && sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : col ? " ⇅" : ""}
+                    </th>
                   ))}
                 </tr>
               </thead>
