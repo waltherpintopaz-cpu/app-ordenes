@@ -17,7 +17,7 @@ const NOTA_COLORES = [
 ];
 
 const emptyForm  = { titulo: "", descripcion: "", prioridad: "normal", fecha_vencimiento: "", foto_url: "" };
-const emptyNota  = { titulo: "", contenido: "", color: "#FFFBEB", categoria: "" };
+const emptyNota  = { titulo: "", contenido: "", color: "#FFFBEB", categoria: "", compartida_con: [] };
 
 function pInfo(p) { return PRIOS.find((x) => x.key === p) || PRIOS[1]; }
 
@@ -34,7 +34,7 @@ function fmtFecha(iso) {
 function isVenc(f) { return !!f && new Date(f) < new Date(); }
 
 export default function RecordatoriosPanel({ sessionUser }) {
-  const userId     = String(sessionUser?.id || sessionUser?.username || "");
+  const userId      = String(sessionUser?.id || sessionUser?.username || "");
   const autorNombre = sessionUser?.nombre || sessionUser?.username || "Usuario";
 
   /* ── Recordatorios ── */
@@ -50,13 +50,18 @@ export default function RecordatoriosPanel({ sessionUser }) {
   const fileInputRef = useRef(null);
 
   /* ── Notas ── */
-  const [notas, setNotas]           = useState([]);
+  const [notas, setNotas]               = useState([]);
+  const [notasCompartidas, setNotasCompartidas] = useState([]);
   const [loadingNotas, setLoadingNotas] = useState(false);
-  const [modalNota, setModalNota]   = useState(false);
-  const [formNota, setFormNota]     = useState(emptyNota);
-  const [editNotaId, setEditNotaId] = useState(null);
-  const [savingNota, setSavingNota] = useState(false);
-  const [busqNota, setBusqNota]     = useState("");
+  const [modalNota, setModalNota]       = useState(false);
+  const [formNota, setFormNota]         = useState(emptyNota);
+  const [editNotaId, setEditNotaId]     = useState(null);
+  const [savingNota, setSavingNota]     = useState(false);
+  const [busqNota, setBusqNota]         = useState("");
+  const [tabNotas, setTabNotas]         = useState("mis");
+
+  /* ── Usuarios (para compartir) ── */
+  const [usuarios, setUsuarios] = useState([]);
 
   /* ── Tab principal ── */
   const [tabMain, setTabMain] = useState("recordatorios");
@@ -72,24 +77,54 @@ export default function RecordatoriosPanel({ sessionUser }) {
       .then(({ data }) => { setRecs(data || []); setLoading(false); });
   }, [userId]);
 
-  /* ── Cargar notas ── */
-  const cargarNotas = useCallback(async () => {
+  /* ── Cargar usuarios activos ── */
+  const cargarUsuarios = useCallback(async () => {
     if (!isSupabaseConfigured) return;
+    const { data } = await supabase.from("usuarios")
+      .select("id,nombre,username")
+      .eq("activo", true)
+      .order("nombre", { ascending: true });
+    setUsuarios((data || []).filter(u => String(u.id) !== userId));
+  }, [userId]);
+
+  /* ── Cargar mis notas ── */
+  const cargarNotas = useCallback(async () => {
+    if (!isSupabaseConfigured || !userId) return;
     setLoadingNotas(true);
-    const { data } = await supabase.from("notas").select("*").order("updated_at", { ascending: false });
+    const { data } = await supabase.from("notas").select("*")
+      .eq("autor_id", userId)
+      .order("updated_at", { ascending: false });
     setNotas(data || []);
     setLoadingNotas(false);
-  }, []);
+  }, [userId]);
 
-  useEffect(() => { if (tabMain === "notas") cargarNotas(); }, [tabMain, cargarNotas]);
+  /* ── Cargar notas compartidas conmigo ── */
+  const cargarNotasCompartidas = useCallback(async () => {
+    if (!isSupabaseConfigured || !userId) return;
+    setLoadingNotas(true);
+    const { data } = await supabase.from("notas").select("*")
+      .contains("compartida_con", [userId])
+      .order("updated_at", { ascending: false });
+    setNotasCompartidas(data || []);
+    setLoadingNotas(false);
+  }, [userId]);
+
+  useEffect(() => {
+    if (tabMain === "notas") {
+      cargarUsuarios();
+      if (tabNotas === "mis") cargarNotas();
+      else cargarNotasCompartidas();
+    }
+  }, [tabMain, tabNotas, cargarNotas, cargarNotasCompartidas, cargarUsuarios]);
 
   const pendientes  = recs.filter((r) => !r.completado);
   const completados = recs.filter((r) => r.completado);
   const lista       = filtro === "completados" ? completados : pendientes;
 
+  const listaNotas = tabNotas === "mis" ? notas : notasCompartidas;
   const notasFiltradas = busqNota.trim()
-    ? notas.filter(n => (n.titulo + n.contenido + n.categoria).toLowerCase().includes(busqNota.toLowerCase()))
-    : notas;
+    ? listaNotas.filter(n => (n.titulo + n.contenido + n.categoria).toLowerCase().includes(busqNota.toLowerCase()))
+    : listaNotas;
 
   /* ── Recordatorios CRUD ── */
   const abrirNuevo  = () => { setForm(emptyForm); setEditId(null); setModal(true); };
@@ -147,10 +182,31 @@ export default function RecordatoriosPanel({ sessionUser }) {
   };
 
   /* ── Notas CRUD ── */
-  const abrirNuevaNota = () => { setFormNota(emptyNota); setEditNotaId(null); setModalNota(true); };
+  const abrirNuevaNota = () => {
+    setFormNota(emptyNota);
+    setEditNotaId(null);
+    setModalNota(true);
+  };
   const abrirEditarNota = (n) => {
-    setFormNota({ titulo: n.titulo || "", contenido: n.contenido || "", color: n.color || "#FFFBEB", categoria: n.categoria || "" });
-    setEditNotaId(n.id); setModalNota(true);
+    setFormNota({
+      titulo: n.titulo || "",
+      contenido: n.contenido || "",
+      color: n.color || "#FFFBEB",
+      categoria: n.categoria || "",
+      compartida_con: Array.isArray(n.compartida_con) ? n.compartida_con : []
+    });
+    setEditNotaId(n.id);
+    setModalNota(true);
+  };
+
+  const toggleUsuarioCompartir = (uid) => {
+    const id = String(uid);
+    setFormNota(p => ({
+      ...p,
+      compartida_con: p.compartida_con.includes(id)
+        ? p.compartida_con.filter(x => x !== id)
+        : [...p.compartida_con, id]
+    }));
   };
 
   const guardarNota = async () => {
@@ -158,16 +214,26 @@ export default function RecordatoriosPanel({ sessionUser }) {
     setSavingNota(true);
     try {
       const ahora = new Date().toISOString();
-      const payload = { titulo: formNota.titulo.trim(), contenido: formNota.contenido.trim(), color: formNota.color, categoria: formNota.categoria.trim() || null, autor_id: userId, autor_nombre: autorNombre, updated_at: ahora };
+      const payload = {
+        titulo: formNota.titulo.trim(),
+        contenido: formNota.contenido.trim(),
+        color: formNota.color,
+        categoria: formNota.categoria.trim() || null,
+        autor_id: userId,
+        autor_nombre: autorNombre,
+        compartida_con: formNota.compartida_con,
+        updated_at: ahora
+      };
       if (editNotaId) {
-        const { error } = await supabase.from("notas").update(payload).eq("id", editNotaId);
+        const { error } = await supabase.from("notas").update(payload).eq("id", editNotaId).eq("autor_id", userId);
         if (error) throw new Error(error.message);
       } else {
         const { error } = await supabase.from("notas").insert({ ...payload, created_at: ahora });
         if (error) throw new Error(error.message);
       }
       setModalNota(false);
-      await cargarNotas();
+      if (tabNotas === "mis") await cargarNotas();
+      else await cargarNotasCompartidas();
     } catch (e) {
       alert("Error al guardar nota: " + (e?.message || "desconocido"));
     } finally { setSavingNota(false); }
@@ -175,8 +241,14 @@ export default function RecordatoriosPanel({ sessionUser }) {
 
   const eliminarNota = async (n) => {
     if (!window.confirm(`¿Eliminar nota "${n.titulo}"?`)) return;
-    await supabase.from("notas").delete().eq("id", n.id);
+    await supabase.from("notas").delete().eq("id", n.id).eq("autor_id", userId);
     setNotas((prev) => prev.filter((x) => x.id !== n.id));
+  };
+
+  /* ── Helpers UI ── */
+  const nombreUsuario = (uid) => {
+    const u = usuarios.find(x => String(x.id) === String(uid));
+    return u ? (u.nombre || u.username) : uid;
   };
 
   /* ── Estilos ── */
@@ -211,6 +283,8 @@ export default function RecordatoriosPanel({ sessionUser }) {
     pBtn:      (p, sel) => ({ flex: 1, padding: "9px 0", border: `2px solid ${p.color}`, borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, background: sel ? p.color : "#fff", color: sel ? "#fff" : p.color }),
     saveBtn:   { width: "100%", background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 12, padding: 14, fontWeight: 800, fontSize: 15, cursor: "pointer", marginTop: 8 },
     notaCard:  (color) => ({ background: color || "#FFFBEB", borderRadius: 14, padding: "16px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", border: "1px solid rgba(0,0,0,0.06)", position: "relative", breakInside: "avoid", marginBottom: 14 }),
+    userChip:  (sel) => ({ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: sel ? "2px solid #1E4F9C" : "2px solid #E2E8F0", background: sel ? "#EEF4FF" : "#F8FAFC", color: sel ? "#1E4F9C" : "#64748B", userSelect: "none" }),
+    compartidoPill: { fontSize: 10, fontWeight: 700, background: "#EEF4FF", color: "#1E4F9C", borderRadius: 6, padding: "2px 7px", display: "inline-block" },
   };
 
   return (
@@ -219,7 +293,11 @@ export default function RecordatoriosPanel({ sessionUser }) {
       <div style={s.header}>
         <div>
           <h2 style={s.title}>{tabMain === "notas" ? "📝 Notas" : "🔔 Recordatorios"}</h2>
-          <p style={s.sub}>{tabMain === "notas" ? "Notas compartidas del equipo" : "Privados · solo tú los ves"}</p>
+          <p style={s.sub}>
+            {tabMain === "notas"
+              ? (tabNotas === "mis" ? "Privadas · solo tú las ves" : "Compartidas contigo por el equipo")
+              : "Privados · solo tú los ves"}
+          </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {tabMain === "recordatorios" && (
@@ -227,9 +305,12 @@ export default function RecordatoriosPanel({ sessionUser }) {
               {pendientes.length} pendiente{pendientes.length !== 1 ? "s" : ""}
             </span>
           )}
-          <button style={s.addBtn} onClick={tabMain === "notas" ? abrirNuevaNota : abrirNuevo}>
-            + {tabMain === "notas" ? "Nueva nota" : "Nuevo"}
-          </button>
+          {tabMain === "notas" && tabNotas === "mis" && (
+            <button style={s.addBtn} onClick={abrirNuevaNota}>+ Nueva nota</button>
+          )}
+          {tabMain === "recordatorios" && (
+            <button style={s.addBtn} onClick={abrirNuevo}>+ Nuevo</button>
+          )}
         </div>
       </div>
 
@@ -308,6 +389,16 @@ export default function RecordatoriosPanel({ sessionUser }) {
       {/* ══ NOTAS ══ */}
       {tabMain === "notas" && (
         <>
+          {/* Sub-tabs Mis notas / Compartidas */}
+          <div style={s.tabs}>
+            <button style={s.tab(tabNotas === "mis")} onClick={() => setTabNotas("mis")}>
+              🔒 Mis notas ({notas.length})
+            </button>
+            <button style={s.tab(tabNotas === "compartidas")} onClick={() => setTabNotas("compartidas")}>
+              👥 Compartidas conmigo ({notasCompartidas.length})
+            </button>
+          </div>
+
           {/* Buscador */}
           <div style={{ position: "relative", marginBottom: 16 }}>
             <input
@@ -324,34 +415,69 @@ export default function RecordatoriosPanel({ sessionUser }) {
             <div style={s.empty}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>📝</div>
               <p style={{ fontWeight: 700, margin: 0 }}>
-                {busqNota ? "Sin resultados" : "Sin notas aún"}
+                {busqNota ? "Sin resultados" : (tabNotas === "mis" ? "Sin notas aún" : "Nadie ha compartido notas contigo")}
               </p>
-              {!busqNota && <p style={{ fontSize: 13, marginTop: 6 }}>Haz clic en "+ Nueva nota" para agregar</p>}
+              {!busqNota && tabNotas === "mis" && (
+                <p style={{ fontSize: 13, marginTop: 6 }}>Haz clic en "+ Nueva nota" para agregar</p>
+              )}
             </div>
           ) : (
             <div style={{ columns: "2 340px", gap: 14 }}>
-              {notasFiltradas.map(n => (
-                <div key={n.id} style={s.notaCard(n.color)}>
-                  {n.categoria && (
-                    <span style={{ fontSize: 10, fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", background: "rgba(0,0,0,0.07)", borderRadius: 6, padding: "2px 7px", display: "inline-block", marginBottom: 6 }}>
-                      {n.categoria}
-                    </span>
-                  )}
-                  <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 14, color: "#0F172A" }}>{n.titulo}</p>
-                  {n.contenido && (
-                    <p style={{ margin: "0 0 10px", fontSize: 13, color: "#475569", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{n.contenido}</p>
-                  )}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 8 }}>
-                    <span style={{ fontSize: 11, color: "#94A3B8" }}>
-                      {n.autor_nombre || "—"} · {fmtFecha(n.updated_at || n.created_at)}
-                    </span>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button style={s.editBtn} onClick={() => abrirEditarNota(n)}>Editar</button>
-                      <button style={s.delBtn} onClick={() => eliminarNota(n)}>✕</button>
+              {notasFiltradas.map(n => {
+                const compartidaCon = Array.isArray(n.compartida_con) ? n.compartida_con : [];
+                const esCompartida  = compartidaCon.length > 0;
+                return (
+                  <div key={n.id} style={s.notaCard(n.color)}>
+                    {/* Badges superiores */}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: n.categoria || esCompartida ? 8 : 0 }}>
+                      {n.categoria && (
+                        <span style={{ fontSize: 10, fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", background: "rgba(0,0,0,0.07)", borderRadius: 6, padding: "2px 7px" }}>
+                          {n.categoria}
+                        </span>
+                      )}
+                      {esCompartida && tabNotas === "mis" && (
+                        <span style={s.compartidoPill}>
+                          👥 Compartida con {compartidaCon.length} usuario{compartidaCon.length !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {tabNotas === "compartidas" && (
+                        <span style={{ ...s.compartidoPill, background: "#F0FDF4", color: "#16A34A" }}>
+                          ✏️ {n.autor_nombre || "—"}
+                        </span>
+                      )}
+                    </div>
+
+                    <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 14, color: "#0F172A" }}>{n.titulo}</p>
+                    {n.contenido && (
+                      <p style={{ margin: "0 0 10px", fontSize: 13, color: "#475569", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{n.contenido}</p>
+                    )}
+
+                    {/* Chips de usuarios compartidos */}
+                    {esCompartida && tabNotas === "mis" && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+                        {compartidaCon.map(uid => (
+                          <span key={uid} style={{ fontSize: 11, background: "#EEF4FF", color: "#1E4F9C", borderRadius: 999, padding: "2px 8px", fontWeight: 600 }}>
+                            {nombreUsuario(uid)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 8 }}>
+                      <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                        {fmtFecha(n.updated_at || n.created_at)}
+                      </span>
+                      {/* Solo el autor puede editar/eliminar */}
+                      {String(n.autor_id) === userId && (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          <button style={s.editBtn} onClick={() => abrirEditarNota(n)}>Editar</button>
+                          <button style={s.delBtn} onClick={() => eliminarNota(n)}>✕</button>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -458,6 +584,33 @@ export default function RecordatoriosPanel({ sessionUser }) {
                   title={c.label}
                   style={{ width: 32, height: 32, borderRadius: "50%", background: c.val, border: formNota.color === c.val ? "3px solid #1E4F9C" : "2px solid rgba(0,0,0,0.12)", cursor: "pointer" }} />
               ))}
+            </div>
+
+            {/* Selector de usuarios para compartir */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={s.label}>Compartir con (opcional)</label>
+              {usuarios.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#94A3B8", margin: 0 }}>No hay otros usuarios activos.</p>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {usuarios.map(u => {
+                    const uid = String(u.id);
+                    const sel = formNota.compartida_con.includes(uid);
+                    return (
+                      <button key={uid} type="button"
+                        style={s.userChip(sel)}
+                        onClick={() => toggleUsuarioCompartir(uid)}>
+                        {sel ? "✓ " : ""}{u.nombre || u.username}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {formNota.compartida_con.length > 0 && (
+                <p style={{ fontSize: 11, color: "#1E4F9C", marginTop: 6, marginBottom: 0, fontWeight: 600 }}>
+                  Compartida con {formNota.compartida_con.length} usuario{formNota.compartida_con.length !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
