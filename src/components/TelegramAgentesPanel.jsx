@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 
-const CW_BASE    = "https://chat.americanet.club";
-const CW_ACCOUNT = 1;
+const CW_AGENTES = [
+  { id: 1,  name: "Walter Pinto"   },
+  { id: 11, name: "Walter Pinto P." },
+  { id: 7,  name: "Milagros L."    },
+  { id: 12, name: "Rosa Q."        },
+  { id: 13, name: "Cynthia L."     },
+];
 
 const card = {
   background: "#fff",
@@ -37,7 +42,7 @@ export default function TelegramAgentesPanel() {
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
   const [msg,      setMsg]      = useState(null);
-  const [form,     setForm]     = useState({ telegram_id: "", telegram_name: "", chatwoot_id: "", chatwoot_name: "" });
+  const [form,     setForm]     = useState({ telegram_id: "", telegram_name: "", chatwoot_id: "" });
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -55,21 +60,22 @@ export default function TelegramAgentesPanel() {
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!form.telegram_id || !form.telegram_name || !form.chatwoot_id || !form.chatwoot_name) {
+    if (!form.telegram_id || !form.telegram_name || !form.chatwoot_id) {
       return notify("Completa todos los campos", false);
     }
+    const cw = CW_AGENTES.find(a => String(a.id) === String(form.chatwoot_id));
     setSaving(true);
     const { error } = await supabase.from("telegram_agents").insert({
       telegram_id:   Number(form.telegram_id),
       telegram_name: form.telegram_name.trim(),
       chatwoot_id:   Number(form.chatwoot_id),
-      chatwoot_name: form.chatwoot_name.trim(),
+      chatwoot_name: cw?.name || "",
       activo:        true,
     });
     setSaving(false);
     if (error) return notify("Error: " + error.message, false);
     notify("Agente agregado");
-    setForm({ telegram_id: "", telegram_name: "", chatwoot_id: "", chatwoot_name: "" });
+    setForm({ telegram_id: "", telegram_name: "", chatwoot_id: "" });
     fetchAll();
   }
 
@@ -110,7 +116,7 @@ export default function TelegramAgentesPanel() {
           Agregar agente
         </h3>
         <form onSubmit={handleAdd}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
                 Telegram ID
@@ -137,27 +143,18 @@ export default function TelegramAgentesPanel() {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
-                Chatwoot ID
+                Agente Chatwoot
               </label>
-              <input
-                style={input}
-                type="number"
-                placeholder="ej. 5"
+              <select
+                style={{ ...input, background: "#fff" }}
                 value={form.chatwoot_id}
                 onChange={e => setForm(f => ({ ...f, chatwoot_id: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
-                Nombre en Chatwoot
-              </label>
-              <input
-                style={input}
-                type="text"
-                placeholder="ej. Walter Pinto"
-                value={form.chatwoot_name}
-                onChange={e => setForm(f => ({ ...f, chatwoot_name: e.target.value }))}
-              />
+              >
+                <option value="">— Seleccionar —</option>
+                {CW_AGENTES.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
             </div>
           </div>
           <button style={btn()} type="submit" disabled={saving}>
