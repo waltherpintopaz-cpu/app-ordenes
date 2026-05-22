@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 
 const CW_BASE    = "https://chat.americanet.club";
-const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
 const CW_ACCOUNT = 1;
 
 const card = {
@@ -34,25 +33,18 @@ const input = {
 };
 
 export default function TelegramAgentesPanel() {
-  const [agentes,    setAgentes]    = useState([]);
-  const [cwAgentes,  setCwAgentes]  = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [saving,     setSaving]     = useState(false);
-  const [msg,        setMsg]        = useState(null);
-  const [form,       setForm]       = useState({ telegram_id: "", telegram_name: "", chatwoot_id: "" });
+  const [agentes,  setAgentes]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [msg,      setMsg]      = useState(null);
+  const [form,     setForm]     = useState({ telegram_id: "", telegram_name: "", chatwoot_id: "", chatwoot_name: "" });
 
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
     setLoading(true);
-    const [{ data: rows }, cwRes] = await Promise.all([
-      supabase.from("telegram_agents").select("*").order("id"),
-      fetch(`${CW_BASE}/api/v1/accounts/${CW_ACCOUNT}/agents`, {
-        headers: { "api_access_token": CW_TOKEN },
-      }).then(r => r.json()).catch(() => []),
-    ]);
+    const { data: rows } = await supabase.from("telegram_agents").select("*").order("id");
     setAgentes(rows || []);
-    setCwAgentes(Array.isArray(cwRes) ? cwRes.filter(a => !a.name.toLowerCase().includes("bot")) : []);
     setLoading(false);
   }
 
@@ -63,22 +55,21 @@ export default function TelegramAgentesPanel() {
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!form.telegram_id || !form.telegram_name || !form.chatwoot_id) {
+    if (!form.telegram_id || !form.telegram_name || !form.chatwoot_id || !form.chatwoot_name) {
       return notify("Completa todos los campos", false);
     }
-    const cw = cwAgentes.find(a => String(a.id) === String(form.chatwoot_id));
     setSaving(true);
     const { error } = await supabase.from("telegram_agents").insert({
       telegram_id:   Number(form.telegram_id),
       telegram_name: form.telegram_name.trim(),
       chatwoot_id:   Number(form.chatwoot_id),
-      chatwoot_name: cw?.name || "",
+      chatwoot_name: form.chatwoot_name.trim(),
       activo:        true,
     });
     setSaving(false);
     if (error) return notify("Error: " + error.message, false);
     notify("Agente agregado");
-    setForm({ telegram_id: "", telegram_name: "", chatwoot_id: "" });
+    setForm({ telegram_id: "", telegram_name: "", chatwoot_id: "", chatwoot_name: "" });
     fetchAll();
   }
 
@@ -119,7 +110,7 @@ export default function TelegramAgentesPanel() {
           Agregar agente
         </h3>
         <form onSubmit={handleAdd}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
                 Telegram ID
@@ -146,18 +137,27 @@ export default function TelegramAgentesPanel() {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
-                Agente Chatwoot
+                Chatwoot ID
               </label>
-              <select
-                style={{ ...input, background: "#fff" }}
+              <input
+                style={input}
+                type="number"
+                placeholder="ej. 5"
                 value={form.chatwoot_id}
                 onChange={e => setForm(f => ({ ...f, chatwoot_id: e.target.value }))}
-              >
-                <option value="">— Seleccionar —</option>
-                {cwAgentes.map(a => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 4 }}>
+                Nombre en Chatwoot
+              </label>
+              <input
+                style={input}
+                type="text"
+                placeholder="ej. Walter Pinto"
+                value={form.chatwoot_name}
+                onChange={e => setForm(f => ({ ...f, chatwoot_name: e.target.value }))}
+              />
             </div>
           </div>
           <button style={btn()} type="submit" disabled={saving}>
