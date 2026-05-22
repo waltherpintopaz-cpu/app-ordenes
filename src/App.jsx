@@ -12968,12 +12968,7 @@ export default function App() {
                         type="button"
                         style={sideHistorialAppsheetSubmenuButtonStyle(isBotActive && botSubmenu === submenu.key)}
                         onClick={() => {
-                          if (submenu.key === "agentes") {
-                            setVistaActiva("reportes");
-                            setReportesSubmenu("agentes");
-                          } else {
-                            setBotSubmenu(submenu.key);
-                          }
+                          setBotSubmenu(submenu.key);
                         }}
                       >
                         {renderBotSubmenuIcon(submenu.key, isBotActive && botSubmenu === submenu.key)}
