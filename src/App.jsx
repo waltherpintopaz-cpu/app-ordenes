@@ -13,6 +13,7 @@ import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import BotControlPanel from "./components/BotControlPanel";
 import BotConfigPanel from "./components/BotConfigPanel";
+import TelegramAgentesPanel from "./components/TelegramAgentesPanel";
 import MetaPlantillasPanel from "./components/MetaPlantillasPanel";
 import MkwEstadoPanel from "./components/MkwEstadoPanel";
 import WisproPanel from "./components/WisproPanel";
@@ -18477,6 +18478,10 @@ export default function App() {
 
         {vistaActiva === "bot" && botSubmenu === "botConfig" && (
           <BotConfigPanel />
+        )}
+
+        {vistaActiva === "bot" && botSubmenu === "agentes" && (
+          <TelegramAgentesPanel />
         )}
 
         {vistaActiva === "metaPlantillas" && (
