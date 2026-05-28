@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { Bot, Zap, AlertTriangle, CheckCircle, Power, PowerOff, Radio, List, Sparkles } from "lucide-react";
+import { Bot, Zap, AlertTriangle, CheckCircle, Power, PowerOff, Radio, List, Sparkles, CreditCard } from "lucide-react";
 
 const DEFAULT_CONFIG = {
   bot_activo: true,
@@ -8,6 +8,7 @@ const DEFAULT_CONFIG = {
   averia_contexto: "",
   averia_tiempo_estimado: "",
   modo_bot: "lista",
+  pago_rapido_activo: false,
 };
 
 const NODOS = [1, 2, 3, 4, 5, 6];
@@ -247,6 +248,59 @@ export default function BotControlPanel() {
         {config.modo_bot === "ia" && (
           <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "#fef3c7", border: "1px solid #fde68a", fontSize: 12, color: "#92400e" }}>
             ⚡ <strong>Modo IA activo:</strong> el agente conversacional responde en lenguaje natural. Tiene acceso a datos del cliente, facturas, pagos y prórrogas. Escala a humano si no puede resolver.
+          </div>
+        )}
+      </div>
+
+      {/* ── Validación Rápida de Pagos ── */}
+      <div style={{
+        ...cardStyle,
+        borderColor: config.pago_rapido_activo ? "#a7f3d0" : "#e5e7eb",
+        background: config.pago_rapido_activo ? "#f0fdf4" : "#fff",
+      }}>
+        <div style={sectionTitle}>
+          <CreditCard size={18} color={config.pago_rapido_activo ? "#059669" : "#6b7280"} />
+          Validación rápida de pagos
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: config.pago_rapido_activo ? "#065f46" : "#374151" }}>
+              {config.pago_rapido_activo ? "✅ Activo" : "⏸ Inactivo"}
+            </div>
+            <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4, maxWidth: 380 }}>
+              {config.pago_rapido_activo
+                ? "Detecta comprobantes automáticamente y registra el pago sin pasar por el agente IA."
+                : "Cuando esté activo, valida comprobantes de pago directo con Vision sin usar el agente IA."}
+            </div>
+          </div>
+
+          <button
+            onClick={() => save({ pago_rapido_activo: !config.pago_rapido_activo })}
+            disabled={saving}
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              border: "none",
+              cursor: saving ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              fontSize: 14,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              background: config.pago_rapido_activo ? "#fee2e2" : "#dcfce7",
+              color: config.pago_rapido_activo ? "#dc2626" : "#16a34a",
+            }}
+          >
+            {config.pago_rapido_activo
+              ? <><PowerOff size={16} /> Desactivar</>
+              : <><Power size={16} /> Activar</>}
+          </button>
+        </div>
+
+        {config.pago_rapido_activo && (
+          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, background: "#d1fae5", border: "1px solid #6ee7b7", fontSize: 12, color: "#065f46" }}>
+            ⚡ <strong>Flujo activo:</strong> imagen detectada → Vision analiza → si es comprobante válido → registra en Mikrowisp → confirma al cliente → resuelve en 5 min.
           </div>
         )}
       </div>
