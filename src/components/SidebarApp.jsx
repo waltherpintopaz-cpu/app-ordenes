@@ -141,6 +141,7 @@ export default function SidebarApp() {
   const [creando,   setCreando]   = useState(false);
   // Señal y mapa
   const [snOnu,    setSnOnu]    = useState(null);
+  const [nodoReal, setNodoReal] = useState(null); // nodo del servidor de diagnóstico (de tabla clientes)
   const [senal,    setSenal]    = useState(null);   // { rx, oltRx, ts }
   const [senalLoad,setSenalLoad]= useState(false);
   const [showMap,    setShowMap]    = useState(false);
@@ -282,6 +283,7 @@ export default function SidebarApp() {
     setProrrInfo(null);
     setProrrForm({ dias: "", fecha: "" });
     setSnOnu(null);
+    setNodoReal(null);
     setSenal(null);
     setShowMap(false);
     setDiagResult(null);
@@ -343,16 +345,18 @@ export default function SidebarApp() {
         }));
       }
 
-      // Buscar SN de ONU por pppuser en tabla clientes
+      // Buscar SN de ONU y nodo real por pppuser en tabla clientes
       const pppuser = detRes?.datos?.[0]?.servicios?.[0]?.pppuser || detRes?.clientes?.[0]?.servicios?.[0]?.pppuser || "";
       if (pppuser) {
         const { data: snRows } = await supabase
           .from("clientes")
-          .select("sn_onu")
+          .select("sn_onu, nodo")
           .eq("usuario_nodo", pppuser)
           .limit(1);
-        const sn = snRows?.[0]?.sn_onu || "";
+        const sn  = snRows?.[0]?.sn_onu || "";
+        const nd  = snRows?.[0]?.nodo   || "";
         if (sn) setSnOnu(sn);
+        if (nd) setNodoReal(nd); // ej: "Nod_01", "Nod_03" — nodo real para diagnóstico
       }
     } catch(e) {
       setError("Error al cargar datos: " + e.message);
@@ -483,7 +487,9 @@ export default function SidebarApp() {
     setShowDiag(true);
     try {
       const nodoNum = Number(cliente.nodo);
-      const nodoStr = `Nod_${String(nodoNum).padStart(2,"0")}`;
+      // Usar nodo de tabla clientes (Nod_01, Nod_03...) si está disponible,
+      // ya que el ID de Mikrowisp no coincide con la clave del router de diagnóstico
+      const nodoStr = nodoReal || `Nod_${String(nodoNum).padStart(2,"0")}`;
       const pppuser = detalle?._servicio?.pppuser || svc?.pppuser || "";
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
         method: "POST",
