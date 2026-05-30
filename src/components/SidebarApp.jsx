@@ -231,6 +231,8 @@ export default function SidebarApp() {
   const [deletingFact, setDeletingFact] = useState(null);
   const [deletingPago, setDeletingPago] = useState(null);
   const [activando,    setActivando]    = useState(false);
+  const [editForm,     setEditForm]     = useState({ nombre:"", movil:"", telefono:"", correo:"", cedula:"", direccion_principal:"" });
+  const [guardando,    setGuardando]    = useState(false);
   // Comprobante Vision
   const [imgFile,  setImgFile]    = useState(null);
   const [imgPrev,  setImgPrev]    = useState(null);
@@ -418,6 +420,15 @@ export default function SidebarApp() {
     const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
     const servicio = Array.isArray(detCliente?.servicios) ? detCliente.servicios[0] : null;
     setDetalle({ ...detCliente, _servicio: servicio });
+    // Pre-llenar form de edición con datos actuales
+    setEditForm({
+      nombre:            detCliente?.nombre            || "",
+      movil:             detCliente?.movil             || "",
+      telefono:          detCliente?.telefono          || "",
+      correo:            detCliente?.correo            || "",
+      cedula:            detCliente?.cedula            || "",
+      direccion_principal: detCliente?.direccion_principal || "",
+    });
 
     const facts = invRes?.facturas || (Array.isArray(invRes) ? invRes : []);
     setFacturas(facts);
@@ -619,6 +630,29 @@ export default function SidebarApp() {
       await buscarCliente(contact?.phone_number || "");
     } catch(e) { notify("Error: " + e.message, false); }
     setCreando(false);
+  }
+
+  // ── Actualizar datos del cliente ─────────────────────────────────────────
+  async function actualizarCliente() {
+    if (!cliente) return;
+    setGuardando(true);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      // Solo enviar campos que tienen valor
+      const datos = {};
+      if (editForm.nombre)            datos.nombre            = editForm.nombre.trim();
+      if (editForm.movil)             datos.movil             = editForm.movil.trim();
+      if (editForm.telefono)          datos.telefono          = editForm.telefono.trim();
+      if (editForm.correo)            datos.correo            = editForm.correo.trim();
+      if (editForm.cedula)            datos.cedula            = editForm.cedula.trim();
+      if (editForm.direccion_principal) datos.direccion_principal = editForm.direccion_principal.trim();
+      if (!Object.keys(datos).length) { notify("No hay cambios que guardar", false); setGuardando(false); return; }
+      const res = await mkwProxy(Number(cliente.nodo), "UpdateUser", { idcliente: parseInt(cliente.mikrowisp_id, 10), datos }, tkn);
+      const ok  = (res?.estado || "").toLowerCase() === "exito";
+      if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
+      else { notify("✅ Datos actualizados correctamente"); await buscarCliente(contact?.phone_number || ""); setTab("info"); }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setGuardando(false);
   }
 
   // ── Activar servicio (cliente suspendido/cortado) ─────────────────────────
@@ -1206,8 +1240,8 @@ export default function SidebarApp() {
         )}
 
         {/* ══ TABS ══ */}
-        <div style={{ background:T.card, borderRadius:14, padding:5, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:4, marginBottom:10, boxShadow:"0 1px 3px rgba(15,23,42,0.06)" }}>
-          {[["info","📋","Facturas"],["pago","💳","Pago"],["prorroga","⏳","Prórroga"],["nueva","🧾","Nueva"]].map(([t,icon,label])=>(
+        <div style={{ background:T.card, borderRadius:14, padding:5, display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:4, marginBottom:10, boxShadow:"0 1px 3px rgba(15,23,42,0.06)" }}>
+          {[["info","📋","Facturas"],["pago","💳","Pago"],["prorroga","⏳","Prórroga"],["nueva","🧾","Nueva"],["editar","✏️","Editar"]].map(([t,icon,label])=>(
             <button key={t} className="sb-tab-btn" onClick={()=>{ setTab(t); if(t==="prorroga"&&!prorrInfo) consultarProrroga(); }}
               style={{ border:"none", borderRadius:10, padding:"9px 4px", fontWeight:700, fontSize:10, cursor:"pointer", fontFamily:"inherit", transition:"all .2s",
                 background: tab===t ? T.blue : "transparent",
@@ -1467,6 +1501,72 @@ export default function SidebarApp() {
               {creando?"Creando factura...":"🧾 Crear factura de servicios"}
             </button>
             <div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>Se registrará en Mikrowisp</div>
+          </div>
+        )}
+
+        {/* ══ TAB: EDITAR CLIENTE ══ */}
+        {tab==="editar" && (
+          <div style={{ ...S.card, padding:"16px 18px" }}>
+            <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:4 }}>✏️ Editar datos del cliente</div>
+            <div style={{ color:T.muted, fontSize:11, marginBottom:14 }}>
+              Modifica solo los campos que necesites cambiar. Los demás se mantendrán igual.
+            </div>
+
+            {/* Nombre / Titular */}
+            <div style={{ marginBottom:10 }}>
+              <label style={S.label}>Nombre / Titular</label>
+              <input style={S.input} type="text" value={editForm.nombre}
+                placeholder="Ej: RAMIREZ GARCIA, JUAN CARLOS"
+                onChange={e=>setEditForm(p=>({...p,nombre:e.target.value}))} />
+            </div>
+
+            {/* Móvil — separado por comas */}
+            <div style={{ marginBottom:10 }}>
+              <label style={S.label}>Móvil (separar varios con coma)</label>
+              <input style={S.input} type="text" value={editForm.movil}
+                placeholder="Ej: 987654321, 912345678"
+                onChange={e=>setEditForm(p=>({...p,movil:e.target.value}))} />
+              <div style={{ fontSize:10, color:T.muted, marginTop:3 }}>
+                Para agregar un número nuevo: escribe el actual + coma + el nuevo. Ej: <em>987654321, 999888777</em>
+              </div>
+            </div>
+
+            {/* Teléfono fijo */}
+            <div style={{ marginBottom:10 }}>
+              <label style={S.label}>Teléfono fijo</label>
+              <input style={S.input} type="text" value={editForm.telefono}
+                placeholder="Ej: 014441234"
+                onChange={e=>setEditForm(p=>({...p,telefono:e.target.value}))} />
+            </div>
+
+            {/* Correo */}
+            <div style={{ marginBottom:10 }}>
+              <label style={S.label}>Correo electrónico</label>
+              <input style={S.input} type="email" value={editForm.correo}
+                placeholder="Ej: cliente@correo.com"
+                onChange={e=>setEditForm(p=>({...p,correo:e.target.value}))} />
+            </div>
+
+            {/* DNI */}
+            <div style={{ marginBottom:10 }}>
+              <label style={S.label}>DNI / Cédula</label>
+              <input style={S.input} type="text" value={editForm.cedula}
+                placeholder="Ej: 12345678"
+                onChange={e=>setEditForm(p=>({...p,cedula:e.target.value}))} />
+            </div>
+
+            {/* Dirección */}
+            <div style={{ marginBottom:16 }}>
+              <label style={S.label}>Dirección principal</label>
+              <input style={S.input} type="text" value={editForm.direccion_principal}
+                placeholder="Ej: Av. Los Álamos 123"
+                onChange={e=>setEditForm(p=>({...p,direccion_principal:e.target.value}))} />
+            </div>
+
+            <button onClick={actualizarCliente} disabled={guardando} className="sb-btn-action"
+              style={{ ...S.btn(guardando?T.muted:T.blue), opacity:guardando?0.55:1, width:"100%" }}>
+              {guardando ? "Guardando..." : "💾 Guardar cambios"}
+            </button>
           </div>
         )}
 
