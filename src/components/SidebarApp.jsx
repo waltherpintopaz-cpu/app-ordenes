@@ -111,6 +111,7 @@ function Splash({ title, subtitle, loading }) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function SidebarApp() {
+  const contactLoadedRef = useRef(false);  // evita que urlParam sobreescriba postMessage
   const [contact, setContact]     = useState(null);  // datos de Chatwoot
   const [convId,  setConvId]      = useState(null);
   const [acctId,  setAcctId]      = useState("1");
@@ -175,10 +176,15 @@ export default function SidebarApp() {
       if (ct) {
         const phone = ct.phone_number || ct.phoneNumber || "";
         const newConvId = String(cv?.id || "");
+        contactLoadedRef.current = true;
         setContact(ct);
         setConvId(newConvId || null);
         setAcctId(String(cv?.account_id || "1"));
         if (phone) buscarCliente(phone);
+        else {
+          setCliente(null); setDetalle(null); setFacturas([]);
+          setError("Este contacto no tiene número de teléfono registrado");
+        }
       }
     }
 
@@ -200,6 +206,9 @@ export default function SidebarApp() {
     if (urlPhone) {
       // Esperar 800ms por si llega postMessage primero
       const t = setTimeout(() => {
+        if (contactLoadedRef.current) return; // postMessage ya cargó el contacto real
+        const rawPhone = urlPhone.replace(/[^\d]/g, "");
+        if (rawPhone.length < 7) return; // template sin resolver o teléfono inválido
         setContact(prev => prev ? prev : { phone_number: urlPhone, name: "" });
         if (urlConvId) setConvId(prev => prev || urlConvId);
         setAcctId(prev => prev !== "1" ? prev : urlAcctId);
@@ -246,6 +255,12 @@ export default function SidebarApp() {
     try {
       const raw = phone.replace(/[^\d]/g, "");
       const local = raw.slice(-9);
+
+      if (local.length < 7) {
+        setError("Número de teléfono no disponible para este contacto");
+        setLoading(false);
+        return;
+      }
 
       const buscar = async (t) => {
         const { data } = await supabase
