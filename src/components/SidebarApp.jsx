@@ -9,6 +9,11 @@ const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const ESTADOS_IGNORAR = ["pagado","PAGADO","paid","anulado","ANULADO","cancelled","canceled"];
+const PASARELAS = {
+  americanet: ["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Walter Pinto","Americanet"],
+  dimfiber:   ["Efectivo Oficina/Sucursal","Transferencia Bancaria","Aplicaciones bancarias","Pagos DIM","Americanet"],
+  nod06:      ["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Walter Pinto","Americanet"],
+};
 
 async function mkwProxy(nodo, accion, payload) {
   const r = await fetch(PROXY_URL, {
@@ -337,12 +342,16 @@ export default function SidebarApp() {
 
       // Pre-llenar formulario con primera factura pendiente
       const pend = facts.find(f => !ESTADOS_IGNORAR.includes(f.estado));
+      const pasarelaDefault = (PASARELAS[cli.empresa] || PASARELAS.americanet)[0];
       if (pend) {
         setFormPago(p => ({
           ...p,
+          pasarela: pasarelaDefault,
           idfactura: String(pend.idfactura || pend.id || ""),
           monto: String(parseFloat(pend.total || pend.monto || 0).toFixed(2)),
         }));
+      } else {
+        setFormPago(p => ({ ...p, pasarela: pasarelaDefault }));
       }
 
       // Buscar SN de ONU y nodo real por pppuser en tabla clientes
@@ -388,8 +397,13 @@ export default function SidebarApp() {
       if (parsed.monto) setFormPago(p => ({ ...p, monto: String(parseFloat(parsed.monto).toFixed(2)) }));
       if (parsed.banco) {
         const b = parsed.banco.toLowerCase();
-        const pasarela = b.includes("yape") ? "Yape" : b.includes("plin") ? "Plin" : "Transferencia";
-        setFormPago(p => ({ ...p, pasarela }));
+        const opciones = PASARELAS[cliente?.empresa] || PASARELAS.americanet;
+        // Buscar la opción más cercana al banco detectado por IA
+        const match = opciones.find(o => o.toLowerCase().split(" ").some(w => b.includes(w) && w.length > 3))
+          || (b.includes("deposit") || b.includes("banco") ? opciones.find(o => o.toLowerCase().includes("dep") || o.toLowerCase().includes("banc")) : null)
+          || (b.includes("transfer") ? opciones.find(o => o.toLowerCase().includes("transfer")) : null)
+          || opciones[0];
+        setFormPago(p => ({ ...p, pasarela: match }));
       }
     } catch(e) {
       notify("Error analizando imagen: " + e.message, false);
@@ -1017,7 +1031,9 @@ export default function SidebarApp() {
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                 <div><label style={S.label}>Forma de pago</label>
                   <select style={S.select} value={formPago.pasarela} onChange={e=>setFormPago(p=>({...p,pasarela:e.target.value}))}>
-                    <option>Yape</option><option>Plin</option><option>Transferencia</option><option>Efectivo</option><option>Depósito</option>
+                    {(PASARELAS[cliente?.empresa] || PASARELAS.americanet).map(p => (
+                      <option key={p}>{p}</option>
+                    ))}
                   </select>
                 </div>
                 <div><label style={S.label}>Monto (S/)</label>
