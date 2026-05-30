@@ -137,6 +137,58 @@ function Splash({ title, subtitle, loading }) {
   );
 }
 
+// Lista única de agentes para el selector inicial
+const TODOS_AGENTES = [
+  "Milagros Luna", "Walter Pinto", "Sofia Rosales",
+  "Cynthia", "Rosa", "admin",
+];
+
+// ─── Splash selección de agente ───────────────────────────────────────────────
+function SplashAgente({ onSelect }) {
+  const [sel, setSel] = useState("");
+  return (
+    <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+      background:"linear-gradient(145deg,#1a6fbc 0%,#0d5a9e 50%,#0a4882 100%)", overflow:"hidden",
+      fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif", padding:24 }}>
+      <div style={{ position:"absolute", width:220, height:220, borderRadius:"50%", background:"rgba(255,255,255,0.06)", top:-60, left:-70 }} />
+      <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", bottom:40, right:-50 }} />
+
+      <div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:320 }}>
+        <img src={logoAmericanet} alt="Americanet" style={{ height:60, display:"block", margin:"0 auto 20px", filter:"brightness(0) invert(1)", opacity:0.95 }} />
+        <div style={{ background:"rgba(255,255,255,0.12)", borderRadius:16, padding:"24px 20px", backdropFilter:"blur(8px)" }}>
+          <div style={{ color:"#fff", fontWeight:800, fontSize:16, textAlign:"center", marginBottom:4 }}>¿Quién eres?</div>
+          <div style={{ color:"rgba(255,255,255,0.6)", fontSize:12, textAlign:"center", marginBottom:20 }}>Selecciona tu nombre para continuar</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:16 }}>
+            {TODOS_AGENTES.map(nombre => (
+              <button key={nombre} onClick={() => setSel(nombre)}
+                style={{ background: sel === nombre ? "#fff" : "rgba(255,255,255,0.12)",
+                  color: sel === nombre ? T.navy : "#fff",
+                  border: `2px solid ${sel === nombre ? "#fff" : "rgba(255,255,255,0.25)"}`,
+                  borderRadius:10, padding:"11px 16px", fontWeight:700, fontSize:13,
+                  cursor:"pointer", fontFamily:"inherit", textAlign:"left", transition:"all .15s",
+                  display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ width:32, height:32, borderRadius:"50%", background: sel === nombre ? T.blue : "rgba(255,255,255,0.2)",
+                  display:"inline-flex", alignItems:"center", justifyContent:"center",
+                  fontSize:14, fontWeight:800, color:"#fff", flexShrink:0 }}>
+                  {nombre[0]}
+                </span>
+                {nombre}
+                {sel === nombre && <span style={{ marginLeft:"auto", fontSize:16 }}>✓</span>}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => sel && onSelect(sel)} disabled={!sel}
+            style={{ background: sel ? "#22c55e" : "rgba(255,255,255,0.2)", color:"#fff", border:"none",
+              borderRadius:10, padding:"13px 16px", fontWeight:800, fontSize:14, cursor: sel ? "pointer" : "not-allowed",
+              width:"100%", fontFamily:"inherit", opacity: sel ? 1 : 0.5, transition:"all .2s" }}>
+            Continuar →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function SidebarApp() {
   const contactLoadedRef = useRef(false);  // evita que urlParam sobreescriba postMessage
@@ -762,9 +814,15 @@ export default function SidebarApp() {
     <div style={S.root} className="sb-panel">
       <style>{globalCSS}</style>
 
+      {/* ── Splash selección de agente (obligatorio) ── */}
+      {!agente && <SplashAgente onSelect={nombre => {
+        setAgente(nombre);
+        localStorage.setItem("sb_agente", nombre);
+      }} />}
+
       {/* ── Splashes ── */}
-      {!contact && <Splash loading={false} />}
-      {contact && loading && <Splash loading={true} />}
+      {agente && !contact && <Splash loading={false} />}
+      {agente && contact && loading && <Splash loading={true} />}
 
       {/* ── Debug overlay ── */}
       {!contact && isDebug && (
@@ -784,22 +842,18 @@ export default function SidebarApp() {
         <img src={logoAmericanet} alt="Americanet" style={{ height:22, filter:"brightness(0) saturate(0) brightness(0.4)", opacity:0.5 }} />
         <span style={{ fontSize:10, color:T.muted, fontWeight:600, letterSpacing:0.5 }}>Panel de Agentes</span>
         <div style={{ flex:1 }} />
-        {/* Selector de agente */}
-        {cliente && (() => {
-          const lista = AGENTES[cliente.empresa] || AGENTES.americanet;
-          const token = getToken(cliente.empresa, agente);
-          return (
-            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-              {!token && <span style={{ fontSize:9, color:T.red, fontWeight:700 }}>⚠️</span>}
-              <select value={agente}
-                onChange={e => { setAgente(e.target.value); localStorage.setItem("sb_agente", e.target.value); }}
-                style={{ border:`1px solid ${token?T.border:T.red}`, borderRadius:6, padding:"3px 6px", fontSize:10, fontWeight:600, color:T.navy, background:"#fff", cursor:"pointer" }}>
-                <option value="">— Agente —</option>
-                {lista.map(a => <option key={a.nombre} value={a.nombre}>{a.nombre}</option>)}
-              </select>
+        {/* Agente activo + botón cambiar */}
+        {agente && (
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <div style={{ background:T.blue+"18", borderRadius:6, padding:"3px 8px", fontSize:10, fontWeight:700, color:T.blue }}>
+              👤 {agente}
             </div>
-          );
-        })()}
+            <button onClick={() => { setAgente(""); localStorage.removeItem("sb_agente"); }}
+              style={{ ...S.btnOut, fontSize:9, padding:"3px 7px" }}>
+              Cambiar
+            </button>
+          </div>
+        )}
         {msg && <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red, border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:600 }}>{msg.text}</div>}
       </div>
 
