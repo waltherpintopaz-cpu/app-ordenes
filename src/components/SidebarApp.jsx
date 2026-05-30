@@ -69,32 +69,39 @@ const globalCSS = `
 const T = {
   navy:    "#0f172a",
   blue:    "#2563eb",
-  blueDk:  "#1d4ed8",
+  blueDk:  "#1e40af",
+  sky:     "#0ea5e9",
+  skyDk:   "#0284c7",
   slate:   "#475569",
   muted:   "#94a3b8",
-  border:  "#e8edf3",
-  bg:      "#f0f4f8",
+  border:  "#e2e8f0",
+  bg:      "#f1f5f9",
   card:    "#ffffff",
-  green:   "#16a34a",
+  green:   "#059669",
+  greenLt: "#d1fae5",
   amber:   "#d97706",
+  amberLt: "#fef3c7",
   red:     "#dc2626",
+  redLt:   "#fee2e2",
   purple:  "#7c3aed",
+  teal:    "#0d9488",
 };
 
 const S = {
   root:   { fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh", letterSpacing:"-0.01em" },
-  card:   { background:T.card, borderRadius:14, boxShadow:"0 1px 2px rgba(15,23,42,0.04),0 4px 16px rgba(15,23,42,0.06)", marginBottom:8, overflow:"hidden" },
-  label:  { fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1, marginBottom:3, display:"block" },
-  val:    { fontWeight:700, color:T.navy, fontSize:13, lineHeight:1.3 },
+  card:   { background:T.card, borderRadius:16, boxShadow:"0 1px 3px rgba(15,23,42,0.06),0 8px 24px rgba(15,23,42,0.08)", marginBottom:10, overflow:"hidden" },
+  label:  { fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1.2, marginBottom:4, display:"block" },
+  val:    { fontWeight:700, color:T.navy, fontSize:14, lineHeight:1.3 },
   mono:   { fontFamily:"'JetBrains Mono','Fira Code',monospace", fontWeight:600, color:T.navy, fontSize:11, letterSpacing:0 },
-  badge:  (c,bg) => ({ background:bg||c+"18", color:c, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700, display:"inline-block", letterSpacing:0.3 }),
-  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:10, padding:"11px 14px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", letterSpacing:0.1 }),
-  btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontWeight:700, fontSize:11, cursor:"pointer" }),
-  btnOut: { background:"none", border:`1px solid ${T.border}`, borderRadius:7, padding:"4px 10px", fontWeight:600, fontSize:10, cursor:"pointer", color:T.slate },
-  input:  { border:`1.5px solid ${T.border}`, borderRadius:9, padding:"9px 12px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit" },
-  select: { border:`1.5px solid ${T.border}`, borderRadius:9, padding:"9px 12px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
-  alert:  (ok) => ({ background:ok?"#f0fdf4":"#fef2f2", color:ok?T.green:T.red, border:`1px solid ${ok?"#bbf7d0":"#fecaca"}`, borderRadius:10, padding:"10px 14px", fontSize:12, marginBottom:8, fontWeight:600 }),
-  divider:{ borderTop:`1px solid ${T.border}`, margin:"12px 0" },
+  badge:  (c,bg) => ({ background:bg||c+"15", color:c, borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4, letterSpacing:0.3 }),
+  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:12, padding:"12px 16px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", letterSpacing:0.1, transition:"all .15s" }),
+  btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontWeight:700, fontSize:11, cursor:"pointer" }),
+  btnOut: { background:"none", border:`1.5px solid ${T.border}`, borderRadius:8, padding:"5px 12px", fontWeight:600, fontSize:10, cursor:"pointer", color:T.slate },
+  input:  { border:`1.5px solid ${T.border}`, borderRadius:10, padding:"10px 13px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit", transition:"border .15s" },
+  select: { border:`1.5px solid ${T.border}`, borderRadius:10, padding:"10px 13px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
+  alert:  (ok) => ({ background:ok?T.greenLt:T.redLt, color:ok?T.green:T.red, border:`1px solid ${ok?"#6ee7b7":"#fca5a5"}`, borderRadius:12, padding:"11px 15px", fontSize:12, marginBottom:10, fontWeight:600 }),
+  divider:{ borderTop:`1px solid ${T.border}`, margin:"14px 0" },
+  statCard: (accent) => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:12, padding:"10px 12px", display:"flex", flexDirection:"column", gap:2 }),
 };
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
@@ -936,83 +943,89 @@ export default function SidebarApp() {
       {cliente && !loading && (<>
 
         {/* ══ HERO HEADER ══ */}
-        <div style={{ ...S.card, marginBottom:8 }}>
-          {/* Banner con gradiente */}
+        <div style={{ ...S.card, marginBottom:10 }}>
+          {/* Banner */}
           <div style={{ background: suspendido
-            ? "linear-gradient(135deg,#991b1b 0%,#dc2626 100%)"
-            : "linear-gradient(135deg,#1e3a8a 0%,#2563eb 60%,#3b82f6 100%)",
-            padding:"20px 18px 16px", position:"relative", overflow:"hidden" }}>
-            {/* Círculos decorativos */}
-            <div style={{ position:"absolute", width:120, height:120, borderRadius:"50%", background:"rgba(255,255,255,0.05)", top:-40, right:-30 }} />
-            <div style={{ position:"absolute", width:70, height:70, borderRadius:"50%", background:"rgba(255,255,255,0.06)", bottom:-20, left:10 }} />
+            ? "linear-gradient(135deg,#7f1d1d 0%,#b91c1c 100%)"
+            : "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#2563eb 100%)",
+            padding:"18px 16px 14px", position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", top:-50, right:-40 }} />
+            <div style={{ position:"absolute", width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.06)", bottom:-30, left:-20 }} />
 
-            <div style={{ display:"flex", alignItems:"flex-start", gap:14, position:"relative" }}>
-              {/* Avatar */}
-              <div style={{ width:50, height:50, borderRadius:14, background:"rgba(255,255,255,0.18)", border:"2px solid rgba(255,255,255,0.3)", backdropFilter:"blur(4px)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <span style={{ color:"#fff", fontWeight:800, fontSize:22, lineHeight:1 }}>{primerNombre(cliente.nombre)[0]}</span>
+            <div style={{ display:"flex", alignItems:"center", gap:14, position:"relative" }}>
+              {/* Avatar circular */}
+              <div style={{ width:52, height:52, borderRadius:"50%", background:"rgba(255,255,255,0.2)", border:"2.5px solid rgba(255,255,255,0.4)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <span style={{ color:"#fff", fontWeight:900, fontSize:20 }}>{primerNombre(cliente.nombre)[0]}</span>
               </div>
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ color:"#fff", fontWeight:800, fontSize:17, lineHeight:1.1, marginBottom:2 }}>{primerNombre(cliente.nombre)}</div>
-                <div style={{ color:"rgba(255,255,255,0.6)", fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{cliente.nombre}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, flexWrap:"wrap" }}>
-                  <span style={{ background:"rgba(255,255,255,0.18)", borderRadius:6, padding:"2px 8px", color:"#fff", fontSize:10, fontWeight:700, letterSpacing:0.5 }}>
+                <div style={{ color:"#fff", fontWeight:800, fontSize:18, lineHeight:1.1 }}>{primerNombre(cliente.nombre)}</div>
+                <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:1 }}>{cliente.nombre}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, flexWrap:"wrap" }}>
+                  <span style={{ background: suspendido?"rgba(255,255,255,0.15)":"rgba(16,185,129,0.25)", border:`1px solid ${suspendido?"rgba(255,255,255,0.2)":"rgba(16,185,129,0.5)"}`, borderRadius:20, padding:"2px 10px", color:"#fff", fontSize:10, fontWeight:700 }}>
                     {estadoServicio||"ACTIVO"}
                   </span>
-                  {svc && <span style={{ display:"flex", alignItems:"center", gap:4 }}>
-                    <span style={{ position:"relative", display:"inline-block", width:8, height:8 }}>
-                      <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#4ade80":"#94a3b8" }} />
-                      {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#4ade80" }} />}
+                  {svc && (
+                    <span style={{ display:"flex", alignItems:"center", gap:5, background:"rgba(255,255,255,0.1)", borderRadius:20, padding:"2px 10px" }}>
+                      <span style={{ position:"relative", width:7, height:7, display:"inline-block" }}>
+                        <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#4ade80":"#94a3b8" }} />
+                        {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#4ade80" }} />}
+                      </span>
+                      <span style={{ color:"rgba(255,255,255,0.8)", fontSize:10, fontWeight:600 }}>{isOnline?"En línea":"Sin señal"}</span>
                     </span>
-                    <span style={{ color:"rgba(255,255,255,0.7)", fontSize:10 }}>{isOnline?"En línea":"Sin señal"}</span>
-                  </span>}
+                  )}
                 </div>
               </div>
               <button onClick={()=>buscarCliente(contact?.phone_number||"")}
-                style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:8, padding:"5px 10px", color:"#fff", fontSize:10, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+                style={{ background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:10, width:32, height:32, color:"#fff", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                 ↺
               </button>
             </div>
           </div>
 
-          {/* Info chips */}
-          <div style={{ padding:"12px 16px 4px", display:"flex", gap:6, flexWrap:"wrap" }}>
+          {/* Stats grid 2x2 */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:"12px 14px 4px" }}>
             {[
-              { icon:"🪪", label:"DNI", val: cliente.cedula||"—" },
-              { icon:"#",  label:"ID",  val: cliente.mikrowisp_id },
-              { icon:"📡", label:"Nodo", val: cliente.nodo },
-              { icon:"🏢", label:"",    val: cliente.empresa },
+              { label:"DNI", val:cliente.cedula||"—", icon:"🪪", accent:T.sky },
+              { label:"ID Cliente", val:`#${cliente.mikrowisp_id}`, icon:"🔢", accent:T.purple },
+              { label:"Nodo", val:String(cliente.nodo), icon:"📡", accent:T.teal },
+              { label:"Empresa", val:cliente.empresa, icon:"🏢", accent:T.blue },
             ].map(item => (
-              <div key={item.val} style={{ display:"flex", alignItems:"center", gap:4, background:T.bg, borderRadius:8, padding:"5px 10px", border:`1px solid ${T.border}` }}>
-                <span style={{ fontSize:11 }}>{item.icon}</span>
-                {item.label && <span style={{ fontSize:10, color:T.muted, fontWeight:600 }}>{item.label}</span>}
-                <span style={{ fontSize:11, fontWeight:700, color:T.navy, textTransform:"capitalize" }}>{item.val}</span>
+              <div key={item.label} style={{ background:T.bg, borderRadius:10, padding:"10px 12px", border:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:4 }}>
+                  <span style={{ fontSize:12 }}>{item.icon}</span>
+                  <span style={{ fontSize:9, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1 }}>{item.label}</span>
+                </div>
+                <div style={{ fontWeight:800, fontSize:14, color:T.navy, textTransform:"capitalize" }}>{item.val}</div>
               </div>
             ))}
           </div>
 
           {/* Servicio de internet */}
-          {svc && <div style={{ margin:"10px 16px 0", background:T.bg, borderRadius:10, padding:"12px 14px", border:`1px solid ${T.border}` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-              <span style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:0.8 }}>🌐 Servicio</span>
+          {svc && <div style={{ margin:"8px 14px 0", background:"#f8faff", borderRadius:12, padding:"14px", border:`1px solid #dbeafe` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <div style={{ width:28, height:28, borderRadius:8, background:T.blue+"15", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🌐</div>
+                <span style={{ fontSize:11, fontWeight:800, color:T.navy }}>Servicio</span>
+              </div>
               {svc.coordenadas && (() => {
                 const [lat, lng] = svc.coordenadas.split(",").map(Number);
                 if (!lat||!lng) return null;
                 return (
-                  <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                  <div style={{ display:"flex", gap:5, alignItems:"center" }}>
                     <button onClick={()=>setShowMap(m=>!m)}
-                      style={{ background:showMap?T.blue:"none", color:showMap?"#fff":T.slate, border:`1px solid ${showMap?T.blue:T.border}`, borderRadius:6, padding:"3px 9px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                      style={{ background:showMap?T.sky:"rgba(14,165,233,0.1)", color:showMap?"#fff":T.sky, border:`1px solid ${showMap?T.sky:"rgba(14,165,233,0.3)"}`, borderRadius:8, padding:"3px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
                       📍 {showMap?"Ocultar":"Ver mapa"}
                     </button>
                     <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
-                      style={{ color:T.blue, fontSize:10, textDecoration:"none", fontWeight:600 }}>G↗</a>
+                      style={{ color:T.sky, fontSize:10, textDecoration:"none", fontWeight:700 }}>G↗</a>
                   </div>
                 );
               })()}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px" }}>
-              {svc.perfil  && <div><div style={S.label}>Plan</div><div style={{ ...S.val, color:T.blue, fontSize:12 }}>{svc.perfil}</div></div>}
-              {svc.ip      && <div><div style={S.label}>IP</div><div style={S.mono}>{svc.ip}</div></div>}
-              {svc.pppuser && <div><div style={S.label}>PPPoE</div><div style={S.mono}>{svc.pppuser}</div></div>}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px 16px" }}>
+              {svc.perfil  && <div><div style={S.label}>Plan</div><div style={{ fontWeight:800, color:T.blue, fontSize:12, lineHeight:1.3 }}>{svc.perfil}</div></div>}
+              {svc.ip      && <div><div style={S.label}>IP Activa</div><div style={{ ...S.mono, fontSize:12, color:T.teal }}>{svc.ip}</div></div>}
+              {svc.pppuser && <div><div style={S.label}>PPPoE</div><div style={{ ...S.mono, fontSize:11 }}>{svc.pppuser}</div></div>}
               {svc.mac     && <div><div style={S.label}>MAC</div><div style={{ ...S.mono, fontSize:10 }}>{svc.mac}</div></div>}
             </div>
 
@@ -1110,50 +1123,43 @@ export default function SidebarApp() {
 
         {/* ══ DEUDA ══ */}
         {factPend.length > 0 ? (
-          <div style={{ ...S.card, marginBottom:8, border:`2px solid #fde68a` }}>
-            <div style={{ background:"linear-gradient(90deg,#f59e0b,#d97706)", padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ width:32, height:32, borderRadius:10, background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>⚠️</div>
+          <div style={{ ...S.card, marginBottom:10, overflow:"hidden" }}>
+            <div style={{ background:"linear-gradient(135deg,#f59e0b 0%,#d97706 100%)", padding:"14px 16px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <div>
-                  <div style={{ color:"#fff", fontWeight:800, fontSize:13 }}>Deuda pendiente</div>
-                  <div style={{ color:"rgba(255,255,255,0.75)", fontSize:10 }}>{factPend.length} factura{factPend.length>1?"s":""} por cobrar</div>
+                  <div style={{ color:"#fff", fontWeight:900, fontSize:11, letterSpacing:1, textTransform:"uppercase", opacity:0.8, marginBottom:2 }}>Deuda pendiente</div>
+                  <div style={{ color:"#fff", fontWeight:900, fontSize:26, lineHeight:1 }}>S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}</div>
+                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:10, marginTop:3 }}>
+                    {factPend.length > 1 ? `${factPend.length} facturas` : `Vence ${factPend[0]?.vencimiento||"—"}`}
+                  </div>
                 </div>
+                <button onClick={()=>setTab("pago")} className="sb-btn-action"
+                  style={{ background:"#fff", border:"none", borderRadius:12, padding:"10px 18px", color:T.amber, fontWeight:800, fontSize:12, cursor:"pointer", boxShadow:"0 4px 12px rgba(0,0,0,0.15)" }}>
+                  Pagar →
+                </button>
               </div>
-              <button onClick={()=>setTab("pago")} className="sb-btn-action"
-                style={{ background:"rgba(255,255,255,0.25)", border:"1px solid rgba(255,255,255,0.4)", borderRadius:8, padding:"6px 14px", color:"#fff", fontWeight:800, fontSize:11, cursor:"pointer" }}>
-                Pagar →
-              </button>
             </div>
-            {factPend.map(f=>(
-              <div key={f.idfactura||f.id} style={{ padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontWeight:800, fontSize:22, color:"#92400e", lineHeight:1 }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</div>
-                  <div style={{ fontSize:11, color:T.muted, marginTop:3 }}>Factura #{f.idfactura||f.id} · Vence {f.vencimiento||"—"}</div>
-                </div>
-                <span style={S.badge(T.amber,"#fef3c7")}>{f.estado}</span>
-              </div>
-            ))}
           </div>
         ) : (
-          <div style={{ ...S.card, marginBottom:8, borderLeft:`4px solid ${T.green}`, padding:"14px 16px", display:"flex", alignItems:"center", gap:12 }}>
-            <div style={{ width:38, height:38, borderRadius:12, background:"#dcfce7", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>✅</div>
+          <div style={{ ...S.card, marginBottom:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, borderLeft:`4px solid ${T.green}` }}>
+            <div style={{ width:40, height:40, borderRadius:12, background:T.greenLt, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>✅</div>
             <div>
               <div style={{ fontWeight:800, color:T.green, fontSize:14 }}>Sin deuda pendiente</div>
-              <div style={{ fontSize:11, color:"#86efac", marginTop:1 }}>Cliente al día con sus pagos</div>
+              <div style={{ fontSize:11, color:T.teal, marginTop:2 }}>Cliente al día con sus pagos</div>
             </div>
           </div>
         )}
 
         {/* ══ TABS ══ */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:5, marginBottom:10 }}>
+        <div style={{ background:T.card, borderRadius:14, padding:5, display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:4, marginBottom:10, boxShadow:"0 1px 3px rgba(15,23,42,0.06)" }}>
           {[["info","📋","Facturas"],["pago","💳","Pago"],["prorroga","⏳","Prórroga"],["nueva","🧾","Nueva"]].map(([t,icon,label])=>(
             <button key={t} className="sb-tab-btn" onClick={()=>{ setTab(t); if(t==="prorroga"&&!prorrInfo) consultarProrroga(); }}
-              style={{ border:"none", borderRadius:10, padding:"10px 6px", fontWeight:700, fontSize:10, cursor:"pointer", fontFamily:"inherit",
-                background: tab===t ? T.blue : "#fff",
-                color: tab===t ? "#fff" : T.slate,
-                boxShadow: tab===t ? `0 4px 12px ${T.blue}40` : `0 1px 3px rgba(0,0,0,0.06)`,
+              style={{ border:"none", borderRadius:10, padding:"9px 4px", fontWeight:700, fontSize:10, cursor:"pointer", fontFamily:"inherit", transition:"all .2s",
+                background: tab===t ? T.blue : "transparent",
+                color: tab===t ? "#fff" : T.muted,
+                boxShadow: tab===t ? `0 4px 12px ${T.blue}35` : "none",
               }}>
-              <div style={{ fontSize:16, marginBottom:3 }}>{icon}</div>
+              <div style={{ fontSize:15, marginBottom:2 }}>{icon}</div>
               {label}
             </button>
           ))}
@@ -1161,61 +1167,60 @@ export default function SidebarApp() {
 
         {/* ══ TAB: FACTURAS ══ */}
         {tab==="info" && (
-          <div style={{ ...S.card, padding:"16px 18px" }}>
-            <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:14 }}>Historial de facturas</div>
+          <div style={{ ...S.card, padding:"16px 16px 8px" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+              <div style={{ fontWeight:800, fontSize:13, color:T.navy }}>Historial de facturas</div>
+              <span style={{ fontSize:10, color:T.muted, fontWeight:600 }}>{factRecientes.length} registros</span>
+            </div>
             {factRecientes.length===0
-              ? <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:20 }}>Sin facturas</div>
+              ? <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:24 }}>Sin facturas registradas</div>
               : factRecientes.map((f,i)=>{
                   const isPag = ["pagado","PAGADO","paid"].includes(f.estado);
                   const isAnu = ["anulado","ANULADO","cancelled","canceled"].includes(f.estado);
                   const c     = isPag?T.green:isAnu?T.muted:T.amber;
+                  const bg    = isPag?T.greenLt:isAnu?"#f1f5f9":T.amberLt;
                   const fid   = f.idfactura||f.id;
                   const open  = factExpand === fid;
                   return (
-                    <div key={fid} style={{ borderBottom:i<factRecientes.length-1?`1px solid ${T.border}`:"none" }}>
-                      {/* Fila principal — clic para expandir */}
+                    <div key={fid} style={{ marginBottom:6 }}>
                       <div onClick={()=>setFactExpand(open?null:fid)}
-                        style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", cursor:"pointer" }}>
-                        <div style={{ width:4, height:40, borderRadius:2, background:c, flexShrink:0 }} />
+                        style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:open?bg:T.bg, border:`1px solid ${open?c+"40":T.border}`, cursor:"pointer", transition:"all .2s" }}>
+                        {/* Indicador color */}
+                        <div style={{ width:36, height:36, borderRadius:10, background:c+"20", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                          <span style={{ fontSize:16 }}>{isPag?"✅":isAnu?"🚫":"⏳"}</span>
+                        </div>
                         <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:800, fontSize:15, color:T.navy }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</div>
-                          <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>
-                            {isPag?`✓ ${f.fechapago||f.fecha_pago||"—"}`:isAnu?"Anulada":`Vence ${f.vencimiento||"—"}`}
-                            <span style={{ marginLeft:8, color:T.border }}>#{fid}</span>
+                          <div style={{ fontWeight:800, fontSize:16, color:T.navy, lineHeight:1 }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</div>
+                          <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>
+                            {isPag?`Pagado ${f.fechapago||f.fecha_pago||""}`:isAnu?"Anulada":`Vence ${f.vencimiento||"—"}`}
+                            <span style={{ marginLeft:6, opacity:0.5 }}>· #{fid}</span>
                           </div>
                         </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <span style={S.badge(c)}>{f.estado}</span>
-                          <span style={{ color:T.muted, fontSize:12, transition:"transform .2s", display:"inline-block", transform:open?"rotate(180deg)":"none" }}>▾</span>
+                        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
+                          <span style={{ ...S.badge(c,bg), fontSize:9 }}>{f.estado}</span>
+                          <span style={{ color:T.muted, fontSize:10, transition:"transform .2s", display:"inline-block", transform:open?"rotate(180deg)":"none" }}>▾</span>
                         </div>
                       </div>
 
-                      {/* Detalle expandido */}
                       {open && (
-                        <div style={{ background:T.bg, borderRadius:10, padding:"12px 14px", marginBottom:10, border:`1px solid ${T.border}` }}>
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px 16px" }}>
+                        <div style={{ background:"#f8fafc", borderRadius:"0 0 10px 10px", padding:"12px 14px", border:`1px solid ${T.border}`, borderTop:"none", marginTop:-2 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px", marginBottom:10 }}>
                             {[
-                              ["N° Factura",  `#${fid}`],
-                              ["Estado",       f.estado||"—"],
-                              ["Emitido",      f.emitido||"—"],
-                              ["Vencimiento",  f.vencimiento||"—"],
-                              ["Total",       `S/ ${Number(f.total||0).toFixed(2)}`],
-                              ["Cobrado",     `S/ ${Number(f.cobrado||0).toFixed(2)}`],
-                              ["Impuesto",    `S/ ${Number(f.impuesto||0).toFixed(2)}`],
-                              ["Subtotal",     f.subtotal2||f.subtotal||"—"],
-                              ["Fecha pago",   f.fechapago||f.fecha_pago||"—"],
-                              ["Forma pago",   f.pasarela||f.forma_pago||"—"],
-                            ].filter(([,v])=>v&&v!=="—"||true).map(([lbl,val])=>(
+                              ["N° Factura", `#${fid}`], ["Estado", f.estado||"—"],
+                              ["Emitido", f.emitido||"—"], ["Vencimiento", f.vencimiento||"—"],
+                              ["Total", `S/ ${Number(f.total||0).toFixed(2)}`], ["Cobrado", `S/ ${Number(f.cobrado||0).toFixed(2)}`],
+                              ["Fecha pago", f.fechapago||f.fecha_pago||"—"], ["Forma pago", f.pasarela||f.forma_pago||"—"],
+                            ].filter(([,v])=>v).map(([lbl,val])=>(
                               <div key={lbl}>
                                 <div style={S.label}>{lbl}</div>
-                                <div style={{ fontWeight:600, fontSize:12, color:T.navy }}>{val}</div>
+                                <div style={{ fontWeight:600, fontSize:11, color:T.navy }}>{val}</div>
                               </div>
                             ))}
                           </div>
                           {!isPag && !isAnu && (
                             <button onClick={(e)=>{ e.stopPropagation(); setFormPago(p=>({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); setFactExpand(null); }}
-                              style={{ ...S.btn(T.green), marginTop:12, fontSize:11, padding:"8px 12px" }}>
-                              💳 Registrar pago de esta factura
+                              style={{ ...S.btn(T.green), fontSize:11, padding:"9px 12px" }}>
+                              💳 Pagar esta factura
                             </button>
                           )}
                         </div>
