@@ -49,67 +49,68 @@ async function mkwProxy(nodo, accion, payload, token) {
 
 // ─── CSS global ───────────────────────────────────────────────────────────────
 const globalCSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  .sb-panel * { font-family: 'Inter', system-ui, sans-serif !important; }
+  html, body { font-family: system-ui,-apple-system,'Segoe UI',sans-serif; -webkit-font-smoothing: antialiased; }
+  .sb-panel * { font-family: system-ui,-apple-system,'Segoe UI',sans-serif !important; }
   .sb-tab-btn { transition: color .15s, border-color .15s; }
   .sb-btn-action { transition: opacity .15s, background .15s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
   .sb-tbl { border-collapse: collapse; width: 100%; }
-  .sb-tbl td, .sb-tbl th { padding: 8px 10px; vertical-align: middle; }
-  .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #374151; background: #f3f4f6; border-bottom: 2px solid #d1d5db; border-top: 1px solid #d1d5db; white-space: nowrap; }
-  .sb-tbl td { font-size: 12px; color: #111827; border-bottom: 1px solid #e5e7eb; }
+  .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
+  .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; background: #003DA5; border-bottom: none; white-space: nowrap; }
+  .sb-tbl td { font-size: 12px; color: #0A0A1A; border-bottom: 1px solid #D9E3F8; }
   .sb-tbl tr:last-child td { border-bottom: none; }
-  .sb-tbl tr:hover td { background: #f9fafb; }
-  .sb-row-form { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 0; border-bottom: 1px solid #e5e7eb; padding: 9px 0; }
+  .sb-tbl tr:nth-child(even) td { background: #F0F4FF; }
+  .sb-tbl tr:hover td { background: #E8EFFF; }
+  .sb-row-form { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 0; border-bottom: 1px solid #D9E3F8; padding: 9px 0; }
   .sb-row-form:last-child { border-bottom: none; }
-  .sb-row-form-label { font-size: 12px; font-weight: 600; color: #374151; }
-  .sb-row-form-val { font-size: 12px; color: #111827; font-weight: 500; }
+  .sb-row-form-label { font-size: 12px; font-weight: 600; color: #4B5563; }
+  .sb-row-form-val { font-size: 12px; color: #0A0A1A; font-weight: 500; }
   @keyframes sbFadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes sbPing   { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.2);opacity:0} }
   @keyframes dotPulse { 0%,80%,100%{transform:scale(.55);opacity:.25} 40%{transform:scale(1);opacity:1} }
-  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #D9E3F8; border-radius: 4px; }
 `;
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  navy:    "#111827",
-  blue:    "#1d4ed8",
-  blueDk:  "#1e40af",
-  sky:     "#0284c7",
-  skyDk:   "#0369a1",
-  slate:   "#374151",
-  muted:   "#6b7280",
-  border:  "#d1d5db",
-  bg:      "#f3f4f6",
-  card:    "#ffffff",
-  green:   "#15803d",
-  greenLt: "#dcfce7",
-  amber:   "#b45309",
-  amberLt: "#fef3c7",
-  red:     "#b91c1c",
+  navy:    "#0A0A1A",
+  blue:    "#003DA5",
+  blueDk:  "#002d80",
+  sky:     "#003DA5",
+  skyDk:   "#002d80",
+  slate:   "#4B5563",
+  muted:   "#4B5563",
+  border:  "#D9E3F8",
+  bg:      "#F0F4FF",
+  card:    "#FFFFFF",
+  green:   "#00B140",
+  greenLt: "#e6f9ee",
+  amber:   "#d97706",
+  amberLt: "#fffbeb",
+  red:     "#DC2626",
   redLt:   "#fee2e2",
-  purple:  "#6d28d9",
-  teal:    "#0f766e",
+  purple:  "#003DA5",
+  teal:    "#003DA5",
+  accent:  "#E8EFFF",
 };
 
 const S = {
   root:   { fontFamily:"system-ui,-apple-system,'Segoe UI',sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
-  card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, boxShadow:"0 1px 3px rgba(0,0,0,0.07)", marginBottom:8, overflow:"hidden" },
+  card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, marginBottom:8, overflow:"hidden" },
   label:  { fontSize:11, fontWeight:700, color:T.slate, marginBottom:3, display:"block", textTransform:"uppercase", letterSpacing:"0.4px" },
   val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
   mono:   { fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12 },
   badge:  (c,bg) => ({ background:bg||c, color:"#fff", borderRadius:3, padding:"2px 7px", fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:3 }),
   btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:5, padding:"9px 14px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
   btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:4, padding:"4px 10px", fontWeight:700, fontSize:11, cursor:"pointer" }),
-  btnOut: { background:"#fff", border:`1px solid ${T.border}`, borderRadius:4, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:T.slate },
-  input:  { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit" },
-  select: { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
-  alert:  (ok) => ({ background:ok?"#f0fdf4":"#fef2f2", color:ok?T.green:T.red, border:`1px solid ${ok?"#86efac":"#fca5a5"}`, borderRadius:5, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
-  divider:{ borderTop:`1px solid ${T.border}`, margin:"12px 0" },
-  statCard: () => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:5, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
+  btnOut: { background:"#fff", border:`1px solid #D9E3F8`, borderRadius:4, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:"#4B5563" },
+  input:  { border:`1px solid #D9E3F8`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:"#0A0A1A", background:"#fff", fontFamily:"inherit" },
+  select: { border:`1px solid #D9E3F8`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:"#0A0A1A", fontFamily:"inherit" },
+  alert:  (ok) => ({ background:ok?"#e6f9ee":"#fee2e2", color:ok?"#00B140":"#DC2626", border:`1px solid ${ok?"#86efac":"#fca5a5"}`, borderRadius:5, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
+  divider:{ borderTop:`1px solid #D9E3F8`, margin:"12px 0" },
+  statCard: () => ({ background:T.card, border:`1px solid #D9E3F8`, borderRadius:5, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
 };
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
@@ -945,16 +946,16 @@ export default function SidebarApp() {
 
       {/* ── Contenido ── */}
       {(!contact || loading) ? null : (
-      <div style={{ padding:"8px 8px 4px" }}>
+      <div style={{ padding:"0 0 4px" }}>
 
-      {/* ── Topbar ── */}
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, paddingBottom:8, borderBottom:`1px solid ${T.border}` }}>
-        <img src={logoAmericanet} alt="Americanet" style={{ height:18, filter:"brightness(0) saturate(0) brightness(0.5)", opacity:0.45 }} />
-        <span style={{ fontSize:11, color:T.muted, fontWeight:600 }}>Panel de Agentes</span>
+      {/* ══ TOPBAR minimalista ══ */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderBottom:`1px solid ${T.border}`, background:T.card }}>
+        <img src={logoAmericanet} alt="Americanet" style={{ height:16, filter:"brightness(0) saturate(0) brightness(0.35)", opacity:0.5 }} />
+        <span style={{ fontSize:11, color:T.muted, fontWeight:600, letterSpacing:"0.2px" }}>Panel de Agentes</span>
         <div style={{ flex:1 }} />
         {agente && (
           <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-            <span style={{ background:"#eff6ff", color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
+            <span style={{ background:T.accent, color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600, border:`1px solid ${T.border}` }}>
               {agente}
             </span>
             <button onClick={() => { setAgente(""); clearStoredAgente(); }}
@@ -967,16 +968,16 @@ export default function SidebarApp() {
 
       {/* ── Notificación flotante ── */}
       {msg && (
-        <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red,
-          border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:6,
-          padding:"7px 12px", fontSize:12, fontWeight:600, marginBottom:8 }}>
+        <div style={{ background:msg.ok ? T.greenLt : T.redLt, color:msg.ok ? T.green : T.red,
+          border:`1px solid ${msg.ok?"#86efac":"#fca5a5"}`, borderRadius:0,
+          padding:"8px 12px", fontSize:12, fontWeight:600, borderLeft:`3px solid ${msg.ok?T.green:T.red}` }}>
           {msg.text}
         </div>
       )}
 
       {/* ── Error + búsqueda flexible ── */}
       {error && !cliente && (
-        <div style={{ ...S.card, padding:"14px 16px" }}>
+        <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
           <div style={{ fontWeight:700, color:T.red, fontSize:13, marginBottom:3 }}>Cliente no encontrado</div>
           <div style={{ fontSize:11, color:T.muted, marginBottom:12 }}>
             Número <strong>{contact?.phone_number}</strong> no está registrado en Mikrowisp.
@@ -998,7 +999,7 @@ export default function SidebarApp() {
                 const sel = dniSel?.mikrowisp_id === row.mikrowisp_id;
                 return (
                   <div key={row.mikrowisp_id} onClick={() => setDniSel(sel ? null : row)}
-                    style={{ background: sel ? "#eff6ff" : idx % 2 === 0 ? "#fff" : T.bg,
+                    style={{ background: sel ? T.accent : idx % 2 === 0 ? "#fff" : T.bg,
                       borderBottom: idx < dniResultados.length - 1 ? `1px solid ${T.border}` : "none",
                       padding:"8px 12px", cursor:"pointer",
                       borderLeft: sel ? `3px solid ${T.blue}` : "3px solid transparent" }}>
@@ -1029,206 +1030,233 @@ export default function SidebarApp() {
       {/* ── Cliente cargado ── */}
       {cliente && !loading && (<>
 
-        {/* ══ HEADER CLIENTE estilo Mikrowisp ══ */}
-        <div style={{ ...S.card, marginBottom:8,
-          borderLeft: suspendido ? `4px solid ${T.red}` : `4px solid ${T.blue}` }}>
-          <div style={{ padding:"12px 14px" }}>
-            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
-              <div style={{ minWidth:0 }}>
-                <div style={{ fontWeight:700, fontSize:15, color:T.navy, lineHeight:1.2, wordBreak:"break-word" }}>
-                  {cliente.nombre}
-                </div>
-                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap" }}>
-                  <span style={{ fontSize:12, color:T.muted }}>#{cliente.mikrowisp_id}</span>
-                  <span style={{ color:T.border }}>·</span>
-                  <span style={{ ...S.badge(
-                    estadoServicio === "ACTIVO" ? T.green :
-                    estadoServicio === "SUSPENDIDO" ? T.amber : T.red
-                  ) }}>{estadoServicio || "ACTIVO"}</span>
-                  {svc && (
-                    <span style={{ display:"flex", alignItems:"center", gap:4 }}>
-                      <span style={{ position:"relative", width:7, height:7, display:"inline-block" }}>
-                        <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#16a34a":"#94a3b8" }} />
-                        {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#16a34a" }} />}
-                      </span>
-                      <span style={{ fontSize:11, color:T.muted }}>{isOnline?"Online":"Offline"}</span>
+        {/* ══ HEADER CLIENTE — fondo azul oscuro ══ */}
+        <div style={{ background:T.blue, padding:"14px 14px 12px", position:"relative" }}>
+          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontWeight:700, fontSize:15, color:"#fff", lineHeight:1.2, wordBreak:"break-word", letterSpacing:"-0.2px" }}>
+                {cliente.nombre}
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap" }}>
+                <span style={{ fontSize:12, color:"rgba(255,255,255,0.65)" }}>#{cliente.mikrowisp_id}</span>
+                <span style={{ background:
+                  estadoServicio === "ACTIVO" ? T.green :
+                  estadoServicio === "SUSPENDIDO" ? "#d97706" : T.red,
+                  color:"#fff", borderRadius:3, padding:"2px 8px", fontSize:11, fontWeight:700 }}>
+                  {estadoServicio || "ACTIVO"}
+                </span>
+                {svc && (
+                  <span style={{ display:"flex", alignItems:"center", gap:4 }}>
+                    <span style={{ position:"relative", width:7, height:7, display:"inline-block" }}>
+                      <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#4ade80":"rgba(255,255,255,0.4)" }} />
+                      {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#4ade80" }} />}
                     </span>
-                  )}
-                </div>
-                <div style={{ display:"flex", gap:12, marginTop:6, flexWrap:"wrap" }}>
-                  <span style={{ fontSize:11, color:T.muted }}>Nodo <strong style={{ color:T.navy }}>{cliente.nodo}</strong></span>
-                  <span style={{ fontSize:11, color:T.muted }}>Empresa <strong style={{ color:T.navy, textTransform:"capitalize" }}>{cliente.empresa}</strong></span>
-                  {cliente.cedula && <span style={{ fontSize:11, color:T.muted }}>DNI <strong style={{ color:T.navy }}>{cliente.cedula}</strong></span>}
-                </div>
-              </div>
-              <button onClick={() => buscarCliente(contact?.phone_number || "")}
-                style={{ ...S.btnOut, padding:"5px 9px", flexShrink:0, fontSize:13 }}
-                title="Recargar">↺</button>
-            </div>
-          </div>
-
-          {/* Servicio de internet dentro del header */}
-          {svc && (
-            <div style={{ borderTop:`1px solid ${T.border}`, padding:"10px 14px", background:T.bg }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                <span style={{ fontSize:11, fontWeight:600, color:T.navy }}>Servicio de internet</span>
-                {svc.coordenadas && (() => {
-                  const [lat, lng] = svc.coordenadas.split(",").map(Number);
-                  if (!lat||!lng) return null;
-                  return (
-                    <div style={{ display:"flex", gap:5, alignItems:"center" }}>
-                      <button onClick={() => setShowMap(m => !m)}
-                        style={{ ...S.btnOut, fontSize:10, padding:"2px 8px", color:T.sky, borderColor:"#bae6fd" }}>
-                        {showMap ? "Ocultar mapa" : "Ver mapa"}
-                      </button>
-                      <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
-                        style={{ color:T.sky, fontSize:11, textDecoration:"none", fontWeight:600 }}>G↗</a>
-                    </div>
-                  );
-                })()}
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"6px 16px" }}>
-                {svc.perfil  && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>Plan</div><div style={{ fontWeight:600, fontSize:12, color:T.blue }}>{svc.perfil}</div></div>}
-                {svc.ip      && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>IP activa</div><div style={{ ...S.mono }}>{svc.ip}</div></div>}
-                {svc.pppuser && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>PPPoE</div><div style={{ ...S.mono, fontSize:10 }}>{svc.pppuser}</div></div>}
-                {svc.mac     && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>MAC</div><div style={{ ...S.mono, fontSize:10 }}>{svc.mac}</div></div>}
-              </div>
-
-              {/* Diagnóstico MikroTik */}
-              <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: showDiag ? 8 : 0 }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Diagnóstico MikroTik</span>
-                  <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-action"
-                    style={{ ...S.btnSm("#ea580c"), opacity:diagLoad?0.6:1, fontSize:10 }}>
-                    {diagLoad ? "Consultando..." : "Diagnosticar"}
-                  </button>
-                </div>
-                {showDiag && !diagLoad && diagError && (
-                  <div style={{ background:"#fef2f2", border:`1px solid #fecaca`, borderRadius:6, padding:"8px 10px", fontSize:11, color:T.red }}>
-                    {diagError}
-                  </div>
+                    <span style={{ fontSize:11, color:"rgba(255,255,255,0.65)" }}>{isOnline?"Online":"Offline"}</span>
+                  </span>
                 )}
-                {showDiag && !diagLoad && diagResult && (() => {
-                  const mk = diagResult.mikrotik || {};
-                  const c = diagColor(mk.estado);
-                  const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
-                  return (
-                    <div style={{ background: isConn ? "#f0fdf4" : "#fef2f2", border:`1px solid ${c}30`, borderRadius:6, padding:"10px 12px" }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                        <div style={{ position:"relative", width:9, height:9, flexShrink:0 }}>
-                          <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
-                          {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
-                        </div>
-                        <div style={{ fontWeight:700, fontSize:12, color:c }}>{isConn ? "Conectado" : "Desconectado"}</div>
-                        <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{mk.origen||"MikroTik"}</span>
-                      </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 14px" }}>
-                        {[
-                          ["IP", mk.ip], ["Uptime", mk.uptime], ["Router", mk.router?.nombre],
-                          ["Profile", mk.profile], ["Caller-ID", mk.callerId], ["Último logout", mk.lastLoggedOut],
-                        ].filter(([,v]) => v).map(([lbl, val]) => (
-                          <div key={lbl}>
-                            <div style={S.label}>{lbl}</div>
-                            <div style={{ fontWeight:600, fontSize:11, color:T.navy }}>{val}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {mk.disabled && <div style={{ marginTop:6, background:"#fef3c7", borderRadius:5, padding:"4px 8px", fontSize:11, color:"#92400e", fontWeight:600 }}>
-                        Usuario deshabilitado en MikroTik
-                      </div>}
-                    </div>
+              </div>
+              <div style={{ display:"flex", gap:12, marginTop:6, flexWrap:"wrap" }}>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>Nodo <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.nodo}</strong></span>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>
+                  <strong style={{ color:"rgba(255,255,255,0.9)", textTransform:"capitalize" }}>
+                    {cliente.empresa === "dimfiber" ? "DimFiber" : "Americanet"}
+                  </strong>
+                </span>
+                {cliente.cedula && <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>DNI <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.cedula}</strong></span>}
+              </div>
+            </div>
+            <button onClick={() => buscarCliente(contact?.phone_number || "")}
+              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)",
+                borderRadius:4, padding:"5px 9px", cursor:"pointer", color:"#fff", fontSize:13, flexShrink:0 }}
+              title="Recargar">↺</button>
+          </div>
+        </div>
+
+        {/* ══ SERVICIO DE INTERNET ══ */}
+        {svc && (
+          <div style={{ background:T.bg, borderBottom:`1px solid ${T.border}`, padding:"10px 14px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <span style={{ fontSize:11, fontWeight:700, color:T.navy, textTransform:"uppercase", letterSpacing:"0.4px" }}>Servicio de internet</span>
+              {svc.coordenadas && (() => {
+                const [lat, lng] = svc.coordenadas.split(",").map(Number);
+                if (!lat||!lng) return null;
+                return (
+                  <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+                    <button onClick={() => setShowMap(m => !m)}
+                      style={{ ...S.btnOut, fontSize:10, padding:"2px 8px", color:T.blue, borderColor:T.border }}>
+                      {showMap ? "Ocultar mapa" : "Ver mapa"}
+                    </button>
+                    <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
+                      style={{ color:T.blue, fontSize:11, textDecoration:"none", fontWeight:600 }}>G↗</a>
+                  </div>
                 );
               })()}
-              </div>
-
-              {/* Mapa */}
-              {showMap && svc.coordenadas && (() => {
-                const [lat, lng] = svc.coordenadas.split(",").map(Number);
-                const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
-                return <iframe src={mapUrl} title="Ubicación" style={{ width:"100%", height:160, borderRadius:6, border:`1px solid ${T.border}`, marginTop:8 }} loading="lazy" />;
-              })()}
-
-              {/* Señal ONU */}
-              {snOnu && (
-                <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                    <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>
-                      Señal ONU · <span style={{ fontFamily:"monospace", fontSize:10 }}>{snOnu}</span>
-                    </span>
-                    <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-action"
-                      style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10 }}>
-                      {senalLoad ? "Leyendo..." : "Consultar señal"}
-                    </button>
-                  </div>
-                  {senal && (
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-                      {[["Rx ONU", senal.rx],["Rx OLT", senal.oltRx]].map(([lbl,val]) => {
-                        const c = senalColor(val);
-                        const pct = Math.min(100, Math.max(0, ((parseFloat(val)||0)+35)/15*100));
-                        return (
-                          <div key={lbl} style={{ background:"#fff", borderRadius:6, padding:"8px 10px", border:`1px solid ${T.border}` }}>
-                            <div style={S.label}>{lbl}</div>
-                            <div style={{ fontWeight:700, fontSize:16, color:c, lineHeight:1 }}>{val} <span style={{ fontSize:10 }}>dBm</span></div>
-                            <div style={{ background:T.bg, borderRadius:3, height:4, overflow:"hidden", margin:"5px 0 3px" }}>
-                              <div style={{ height:"100%", width:`${pct}%`, background:c, borderRadius:3 }} />
-                            </div>
-                            <div style={{ fontSize:10, fontWeight:600, color:c }}>{senalLabel(val)}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {senal && <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:4 }}>Actualizado {senal.ts}</div>}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"8px 16px" }}>
+              {svc.perfil  && (
+                <div>
+                  <div style={S.label}>Plan</div>
+                  <div style={{ fontWeight:700, fontSize:12, color:T.blue }}>{svc.perfil}</div>
+                </div>
+              )}
+              {svc.ip && (
+                <div>
+                  <div style={S.label}>IP activa</div>
+                  <div style={{ fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12 }}>{svc.ip}</div>
+                </div>
+              )}
+              {svc.pppuser && (
+                <div style={{ gridColumn:"1 / -1" }}>
+                  <div style={S.label}>PPPoE</div>
+                  <div style={{ fontFamily:"monospace", fontWeight:600, color:T.navy, fontSize:11 }}>{svc.pppuser}</div>
+                </div>
+              )}
+              {svc.mac && (
+                <div>
+                  <div style={S.label}>MAC</div>
+                  <div style={{ fontFamily:"monospace", fontWeight:600, color:T.navy, fontSize:10 }}>{svc.mac}</div>
                 </div>
               )}
             </div>
-          )}
-        </div>
+
+            {/* Diagnóstico MikroTik */}
+            <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: showDiag ? 8 : 0 }}>
+                <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Diagnóstico MikroTik</span>
+                <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-action"
+                  style={{ ...S.btnSm("#ea580c"), opacity:diagLoad?0.6:1, fontSize:10 }}>
+                  {diagLoad ? "Consultando..." : "Diagnosticar"}
+                </button>
+              </div>
+              {showDiag && !diagLoad && diagError && (
+                <div style={{ background:T.redLt, border:`1px solid #fecaca`, borderRadius:5, padding:"8px 10px", fontSize:11, color:T.red }}>
+                  {diagError}
+                </div>
+              )}
+              {showDiag && !diagLoad && diagResult && (() => {
+                const mk = diagResult.mikrotik || {};
+                const c = diagColor(mk.estado);
+                const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
+                return (
+                  <div style={{ background: isConn ? T.greenLt : T.redLt, border:`1px solid ${c}40`, borderRadius:5, padding:"10px 12px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                      <div style={{ position:"relative", width:9, height:9, flexShrink:0 }}>
+                        <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
+                        {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
+                      </div>
+                      <div style={{ fontWeight:700, fontSize:12, color:c }}>{isConn ? "Conectado" : "Desconectado"}</div>
+                      <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{mk.origen||"MikroTik"}</span>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 14px" }}>
+                      {[
+                        ["IP", mk.ip], ["Uptime", mk.uptime], ["Router", mk.router?.nombre],
+                        ["Profile", mk.profile], ["Caller-ID", mk.callerId], ["Último logout", mk.lastLoggedOut],
+                      ].filter(([,v]) => v).map(([lbl, val]) => (
+                        <div key={lbl}>
+                          <div style={S.label}>{lbl}</div>
+                          <div style={{ fontWeight:600, fontSize:11, color:T.navy }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {mk.disabled && <div style={{ marginTop:6, background:"#fef3c7", borderRadius:4, padding:"4px 8px", fontSize:11, color:"#92400e", fontWeight:600 }}>
+                      Usuario deshabilitado en MikroTik
+                    </div>}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Mapa */}
+            {showMap && svc.coordenadas && (() => {
+              const [lat, lng] = svc.coordenadas.split(",").map(Number);
+              const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
+              return <iframe src={mapUrl} title="Ubicación" style={{ width:"100%", height:160, borderRadius:5, border:`1px solid ${T.border}`, marginTop:8 }} loading="lazy" />;
+            })()}
+
+            {/* Señal ONU */}
+            {snOnu && (
+              <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>
+                    Señal ONU · <span style={{ fontFamily:"monospace", fontSize:10 }}>{snOnu}</span>
+                  </span>
+                  <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-action"
+                    style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10 }}>
+                    {senalLoad ? "Leyendo..." : "Consultar señal"}
+                  </button>
+                </div>
+                {senal && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                    {[["Rx ONU", senal.rx],["Rx OLT", senal.oltRx]].map(([lbl,val]) => {
+                      const c = senalColor(val);
+                      const pct = Math.min(100, Math.max(0, ((parseFloat(val)||0)+35)/15*100));
+                      return (
+                        <div key={lbl} style={{ background:"#fff", borderRadius:5, padding:"8px 10px", border:`1px solid ${T.border}` }}>
+                          <div style={S.label}>{lbl}</div>
+                          <div style={{ fontWeight:700, fontSize:16, color:c, lineHeight:1 }}>{val} <span style={{ fontSize:10 }}>dBm</span></div>
+                          <div style={{ background:T.bg, borderRadius:3, height:4, overflow:"hidden", margin:"5px 0 3px" }}>
+                            <div style={{ height:"100%", width:`${pct}%`, background:c, borderRadius:3 }} />
+                          </div>
+                          <div style={{ fontSize:10, fontWeight:600, color:c }}>{senalLabel(val)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {senal && <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:4 }}>Actualizado {senal.ts}</div>}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ══ BOTÓN ACTIVAR (solo si suspendido) ══ */}
         {suspendido && (
-          <div style={{ marginBottom:8 }}>
+          <div style={{ padding:"8px 8px 0" }}>
             <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
-              style={{ ...S.btn(T.green), display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1 }}>
+              style={{ ...S.btn(T.green), display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1, borderRadius:5 }}>
               {activando ? "Activando..." : "Activar servicio"}
             </button>
           </div>
         )}
 
         {/* ══ BANNER DEUDA ══ */}
-        {factPend.length > 0 ? (
-          <div style={{ ...S.card, marginBottom:8, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px",
-            borderLeft:`4px solid ${T.amber}`, background:"#fff7ed" }}>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:T.amber }}>Deuda pendiente</div>
-              <div style={{ fontWeight:700, fontSize:17, color:T.navy, lineHeight:1.2 }}>
-                S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}
+        <div style={{ padding:"8px 8px 0" }}>
+          {factPend.length > 0 ? (
+            <div style={{ background:"#fffbeb", borderLeft:`3px solid #f59e0b`, borderRadius:5,
+              border:`1px solid #fde68a`, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px" }}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:700, color:"#92400e", textTransform:"uppercase", letterSpacing:"0.3px" }}>Deuda pendiente</div>
+                <div style={{ fontWeight:800, fontSize:18, color:T.navy, lineHeight:1.2, marginTop:2 }}>
+                  S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}
+                </div>
+                <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
+                  {factPend.length > 1 ? `${factPend.length} facturas pendientes` : `Vence ${factPend[0]?.vencimiento||"—"}`}
+                </div>
               </div>
-              <div style={{ fontSize:11, color:T.muted }}>
-                {factPend.length > 1 ? `${factPend.length} facturas pendientes` : `Vence ${factPend[0]?.vencimiento||"—"}`}
-              </div>
+              <button onClick={() => setTab("pago")} className="sb-btn-action"
+                style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
+                  padding:"9px 16px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                PAGAR →
+              </button>
             </div>
-            <button onClick={() => setTab("pago")} className="sb-btn-action"
-              style={{ ...S.btnSm(T.amber), padding:"7px 14px", fontSize:12 }}>
-              Pagar
-            </button>
-          </div>
-        ) : (
-          <div style={{ ...S.card, marginBottom:8, display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
-            borderLeft:`4px solid ${T.green}`, background:"#f0fdf4" }}>
-            <div style={{ fontWeight:600, color:T.green, fontSize:12 }}>Sin deuda pendiente</div>
-            <span style={{ fontSize:11, color:T.muted }}>· Cliente al día</span>
-          </div>
-        )}
+          ) : (
+            <div style={{ background:T.greenLt, borderLeft:`3px solid ${T.green}`, borderRadius:5,
+              border:`1px solid #86efac`, display:"flex", alignItems:"center", gap:10, padding:"9px 12px" }}>
+              <div style={{ fontWeight:600, color:T.green, fontSize:12 }}>Sin deuda pendiente</div>
+              <span style={{ fontSize:11, color:T.muted }}>· Cliente al dia</span>
+            </div>
+          )}
+        </div>
 
-        {/* ══ TABS estilo línea inferior ══ */}
-        <div style={{ background:T.card, borderRadius:8, border:`1px solid ${T.border}`, marginBottom:8, display:"flex", overflow:"hidden" }}>
-          {[["info","Facturas"],["pago","Pago"],["prorroga","Prórroga"],["nueva","Nueva"],["editar","Editar"]].map(([t, label]) => (
+        {/* ══ TABS ══ */}
+        <div style={{ background:T.card, marginTop:8, borderTop:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`, display:"flex" }}>
+          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorroga"],["nueva","Nueva"],["editar","Editar"]].map(([t, label]) => (
             <button key={t} className="sb-tab-btn"
               onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); }}
-              style={{ flex:1, border:"none", borderBottom: tab === t ? `2px solid ${T.blue}` : "2px solid transparent",
+              style={{ flex:1, border:"none",
+                borderBottom: tab === t ? `2px solid ${T.blue}` : "2px solid transparent",
                 borderTop:"none", borderLeft:"none", borderRight:`1px solid ${T.border}`,
-                background: tab === t ? "#eff6ff" : T.card,
+                background: tab === t ? T.accent : T.card,
                 color: tab === t ? T.blue : T.muted,
                 fontWeight: tab === t ? 700 : 500, fontSize:11,
                 padding:"9px 4px", cursor:"pointer", fontFamily:"inherit" }}>
@@ -1237,9 +1265,9 @@ export default function SidebarApp() {
           ))}
         </div>
 
-        {/* ══ TAB: FACTURAS — tabla estilo Mikrowisp ══ */}
+        {/* ══ TAB: FACTURAS ══ */}
         {tab === "info" && (
-          <div style={{ ...S.card }}>
+          <div style={{ margin:"8px", ...S.card }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
               <span style={{ fontWeight:700, fontSize:13, color:T.navy }}>Facturas</span>
               <span style={{ fontSize:11, color:T.muted }}>{factRecientes.length} registros</span>
@@ -1251,13 +1279,13 @@ export default function SidebarApp() {
                 <table className="sb-tbl" style={{ width:"100%", borderCollapse:"collapse" }}>
                   <thead>
                     <tr>
-                      <th style={{ textAlign:"left" }}>#Factura</th>
-                      <th style={{ textAlign:"left" }}>Estado</th>
-                      <th style={{ textAlign:"right" }}>Total</th>
-                      <th style={{ textAlign:"left" }}>Vence</th>
-                      <th style={{ textAlign:"left" }}>Fecha Pago</th>
-                      <th style={{ textAlign:"left" }}>Forma Pago</th>
-                      <th style={{ textAlign:"center" }}>Acciones</th>
+                      <th style={{ textAlign:"left", padding:"8px 10px" }}>#Factura</th>
+                      <th style={{ textAlign:"left", padding:"8px 10px" }}>Estado</th>
+                      <th style={{ textAlign:"right", padding:"8px 10px" }}>Total</th>
+                      <th style={{ textAlign:"left", padding:"8px 10px" }}>Vence</th>
+                      <th style={{ textAlign:"left", padding:"8px 10px" }}>F. Pago</th>
+                      <th style={{ textAlign:"left", padding:"8px 10px" }}>Forma</th>
+                      <th style={{ textAlign:"center", padding:"8px 10px" }}>Acc.</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1265,26 +1293,26 @@ export default function SidebarApp() {
                       const isPag = ["pagado","PAGADO","paid"].includes(f.estado);
                       const isAnu = ["anulado","ANULADO","cancelled","canceled"].includes(f.estado);
                       const fid   = f.idfactura || f.id;
-                      const badgeColor = isPag ? T.green : isAnu ? "#94a3b8" : T.amber;
-                      const badgeBg    = isPag ? T.greenLt : isAnu ? "#f1f5f9" : T.amberLt;
+                      // badge colors: PAGADO=green sólido, PENDIENTE=blue sólido, ANULADO=gris
+                      const badgeBg = isPag ? T.green : isAnu ? "#9ca3af" : T.blue;
                       return (
                         <tr key={fid}>
                           <td style={{ fontWeight:600, color:T.blue, fontSize:12 }}>#{fid}</td>
                           <td>
-                            <span style={{ ...S.badge(badgeColor, badgeBg) }}>
-                              {(f.estado||"—").toUpperCase()}
+                            <span style={{ background:badgeBg, color:"#fff", borderRadius:3, padding:"2px 7px", fontSize:10, fontWeight:700, display:"inline-block" }}>
+                              {isPag ? "PAGADO" : isAnu ? "ANULADO" : "PENDIENTE"}
                             </span>
                           </td>
-                          <td style={{ textAlign:"right", fontWeight:600 }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</td>
-                          <td style={{ color:T.muted }}>{f.vencimiento||"—"}</td>
-                          <td style={{ color:T.muted }}>{f.fechapago||f.fecha_pago||"—"}</td>
+                          <td style={{ textAlign:"right", fontWeight:700, color:T.navy }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</td>
+                          <td style={{ color:T.muted, fontSize:11 }}>{f.vencimiento||"—"}</td>
+                          <td style={{ color:T.muted, fontSize:11 }}>{f.fechapago||f.fecha_pago||"—"}</td>
                           <td style={{ color:T.muted, fontSize:11 }}>{f.pasarela||f.forma_pago||"—"}</td>
                           <td>
-                            <div style={{ display:"flex", gap:4, justifyContent:"center", flexWrap:"nowrap" }}>
+                            <div style={{ display:"flex", gap:3, justifyContent:"center", flexWrap:"nowrap" }}>
                               {!isPag && !isAnu && (
                                 <button title="Registrar pago"
                                   onClick={() => { setFormPago(p => ({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); }}
-                                  style={{ ...S.btnSm(T.blue), fontSize:10, padding:"3px 9px" }}>
+                                  style={{ ...S.btnSm(T.blue), fontSize:10, padding:"3px 8px" }}>
                                   Pagar
                                 </button>
                               )}
@@ -1292,14 +1320,15 @@ export default function SidebarApp() {
                                 <button title="Eliminar pago"
                                   onClick={() => eliminarPago(fid)}
                                   disabled={deletingPago === fid}
-                                  style={{ ...S.btnSm(T.red), fontSize:10, padding:"3px 8px", opacity:deletingPago===fid?0.5:1 }}>
-                                  {deletingPago === fid ? "..." : "x Pago"}
+                                  style={{ ...S.btnSm(T.red), fontSize:10, padding:"3px 7px", opacity:deletingPago===fid?0.5:1 }}>
+                                  {deletingPago === fid ? "..." : "xPago"}
                                 </button>
                               )}
                               <button title="Eliminar factura"
                                 onClick={() => eliminarFactura(fid)}
                                 disabled={deletingFact === fid}
-                                style={{ ...S.btnOut, fontSize:10, padding:"3px 8px", color:T.red, borderColor:"#fca5a5", opacity:deletingFact===fid?0.5:1 }}>
+                                style={{ background:"#fff", border:`1px solid #fca5a5`, borderRadius:4, fontSize:10,
+                                  padding:"3px 7px", color:T.red, cursor:"pointer", fontWeight:700, opacity:deletingFact===fid?0.5:1 }}>
                                 {deletingFact === fid ? "..." : "Del"}
                               </button>
                             </div>
@@ -1316,12 +1345,12 @@ export default function SidebarApp() {
 
         {/* ══ TAB: PAGO ══ */}
         {tab === "pago" && (
-          <div style={{ ...S.card, padding:"14px 16px" }}>
+          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Registrar pago</div>
 
             {/* Zona comprobante */}
             <div onClick={() => fileRef.current?.click()}
-              style={{ border:`1.5px dashed ${T.border}`, borderRadius:6, padding:"14px", textAlign:"center",
+              style={{ border:`1.5px dashed ${T.border}`, borderRadius:5, padding:"14px", textAlign:"center",
                 cursor:"pointer", marginBottom:10, background:imgPrev ? T.bg : "#fafafa" }}>
               {analizando
                 ? <div style={{ color:T.muted, fontSize:12 }}>Analizando imagen con IA...</div>
@@ -1330,7 +1359,7 @@ export default function SidebarApp() {
                   : <div>
                       <div style={{ color:T.muted, fontWeight:600, fontSize:12 }}>Adjuntar comprobante</div>
                       <div style={{ color:T.muted, fontSize:11, marginTop:2 }}>
-                        Clic aquí · o pega con <kbd style={{ background:T.bg, border:`1px solid ${T.border}`, borderRadius:3, padding:"1px 4px", fontFamily:"monospace", fontSize:10 }}>Ctrl+V</kbd>
+                        Clic aqui · o pega con <kbd style={{ background:T.bg, border:`1px solid ${T.border}`, borderRadius:3, padding:"1px 4px", fontFamily:"monospace", fontSize:10 }}>Ctrl+V</kbd>
                       </div>
                     </div>
               }
@@ -1338,9 +1367,9 @@ export default function SidebarApp() {
             <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={onFileChange} />
 
             {analisis && (
-              <div style={{ borderRadius:6, padding:"10px 12px", marginBottom:10, fontSize:12,
-                background:analisis.es_comprobante ? "#f0fdf4" : "#fef2f2",
-                border:`1px solid ${analisis.es_comprobante ? "#bbf7d0" : "#fecaca"}` }}>
+              <div style={{ borderRadius:5, padding:"10px 12px", marginBottom:10, fontSize:12,
+                background:analisis.es_comprobante ? T.greenLt : T.redLt,
+                border:`1px solid ${analisis.es_comprobante ? "#86efac" : "#fca5a5"}` }}>
                 {analisis.es_comprobante ? (<>
                   <div style={{ fontWeight:700, color:T.green, marginBottom:6 }}>Comprobante detectado</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px 12px" }}>
@@ -1349,14 +1378,14 @@ export default function SidebarApp() {
                     {analisis.fecha && <div><span style={{ color:T.muted }}>Fecha </span>{analisis.fecha}</div>}
                     {analisis.referencia && <div><span style={{ color:T.muted }}>Op. </span>{analisis.referencia}</div>}
                   </div>
-                </>) : <div style={{ color:T.red, fontWeight:600 }}>No es un comprobante de pago válido</div>}
+                </>) : <div style={{ color:T.red, fontWeight:600 }}>No es un comprobante de pago valido</div>}
               </div>
             )}
 
             {/* Formulario en filas label+campo */}
-            <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
               {[
-                { label:"Factura a pagar", content:(
+                { label:"Factura", content:(
                   <select style={{ ...S.select, border:"none", borderRadius:0 }}
                     value={formPago.idfactura} onChange={e => setFormPago(p => ({...p, idfactura:e.target.value}))}>
                     <option value="">— Seleccionar —</option>
@@ -1379,8 +1408,8 @@ export default function SidebarApp() {
                     onChange={e => setFormPago(p => ({...p, monto:e.target.value}))} />
                 )},
               ].map(({ label, content }, i, arr) => (
-                <div key={label} className="sb-row-form"
-                  style={{ display:"grid", gridTemplateColumns:"120px 1fr",
+                <div key={label}
+                  style={{ display:"grid", gridTemplateColumns:"110px 1fr",
                     borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`,
                     fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>
@@ -1393,20 +1422,20 @@ export default function SidebarApp() {
 
             <button onClick={registrarPago}
               disabled={pagando || !formPago.idfactura || !formPago.monto} className="sb-btn-action"
-              style={{ ...S.btn(pagando || !formPago.idfactura || !formPago.monto ? T.muted : T.green),
-                opacity: pagando || !formPago.idfactura || !formPago.monto ? 0.55 : 1 }}>
+              style={{ ...S.btn(pagando || !formPago.idfactura || !formPago.monto ? "#9ca3af" : T.green),
+                opacity: pagando || !formPago.idfactura || !formPago.monto ? 0.55 : 1, fontSize:13, padding:"11px 14px" }}>
               {pagando ? "Registrando..." : "Confirmar pago"}
             </button>
-            {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Confirmación automática al cliente vía Chatwoot</div>}
+            {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Confirmacion automatica al cliente via Chatwoot</div>}
           </div>
         )}
 
-        {/* ══ TAB: PRÓRROGA ══ */}
+        {/* ══ TAB: PRORROGA ══ */}
         {tab === "prorroga" && (
-          <div style={{ ...S.card, padding:"14px 16px" }}>
-            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Prórroga de pago</div>
+          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Prorroga de pago</div>
             {prorrando && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Verificando elegibilidad...</div>}
-            {!prorrando && !prorrInfo && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Sin facturas pendientes para prórroga.</div>}
+            {!prorrando && !prorrInfo && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Sin facturas pendientes para prorroga.</div>}
             {prorrInfo && (() => {
               const corteStr = new Date(prorrInfo.corte).toISOString().split("T")[0];
               const maxStr   = new Date(new Date(prorrInfo.corte).getTime() + prorrInfo.diasMax * 86400000).toISOString().split("T")[0];
@@ -1419,10 +1448,9 @@ export default function SidebarApp() {
                 ? Math.round((new Date(prorrForm.fecha+"T00:00:00") - new Date(prorrInfo.corte)) / 86400000)
                 : 0;
               return (<>
-                {/* Resumen factura */}
-                <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+                <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
                   {[["Factura", `#${prorrInfo.idfactura}`], ["Vencimiento", prorrInfo.vencimiento],
-                    ["Días máximos", `${prorrInfo.diasMax} días`], ["Fecha límite", prorrInfo.fechaMaxStr]
+                    ["Dias maximos", `${prorrInfo.diasMax} dias`], ["Fecha limite", prorrInfo.fechaMaxStr]
                   ].map(([l, v], i, arr) => (
                     <div key={l} style={{ display:"grid", gridTemplateColumns:"130px 1fr",
                       borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
@@ -1433,41 +1461,39 @@ export default function SidebarApp() {
                   ))}
                 </div>
                 {prorrInfo.suspendido && (
-                  <div style={{ background:"#fef3c7", border:`1px solid #fde68a`, borderRadius:6, padding:"6px 10px", fontSize:11, color:"#92400e", fontWeight:600, marginBottom:10 }}>
-                    Suspendido — máximo 3 días de prórroga
+                  <div style={{ background:"#fffbeb", border:`1px solid #fde68a`, borderLeft:`3px solid #f59e0b`,
+                    borderRadius:5, padding:"6px 10px", fontSize:11, color:"#92400e", fontWeight:600, marginBottom:10 }}>
+                    Suspendido — maximo 3 dias de prorroga
                   </div>
                 )}
-
                 <div style={{ marginBottom:10 }}>
-                  <label style={S.label}>Fecha límite de pago</label>
+                  <label style={S.label}>Fecha limite de pago</label>
                   <input style={S.input} type="date" min={corteStr} max={maxStr} value={prorrForm.fecha}
                     onChange={e => setProrrForm({ fecha: e.target.value })} />
                   {prorrForm.fecha && (
-                    <div style={{ marginTop:4, fontSize:11, color:T.purple, fontWeight:600 }}>
-                      +{diasSelec} día{diasSelec !== 1 ? "s" : ""} desde el corte
+                    <div style={{ marginTop:4, fontSize:11, color:T.blue, fontWeight:600 }}>
+                      +{diasSelec} dia{diasSelec !== 1 ? "s" : ""} desde el corte
                     </div>
                   )}
                 </div>
-
                 <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
                   {diasOpciones.map(({ dias, fecha, label }) => (
                     <button key={dias} onClick={() => setProrrForm({ fecha })}
-                      style={{ background: prorrForm.fecha === fecha ? T.purple : T.bg,
+                      style={{ background: prorrForm.fecha === fecha ? T.blue : T.bg,
                         color: prorrForm.fecha === fecha ? "#fff" : T.slate,
-                        border:`1px solid ${prorrForm.fecha === fecha ? T.purple : T.border}`,
+                        border:`1px solid ${prorrForm.fecha === fecha ? T.blue : T.border}`,
                         borderRadius:5, padding:"5px 10px", fontSize:11, fontWeight:600,
                         cursor:"pointer", fontFamily:"inherit" }}>
                       +{dias}d · {label}
                     </button>
                   ))}
                 </div>
-
                 <button onClick={registrarProrroga} disabled={prorrando || !prorrForm.fecha} className="sb-btn-action"
-                  style={{ ...S.btn(prorrando || !prorrForm.fecha ? T.muted : T.purple),
+                  style={{ ...S.btn(prorrando || !prorrForm.fecha ? "#9ca3af" : T.blue),
                     opacity: prorrando || !prorrForm.fecha ? 0.55 : 1 }}>
-                  {prorrando ? "Registrando..." : "Confirmar prórroga"}
+                  {prorrando ? "Registrando..." : "Confirmar prorroga"}
                 </button>
-                {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>El cliente será notificado automáticamente</div>}
+                {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>El cliente sera notificado automaticamente</div>}
               </>);
             })()}
           </div>
@@ -1475,35 +1501,31 @@ export default function SidebarApp() {
 
         {/* ══ TAB: NUEVA FACTURA ══ */}
         {tab === "nueva" && (
-          <div style={{ ...S.card, padding:"14px 16px" }}>
+          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:4 }}>Nueva factura</div>
             <div style={{ color:T.muted, fontSize:11, marginBottom:12 }}>
               Para <strong style={{ color:T.navy }}>{cliente.nombre}</strong> · #{cliente.mikrowisp_id}
             </div>
-
-            {/* Resumen cliente */}
-            <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
               {[["Nodo", String(cliente.nodo)], ["Empresa", cliente.empresa]].map(([l, v], i, arr) => (
-                <div key={l} style={{ display:"grid", gridTemplateColumns:"120px 1fr",
+                <div key={l} style={{ display:"grid", gridTemplateColumns:"110px 1fr",
                   borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
                   <div style={{ padding:"6px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
                   <div style={{ padding:"6px 10px", fontSize:12, color:T.navy, textTransform:"capitalize" }}>{v}</div>
                 </div>
               ))}
             </div>
-
             <div style={{ marginBottom:10 }}>
               <label style={S.label}>Fecha de vencimiento</label>
               <input style={S.input} type="date" value={factForm.vencimiento}
                 min={new Date().toISOString().split("T")[0]}
                 onChange={e => setFactForm(p => ({...p, vencimiento:e.target.value}))} />
             </div>
-
             <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:14 }}>
               {[
                 ["Fin de mes", (() => { const d = new Date(); d.setMonth(d.getMonth()+1,0); return d.toISOString().split("T")[0]; })()],
-                ["+30 días",   (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().split("T")[0]; })()],
-                ["+15 días",   (() => { const d = new Date(); d.setDate(d.getDate()+15); return d.toISOString().split("T")[0]; })()],
+                ["+30 dias",   (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().split("T")[0]; })()],
+                ["+15 dias",   (() => { const d = new Date(); d.setDate(d.getDate()+15); return d.toISOString().split("T")[0]; })()],
               ].map(([lbl, val]) => (
                 <button key={lbl} onClick={() => setFactForm(p => ({...p, vencimiento:val}))}
                   style={{ background:factForm.vencimiento===val?T.blue:T.bg,
@@ -1514,35 +1536,32 @@ export default function SidebarApp() {
                 </button>
               ))}
             </div>
-
             <button onClick={crearFactura} disabled={creando || !factForm.vencimiento} className="sb-btn-action"
-              style={{ ...S.btn(creando || !factForm.vencimiento ? T.muted : T.blue),
+              style={{ ...S.btn(creando || !factForm.vencimiento ? "#9ca3af" : T.blue),
                 opacity: creando || !factForm.vencimiento ? 0.55 : 1 }}>
               {creando ? "Creando factura..." : "Crear factura de servicios"}
             </button>
-            <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se registrará en Mikrowisp</div>
+            <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se registrara en Mikrowisp</div>
           </div>
         )}
 
-        {/* ══ TAB: EDITAR CLIENTE — formulario tabular estilo Mikrowisp ══ */}
+        {/* ══ TAB: EDITAR CLIENTE ══ */}
         {tab === "editar" && (
-          <div style={{ ...S.card }}>
+          <div style={{ margin:"8px", ...S.card }}>
             <div style={{ padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:700, fontSize:13, color:T.navy }}>Editar datos del cliente</div>
               <div style={{ color:T.muted, fontSize:11, marginTop:2 }}>Solo modifica los campos que necesites cambiar.</div>
             </div>
-
-            {/* Filas de formulario estilo tabla */}
             <div>
               {[
                 { key:"nombre", label:"Nombre / Titular", type:"text", placeholder:"Ej: RAMIREZ GARCIA, JUAN CARLOS" },
-                { key:"movil",  label:"Móvil", type:"text", placeholder:"Ej: 987654321, 912345678", hint:"Varios números separados por coma" },
-                { key:"telefono", label:"Teléfono fijo", type:"text", placeholder:"Ej: 014441234" },
+                { key:"movil",  label:"Movil", type:"text", placeholder:"Ej: 987654321, 912345678", hint:"Varios numeros separados por coma" },
+                { key:"telefono", label:"Telefono fijo", type:"text", placeholder:"Ej: 014441234" },
                 { key:"correo", label:"Correo", type:"email", placeholder:"Ej: cliente@correo.com" },
-                { key:"cedula", label:"DNI / Cédula", type:"text", placeholder:"Ej: 12345678" },
-                { key:"direccion_principal", label:"Dirección", type:"text", placeholder:"Ej: Av. Los Álamos 123" },
+                { key:"cedula", label:"DNI / Cedula", type:"text", placeholder:"Ej: 12345678" },
+                { key:"direccion_principal", label:"Direccion", type:"text", placeholder:"Ej: Av. Los Alamos 123" },
               ].map(({ key, label, type, placeholder, hint }, i, arr) => (
-                <div key={key} style={{ display:"grid", gridTemplateColumns:"130px 1fr",
+                <div key={key} style={{ display:"grid", gridTemplateColumns:"120px 1fr",
                   borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
                   <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`,
                     display:"flex", flexDirection:"column", justifyContent:"center" }}>
@@ -1558,10 +1577,9 @@ export default function SidebarApp() {
                 </div>
               ))}
             </div>
-
             <div style={{ padding:"12px 14px" }}>
               <button onClick={actualizarCliente} disabled={guardando} className="sb-btn-action"
-                style={{ ...S.btn(guardando ? T.muted : T.blue), opacity:guardando?0.55:1 }}>
+                style={{ ...S.btn(guardando ? "#9ca3af" : T.blue), opacity:guardando?0.55:1 }}>
                 {guardando ? "Guardando..." : "Guardar cambios"}
               </button>
             </div>
