@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin } from "lucide-react";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const CW_BASE    = "https://chat.americanet.club";
@@ -50,8 +51,8 @@ async function mkwProxy(nodo, accion, payload, token) {
 // ─── CSS global ───────────────────────────────────────────────────────────────
 const globalCSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { font-family: system-ui,-apple-system,'Segoe UI',sans-serif; -webkit-font-smoothing: antialiased; }
-  .sb-panel * { font-family: system-ui,-apple-system,'Segoe UI',sans-serif !important; }
+  html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  .sb-panel * { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
   .sb-tab-btn { transition: color .15s, border-color .15s; }
   .sb-btn-action { transition: opacity .15s, background .15s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
@@ -97,7 +98,7 @@ const T = {
 };
 
 const S = {
-  root:   { fontFamily:"system-ui,-apple-system,'Segoe UI',sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
+  root:   { fontFamily:"'Inter',system-ui,-apple-system,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
   card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, marginBottom:8, overflow:"hidden" },
   label:  { fontSize:11, fontWeight:700, color:T.slate, marginBottom:3, display:"block", textTransform:"uppercase", letterSpacing:"0.4px" },
   val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
@@ -1068,7 +1069,7 @@ export default function SidebarApp() {
             <button onClick={() => buscarCliente(contact?.phone_number || "")}
               style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)",
                 borderRadius:4, padding:"5px 9px", cursor:"pointer", color:"#fff", fontSize:13, flexShrink:0 }}
-              title="Recargar">↺</button>
+              title="Recargar"><RefreshCw size={13} /></button>
           </div>
         </div>
 
@@ -1214,7 +1215,7 @@ export default function SidebarApp() {
           <div style={{ padding:"8px 8px 0" }}>
             <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
               style={{ ...S.btn(T.green), display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1, borderRadius:5 }}>
-              {activando ? "Activando..." : "Activar servicio"}
+              <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
             </button>
           </div>
         )}
@@ -1308,28 +1309,27 @@ export default function SidebarApp() {
                           <td style={{ color:T.muted, fontSize:11 }}>{f.fechapago||f.fecha_pago||"—"}</td>
                           <td style={{ color:T.muted, fontSize:11 }}>{f.pasarela||f.forma_pago||"—"}</td>
                           <td>
-                            <div style={{ display:"flex", gap:3, justifyContent:"center", flexWrap:"nowrap" }}>
+                            <div style={{ display:"flex", gap:4, justifyContent:"center", alignItems:"center" }}>
                               {!isPag && !isAnu && (
                                 <button title="Registrar pago"
                                   onClick={() => { setFormPago(p => ({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); }}
-                                  style={{ ...S.btnSm(T.blue), fontSize:10, padding:"3px 8px" }}>
-                                  Pagar
+                                  style={{ background:T.blue, border:"none", borderRadius:5, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", color:"#fff", opacity:1 }}>
+                                  <CreditCard size={13} />
                                 </button>
                               )}
                               {isPag && (
                                 <button title="Eliminar pago"
                                   onClick={() => eliminarPago(fid)}
                                   disabled={deletingPago === fid}
-                                  style={{ ...S.btnSm(T.red), fontSize:10, padding:"3px 7px", opacity:deletingPago===fid?0.5:1 }}>
-                                  {deletingPago === fid ? "..." : "xPago"}
+                                  style={{ background:T.amber, border:"none", borderRadius:5, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", color:"#fff", opacity:deletingPago===fid?0.4:1 }}>
+                                  <XCircle size={13} />
                                 </button>
                               )}
                               <button title="Eliminar factura"
                                 onClick={() => eliminarFactura(fid)}
                                 disabled={deletingFact === fid}
-                                style={{ background:"#fff", border:`1px solid #fca5a5`, borderRadius:4, fontSize:10,
-                                  padding:"3px 7px", color:T.red, cursor:"pointer", fontWeight:700, opacity:deletingFact===fid?0.5:1 }}>
-                                {deletingFact === fid ? "..." : "Del"}
+                                style={{ background:"#fff", border:`1px solid #fecaca`, borderRadius:5, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", color:T.red, opacity:deletingFact===fid?0.4:1 }}>
+                                <Trash2 size={13} />
                               </button>
                             </div>
                           </td>
