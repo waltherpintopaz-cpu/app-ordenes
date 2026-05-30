@@ -153,22 +153,9 @@ export default function SidebarApp() {
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
-    // ── Método 1: URL params (más confiable) ──────────────────────────────
     const params = new URLSearchParams(window.location.search);
-    const urlPhone  = params.get("phone") || params.get("phone_number") || "";
-    const urlConvId = params.get("conv_id") || params.get("conversation_id") || "";
-    const urlAcctId = params.get("account_id") || "1";
 
-    if (urlPhone) {
-      const fakeContact = { phone_number: urlPhone, name: "" };
-      setContact(fakeContact);
-      if (urlConvId) setConvId(urlConvId);
-      setAcctId(urlAcctId);
-      buscarCliente(urlPhone);
-      return; // Ya tenemos datos, no necesitamos postMessage
-    }
-
-    // ── Método 2: postMessage ─────────────────────────────────────────────
+    // ── postMessage: SIEMPRE activo (maneja cambios de conversación) ───────
     function onMsg(e) {
       const d = e.data;
       if (d && typeof d === "object") {
@@ -176,20 +163,21 @@ export default function SidebarApp() {
       }
       if (!d || typeof d !== "object") return;
 
-      let contact = null, conversation = null;
+      let ct = null, cv = null;
       if (d.event === "appContext" && d.data?.contact) {
-        contact = d.data.contact; conversation = d.data.conversation;
+        ct = d.data.contact; cv = d.data.conversation;
       } else if (d.contact?.phone_number !== undefined) {
-        contact = d.contact; conversation = d.conversation;
+        ct = d.contact; cv = d.conversation;
       } else if (d.message === "appContext" && d.contact) {
-        contact = d.contact; conversation = d.conversation;
+        ct = d.contact; cv = d.conversation;
       }
 
-      if (contact) {
-        setContact(contact);
-        setConvId(conversation?.id || null);
-        setAcctId(String(conversation?.account_id || "1"));
-        const phone = contact.phone_number || contact.phoneNumber || "";
+      if (ct) {
+        const phone = ct.phone_number || ct.phoneNumber || "";
+        const newConvId = String(cv?.id || "");
+        setContact(ct);
+        setConvId(newConvId || null);
+        setAcctId(String(cv?.account_id || "1"));
         if (phone) buscarCliente(phone);
       }
     }
@@ -203,6 +191,22 @@ export default function SidebarApp() {
     notifyReady();
     setTimeout(notifyReady, 500);
     setTimeout(notifyReady, 1500);
+
+    // ── URL params: solo carga inicial si no llega postMessage ─────────────
+    const urlPhone  = params.get("phone") || params.get("phone_number") || "";
+    const urlConvId = params.get("conv_id") || params.get("conversation_id") || "";
+    const urlAcctId = params.get("account_id") || "1";
+
+    if (urlPhone) {
+      // Esperar 800ms por si llega postMessage primero
+      const t = setTimeout(() => {
+        setContact(prev => prev ? prev : { phone_number: urlPhone, name: "" });
+        if (urlConvId) setConvId(prev => prev || urlConvId);
+        setAcctId(prev => prev !== "1" ? prev : urlAcctId);
+        buscarCliente(urlPhone);
+      }, 800);
+      return () => { window.removeEventListener("message", onMsg); clearTimeout(t); };
+    }
 
     // Demo / desarrollo
     if (process.env.NODE_ENV === "development" || params.has("demo")) {
