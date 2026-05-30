@@ -49,17 +49,22 @@ async function mkwProxy(nodo, accion, payload, token) {
 
 // ─── CSS global ───────────────────────────────────────────────────────────────
 const globalCSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-  .sb-panel * { font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important; }
-  .sb-tab-btn { transition: all .18s ease; }
-  .sb-tab-btn:hover { filter: brightness(0.95); }
-  .sb-btn-action { transition: all .15s ease; }
-  .sb-btn-action:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-  .sb-card { animation: sbFadeUp .25s ease both; }
+  html, body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .sb-panel * { font-family: 'Inter', system-ui, sans-serif !important; }
+  .sb-tab-btn { transition: color .15s, border-color .15s; }
+  .sb-btn-action { transition: opacity .15s, background .15s; }
+  .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
-  @keyframes sbFadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
+  .sb-tbl th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+  .sb-tbl td { font-size: 12px; color: #1e293b; border-bottom: 1px solid #f1f5f9; }
+  .sb-tbl tr:last-child td { border-bottom: none; }
+  .sb-tbl tr:hover td { background: #f8fafc; }
+  .sb-row-form { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 0; border-bottom: 1px solid #f1f5f9; padding: 8px 0; }
+  .sb-row-form:last-child { border-bottom: none; }
+  @keyframes sbFadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes sbPing   { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.2);opacity:0} }
   @keyframes dotPulse { 0%,80%,100%{transform:scale(.55);opacity:.25} 40%{transform:scale(1);opacity:1} }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -67,20 +72,20 @@ const globalCSS = `
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  navy:    "#0f172a",
+  navy:    "#1e293b",
   blue:    "#2563eb",
-  blueDk:  "#1e40af",
+  blueDk:  "#1d4ed8",
   sky:     "#0ea5e9",
   skyDk:   "#0284c7",
   slate:   "#475569",
-  muted:   "#94a3b8",
+  muted:   "#64748b",
   border:  "#e2e8f0",
-  bg:      "#f1f5f9",
+  bg:      "#f8fafc",
   card:    "#ffffff",
-  green:   "#059669",
-  greenLt: "#d1fae5",
-  amber:   "#d97706",
-  amberLt: "#fef3c7",
+  green:   "#16a34a",
+  greenLt: "#dcfce7",
+  amber:   "#ea580c",
+  amberLt: "#fff7ed",
   red:     "#dc2626",
   redLt:   "#fee2e2",
   purple:  "#7c3aed",
@@ -88,20 +93,20 @@ const T = {
 };
 
 const S = {
-  root:   { fontFamily:"'Plus Jakarta Sans',system-ui,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh", letterSpacing:"-0.01em" },
-  card:   { background:T.card, borderRadius:16, boxShadow:"0 1px 3px rgba(15,23,42,0.06),0 8px 24px rgba(15,23,42,0.08)", marginBottom:10, overflow:"hidden" },
-  label:  { fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1.2, marginBottom:4, display:"block" },
-  val:    { fontWeight:700, color:T.navy, fontSize:14, lineHeight:1.3 },
+  root:   { fontFamily:"'Inter',system-ui,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
+  card:   { background:T.card, borderRadius:8, border:`1px solid ${T.border}`, boxShadow:"0 1px 2px rgba(0,0,0,0.04)", marginBottom:8, overflow:"hidden" },
+  label:  { fontSize:11, fontWeight:600, color:T.muted, marginBottom:2, display:"block" },
+  val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
   mono:   { fontFamily:"'JetBrains Mono','Fira Code',monospace", fontWeight:600, color:T.navy, fontSize:11, letterSpacing:0 },
-  badge:  (c,bg) => ({ background:bg||c+"15", color:c, borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4, letterSpacing:0.3 }),
-  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:12, padding:"12px 16px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", letterSpacing:0.1, transition:"all .15s" }),
-  btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontWeight:700, fontSize:11, cursor:"pointer" }),
-  btnOut: { background:"none", border:`1.5px solid ${T.border}`, borderRadius:8, padding:"5px 12px", fontWeight:600, fontSize:10, cursor:"pointer", color:T.slate },
-  input:  { border:`1.5px solid ${T.border}`, borderRadius:10, padding:"10px 13px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit", transition:"border .15s" },
-  select: { border:`1.5px solid ${T.border}`, borderRadius:10, padding:"10px 13px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
-  alert:  (ok) => ({ background:ok?T.greenLt:T.redLt, color:ok?T.green:T.red, border:`1px solid ${ok?"#6ee7b7":"#fca5a5"}`, borderRadius:12, padding:"11px 15px", fontSize:12, marginBottom:10, fontWeight:600 }),
-  divider:{ borderTop:`1px solid ${T.border}`, margin:"14px 0" },
-  statCard: (accent) => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:12, padding:"10px 12px", display:"flex", flexDirection:"column", gap:2 }),
+  badge:  (c,bg) => ({ background:bg||c+"18", color:c, borderRadius:4, padding:"2px 8px", fontSize:10, fontWeight:700, display:"inline-flex", alignItems:"center", gap:3, letterSpacing:0.2 }),
+  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:6, padding:"9px 14px", fontWeight:600, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
+  btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:5, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer" }),
+  btnOut: { background:"none", border:`1px solid ${T.border}`, borderRadius:5, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:T.slate },
+  input:  { border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px", fontSize:12, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit" },
+  select: { border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px", fontSize:12, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
+  alert:  (ok) => ({ background:ok?T.greenLt:T.redLt, color:ok?T.green:T.red, border:`1px solid ${ok?"#86efac":"#fca5a5"}`, borderRadius:6, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
+  divider:{ borderTop:`1px solid ${T.border}`, margin:"12px 0" },
+  statCard: () => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
 };
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
@@ -937,80 +942,80 @@ export default function SidebarApp() {
 
       {/* ── Contenido ── */}
       {(!contact || loading) ? null : (
-      <div style={{ padding:"10px 10px 4px" }}>
+      <div style={{ padding:"8px 8px 4px" }}>
 
-      {/* Header mini */}
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-        <img src={logoAmericanet} alt="Americanet" style={{ height:22, filter:"brightness(0) saturate(0) brightness(0.4)", opacity:0.5 }} />
-        <span style={{ fontSize:10, color:T.muted, fontWeight:600, letterSpacing:0.5 }}>Panel de Agentes</span>
+      {/* ── Topbar ── */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, paddingBottom:8, borderBottom:`1px solid ${T.border}` }}>
+        <img src={logoAmericanet} alt="Americanet" style={{ height:18, filter:"brightness(0) saturate(0) brightness(0.5)", opacity:0.45 }} />
+        <span style={{ fontSize:11, color:T.muted, fontWeight:600 }}>Panel de Agentes</span>
         <div style={{ flex:1 }} />
-        {/* Agente activo + botón cambiar */}
         {agente && (
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <div style={{ background:T.blue+"18", borderRadius:6, padding:"3px 8px", fontSize:10, fontWeight:700, color:T.blue }}>
-              👤 {agente}
-            </div>
+          <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+            <span style={{ background:"#eff6ff", color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
+              {agente}
+            </span>
             <button onClick={() => { setAgente(""); clearStoredAgente(); }}
-              style={{ ...S.btnOut, fontSize:9, padding:"3px 7px" }}>
+              style={{ ...S.btnOut, fontSize:10, padding:"2px 7px" }}>
               Cambiar
             </button>
           </div>
         )}
-        {msg && <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red, border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:600 }}>{msg.text}</div>}
       </div>
 
-      {/* Error + búsqueda flexible */}
+      {/* ── Notificación flotante ── */}
+      {msg && (
+        <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red,
+          border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:6,
+          padding:"7px 12px", fontSize:12, fontWeight:600, marginBottom:8 }}>
+          {msg.text}
+        </div>
+      )}
+
+      {/* ── Error + búsqueda flexible ── */}
       {error && !cliente && (
-        <div style={{ ...S.card, padding:"16px 18px", border:`1.5px solid #fecaca` }}>
-          <div style={{ fontWeight:800, color:T.red, fontSize:13, marginBottom:4 }}>Cliente no encontrado</div>
-          <div style={{ fontSize:11, color:T.muted, marginBottom:14 }}>
+        <div style={{ ...S.card, padding:"14px 16px" }}>
+          <div style={{ fontWeight:700, color:T.red, fontSize:13, marginBottom:3 }}>Cliente no encontrado</div>
+          <div style={{ fontSize:11, color:T.muted, marginBottom:12 }}>
             Número <strong>{contact?.phone_number}</strong> no está registrado en Mikrowisp.
           </div>
-
-          <div style={{ fontWeight:700, fontSize:12, color:T.navy, marginBottom:8 }}>Buscar cliente</div>
-          <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+          <div style={{ fontWeight:600, fontSize:12, color:T.navy, marginBottom:6 }}>Buscar por DNI o nombre</div>
+          <div style={{ display:"flex", gap:6, marginBottom:8 }}>
             <input style={{ ...S.input, flex:1 }} type="text"
-              placeholder="DNI o nombre (parcial, cualquier orden)" value={dniBusq}
+              placeholder="DNI o nombre (parcial)" value={dniBusq}
               onChange={e => { setDniBusq(e.target.value); setDniResultados([]); setDniSel(null); }}
               onKeyDown={e => e.key === "Enter" && buscarPorDni()} />
             <button onClick={buscarPorDni} disabled={dniBuscando}
-              style={{ ...S.btnSm(T.blue), padding:"9px 14px", opacity:dniBuscando?0.6:1 }}>
+              style={{ ...S.btnSm(T.blue), padding:"8px 14px", opacity:dniBuscando?0.6:1 }}>
               {dniBuscando ? "..." : "Buscar"}
             </button>
           </div>
-
-          {/* Lista de resultados */}
           {dniResultados.length > 0 && (
-            <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
-              {dniResultados.map(row => {
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:8 }}>
+              {dniResultados.map((row, idx) => {
                 const sel = dniSel?.mikrowisp_id === row.mikrowisp_id;
                 return (
                   <div key={row.mikrowisp_id} onClick={() => setDniSel(sel ? null : row)}
-                    style={{ background: sel ? "#f0fdf4" : T.bg, border:`1.5px solid ${sel?"#86efac":T.border}`,
-                      borderRadius:10, padding:"10px 12px", cursor:"pointer", transition:"all .15s" }}>
-                    <div style={{ fontWeight:700, fontSize:12, color:T.navy }}>{row.nombre}</div>
-                    <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>
-                      DNI: {row.cedula} · ID: #{row.mikrowisp_id} · Nodo: {row.nodo} · {row.estado}
+                    style={{ background: sel ? "#eff6ff" : idx % 2 === 0 ? "#fff" : T.bg,
+                      borderBottom: idx < dniResultados.length - 1 ? `1px solid ${T.border}` : "none",
+                      padding:"8px 12px", cursor:"pointer",
+                      borderLeft: sel ? `3px solid ${T.blue}` : "3px solid transparent" }}>
+                    <div style={{ fontWeight:600, fontSize:12, color:T.navy }}>{row.nombre}</div>
+                    <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
+                      DNI {row.cedula} · #{row.mikrowisp_id} · Nodo {row.nodo} · <span style={{ color: row.estado==="ACTIVO"?T.green:T.red }}>{row.estado}</span>
                     </div>
-                    {row.telefonos && row.telefonos !== "EMPTY" &&
-                      <div style={{ fontSize:10, color:T.muted }}>📞 {row.telefonos}</div>}
                   </div>
                 );
               })}
             </div>
           )}
-
-          {/* Acciones para el resultado seleccionado */}
           {dniSel && (
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               <button onClick={() => verInfoCliente(dniSel)} className="sb-btn-action"
-                style={{ ...S.btn(T.blue), fontSize:11, padding:"9px 12px" }}>
-                👁 Ver información del cliente
-              </button>
+                style={{ ...S.btn(T.blue) }}>Ver información del cliente</button>
               {contact?.phone_number && (
                 <button onClick={agregarTelefono} disabled={agregando} className="sb-btn-action"
-                  style={{ ...S.btn(agregando ? T.muted : T.green), opacity:agregando?0.6:1, fontSize:11, padding:"9px 12px" }}>
-                  {agregando ? "Guardando..." : `➕ Agregar ${contact.phone_number} y ver info`}
+                  style={{ ...S.btn(T.green), opacity:agregando?0.6:1 }}>
+                  {agregando ? "Guardando..." : `Agregar ${contact.phone_number} a este cliente`}
                 </button>
               )}
             </div>
@@ -1021,389 +1026,387 @@ export default function SidebarApp() {
       {/* ── Cliente cargado ── */}
       {cliente && !loading && (<>
 
-        {/* ══ HERO HEADER ══ */}
-        <div style={{ ...S.card, marginBottom:10 }}>
-          {/* Banner */}
-          <div style={{ background: suspendido
-            ? "linear-gradient(135deg,#7f1d1d 0%,#b91c1c 100%)"
-            : "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 50%,#2563eb 100%)",
-            padding:"18px 16px 14px", position:"relative", overflow:"hidden" }}>
-            <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", top:-50, right:-40 }} />
-            <div style={{ position:"absolute", width:90, height:90, borderRadius:"50%", background:"rgba(255,255,255,0.06)", bottom:-30, left:-20 }} />
-
-            <div style={{ display:"flex", alignItems:"center", gap:14, position:"relative" }}>
-              {/* Avatar circular */}
-              <div style={{ width:52, height:52, borderRadius:"50%", background:"rgba(255,255,255,0.2)", border:"2.5px solid rgba(255,255,255,0.4)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <span style={{ color:"#fff", fontWeight:900, fontSize:20 }}>{primerNombre(cliente.nombre)[0]}</span>
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ color:"#fff", fontWeight:800, fontSize:18, lineHeight:1.1 }}>{primerNombre(cliente.nombre)}</div>
-                <div style={{ color:"rgba(255,255,255,0.55)", fontSize:10, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:1 }}>{cliente.nombre}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:8, flexWrap:"wrap" }}>
-                  <span style={{ background: suspendido?"rgba(255,255,255,0.15)":"rgba(16,185,129,0.25)", border:`1px solid ${suspendido?"rgba(255,255,255,0.2)":"rgba(16,185,129,0.5)"}`, borderRadius:20, padding:"2px 10px", color:"#fff", fontSize:10, fontWeight:700 }}>
-                    {estadoServicio||"ACTIVO"}
-                  </span>
+        {/* ══ HEADER CLIENTE estilo Mikrowisp ══ */}
+        <div style={{ ...S.card, marginBottom:8,
+          borderLeft: suspendido ? `4px solid ${T.red}` : `4px solid ${T.blue}` }}>
+          <div style={{ padding:"12px 14px" }}>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontWeight:700, fontSize:15, color:T.navy, lineHeight:1.2, wordBreak:"break-word" }}>
+                  {cliente.nombre}
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:12, color:T.muted }}>#{cliente.mikrowisp_id}</span>
+                  <span style={{ color:T.border }}>·</span>
+                  <span style={{ ...S.badge(
+                    estadoServicio === "ACTIVO" ? T.green :
+                    estadoServicio === "SUSPENDIDO" ? T.amber : T.red
+                  ) }}>{estadoServicio || "ACTIVO"}</span>
                   {svc && (
-                    <span style={{ display:"flex", alignItems:"center", gap:5, background:"rgba(255,255,255,0.1)", borderRadius:20, padding:"2px 10px" }}>
+                    <span style={{ display:"flex", alignItems:"center", gap:4 }}>
                       <span style={{ position:"relative", width:7, height:7, display:"inline-block" }}>
-                        <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#4ade80":"#94a3b8" }} />
-                        {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#4ade80" }} />}
+                        <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#16a34a":"#94a3b8" }} />
+                        {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#16a34a" }} />}
                       </span>
-                      <span style={{ color:"rgba(255,255,255,0.8)", fontSize:10, fontWeight:600 }}>{isOnline?"En línea":"Sin señal"}</span>
+                      <span style={{ fontSize:11, color:T.muted }}>{isOnline?"Online":"Offline"}</span>
                     </span>
                   )}
                 </div>
-              </div>
-              <button onClick={()=>buscarCliente(contact?.phone_number||"")}
-                style={{ background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.2)", borderRadius:10, width:32, height:32, color:"#fff", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                ↺
-              </button>
-            </div>
-          </div>
-
-          {/* Botón activar servicio (solo si suspendido/cortado) */}
-          {suspendido && (
-            <div style={{ padding:"10px 14px 0" }}>
-              <button onClick={activarServicio} disabled={activando}
-                style={{ ...S.btn("#16a34a"), width:"100%", fontSize:12, padding:"10px", opacity:activando?0.6:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-                {activando ? "Activando..." : "⚡ Activar servicio"}
-              </button>
-            </div>
-          )}
-
-          {/* Stats grid 2x2 */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:"12px 14px 4px" }}>
-            {[
-              { label:"DNI", val:cliente.cedula||"—", icon:"🪪", accent:T.sky },
-              { label:"ID Cliente", val:`#${cliente.mikrowisp_id}`, icon:"🔢", accent:T.purple },
-              { label:"Nodo", val:String(cliente.nodo), icon:"📡", accent:T.teal },
-              { label:"Empresa", val:cliente.empresa, icon:"🏢", accent:T.blue },
-            ].map(item => (
-              <div key={item.label} style={{ background:T.bg, borderRadius:10, padding:"10px 12px", border:`1px solid ${T.border}` }}>
-                <div style={{ display:"flex", alignItems:"center", gap:5, marginBottom:4 }}>
-                  <span style={{ fontSize:12 }}>{item.icon}</span>
-                  <span style={{ fontSize:9, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:1 }}>{item.label}</span>
+                <div style={{ display:"flex", gap:12, marginTop:6, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:11, color:T.muted }}>Nodo <strong style={{ color:T.navy }}>{cliente.nodo}</strong></span>
+                  <span style={{ fontSize:11, color:T.muted }}>Empresa <strong style={{ color:T.navy, textTransform:"capitalize" }}>{cliente.empresa}</strong></span>
+                  {cliente.cedula && <span style={{ fontSize:11, color:T.muted }}>DNI <strong style={{ color:T.navy }}>{cliente.cedula}</strong></span>}
                 </div>
-                <div style={{ fontWeight:800, fontSize:14, color:T.navy, textTransform:"capitalize" }}>{item.val}</div>
               </div>
-            ))}
+              <button onClick={() => buscarCliente(contact?.phone_number || "")}
+                style={{ ...S.btnOut, padding:"5px 9px", flexShrink:0, fontSize:13 }}
+                title="Recargar">↺</button>
+            </div>
           </div>
 
-          {/* Servicio de internet */}
-          {svc && <div style={{ margin:"8px 14px 0", background:"#f8faff", borderRadius:12, padding:"14px", border:`1px solid #dbeafe` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                <div style={{ width:28, height:28, borderRadius:8, background:T.blue+"15", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🌐</div>
-                <span style={{ fontSize:11, fontWeight:800, color:T.navy }}>Servicio</span>
+          {/* Servicio de internet dentro del header */}
+          {svc && (
+            <div style={{ borderTop:`1px solid ${T.border}`, padding:"10px 14px", background:T.bg }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                <span style={{ fontSize:11, fontWeight:600, color:T.navy }}>Servicio de internet</span>
+                {svc.coordenadas && (() => {
+                  const [lat, lng] = svc.coordenadas.split(",").map(Number);
+                  if (!lat||!lng) return null;
+                  return (
+                    <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+                      <button onClick={() => setShowMap(m => !m)}
+                        style={{ ...S.btnOut, fontSize:10, padding:"2px 8px", color:T.sky, borderColor:"#bae6fd" }}>
+                        {showMap ? "Ocultar mapa" : "Ver mapa"}
+                      </button>
+                      <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
+                        style={{ color:T.sky, fontSize:11, textDecoration:"none", fontWeight:600 }}>G↗</a>
+                    </div>
+                  );
+                })()}
               </div>
-              {svc.coordenadas && (() => {
-                const [lat, lng] = svc.coordenadas.split(",").map(Number);
-                if (!lat||!lng) return null;
-                return (
-                  <div style={{ display:"flex", gap:5, alignItems:"center" }}>
-                    <button onClick={()=>setShowMap(m=>!m)}
-                      style={{ background:showMap?T.sky:"rgba(14,165,233,0.1)", color:showMap?"#fff":T.sky, border:`1px solid ${showMap?T.sky:"rgba(14,165,233,0.3)"}`, borderRadius:8, padding:"3px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
-                      📍 {showMap?"Ocultar":"Ver mapa"}
-                    </button>
-                    <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
-                      style={{ color:T.sky, fontSize:10, textDecoration:"none", fontWeight:700 }}>G↗</a>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"6px 16px" }}>
+                {svc.perfil  && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>Plan</div><div style={{ fontWeight:600, fontSize:12, color:T.blue }}>{svc.perfil}</div></div>}
+                {svc.ip      && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>IP activa</div><div style={{ ...S.mono }}>{svc.ip}</div></div>}
+                {svc.pppuser && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>PPPoE</div><div style={{ ...S.mono, fontSize:10 }}>{svc.pppuser}</div></div>}
+                {svc.mac     && <div className="sb-row-form" style={{ display:"block" }}><div style={S.label}>MAC</div><div style={{ ...S.mono, fontSize:10 }}>{svc.mac}</div></div>}
+              </div>
+
+              {/* Diagnóstico MikroTik */}
+              <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: showDiag ? 8 : 0 }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Diagnóstico MikroTik</span>
+                  <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-action"
+                    style={{ ...S.btnSm("#ea580c"), opacity:diagLoad?0.6:1, fontSize:10 }}>
+                    {diagLoad ? "Consultando..." : "Diagnosticar"}
+                  </button>
+                </div>
+                {showDiag && !diagLoad && diagError && (
+                  <div style={{ background:"#fef2f2", border:`1px solid #fecaca`, borderRadius:6, padding:"8px 10px", fontSize:11, color:T.red }}>
+                    {diagError}
                   </div>
+                )}
+                {showDiag && !diagLoad && diagResult && (() => {
+                  const mk = diagResult.mikrotik || {};
+                  const c = diagColor(mk.estado);
+                  const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
+                  return (
+                    <div style={{ background: isConn ? "#f0fdf4" : "#fef2f2", border:`1px solid ${c}30`, borderRadius:6, padding:"10px 12px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+                        <div style={{ position:"relative", width:9, height:9, flexShrink:0 }}>
+                          <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
+                          {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
+                        </div>
+                        <div style={{ fontWeight:700, fontSize:12, color:c }}>{isConn ? "Conectado" : "Desconectado"}</div>
+                        <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{mk.origen||"MikroTik"}</span>
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 14px" }}>
+                        {[
+                          ["IP", mk.ip], ["Uptime", mk.uptime], ["Router", mk.router?.nombre],
+                          ["Profile", mk.profile], ["Caller-ID", mk.callerId], ["Último logout", mk.lastLoggedOut],
+                        ].filter(([,v]) => v).map(([lbl, val]) => (
+                          <div key={lbl}>
+                            <div style={S.label}>{lbl}</div>
+                            <div style={{ fontWeight:600, fontSize:11, color:T.navy }}>{val}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {mk.disabled && <div style={{ marginTop:6, background:"#fef3c7", borderRadius:5, padding:"4px 8px", fontSize:11, color:"#92400e", fontWeight:600 }}>
+                        Usuario deshabilitado en MikroTik
+                      </div>}
+                    </div>
                 );
               })()}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px 16px" }}>
-              {svc.perfil  && <div><div style={S.label}>Plan</div><div style={{ fontWeight:800, color:T.blue, fontSize:12, lineHeight:1.3 }}>{svc.perfil}</div></div>}
-              {svc.ip      && <div><div style={S.label}>IP Activa</div><div style={{ ...S.mono, fontSize:12, color:T.teal }}>{svc.ip}</div></div>}
-              {svc.pppuser && <div><div style={S.label}>PPPoE</div><div style={{ ...S.mono, fontSize:11 }}>{svc.pppuser}</div></div>}
-              {svc.mac     && <div><div style={S.label}>MAC</div><div style={{ ...S.mono, fontSize:10 }}>{svc.mac}</div></div>}
-            </div>
-
-            {/* Diagnóstico MikroTik */}
-            <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${T.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: showDiag?10:0 }}>
-                <span style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:0.8 }}>⚡ Diagnóstico MikroTik</span>
-                <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-action"
-                  style={{ background:"linear-gradient(135deg,#f97316,#ea580c)", color:"#fff", border:"none", borderRadius:7, padding:"5px 12px", fontSize:10, fontWeight:700, cursor:diagLoad?"not-allowed":"pointer", opacity:diagLoad?0.7:1 }}>
-                  {diagLoad?"Consultando...":"⚡ Diagnosticar"}
-                </button>
               </div>
-              {showDiag && !diagLoad && diagError && (
-                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:9, padding:"10px 12px", fontSize:11, color:T.red, fontWeight:500 }}>
-                  {diagError}
+
+              {/* Mapa */}
+              {showMap && svc.coordenadas && (() => {
+                const [lat, lng] = svc.coordenadas.split(",").map(Number);
+                const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
+                return <iframe src={mapUrl} title="Ubicación" style={{ width:"100%", height:160, borderRadius:6, border:`1px solid ${T.border}`, marginTop:8 }} loading="lazy" />;
+              })()}
+
+              {/* Señal ONU */}
+              {snOnu && (
+                <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>
+                      Señal ONU · <span style={{ fontFamily:"monospace", fontSize:10 }}>{snOnu}</span>
+                    </span>
+                    <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-action"
+                      style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10 }}>
+                      {senalLoad ? "Leyendo..." : "Consultar señal"}
+                    </button>
+                  </div>
+                  {senal && (
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      {[["Rx ONU", senal.rx],["Rx OLT", senal.oltRx]].map(([lbl,val]) => {
+                        const c = senalColor(val);
+                        const pct = Math.min(100, Math.max(0, ((parseFloat(val)||0)+35)/15*100));
+                        return (
+                          <div key={lbl} style={{ background:"#fff", borderRadius:6, padding:"8px 10px", border:`1px solid ${T.border}` }}>
+                            <div style={S.label}>{lbl}</div>
+                            <div style={{ fontWeight:700, fontSize:16, color:c, lineHeight:1 }}>{val} <span style={{ fontSize:10 }}>dBm</span></div>
+                            <div style={{ background:T.bg, borderRadius:3, height:4, overflow:"hidden", margin:"5px 0 3px" }}>
+                              <div style={{ height:"100%", width:`${pct}%`, background:c, borderRadius:3 }} />
+                            </div>
+                            <div style={{ fontSize:10, fontWeight:600, color:c }}>{senalLabel(val)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {senal && <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:4 }}>Actualizado {senal.ts}</div>}
                 </div>
               )}
-              {showDiag && !diagLoad && diagResult && (() => {
-                const mk = diagResult.mikrotik || {};
-                const c = diagColor(mk.estado);
-                const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
-                return (
-                  <div style={{ background: isConn?"#f0fdf4":"#fef2f2", border:`1.5px solid ${c}30`, borderRadius:10, padding:"12px 14px" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-                      <div style={{ position:"relative", width:10, height:10, flexShrink:0 }}>
-                        <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
-                        {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
-                      </div>
-                      <div style={{ fontWeight:800, fontSize:13, color:c }}>
-                        {isConn?"Conectado":"Desconectado"}
-                      </div>
-                      <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{mk.origen||"MikroTik"}</span>
-                    </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px" }}>
-                      {[
-                        ["IP",          mk.ip],
-                        ["Uptime",      mk.uptime],
-                        ["Router",      mk.router?.nombre],
-                        ["Profile",     mk.profile],
-                        ["Caller-ID",   mk.callerId],
-                        ["Último logout", mk.lastLoggedOut],
-                      ].filter(([,v])=>v).map(([lbl,val])=>(
-                        <div key={lbl}>
-                          <div style={S.label}>{lbl}</div>
-                          <div style={{ fontWeight:600, fontSize:11, color:T.navy }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {mk.disabled && <div style={{ marginTop:8, background:"#fef3c7", borderRadius:7, padding:"5px 10px", fontSize:11, color:"#92400e", fontWeight:700 }}>⚠️ Usuario deshabilitado en MikroTik</div>}
-                  </div>
-                );
-              })()}
             </div>
-
-            {/* Mapa */}
-            {showMap && svc.coordenadas && (() => {
-              const [lat, lng] = svc.coordenadas.split(",").map(Number);
-              const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
-              return <iframe src={mapUrl} title="Ubicación" style={{ width:"100%", height:180, borderRadius:10, border:`1px solid ${T.border}`, marginTop:10 }} loading="lazy" />;
-            })()}
-
-            {/* Señal */}
-            {snOnu && <div style={{ marginTop:12, paddingTop:12, borderTop:`1px solid ${T.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                <span style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:0.8 }}>📶 Señal · <span style={{ fontFamily:"monospace", textTransform:"none" }}>{snOnu}</span></span>
-                <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-action"
-                  style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10 }}>
-                  {senalLoad?"Leyendo...":"Consultar señal"}
-                </button>
-              </div>
-              {senal && (<>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                  {[["Rx ONU", senal.rx],["Rx OLT", senal.oltRx]].map(([lbl,val])=>{
-                    const c = senalColor(val);
-                    const pct = Math.min(100, Math.max(0, ((parseFloat(val)||0)+35)/15*100));
-                    return (
-                      <div key={lbl} style={{ background:"#fff", borderRadius:9, padding:"10px 12px", border:`1.5px solid ${c}30` }}>
-                        <div style={S.label}>{lbl}</div>
-                        <div style={{ fontWeight:800, fontSize:18, color:c, lineHeight:1 }}>{val}</div>
-                        <div style={{ fontSize:10, color:c, marginBottom:6 }}>dBm</div>
-                        <div style={{ background:T.bg, borderRadius:4, height:5, overflow:"hidden" }}>
-                          <div style={{ height:"100%", width:`${pct}%`, background:c, borderRadius:4, transition:"width .6s ease" }} />
-                        </div>
-                        <div style={{ fontSize:10, fontWeight:700, color:c, marginTop:4 }}>{senalLabel(val)}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:5 }}>Actualizado {senal.ts}</div>
-              </>)}
-            </div>}
-          </div>}
-          <div style={{ height:14 }} />
+          )}
         </div>
 
-        {/* ══ DEUDA ══ */}
-        {factPend.length > 0 ? (
-          <div style={{ ...S.card, marginBottom:10, overflow:"hidden" }}>
-            <div style={{ background:"linear-gradient(135deg,#f59e0b 0%,#d97706 100%)", padding:"14px 16px" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ color:"#fff", fontWeight:900, fontSize:11, letterSpacing:1, textTransform:"uppercase", opacity:0.8, marginBottom:2 }}>Deuda pendiente</div>
-                  <div style={{ color:"#fff", fontWeight:900, fontSize:26, lineHeight:1 }}>S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}</div>
-                  <div style={{ color:"rgba(255,255,255,0.7)", fontSize:10, marginTop:3 }}>
-                    {factPend.length > 1 ? `${factPend.length} facturas` : `Vence ${factPend[0]?.vencimiento||"—"}`}
-                  </div>
-                </div>
-                <button onClick={()=>setTab("pago")} className="sb-btn-action"
-                  style={{ background:"#fff", border:"none", borderRadius:12, padding:"10px 18px", color:T.amber, fontWeight:800, fontSize:12, cursor:"pointer", boxShadow:"0 4px 12px rgba(0,0,0,0.15)" }}>
-                  Pagar →
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ ...S.card, marginBottom:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:12, borderLeft:`4px solid ${T.green}` }}>
-            <div style={{ width:40, height:40, borderRadius:12, background:T.greenLt, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>✅</div>
-            <div>
-              <div style={{ fontWeight:800, color:T.green, fontSize:14 }}>Sin deuda pendiente</div>
-              <div style={{ fontSize:11, color:T.teal, marginTop:2 }}>Cliente al día con sus pagos</div>
-            </div>
+        {/* ══ BOTÓN ACTIVAR (solo si suspendido) ══ */}
+        {suspendido && (
+          <div style={{ marginBottom:8 }}>
+            <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
+              style={{ ...S.btn(T.green), display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1 }}>
+              {activando ? "Activando..." : "Activar servicio"}
+            </button>
           </div>
         )}
 
-        {/* ══ TABS ══ */}
-        <div style={{ background:T.card, borderRadius:14, padding:5, display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:4, marginBottom:10, boxShadow:"0 1px 3px rgba(15,23,42,0.06)" }}>
-          {[["info","📋","Facturas"],["pago","💳","Pago"],["prorroga","⏳","Prórroga"],["nueva","🧾","Nueva"],["editar","✏️","Editar"]].map(([t,icon,label])=>(
-            <button key={t} className="sb-tab-btn" onClick={()=>{ setTab(t); if(t==="prorroga"&&!prorrInfo) consultarProrroga(); }}
-              style={{ border:"none", borderRadius:10, padding:"9px 4px", fontWeight:700, fontSize:10, cursor:"pointer", fontFamily:"inherit", transition:"all .2s",
-                background: tab===t ? T.blue : "transparent",
-                color: tab===t ? "#fff" : T.muted,
-                boxShadow: tab===t ? `0 4px 12px ${T.blue}35` : "none",
-              }}>
-              <div style={{ fontSize:15, marginBottom:2 }}>{icon}</div>
+        {/* ══ BANNER DEUDA ══ */}
+        {factPend.length > 0 ? (
+          <div style={{ ...S.card, marginBottom:8, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px",
+            borderLeft:`4px solid ${T.amber}`, background:"#fff7ed" }}>
+            <div>
+              <div style={{ fontSize:11, fontWeight:600, color:T.amber }}>Deuda pendiente</div>
+              <div style={{ fontWeight:700, fontSize:17, color:T.navy, lineHeight:1.2 }}>
+                S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}
+              </div>
+              <div style={{ fontSize:11, color:T.muted }}>
+                {factPend.length > 1 ? `${factPend.length} facturas pendientes` : `Vence ${factPend[0]?.vencimiento||"—"}`}
+              </div>
+            </div>
+            <button onClick={() => setTab("pago")} className="sb-btn-action"
+              style={{ ...S.btnSm(T.amber), padding:"7px 14px", fontSize:12 }}>
+              Pagar
+            </button>
+          </div>
+        ) : (
+          <div style={{ ...S.card, marginBottom:8, display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
+            borderLeft:`4px solid ${T.green}`, background:"#f0fdf4" }}>
+            <div style={{ fontWeight:600, color:T.green, fontSize:12 }}>Sin deuda pendiente</div>
+            <span style={{ fontSize:11, color:T.muted }}>· Cliente al día</span>
+          </div>
+        )}
+
+        {/* ══ TABS estilo línea inferior ══ */}
+        <div style={{ background:T.card, borderRadius:8, border:`1px solid ${T.border}`, marginBottom:8, display:"flex", overflow:"hidden" }}>
+          {[["info","Facturas"],["pago","Pago"],["prorroga","Prórroga"],["nueva","Nueva"],["editar","Editar"]].map(([t, label]) => (
+            <button key={t} className="sb-tab-btn"
+              onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); }}
+              style={{ flex:1, border:"none", borderBottom: tab === t ? `2px solid ${T.blue}` : "2px solid transparent",
+                borderTop:"none", borderLeft:"none", borderRight:`1px solid ${T.border}`,
+                background: tab === t ? "#eff6ff" : T.card,
+                color: tab === t ? T.blue : T.muted,
+                fontWeight: tab === t ? 700 : 500, fontSize:11,
+                padding:"9px 4px", cursor:"pointer", fontFamily:"inherit" }}>
               {label}
             </button>
           ))}
         </div>
 
-        {/* ══ TAB: FACTURAS ══ */}
-        {tab==="info" && (
-          <div style={{ ...S.card, padding:"16px 16px 8px" }}>
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
-              <div style={{ fontWeight:800, fontSize:13, color:T.navy }}>Historial de facturas</div>
-              <span style={{ fontSize:10, color:T.muted, fontWeight:600 }}>{factRecientes.length} registros</span>
+        {/* ══ TAB: FACTURAS — tabla estilo Mikrowisp ══ */}
+        {tab === "info" && (
+          <div style={{ ...S.card }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
+              <span style={{ fontWeight:700, fontSize:13, color:T.navy }}>Facturas</span>
+              <span style={{ fontSize:11, color:T.muted }}>{factRecientes.length} registros</span>
             </div>
-            {factRecientes.length===0
-              ? <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:24 }}>Sin facturas registradas</div>
-              : factRecientes.map((f,i)=>{
-                  const isPag = ["pagado","PAGADO","paid"].includes(f.estado);
-                  const isAnu = ["anulado","ANULADO","cancelled","canceled"].includes(f.estado);
-                  const c     = isPag?T.green:isAnu?T.muted:T.amber;
-                  const bg    = isPag?T.greenLt:isAnu?"#f1f5f9":T.amberLt;
-                  const fid   = f.idfactura||f.id;
-                  const open  = factExpand === fid;
-                  return (
-                    <div key={fid} style={{ marginBottom:6 }}>
-                      <div onClick={()=>setFactExpand(open?null:fid)}
-                        style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:10, background:open?bg:T.bg, border:`1px solid ${open?c+"40":T.border}`, cursor:"pointer", transition:"all .2s" }}>
-                        {/* Indicador color */}
-                        <div style={{ width:36, height:36, borderRadius:10, background:c+"20", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                          <span style={{ fontSize:16 }}>{isPag?"✅":isAnu?"🚫":"⏳"}</span>
-                        </div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontWeight:800, fontSize:16, color:T.navy, lineHeight:1 }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</div>
-                          <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>
-                            {isPag?`Pagado ${f.fechapago||f.fecha_pago||""}`:isAnu?"Anulada":`Vence ${f.vencimiento||"—"}`}
-                            <span style={{ marginLeft:6, opacity:0.5 }}>· #{fid}</span>
-                          </div>
-                        </div>
-                        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4 }}>
-                          <span style={{ ...S.badge(c,bg), fontSize:9 }}>{f.estado}</span>
-                          <span style={{ color:T.muted, fontSize:10, transition:"transform .2s", display:"inline-block", transform:open?"rotate(180deg)":"none" }}>▾</span>
-                        </div>
-                      </div>
-
-                      {open && (
-                        <div style={{ background:"#f8fafc", borderRadius:"0 0 10px 10px", padding:"12px 14px", border:`1px solid ${T.border}`, borderTop:"none", marginTop:-2 }}>
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px", marginBottom:10 }}>
-                            {[
-                              ["N° Factura", `#${fid}`], ["Estado", f.estado||"—"],
-                              ["Emitido", f.emitido||"—"], ["Vencimiento", f.vencimiento||"—"],
-                              ["Total", `S/ ${Number(f.total||0).toFixed(2)}`], ["Cobrado", `S/ ${Number(f.cobrado||0).toFixed(2)}`],
-                              ["Fecha pago", f.fechapago||f.fecha_pago||"—"], ["Forma pago", f.pasarela||f.forma_pago||"—"],
-                            ].filter(([,v])=>v).map(([lbl,val])=>(
-                              <div key={lbl}>
-                                <div style={S.label}>{lbl}</div>
-                                <div style={{ fontWeight:600, fontSize:11, color:T.navy }}>{val}</div>
-                              </div>
-                            ))}
-                          </div>
-                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                            {!isPag && !isAnu && (
-                              <button onClick={(e)=>{ e.stopPropagation(); setFormPago(p=>({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); setFactExpand(null); }}
-                                style={{ ...S.btn(T.green), fontSize:11, padding:"9px 12px" }}>
-                                💳 Pagar esta factura
+            {factRecientes.length === 0 ? (
+              <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:24 }}>Sin facturas registradas</div>
+            ) : (
+              <div style={{ overflowX:"auto" }}>
+                <table className="sb-tbl" style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign:"left" }}>#Factura</th>
+                      <th style={{ textAlign:"left" }}>Estado</th>
+                      <th style={{ textAlign:"right" }}>Total</th>
+                      <th style={{ textAlign:"left" }}>Vence</th>
+                      <th style={{ textAlign:"left" }}>Fecha Pago</th>
+                      <th style={{ textAlign:"left" }}>Forma Pago</th>
+                      <th style={{ textAlign:"center" }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {factRecientes.map((f) => {
+                      const isPag = ["pagado","PAGADO","paid"].includes(f.estado);
+                      const isAnu = ["anulado","ANULADO","cancelled","canceled"].includes(f.estado);
+                      const fid   = f.idfactura || f.id;
+                      const badgeColor = isPag ? T.green : isAnu ? "#94a3b8" : T.amber;
+                      const badgeBg    = isPag ? T.greenLt : isAnu ? "#f1f5f9" : T.amberLt;
+                      return (
+                        <tr key={fid}>
+                          <td style={{ fontWeight:600, color:T.blue, fontSize:12 }}>#{fid}</td>
+                          <td>
+                            <span style={{ ...S.badge(badgeColor, badgeBg) }}>
+                              {(f.estado||"—").toUpperCase()}
+                            </span>
+                          </td>
+                          <td style={{ textAlign:"right", fontWeight:600 }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</td>
+                          <td style={{ color:T.muted }}>{f.vencimiento||"—"}</td>
+                          <td style={{ color:T.muted }}>{f.fechapago||f.fecha_pago||"—"}</td>
+                          <td style={{ color:T.muted, fontSize:11 }}>{f.pasarela||f.forma_pago||"—"}</td>
+                          <td>
+                            <div style={{ display:"flex", gap:4, justifyContent:"center", flexWrap:"nowrap" }}>
+                              {!isPag && !isAnu && (
+                                <button title="Registrar pago"
+                                  onClick={() => { setFormPago(p => ({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); }}
+                                  style={{ ...S.btnSm(T.blue), fontSize:10, padding:"3px 9px" }}>
+                                  Pagar
+                                </button>
+                              )}
+                              {isPag && (
+                                <button title="Eliminar pago"
+                                  onClick={() => eliminarPago(fid)}
+                                  disabled={deletingPago === fid}
+                                  style={{ ...S.btnSm(T.red), fontSize:10, padding:"3px 8px", opacity:deletingPago===fid?0.5:1 }}>
+                                  {deletingPago === fid ? "..." : "x Pago"}
+                                </button>
+                              )}
+                              <button title="Eliminar factura"
+                                onClick={() => eliminarFactura(fid)}
+                                disabled={deletingFact === fid}
+                                style={{ ...S.btnOut, fontSize:10, padding:"3px 8px", color:T.red, borderColor:"#fca5a5", opacity:deletingFact===fid?0.5:1 }}>
+                                {deletingFact === fid ? "..." : "Del"}
                               </button>
-                            )}
-                            {isPag && (
-                              <button onClick={(e)=>{ e.stopPropagation(); eliminarPago(fid); }}
-                                disabled={deletingPago===fid}
-                                style={{ ...S.btnOut, fontSize:11, padding:"9px 12px", borderColor:"#f97316", color:"#f97316", opacity:deletingPago===fid?0.6:1 }}>
-                                {deletingPago===fid ? "Eliminando..." : "🗑 Eliminar pago"}
-                              </button>
-                            )}
-                            <button onClick={(e)=>{ e.stopPropagation(); eliminarFactura(fid); }}
-                              disabled={deletingFact===fid}
-                              style={{ ...S.btnOut, fontSize:11, padding:"9px 12px", borderColor:T.red, color:T.red, opacity:deletingFact===fid?0.6:1 }}>
-                              {deletingFact===fid ? "Eliminando..." : "🗑 Eliminar factura"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-            }
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {/* ══ TAB: PAGO ══ */}
-        {tab==="pago" && (
-          <div style={{ ...S.card, padding:"16px 18px" }}>
-            <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:14 }}>Registrar pago</div>
+        {tab === "pago" && (
+          <div style={{ ...S.card, padding:"14px 16px" }}>
+            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Registrar pago</div>
 
-            <div onClick={()=>fileRef.current?.click()} style={{ border:`2px dashed ${T.border}`, borderRadius:12, padding:"20px 16px", textAlign:"center", cursor:"pointer", marginBottom:12, background:imgPrev?"#f8fafc":T.bg }}>
-              {analizando?<div style={{ color:T.slate, fontSize:12 }}>🔍 Analizando con IA...</div>
-              :imgPrev?<img src={imgPrev} alt="" style={{ maxWidth:"100%", maxHeight:130, borderRadius:8 }} />
-              :<div><div style={{ fontSize:28, marginBottom:6 }}>📎</div>
-                <div style={{ color:T.slate, fontWeight:700, fontSize:12 }}>Subir comprobante</div>
-                <div style={{ color:T.muted, fontSize:11, marginTop:3 }}>Clic para adjuntar · o pega con <kbd style={{ background:"#e2e8f0", borderRadius:4, padding:"1px 5px", fontFamily:"monospace", fontSize:10 }}>Ctrl+V</kbd></div>
-              </div>}
+            {/* Zona comprobante */}
+            <div onClick={() => fileRef.current?.click()}
+              style={{ border:`1.5px dashed ${T.border}`, borderRadius:6, padding:"14px", textAlign:"center",
+                cursor:"pointer", marginBottom:10, background:imgPrev ? T.bg : "#fafafa" }}>
+              {analizando
+                ? <div style={{ color:T.muted, fontSize:12 }}>Analizando imagen con IA...</div>
+                : imgPrev
+                  ? <img src={imgPrev} alt="" style={{ maxWidth:"100%", maxHeight:110, borderRadius:4 }} />
+                  : <div>
+                      <div style={{ color:T.muted, fontWeight:600, fontSize:12 }}>Adjuntar comprobante</div>
+                      <div style={{ color:T.muted, fontSize:11, marginTop:2 }}>
+                        Clic aquí · o pega con <kbd style={{ background:T.bg, border:`1px solid ${T.border}`, borderRadius:3, padding:"1px 4px", fontFamily:"monospace", fontSize:10 }}>Ctrl+V</kbd>
+                      </div>
+                    </div>
+              }
             </div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={onFileChange} />
 
-            {analisis&&(
-              <div style={{ borderRadius:10, padding:"12px 14px", marginBottom:12, fontSize:12, background:analisis.es_comprobante?"#f0fdf4":"#fef2f2", border:`1px solid ${analisis.es_comprobante?"#bbf7d0":"#fecaca"}` }}>
-                {analisis.es_comprobante?(<>
-                  <div style={{ fontWeight:800, color:T.green, marginBottom:8 }}>✅ Comprobante detectado</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"5px 12px" }}>
-                    <div><span style={{ color:T.slate }}>Banco </span><strong>{analisis.banco}</strong></div>
-                    <div><span style={{ color:T.slate }}>Monto </span><strong>S/ {analisis.monto}</strong></div>
-                    {analisis.fecha&&<div><span style={{ color:T.slate }}>Fecha </span>{analisis.fecha}</div>}
-                    {analisis.referencia&&<div><span style={{ color:T.slate }}>Op. </span>{analisis.referencia}</div>}
+            {analisis && (
+              <div style={{ borderRadius:6, padding:"10px 12px", marginBottom:10, fontSize:12,
+                background:analisis.es_comprobante ? "#f0fdf4" : "#fef2f2",
+                border:`1px solid ${analisis.es_comprobante ? "#bbf7d0" : "#fecaca"}` }}>
+                {analisis.es_comprobante ? (<>
+                  <div style={{ fontWeight:700, color:T.green, marginBottom:6 }}>Comprobante detectado</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px 12px" }}>
+                    <div><span style={{ color:T.muted }}>Banco </span><strong>{analisis.banco}</strong></div>
+                    <div><span style={{ color:T.muted }}>Monto </span><strong>S/ {analisis.monto}</strong></div>
+                    {analisis.fecha && <div><span style={{ color:T.muted }}>Fecha </span>{analisis.fecha}</div>}
+                    {analisis.referencia && <div><span style={{ color:T.muted }}>Op. </span>{analisis.referencia}</div>}
                   </div>
-                </>):<div style={{ color:T.red, fontWeight:600 }}>❌ No es comprobante de pago válido</div>}
+                </>) : <div style={{ color:T.red, fontWeight:600 }}>No es un comprobante de pago válido</div>}
               </div>
             )}
 
-            <div style={{ display:"grid", gap:10, marginBottom:14 }}>
-              <div><label style={S.label}>Factura a pagar</label>
-                <select style={S.select} value={formPago.idfactura} onChange={e=>setFormPago(p=>({...p,idfactura:e.target.value}))}>
-                  <option value="">— Seleccionar factura —</option>
-                  {facturas.filter(f=>!ESTADOS_IGNORAR.includes(f.estado)).map(f=>(
-                    <option key={f.idfactura||f.id} value={f.idfactura||f.id}>#{f.idfactura||f.id} · S/ {Number(f.total||f.monto||0).toFixed(2)} · {f.vencimiento}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                <div><label style={S.label}>Forma de pago</label>
-                  <select style={S.select} value={formPago.pasarela} onChange={e=>setFormPago(p=>({...p,pasarela:e.target.value}))}>
-                    {(PASARELAS[cliente?.empresa] || PASARELAS.americanet).map(p => (
-                      <option key={p}>{p}</option>
+            {/* Formulario en filas label+campo */}
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+              {[
+                { label:"Factura a pagar", content:(
+                  <select style={{ ...S.select, border:"none", borderRadius:0 }}
+                    value={formPago.idfactura} onChange={e => setFormPago(p => ({...p, idfactura:e.target.value}))}>
+                    <option value="">— Seleccionar —</option>
+                    {facturas.filter(f => !ESTADOS_IGNORAR.includes(f.estado)).map(f => (
+                      <option key={f.idfactura||f.id} value={f.idfactura||f.id}>
+                        #{f.idfactura||f.id} · S/ {Number(f.total||f.monto||0).toFixed(2)} · {f.vencimiento}
+                      </option>
                     ))}
                   </select>
+                )},
+                { label:"Forma de pago", content:(
+                  <select style={{ ...S.select, border:"none", borderRadius:0 }}
+                    value={formPago.pasarela} onChange={e => setFormPago(p => ({...p, pasarela:e.target.value}))}>
+                    {(PASARELAS[cliente?.empresa] || PASARELAS.americanet).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                )},
+                { label:"Monto (S/)", content:(
+                  <input style={{ ...S.input, border:"none", borderRadius:0 }}
+                    type="number" step="0.01" value={formPago.monto} placeholder="0.00"
+                    onChange={e => setFormPago(p => ({...p, monto:e.target.value}))} />
+                )},
+              ].map(({ label, content }, i, arr) => (
+                <div key={label} className="sb-row-form"
+                  style={{ display:"grid", gridTemplateColumns:"120px 1fr",
+                    borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`,
+                    fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>
+                    {label}
+                  </div>
+                  <div>{content}</div>
                 </div>
-                <div><label style={S.label}>Monto (S/)</label>
-                  <input style={S.input} type="number" step="0.01" value={formPago.monto} onChange={e=>setFormPago(p=>({...p,monto:e.target.value}))} placeholder="0.00" />
-                </div>
-              </div>
+              ))}
             </div>
-            <button onClick={registrarPago} disabled={pagando||!formPago.idfactura||!formPago.monto} className="sb-btn-action"
-              style={{ ...S.btn(pagando||!formPago.idfactura||!formPago.monto?T.muted:T.green), opacity:pagando||!formPago.idfactura||!formPago.monto?0.55:1 }}>
-              {pagando?"Registrando...":"✅ Confirmar pago"}
+
+            <button onClick={registrarPago}
+              disabled={pagando || !formPago.idfactura || !formPago.monto} className="sb-btn-action"
+              style={{ ...S.btn(pagando || !formPago.idfactura || !formPago.monto ? T.muted : T.green),
+                opacity: pagando || !formPago.idfactura || !formPago.monto ? 0.55 : 1 }}>
+              {pagando ? "Registrando..." : "Confirmar pago"}
             </button>
-            {convId&&<div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>Confirmación automática al cliente vía Chatwoot</div>}
+            {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Confirmación automática al cliente vía Chatwoot</div>}
           </div>
         )}
 
         {/* ══ TAB: PRÓRROGA ══ */}
-        {tab==="prorroga" && (
-          <div style={{ ...S.card, padding:"16px 18px" }}>
-            <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:14 }}>Prórroga de pago</div>
-            {prorrando&&<div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:20 }}>Verificando elegibilidad...</div>}
-            {!prorrando&&!prorrInfo&&<div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:20 }}>Sin facturas pendientes para prórroga.</div>}
-            {prorrInfo&&(()=>{
+        {tab === "prorroga" && (
+          <div style={{ ...S.card, padding:"14px 16px" }}>
+            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Prórroga de pago</div>
+            {prorrando && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Verificando elegibilidad...</div>}
+            {!prorrando && !prorrInfo && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Sin facturas pendientes para prórroga.</div>}
+            {prorrInfo && (() => {
               const corteStr = new Date(prorrInfo.corte).toISOString().split("T")[0];
               const maxStr   = new Date(new Date(prorrInfo.corte).getTime() + prorrInfo.diasMax * 86400000).toISOString().split("T")[0];
-              // Días disponibles para botones rápidos
               const diasOpciones = Array.from({ length: prorrInfo.diasMax }, (_, i) => {
                 const d = new Date(prorrInfo.corte); d.setDate(d.getDate() + i + 1);
                 return { dias: i + 1, fecha: d.toISOString().split("T")[0],
@@ -1413,168 +1416,160 @@ export default function SidebarApp() {
                 ? Math.round((new Date(prorrForm.fecha+"T00:00:00") - new Date(prorrInfo.corte)) / 86400000)
                 : 0;
               return (<>
-                {/* Info factura */}
-                <div style={{ background:"#faf5ff", border:"1px solid #e9d5ff", borderRadius:12, padding:"12px 16px", marginBottom:14 }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px" }}>
-                    {[["Factura",`#${prorrInfo.idfactura}`],["Vencimiento",prorrInfo.vencimiento],
-                      ["Días máx.",`${prorrInfo.diasMax} días`],["Límite",prorrInfo.fechaMaxStr]].map(([l,v])=>(
-                      <div key={l}><div style={S.label}>{l}</div><div style={{ ...S.val, fontSize:12, color:l.includes("Días")||l==="Límite"?T.purple:T.navy }}>{v}</div></div>
-                    ))}
-                  </div>
-                  {prorrInfo.suspendido&&<div style={{ marginTop:8, background:"#fef3c7", borderRadius:8, padding:"6px 10px", fontSize:11, color:"#92400e", fontWeight:700 }}>⚠️ Suspendido — máx. 3 días</div>}
+                {/* Resumen factura */}
+                <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+                  {[["Factura", `#${prorrInfo.idfactura}`], ["Vencimiento", prorrInfo.vencimiento],
+                    ["Días máximos", `${prorrInfo.diasMax} días`], ["Fecha límite", prorrInfo.fechaMaxStr]
+                  ].map(([l, v], i, arr) => (
+                    <div key={l} style={{ display:"grid", gridTemplateColumns:"130px 1fr",
+                      borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                      <div style={{ padding:"7px 10px", background:T.bg, borderRight:`1px solid ${T.border}`,
+                        fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
+                      <div style={{ padding:"7px 10px", fontSize:12, fontWeight:600, color:T.navy }}>{v}</div>
+                    </div>
+                  ))}
                 </div>
+                {prorrInfo.suspendido && (
+                  <div style={{ background:"#fef3c7", border:`1px solid #fde68a`, borderRadius:6, padding:"6px 10px", fontSize:11, color:"#92400e", fontWeight:600, marginBottom:10 }}>
+                    Suspendido — máximo 3 días de prórroga
+                  </div>
+                )}
 
-                {/* Calendario */}
-                <div style={{ marginBottom:12 }}>
-                  <label style={S.label}>Selecciona la fecha límite de pago</label>
-                  <input style={{ ...S.input, fontSize:14, padding:"10px 12px", cursor:"pointer" }}
-                    type="date" min={corteStr} max={maxStr} value={prorrForm.fecha}
+                <div style={{ marginBottom:10 }}>
+                  <label style={S.label}>Fecha límite de pago</label>
+                  <input style={S.input} type="date" min={corteStr} max={maxStr} value={prorrForm.fecha}
                     onChange={e => setProrrForm({ fecha: e.target.value })} />
                   {prorrForm.fecha && (
-                    <div style={{ marginTop:6, fontSize:11, color:T.purple, fontWeight:700, textAlign:"center" }}>
-                      +{diasSelec} día{diasSelec !== 1 ? "s" : ""} desde el corte · hasta el {new Date(prorrForm.fecha+"T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"long",year:"numeric"})}
+                    <div style={{ marginTop:4, fontSize:11, color:T.purple, fontWeight:600 }}>
+                      +{diasSelec} día{diasSelec !== 1 ? "s" : ""} desde el corte
                     </div>
                   )}
                 </div>
 
-                {/* Botones rápidos por día */}
-                <div style={{ marginBottom:14 }}>
-                  <div style={S.label}>Acceso rápido</div>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                    {diasOpciones.map(({ dias, fecha, label }) => (
-                      <button key={dias} onClick={() => setProrrForm({ fecha })}
-                        style={{ background: prorrForm.fecha === fecha ? T.purple : T.bg,
-                          color: prorrForm.fecha === fecha ? "#fff" : T.slate,
-                          border: `1px solid ${prorrForm.fecha === fecha ? T.purple : T.border}`,
-                          borderRadius:8, padding:"6px 10px", fontSize:11, fontWeight:700,
-                          cursor:"pointer", fontFamily:"inherit", transition:"all .15s" }}>
-                        +{dias}d · {label}
-                      </button>
-                    ))}
-                  </div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
+                  {diasOpciones.map(({ dias, fecha, label }) => (
+                    <button key={dias} onClick={() => setProrrForm({ fecha })}
+                      style={{ background: prorrForm.fecha === fecha ? T.purple : T.bg,
+                        color: prorrForm.fecha === fecha ? "#fff" : T.slate,
+                        border:`1px solid ${prorrForm.fecha === fecha ? T.purple : T.border}`,
+                        borderRadius:5, padding:"5px 10px", fontSize:11, fontWeight:600,
+                        cursor:"pointer", fontFamily:"inherit" }}>
+                      +{dias}d · {label}
+                    </button>
+                  ))}
                 </div>
 
-                <button onClick={registrarProrroga} disabled={prorrando||!prorrForm.fecha} className="sb-btn-action"
-                  style={{ ...S.btn(prorrando||!prorrForm.fecha?T.muted:T.purple), opacity:prorrando||!prorrForm.fecha?0.55:1 }}>
-                  {prorrando?"Registrando...":"⏳ Confirmar prórroga"}
+                <button onClick={registrarProrroga} disabled={prorrando || !prorrForm.fecha} className="sb-btn-action"
+                  style={{ ...S.btn(prorrando || !prorrForm.fecha ? T.muted : T.purple),
+                    opacity: prorrando || !prorrForm.fecha ? 0.55 : 1 }}>
+                  {prorrando ? "Registrando..." : "Confirmar prórroga"}
                 </button>
-                {convId&&<div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>El cliente será notificado automáticamente</div>}
+                {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>El cliente será notificado automáticamente</div>}
               </>);
             })()}
           </div>
         )}
 
         {/* ══ TAB: NUEVA FACTURA ══ */}
-        {tab==="nueva" && (
-          <div style={{ ...S.card, padding:"16px 18px" }}>
-            <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:4 }}>🧾 Nueva factura</div>
-            <div style={{ color:T.muted, fontSize:11, marginBottom:14 }}>Crear factura para <strong style={{ color:T.navy }}>{primerNombre(cliente.nombre)}</strong> #{cliente.mikrowisp_id}</div>
+        {tab === "nueva" && (
+          <div style={{ ...S.card, padding:"14px 16px" }}>
+            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:4 }}>Nueva factura</div>
+            <div style={{ color:T.muted, fontSize:11, marginBottom:12 }}>
+              Para <strong style={{ color:T.navy }}>{cliente.nombre}</strong> · #{cliente.mikrowisp_id}
+            </div>
 
-            <div style={{ background:T.bg, borderRadius:10, padding:"12px 14px", marginBottom:14, border:`1px solid ${T.border}`, display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px", fontSize:12 }}>
-              {[["Cliente", cliente.nombre?.split(",")[0]||cliente.nombre],["ID", `#${cliente.mikrowisp_id}`],["Nodo", cliente.nodo],["Empresa", cliente.empresa]].map(([l,v])=>(
-                <div key={l}><div style={S.label}>{l}</div><div style={{ ...S.val, fontSize:12, textTransform:"capitalize" }}>{v}</div></div>
+            {/* Resumen cliente */}
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+              {[["Nodo", String(cliente.nodo)], ["Empresa", cliente.empresa]].map(([l, v], i, arr) => (
+                <div key={l} style={{ display:"grid", gridTemplateColumns:"120px 1fr",
+                  borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                  <div style={{ padding:"6px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
+                  <div style={{ padding:"6px 10px", fontSize:12, color:T.navy, textTransform:"capitalize" }}>{v}</div>
+                </div>
               ))}
             </div>
 
             <div style={{ marginBottom:10 }}>
               <label style={S.label}>Fecha de vencimiento</label>
-              <input style={S.input} type="date" value={factForm.vencimiento} min={new Date().toISOString().split("T")[0]}
-                onChange={e=>setFactForm(p=>({...p,vencimiento:e.target.value}))} />
+              <input style={S.input} type="date" value={factForm.vencimiento}
+                min={new Date().toISOString().split("T")[0]}
+                onChange={e => setFactForm(p => ({...p, vencimiento:e.target.value}))} />
             </div>
 
-            <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:14 }}>
               {[
-                ["Fin de mes", (()=>{ const d=new Date(); d.setMonth(d.getMonth()+1,0); return d.toISOString().split("T")[0]; })()],
-                ["+30 días",   (()=>{ const d=new Date(); d.setDate(d.getDate()+30); return d.toISOString().split("T")[0]; })()],
-                ["+15 días",   (()=>{ const d=new Date(); d.setDate(d.getDate()+15); return d.toISOString().split("T")[0]; })()],
-              ].map(([lbl,val])=>(
-                <button key={lbl} onClick={()=>setFactForm(p=>({...p,vencimiento:val}))}
-                  style={{ background:factForm.vencimiento===val?T.blue:T.bg, color:factForm.vencimiento===val?"#fff":T.slate,
-                    border:`1px solid ${factForm.vencimiento===val?T.blue:T.border}`, borderRadius:8, padding:"6px 12px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                ["Fin de mes", (() => { const d = new Date(); d.setMonth(d.getMonth()+1,0); return d.toISOString().split("T")[0]; })()],
+                ["+30 días",   (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().split("T")[0]; })()],
+                ["+15 días",   (() => { const d = new Date(); d.setDate(d.getDate()+15); return d.toISOString().split("T")[0]; })()],
+              ].map(([lbl, val]) => (
+                <button key={lbl} onClick={() => setFactForm(p => ({...p, vencimiento:val}))}
+                  style={{ background:factForm.vencimiento===val?T.blue:T.bg,
+                    color:factForm.vencimiento===val?"#fff":T.slate,
+                    border:`1px solid ${factForm.vencimiento===val?T.blue:T.border}`,
+                    borderRadius:5, padding:"5px 10px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
                   {lbl}
                 </button>
               ))}
             </div>
 
-            <button onClick={crearFactura} disabled={creando||!factForm.vencimiento} className="sb-btn-action"
-              style={{ ...S.btn(creando||!factForm.vencimiento?T.muted:T.blue), opacity:creando||!factForm.vencimiento?0.55:1 }}>
-              {creando?"Creando factura...":"🧾 Crear factura de servicios"}
+            <button onClick={crearFactura} disabled={creando || !factForm.vencimiento} className="sb-btn-action"
+              style={{ ...S.btn(creando || !factForm.vencimiento ? T.muted : T.blue),
+                opacity: creando || !factForm.vencimiento ? 0.55 : 1 }}>
+              {creando ? "Creando factura..." : "Crear factura de servicios"}
             </button>
-            <div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>Se registrará en Mikrowisp</div>
+            <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se registrará en Mikrowisp</div>
           </div>
         )}
 
-        {/* ══ TAB: EDITAR CLIENTE ══ */}
-        {tab==="editar" && (
-          <div style={{ ...S.card, padding:"16px 18px" }}>
-            <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:4 }}>✏️ Editar datos del cliente</div>
-            <div style={{ color:T.muted, fontSize:11, marginBottom:14 }}>
-              Modifica solo los campos que necesites cambiar. Los demás se mantendrán igual.
+        {/* ══ TAB: EDITAR CLIENTE — formulario tabular estilo Mikrowisp ══ */}
+        {tab === "editar" && (
+          <div style={{ ...S.card }}>
+            <div style={{ padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
+              <div style={{ fontWeight:700, fontSize:13, color:T.navy }}>Editar datos del cliente</div>
+              <div style={{ color:T.muted, fontSize:11, marginTop:2 }}>Solo modifica los campos que necesites cambiar.</div>
             </div>
 
-            {/* Nombre / Titular */}
-            <div style={{ marginBottom:10 }}>
-              <label style={S.label}>Nombre / Titular</label>
-              <input style={S.input} type="text" value={editForm.nombre}
-                placeholder="Ej: RAMIREZ GARCIA, JUAN CARLOS"
-                onChange={e=>setEditForm(p=>({...p,nombre:e.target.value}))} />
+            {/* Filas de formulario estilo tabla */}
+            <div>
+              {[
+                { key:"nombre", label:"Nombre / Titular", type:"text", placeholder:"Ej: RAMIREZ GARCIA, JUAN CARLOS" },
+                { key:"movil",  label:"Móvil", type:"text", placeholder:"Ej: 987654321, 912345678", hint:"Varios números separados por coma" },
+                { key:"telefono", label:"Teléfono fijo", type:"text", placeholder:"Ej: 014441234" },
+                { key:"correo", label:"Correo", type:"email", placeholder:"Ej: cliente@correo.com" },
+                { key:"cedula", label:"DNI / Cédula", type:"text", placeholder:"Ej: 12345678" },
+                { key:"direccion_principal", label:"Dirección", type:"text", placeholder:"Ej: Av. Los Álamos 123" },
+              ].map(({ key, label, type, placeholder, hint }, i, arr) => (
+                <div key={key} style={{ display:"grid", gridTemplateColumns:"130px 1fr",
+                  borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                  <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`,
+                    display:"flex", flexDirection:"column", justifyContent:"center" }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>{label}</span>
+                    {hint && <span style={{ fontSize:10, color:"#94a3b8", marginTop:2 }}>{hint}</span>}
+                  </div>
+                  <div style={{ padding:"6px 10px" }}>
+                    <input style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent",
+                      borderBottom:`1px solid ${T.border}`, borderRadius:0 }}
+                      type={type} value={editForm[key]} placeholder={placeholder}
+                      onChange={e => setEditForm(p => ({...p, [key]:e.target.value}))} />
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Móvil — separado por comas */}
-            <div style={{ marginBottom:10 }}>
-              <label style={S.label}>Móvil (separar varios con coma)</label>
-              <input style={S.input} type="text" value={editForm.movil}
-                placeholder="Ej: 987654321, 912345678"
-                onChange={e=>setEditForm(p=>({...p,movil:e.target.value}))} />
-              <div style={{ fontSize:10, color:T.muted, marginTop:3 }}>
-                Para agregar un número nuevo: escribe el actual + coma + el nuevo. Ej: <em>987654321, 999888777</em>
-              </div>
+            <div style={{ padding:"12px 14px" }}>
+              <button onClick={actualizarCliente} disabled={guardando} className="sb-btn-action"
+                style={{ ...S.btn(guardando ? T.muted : T.blue), opacity:guardando?0.55:1 }}>
+                {guardando ? "Guardando..." : "Guardar cambios"}
+              </button>
             </div>
-
-            {/* Teléfono fijo */}
-            <div style={{ marginBottom:10 }}>
-              <label style={S.label}>Teléfono fijo</label>
-              <input style={S.input} type="text" value={editForm.telefono}
-                placeholder="Ej: 014441234"
-                onChange={e=>setEditForm(p=>({...p,telefono:e.target.value}))} />
-            </div>
-
-            {/* Correo */}
-            <div style={{ marginBottom:10 }}>
-              <label style={S.label}>Correo electrónico</label>
-              <input style={S.input} type="email" value={editForm.correo}
-                placeholder="Ej: cliente@correo.com"
-                onChange={e=>setEditForm(p=>({...p,correo:e.target.value}))} />
-            </div>
-
-            {/* DNI */}
-            <div style={{ marginBottom:10 }}>
-              <label style={S.label}>DNI / Cédula</label>
-              <input style={S.input} type="text" value={editForm.cedula}
-                placeholder="Ej: 12345678"
-                onChange={e=>setEditForm(p=>({...p,cedula:e.target.value}))} />
-            </div>
-
-            {/* Dirección */}
-            <div style={{ marginBottom:16 }}>
-              <label style={S.label}>Dirección principal</label>
-              <input style={S.input} type="text" value={editForm.direccion_principal}
-                placeholder="Ej: Av. Los Álamos 123"
-                onChange={e=>setEditForm(p=>({...p,direccion_principal:e.target.value}))} />
-            </div>
-
-            <button onClick={actualizarCliente} disabled={guardando} className="sb-btn-action"
-              style={{ ...S.btn(guardando?T.muted:T.blue), opacity:guardando?0.55:1, width:"100%" }}>
-              {guardando ? "Guardando..." : "💾 Guardar cambios"}
-            </button>
           </div>
         )}
 
         {/* ══ FOOTER ══ */}
-        <div style={{ textAlign:"center", padding:"8px 0 16px" }}>
+        <div style={{ textAlign:"center", padding:"8px 0 14px" }}>
           <a href={`${cliente.empresa==="dimfiber"?"http://app.dimfiber.com":"https://americanet.club"}/index.php?r=clientes/view&id=${cliente.mikrowisp_id}`}
             target="_blank" rel="noopener noreferrer"
-            style={{ color:T.muted, fontSize:11, textDecoration:"none", fontWeight:500 }}>
+            style={{ color:T.muted, fontSize:11, textDecoration:"none" }}>
             Ver perfil completo en Mikrowisp ↗
           </a>
         </div>
