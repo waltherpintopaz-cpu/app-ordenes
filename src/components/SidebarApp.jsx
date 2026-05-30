@@ -138,7 +138,7 @@ export default function SidebarApp() {
   const [analisis, setAnalisis]   = useState(null);
   const fileRef = useRef();
   // Prórroga
-  const [prorrForm, setProrrForm] = useState({ dias: "", fecha: "" });
+  const [prorrForm, setProrrForm] = useState({ fecha: "" });
   const [prorrInfo, setProrrInfo] = useState(null);
   const [prorrando, setProrrando] = useState(false);
   // Crear factura
@@ -608,14 +608,17 @@ export default function SidebarApp() {
   }
 
   async function registrarProrroga() {
-    if (!cliente || !prorrInfo || !prorrForm.dias) return notify("Ingresa los días de prórroga", false);
+    if (!cliente || !prorrInfo || !prorrForm.fecha) return notify("Selecciona la fecha de prórroga", false);
     setProrrando(true);
     try {
-      const dias = parseInt(prorrForm.dias, 10);
-      if (dias < 1 || dias > prorrInfo.diasMax) return notify(`Máximo ${prorrInfo.diasMax} días`, false);
-      const corte = new Date(prorrInfo.corte);
-      const fechaFin = new Date(corte); fechaFin.setDate(fechaFin.getDate() + dias);
-      const fechaStr = fechaFin.toISOString().split("T")[0];
+      const fechaStr = prorrForm.fecha;
+      const corte    = new Date(prorrInfo.corte);
+      const selected = new Date(fechaStr + "T00:00:00");
+      const diffDias = Math.round((selected - corte) / 86400000);
+      if (diffDias < 1 || diffDias > prorrInfo.diasMax) {
+        notify(`Fecha fuera del rango permitido (máx. ${prorrInfo.diasMax} días)`, false);
+        setProrrando(false); return;
+      }
       const res = await mkwProxy(Number(cliente.nodo), "PromesaPago", {
         idcliente: parseInt(cliente.mikrowisp_id, 10),
         idfactura: parseInt(prorrInfo.idfactura, 10),
@@ -633,7 +636,7 @@ export default function SidebarApp() {
         }).catch(() => {});
       }
       setProrrInfo(null);
-      setProrrForm({ dias: "", fecha: "" });
+      setProrrForm({ fecha: "" });
       setTab("info");
     } catch(e) { notify("Error: " + e.message, false); }
     setProrrando(false);
@@ -1055,26 +1058,67 @@ export default function SidebarApp() {
             <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:14 }}>Prórroga de pago</div>
             {prorrando&&<div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:20 }}>Verificando elegibilidad...</div>}
             {!prorrando&&!prorrInfo&&<div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:20 }}>Sin facturas pendientes para prórroga.</div>}
-            {prorrInfo&&(<>
-              <div style={{ background:"#faf5ff", border:"1px solid #e9d5ff", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px 16px" }}>
-                  {[["Factura",`#${prorrInfo.idfactura}`],["Vencimiento",prorrInfo.vencimiento],
-                    ["Días máx.",`${prorrInfo.diasMax} días`],["Hasta",prorrInfo.fechaMaxStr]].map(([l,v])=>(
-                    <div key={l}><div style={S.label}>{l}</div><div style={{ ...S.val, color:l.includes("Días")||l==="Hasta"?T.purple:T.navy }}>{v}</div></div>
-                  ))}
+            {prorrInfo&&(()=>{
+              const corteStr = new Date(prorrInfo.corte).toISOString().split("T")[0];
+              const maxStr   = new Date(new Date(prorrInfo.corte).getTime() + prorrInfo.diasMax * 86400000).toISOString().split("T")[0];
+              // Días disponibles para botones rápidos
+              const diasOpciones = Array.from({ length: prorrInfo.diasMax }, (_, i) => {
+                const d = new Date(prorrInfo.corte); d.setDate(d.getDate() + i + 1);
+                return { dias: i + 1, fecha: d.toISOString().split("T")[0],
+                  label: d.toLocaleDateString("es-PE", { day:"2-digit", month:"short" }) };
+              });
+              const diasSelec = prorrForm.fecha
+                ? Math.round((new Date(prorrForm.fecha+"T00:00:00") - new Date(prorrInfo.corte)) / 86400000)
+                : 0;
+              return (<>
+                {/* Info factura */}
+                <div style={{ background:"#faf5ff", border:"1px solid #e9d5ff", borderRadius:12, padding:"12px 16px", marginBottom:14 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px 14px" }}>
+                    {[["Factura",`#${prorrInfo.idfactura}`],["Vencimiento",prorrInfo.vencimiento],
+                      ["Días máx.",`${prorrInfo.diasMax} días`],["Límite",prorrInfo.fechaMaxStr]].map(([l,v])=>(
+                      <div key={l}><div style={S.label}>{l}</div><div style={{ ...S.val, fontSize:12, color:l.includes("Días")||l==="Límite"?T.purple:T.navy }}>{v}</div></div>
+                    ))}
+                  </div>
+                  {prorrInfo.suspendido&&<div style={{ marginTop:8, background:"#fef3c7", borderRadius:8, padding:"6px 10px", fontSize:11, color:"#92400e", fontWeight:700 }}>⚠️ Suspendido — máx. 3 días</div>}
                 </div>
-                {prorrInfo.suspendido&&<div style={{ marginTop:10, background:"#fef3c7", borderRadius:8, padding:"8px 12px", fontSize:11, color:"#92400e", fontWeight:700 }}>⚠️ Suspendido — máx. 3 días</div>}
-              </div>
-              <div style={{ marginBottom:14 }}>
-                <label style={S.label}>Días de prórroga (1 – {prorrInfo.diasMax})</label>
-                <input style={S.input} type="number" min="1" max={prorrInfo.diasMax} value={prorrForm.dias} onChange={e=>setProrrForm(p=>({...p,dias:e.target.value}))} placeholder={`1 a ${prorrInfo.diasMax}`} />
-              </div>
-              <button onClick={registrarProrroga} disabled={prorrando||!prorrForm.dias} className="sb-btn-action"
-                style={{ ...S.btn(prorrando||!prorrForm.dias?T.muted:T.purple), opacity:prorrando||!prorrForm.dias?0.55:1 }}>
-                {prorrando?"Registrando...":"⏳ Confirmar prórroga"}
-              </button>
-              {convId&&<div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>El cliente será notificado automáticamente</div>}
-            </>)}
+
+                {/* Calendario */}
+                <div style={{ marginBottom:12 }}>
+                  <label style={S.label}>Selecciona la fecha límite de pago</label>
+                  <input style={{ ...S.input, fontSize:14, padding:"10px 12px", cursor:"pointer" }}
+                    type="date" min={corteStr} max={maxStr} value={prorrForm.fecha}
+                    onChange={e => setProrrForm({ fecha: e.target.value })} />
+                  {prorrForm.fecha && (
+                    <div style={{ marginTop:6, fontSize:11, color:T.purple, fontWeight:700, textAlign:"center" }}>
+                      +{diasSelec} día{diasSelec !== 1 ? "s" : ""} desde el corte · hasta el {new Date(prorrForm.fecha+"T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"long",year:"numeric"})}
+                    </div>
+                  )}
+                </div>
+
+                {/* Botones rápidos por día */}
+                <div style={{ marginBottom:14 }}>
+                  <div style={S.label}>Acceso rápido</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {diasOpciones.map(({ dias, fecha, label }) => (
+                      <button key={dias} onClick={() => setProrrForm({ fecha })}
+                        style={{ background: prorrForm.fecha === fecha ? T.purple : T.bg,
+                          color: prorrForm.fecha === fecha ? "#fff" : T.slate,
+                          border: `1px solid ${prorrForm.fecha === fecha ? T.purple : T.border}`,
+                          borderRadius:8, padding:"6px 10px", fontSize:11, fontWeight:700,
+                          cursor:"pointer", fontFamily:"inherit", transition:"all .15s" }}>
+                        +{dias}d · {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button onClick={registrarProrroga} disabled={prorrando||!prorrForm.fecha} className="sb-btn-action"
+                  style={{ ...S.btn(prorrando||!prorrForm.fecha?T.muted:T.purple), opacity:prorrando||!prorrForm.fecha?0.55:1 }}>
+                  {prorrando?"Registrando...":"⏳ Confirmar prórroga"}
+                </button>
+                {convId&&<div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>El cliente será notificado automáticamente</div>}
+              </>);
+            })()}
           </div>
         )}
 
