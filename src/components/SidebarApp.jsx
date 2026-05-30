@@ -99,8 +99,10 @@ function Splash({ title, subtitle, loading }) {
             ))}
           </div>
         )}
-        {!loading && subtitle && (
-          <div style={{ color:"rgba(255,255,255,0.5)", fontSize:12, marginTop:4 }}>{subtitle}</div>
+        {!loading && (
+          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:4, textAlign:"center" }}>
+            Esperando conversación en Chatwoot...
+          </div>
         )}
       </div>
     </div>
@@ -151,23 +153,48 @@ export default function SidebarApp() {
   useEffect(() => {
     function onMsg(e) {
       const d = e.data;
-      if (d?.event === "appContext" && d?.data?.contact) {
-        const c = d.data.contact;
-        const cv = d.data.conversation;
-        setContact(c);
-        setConvId(cv?.id || null);
-        setAcctId(String(cv?.account_id || "1"));
-        buscarCliente(c.phone_number || "");
+      if (!d || typeof d !== "object") return;
+
+      // Formato 1: { event: "appContext", data: { contact, conversation } }
+      // Formato 2: { contact, conversation } directo
+      // Formato 3: { message: "appContext", ... }
+      let contact = null, conversation = null;
+
+      if (d.event === "appContext" && d.data?.contact) {
+        contact     = d.data.contact;
+        conversation = d.data.conversation;
+      } else if (d.contact?.phone_number !== undefined) {
+        contact     = d.contact;
+        conversation = d.conversation;
+      } else if (d.message === "appContext" && d.contact) {
+        contact     = d.contact;
+        conversation = d.conversation;
+      }
+
+      if (contact) {
+        setContact(contact);
+        setConvId(conversation?.id || null);
+        setAcctId(String(conversation?.account_id || "1"));
+        const phone = contact.phone_number || contact.phoneNumber || "";
+        if (phone) buscarCliente(phone);
       }
     }
+
     window.addEventListener("message", onMsg);
-    // En desarrollo: simular datos de prueba si no hay mensaje
+
+    // Solicitar contexto al padre (Chatwoot) al montar
+    setTimeout(() => {
+      try { window.parent.postMessage({ event: "requestContext" }, "*"); } catch(e) {}
+    }, 300);
+
+    // Demo / desarrollo
     if (process.env.NODE_ENV === "development" || window.location.search.includes("demo")) {
       setTimeout(() => {
         setContact({ name: "DEMO CLIENTE", phone_number: "+51949529785" });
         buscarCliente("+51949529785");
-      }, 500);
+      }, 600);
     }
+
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
