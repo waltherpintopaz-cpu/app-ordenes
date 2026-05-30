@@ -137,6 +137,22 @@ function Splash({ title, subtitle, loading }) {
   );
 }
 
+// ─── Persistencia de agente (cookie + localStorage) ──────────────────────────
+function getStoredAgente() {
+  const c = document.cookie.split(";").find(x => x.trim().startsWith("sb_agente="));
+  if (c) return decodeURIComponent(c.split("=")[1].trim());
+  return localStorage.getItem("sb_agente") || "";
+}
+function setStoredAgente(nombre) {
+  const exp = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `sb_agente=${encodeURIComponent(nombre)};expires=${exp};path=/;SameSite=None;Secure`;
+  localStorage.setItem("sb_agente", nombre);
+}
+function clearStoredAgente() {
+  document.cookie = "sb_agente=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=None;Secure";
+  localStorage.removeItem("sb_agente");
+}
+
 // Lista única de agentes para el selector inicial
 const TODOS_AGENTES = [
   "Milagros Luna", "Walter Pinto", "Sofia Rosales",
@@ -233,7 +249,7 @@ export default function SidebarApp() {
   const [diagError,  setDiagError]  = useState(null);
   const [showDiag,   setShowDiag]   = useState(false);
   // Agente logueado (detectado de Chatwoot o seleccionado manualmente)
-  const [agente, setAgente] = useState(() => localStorage.getItem("sb_agente") || "");
+  const [agente, setAgente] = useState(() => getStoredAgente());
   // Búsqueda flexible cuando teléfono no encontrado
   const [dniBusq,      setDniBusq]      = useState("");
   const [dniBuscando,  setDniBuscando]  = useState(false);
@@ -276,7 +292,7 @@ export default function SidebarApp() {
       if (cwAgent?.name) {
         const nombre = cwAgent.name;
         setAgente(nombre);
-        localStorage.setItem("sb_agente", nombre);
+        setStoredAgente(nombre);
       }
 
       if (ct) {
@@ -817,7 +833,7 @@ export default function SidebarApp() {
       {/* ── Splash selección de agente (obligatorio) ── */}
       {!agente && <SplashAgente onSelect={nombre => {
         setAgente(nombre);
-        localStorage.setItem("sb_agente", nombre);
+        setStoredAgente(nombre);
       }} />}
 
       {/* ── Splashes ── */}
@@ -848,7 +864,7 @@ export default function SidebarApp() {
             <div style={{ background:T.blue+"18", borderRadius:6, padding:"3px 8px", fontSize:10, fontWeight:700, color:T.blue }}>
               👤 {agente}
             </div>
-            <button onClick={() => { setAgente(""); localStorage.removeItem("sb_agente"); }}
+            <button onClick={() => { setAgente(""); clearStoredAgente(); }}
               style={{ ...S.btnOut, fontSize:9, padding:"3px 7px" }}>
               Cambiar
             </button>
