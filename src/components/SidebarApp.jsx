@@ -182,10 +182,13 @@ export default function SidebarApp() {
 
     window.addEventListener("message", onMsg);
 
-    // Solicitar contexto al padre (Chatwoot) al montar
-    setTimeout(() => {
-      try { window.parent.postMessage({ event: "requestContext" }, "*"); } catch(e) {}
-    }, 300);
+    // Notificar a Chatwoot que el iframe está listo → Chatwoot responde con appContext
+    const notifyReady = () => {
+      try { window.parent.postMessage({ event: "iFrameLoaded" }, "*"); } catch(e) {}
+    };
+    notifyReady();
+    setTimeout(notifyReady, 500);
+    setTimeout(notifyReady, 1500);
 
     // Demo / desarrollo
     if (process.env.NODE_ENV === "development" || window.location.search.includes("demo")) {
