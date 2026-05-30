@@ -7,6 +7,7 @@ const CW_BASE    = "https://chat.americanet.club";
 const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
 const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
+const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const ESTADOS_IGNORAR = ["pagado","PAGADO","paid","anulado","ANULADO","cancelled","canceled"];
 
 async function mkwProxy(nodo, accion, payload) {
@@ -484,7 +485,7 @@ export default function SidebarApp() {
       const nodoNum = Number(cliente.nodo);
       const nodoStr = `Nod_${String(nodoNum).padStart(2,"0")}`;
       const pppuser = detalle?._servicio?.pppuser || svc?.pppuser || "";
-      const res = await fetch("/api/diagnostico-servicio", {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
