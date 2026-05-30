@@ -158,14 +158,23 @@ export default function SidebarApp() {
 
     // ── postMessage: SIEMPRE activo (maneja cambios de conversación) ───────
     function onMsg(e) {
-      const d = e.data;
+      let d = e.data;
+      // Chatwoot a veces envía el payload como JSON string
+      if (typeof d === "string") {
+        try { d = JSON.parse(d); } catch(_) { return; }
+      }
       if (d && typeof d === "object") {
         setDebugMsgs(prev => [...prev.slice(-4), { origin: e.origin, data: JSON.stringify(d).slice(0,200) }]);
       }
       if (!d || typeof d !== "object") return;
 
+      // data puede venir como objeto o como JSON string dentro del objeto
+      const payload = (typeof d.data === "string") ? (() => { try { return JSON.parse(d.data); } catch(_) { return {}; } })() : (d.data || {});
+
       let ct = null, cv = null;
-      if (d.event === "appContext" && d.data?.contact) {
+      if (d.event === "appContext" && payload?.contact) {
+        ct = payload.contact; cv = payload.conversation;
+      } else if (d.event === "appContext" && d.data?.contact) {
         ct = d.data.contact; cv = d.data.conversation;
       } else if (d.contact?.phone_number !== undefined) {
         ct = d.contact; cv = d.conversation;
@@ -203,18 +212,44 @@ export default function SidebarApp() {
     const urlConvId = params.get("conv_id") || params.get("conversation_id") || "";
     const urlAcctId = params.get("account_id") || "1";
 
+    const timers = [];
+
     if (urlPhone) {
       // Esperar 800ms por si llega postMessage primero
       const t = setTimeout(() => {
-        if (contactLoadedRef.current) return; // postMessage ya cargó el contacto real
+        if (contactLoadedRef.current) return;
         const rawPhone = urlPhone.replace(/[^\d]/g, "");
-        if (rawPhone.length < 7) return; // template sin resolver o teléfono inválido
+        if (rawPhone.length < 7) return; // template sin resolver
         setContact(prev => prev ? prev : { phone_number: urlPhone, name: "" });
         if (urlConvId) setConvId(prev => prev || urlConvId);
         setAcctId(prev => prev !== "1" ? prev : urlAcctId);
         buscarCliente(urlPhone);
       }, 800);
-      return () => { window.removeEventListener("message", onMsg); clearTimeout(t); };
+      timers.push(t);
+    }
+
+    // Fallback: si después de 1.5s no hay contacto, intentar Chatwoot API con conv_id
+    if (urlConvId && !urlConvId.includes("{{")) {
+      const acct = urlAcctId.includes("{{") ? "1" : urlAcctId;
+      const t2 = setTimeout(async () => {
+        if (contactLoadedRef.current) return;
+        try {
+          const res = await fetch(`${CW_BASE}/api/v1/accounts/${acct}/conversations/${urlConvId}`, {
+            headers: { "api_access_token": CW_TOKEN },
+          });
+          const conv = await res.json();
+          const phone = conv?.meta?.sender?.phone_number || "";
+          const name  = conv?.meta?.sender?.name || "";
+          if (phone) {
+            contactLoadedRef.current = true;
+            setContact({ phone_number: phone, name });
+            setConvId(urlConvId);
+            setAcctId(acct);
+            buscarCliente(phone);
+          }
+        } catch(_) {}
+      }, 1500);
+      timers.push(t2);
     }
 
     // Demo / desarrollo
@@ -225,7 +260,7 @@ export default function SidebarApp() {
       }, 600);
     }
 
-    return () => window.removeEventListener("message", onMsg);
+    return () => { window.removeEventListener("message", onMsg); timers.forEach(clearTimeout); };
   }, []);
 
   function notify(text, ok = true) {
