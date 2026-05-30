@@ -512,8 +512,8 @@ export default function SidebarApp() {
 
   function diagColor(estado) {
     const s = (estado||"").toLowerCase();
-    if (s === "connected") return T.green;
-    if (s === "disconnected" || s === "not-found") return T.red;
+    if (s === "connected" || s === "conectado") return T.green;
+    if (s === "disconnected" || s === "not-found" || s === "no-conectado" || s === "no-encontrado") return T.red;
     return T.amber;
   }
 
@@ -763,7 +763,7 @@ export default function SidebarApp() {
               {showDiag && !diagLoad && diagResult && (() => {
                 const mk = diagResult.mikrotik || {};
                 const c = diagColor(mk.estado);
-                const isConn = (mk.estado||"").toLowerCase() === "connected";
+                const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
                 return (
                   <div style={{ background: isConn?"#f0fdf4":"#fef2f2", border:`1.5px solid ${c}30`, borderRadius:10, padding:"12px 14px" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
