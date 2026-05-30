@@ -491,24 +491,7 @@ export default function SidebarApp() {
       const data = await res.json();
       const raw = data.choices?.[0]?.message?.content || "{}";
       const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-
-      // Validar antigüedad: rechazar comprobantes con más de 9 días
-      if (parsed.fecha) {
-        const parts = parsed.fecha.split("/");
-        if (parts.length === 3) {
-          const [dd, mm, yyyy] = parts;
-          const fechaPago = new Date(`${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}T00:00:00`);
-          const hoy = new Date(); hoy.setHours(0,0,0,0);
-          const diffDias = Math.floor((hoy - fechaPago) / 86400000);
-          if (diffDias > 9) {
-            parsed.fecha_invalida = true;
-            parsed.dias_antiguedad = diffDias;
-          }
-        }
-      }
-
       setAnalisis(parsed);
-      if (parsed.fecha_invalida) { setAnalizando(false); return; } // no rellenar campos si es inválido
       if (parsed.monto) setFormPago(p => ({ ...p, monto: String(parseFloat(parsed.monto).toFixed(2)) }));
       if (parsed.banco) {
         const b = parsed.banco.toLowerCase();
@@ -1260,20 +1243,8 @@ export default function SidebarApp() {
             <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={onFileChange} />
 
             {analisis&&(
-              <div style={{ borderRadius:10, padding:"12px 14px", marginBottom:12, fontSize:12,
-                background: analisis.fecha_invalida ? "#fef2f2" : analisis.es_comprobante ? "#f0fdf4" : "#fef2f2",
-                border:`1px solid ${analisis.fecha_invalida ? "#fca5a5" : analisis.es_comprobante ? "#bbf7d0" : "#fecaca"}` }}>
-                {analisis.fecha_invalida ? (
-                  <>
-                    <div style={{ fontWeight:800, color:T.red, marginBottom:6 }}>🚫 Comprobante rechazado</div>
-                    <div style={{ color:T.red, fontWeight:600 }}>
-                      Fecha del comprobante: <strong>{analisis.fecha}</strong>
-                    </div>
-                    <div style={{ color:T.red, marginTop:4 }}>
-                      Tiene <strong>{analisis.dias_antiguedad} días</strong> de antigüedad — máximo permitido: 9 días.
-                    </div>
-                  </>
-                ) : analisis.es_comprobante ? (<>
+              <div style={{ borderRadius:10, padding:"12px 14px", marginBottom:12, fontSize:12, background:analisis.es_comprobante?"#f0fdf4":"#fef2f2", border:`1px solid ${analisis.es_comprobante?"#bbf7d0":"#fecaca"}` }}>
+                {analisis.es_comprobante?(<>
                   <div style={{ fontWeight:800, color:T.green, marginBottom:8 }}>✅ Comprobante detectado</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"5px 12px" }}>
                     <div><span style={{ color:T.slate }}>Banco </span><strong>{analisis.banco}</strong></div>
@@ -1281,7 +1252,7 @@ export default function SidebarApp() {
                     {analisis.fecha&&<div><span style={{ color:T.slate }}>Fecha </span>{analisis.fecha}</div>}
                     {analisis.referencia&&<div><span style={{ color:T.slate }}>Op. </span>{analisis.referencia}</div>}
                   </div>
-                </>) : <div style={{ color:T.red, fontWeight:600 }}>❌ No es comprobante de pago válido</div>}
+                </>):<div style={{ color:T.red, fontWeight:600 }}>❌ No es comprobante de pago válido</div>}
               </div>
             )}
 
@@ -1307,15 +1278,10 @@ export default function SidebarApp() {
                 </div>
               </div>
             </div>
-            {(() => {
-              const bloqueado = pagando || !formPago.idfactura || !formPago.monto || !!analisis?.fecha_invalida;
-              return (
-                <button onClick={registrarPago} disabled={bloqueado} className="sb-btn-action"
-                  style={{ ...S.btn(bloqueado ? T.muted : T.green), opacity:bloqueado?0.55:1 }}>
-                  {pagando ? "Registrando..." : "✅ Confirmar pago"}
-                </button>
-              );
-            })()}
+            <button onClick={registrarPago} disabled={pagando||!formPago.idfactura||!formPago.monto} className="sb-btn-action"
+              style={{ ...S.btn(pagando||!formPago.idfactura||!formPago.monto?T.muted:T.green), opacity:pagando||!formPago.idfactura||!formPago.monto?0.55:1 }}>
+              {pagando?"Registrando...":"✅ Confirmar pago"}
+            </button>
             {convId&&<div style={{ color:T.muted, fontSize:10, textAlign:"center", marginTop:6 }}>Confirmación automática al cliente vía Chatwoot</div>}
           </div>
         )}
