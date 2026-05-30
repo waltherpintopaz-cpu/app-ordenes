@@ -621,26 +621,13 @@ export default function SidebarApp() {
   }
 
   // ── Eliminar factura ─────────────────────────────────────────────────────
-  // ── Helper URL Mikrowisp directa (sin proxy, evita CORS via mode no-cors) ──
-  function mkwBaseUrl(empresa) {
-    return empresa === "dimfiber" ? "http://app.dimfiber.com/api/v1" : "https://americanet.club/api/v1";
-  }
-
   async function eliminarFactura(fid) {
     if (!window.confirm(`¿Eliminar factura #${fid}?\nEsta acción no se puede deshacer.`)) return;
     setDeletingFact(fid);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      if (!tkn) { notify("No hay token para el agente seleccionado", false); setDeletingFact(null); return; }
-      const url = mkwBaseUrl(cliente.empresa) + "/DeleteInvoice";
-      const r   = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tkn, idfactura: parseInt(fid, 10) }),
-      });
-      const res = await r.json();
-      console.log("[DeleteInvoice] respuesta:", res);
-      const ok = (res?.estado || "").toLowerCase() === "exito";
+      const res = await mkwProxy(Number(cliente.nodo), "DeleteInvoice", { idfactura: parseInt(fid, 10) }, tkn);
+      const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("✅ Factura #" + fid + " eliminada"); setFactExpand(null); await buscarCliente(contact?.phone_number || ""); }
     } catch(e) { notify("Error: " + e.message, false); }
@@ -653,16 +640,8 @@ export default function SidebarApp() {
     setDeletingPago(fid);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      if (!tkn) { notify("No hay token para el agente seleccionado", false); setDeletingPago(null); return; }
-      const url = mkwBaseUrl(cliente.empresa) + "/DeleteTransaccion";
-      const r   = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tkn, factura: parseInt(fid, 10) }),
-      });
-      const res = await r.json();
-      console.log("[DeleteTransaccion] respuesta:", res);
-      const ok = (res?.estado || "").toLowerCase() === "exito";
+      const res = await mkwProxy(Number(cliente.nodo), "DeleteTransaccion", { factura: parseInt(fid, 10) }, tkn);
+      const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("✅ Pago de factura #" + fid + " eliminado"); await buscarCliente(contact?.phone_number || ""); }
     } catch(e) { notify("Error: " + e.message, false); }
