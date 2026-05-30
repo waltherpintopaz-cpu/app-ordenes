@@ -407,12 +407,31 @@ export default function SidebarApp() {
   }
 
   function onFileChange(e) {
-    const file = e.target.files?.[0];
+    onImageFile(e.target.files?.[0]);
+  }
+
+  function onImageFile(file) {
     if (!file) return;
     setImgFile(file);
     setImgPrev(URL.createObjectURL(file));
     analizarImagen(file);
   }
+
+  // Ctrl+V para pegar captura de pantalla
+  useEffect(() => {
+    function onPaste(e) {
+      if (tab !== "pago") return;
+      const items = e.clipboardData?.items || [];
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) { onImageFile(file); break; }
+        }
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [tab]);
 
   // ── Registrar pago ────────────────────────────────────────────────────────
   async function registrarPago() {
@@ -967,7 +986,7 @@ export default function SidebarApp() {
               :imgPrev?<img src={imgPrev} alt="" style={{ maxWidth:"100%", maxHeight:130, borderRadius:8 }} />
               :<div><div style={{ fontSize:28, marginBottom:6 }}>📎</div>
                 <div style={{ color:T.slate, fontWeight:700, fontSize:12 }}>Subir comprobante</div>
-                <div style={{ color:T.muted, fontSize:11, marginTop:3 }}>La IA extrae monto y banco automáticamente</div>
+                <div style={{ color:T.muted, fontSize:11, marginTop:3 }}>Clic para adjuntar · o pega con <kbd style={{ background:"#e2e8f0", borderRadius:4, padding:"1px 5px", fontFamily:"monospace", fontSize:10 }}>Ctrl+V</kbd></div>
               </div>}
             </div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display:"none" }} onChange={onFileChange} />
