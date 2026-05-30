@@ -153,28 +153,36 @@ export default function SidebarApp() {
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
+    // ── Método 1: URL params (más confiable) ──────────────────────────────
+    const params = new URLSearchParams(window.location.search);
+    const urlPhone  = params.get("phone") || params.get("phone_number") || "";
+    const urlConvId = params.get("conv_id") || params.get("conversation_id") || "";
+    const urlAcctId = params.get("account_id") || "1";
+
+    if (urlPhone) {
+      const fakeContact = { phone_number: urlPhone, name: "" };
+      setContact(fakeContact);
+      if (urlConvId) setConvId(urlConvId);
+      setAcctId(urlAcctId);
+      buscarCliente(urlPhone);
+      return; // Ya tenemos datos, no necesitamos postMessage
+    }
+
+    // ── Método 2: postMessage ─────────────────────────────────────────────
     function onMsg(e) {
       const d = e.data;
-      // Guardar para debug
       if (d && typeof d === "object") {
         setDebugMsgs(prev => [...prev.slice(-4), { origin: e.origin, data: JSON.stringify(d).slice(0,200) }]);
       }
       if (!d || typeof d !== "object") return;
 
-      // Formato 1: { event: "appContext", data: { contact, conversation } }
-      // Formato 2: { contact, conversation } directo
-      // Formato 3: { message: "appContext", ... }
       let contact = null, conversation = null;
-
       if (d.event === "appContext" && d.data?.contact) {
-        contact     = d.data.contact;
-        conversation = d.data.conversation;
+        contact = d.data.contact; conversation = d.data.conversation;
       } else if (d.contact?.phone_number !== undefined) {
-        contact     = d.contact;
-        conversation = d.conversation;
+        contact = d.contact; conversation = d.conversation;
       } else if (d.message === "appContext" && d.contact) {
-        contact     = d.contact;
-        conversation = d.conversation;
+        contact = d.contact; conversation = d.conversation;
       }
 
       if (contact) {
@@ -188,7 +196,7 @@ export default function SidebarApp() {
 
     window.addEventListener("message", onMsg);
 
-    // Notificar a Chatwoot que el iframe está listo → Chatwoot responde con appContext
+    // Notificar a Chatwoot que el iframe está listo
     const notifyReady = () => {
       try { window.parent.postMessage({ event: "iFrameLoaded" }, "*"); } catch(e) {}
     };
@@ -197,9 +205,9 @@ export default function SidebarApp() {
     setTimeout(notifyReady, 1500);
 
     // Demo / desarrollo
-    if (process.env.NODE_ENV === "development" || window.location.search.includes("demo")) {
+    if (process.env.NODE_ENV === "development" || params.has("demo")) {
       setTimeout(() => {
-        setContact({ name: "DEMO CLIENTE", phone_number: "+51949529785" });
+        setContact({ name: "DEMO", phone_number: "+51949529785" });
         buscarCliente("+51949529785");
       }, 600);
     }
