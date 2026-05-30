@@ -57,13 +57,16 @@ const globalCSS = `
   .sb-btn-action { transition: opacity .15s, background .15s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
-  .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
-  .sb-tbl th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
-  .sb-tbl td { font-size: 12px; color: #1e293b; border-bottom: 1px solid #f1f5f9; }
+  .sb-tbl { border-collapse: collapse; width: 100%; }
+  .sb-tbl td, .sb-tbl th { padding: 8px 10px; vertical-align: middle; }
+  .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #374151; background: #f3f4f6; border-bottom: 2px solid #d1d5db; border-top: 1px solid #d1d5db; white-space: nowrap; }
+  .sb-tbl td { font-size: 12px; color: #111827; border-bottom: 1px solid #e5e7eb; }
   .sb-tbl tr:last-child td { border-bottom: none; }
-  .sb-tbl tr:hover td { background: #f8fafc; }
-  .sb-row-form { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 0; border-bottom: 1px solid #f1f5f9; padding: 8px 0; }
+  .sb-tbl tr:hover td { background: #f9fafb; }
+  .sb-row-form { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 0; border-bottom: 1px solid #e5e7eb; padding: 9px 0; }
   .sb-row-form:last-child { border-bottom: none; }
+  .sb-row-form-label { font-size: 12px; font-weight: 600; color: #374151; }
+  .sb-row-form-val { font-size: 12px; color: #111827; font-weight: 500; }
   @keyframes sbFadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes sbPing   { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.2);opacity:0} }
   @keyframes dotPulse { 0%,80%,100%{transform:scale(.55);opacity:.25} 40%{transform:scale(1);opacity:1} }
@@ -72,41 +75,41 @@ const globalCSS = `
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  navy:    "#1e293b",
-  blue:    "#2563eb",
-  blueDk:  "#1d4ed8",
-  sky:     "#0ea5e9",
-  skyDk:   "#0284c7",
-  slate:   "#475569",
-  muted:   "#64748b",
-  border:  "#e2e8f0",
-  bg:      "#f8fafc",
+  navy:    "#111827",
+  blue:    "#1d4ed8",
+  blueDk:  "#1e40af",
+  sky:     "#0284c7",
+  skyDk:   "#0369a1",
+  slate:   "#374151",
+  muted:   "#6b7280",
+  border:  "#d1d5db",
+  bg:      "#f3f4f6",
   card:    "#ffffff",
-  green:   "#16a34a",
+  green:   "#15803d",
   greenLt: "#dcfce7",
-  amber:   "#ea580c",
-  amberLt: "#fff7ed",
-  red:     "#dc2626",
+  amber:   "#b45309",
+  amberLt: "#fef3c7",
+  red:     "#b91c1c",
   redLt:   "#fee2e2",
-  purple:  "#7c3aed",
-  teal:    "#0d9488",
+  purple:  "#6d28d9",
+  teal:    "#0f766e",
 };
 
 const S = {
-  root:   { fontFamily:"'Inter',system-ui,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
-  card:   { background:T.card, borderRadius:8, border:`1px solid ${T.border}`, boxShadow:"0 1px 2px rgba(0,0,0,0.04)", marginBottom:8, overflow:"hidden" },
-  label:  { fontSize:11, fontWeight:600, color:T.muted, marginBottom:2, display:"block" },
+  root:   { fontFamily:"system-ui,-apple-system,'Segoe UI',sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
+  card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, boxShadow:"0 1px 3px rgba(0,0,0,0.07)", marginBottom:8, overflow:"hidden" },
+  label:  { fontSize:11, fontWeight:700, color:T.slate, marginBottom:3, display:"block", textTransform:"uppercase", letterSpacing:"0.4px" },
   val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
-  mono:   { fontFamily:"'JetBrains Mono','Fira Code',monospace", fontWeight:600, color:T.navy, fontSize:11, letterSpacing:0 },
-  badge:  (c,bg) => ({ background:bg||c+"18", color:c, borderRadius:4, padding:"2px 8px", fontSize:10, fontWeight:700, display:"inline-flex", alignItems:"center", gap:3, letterSpacing:0.2 }),
-  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:6, padding:"9px 14px", fontWeight:600, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
-  btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:5, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer" }),
-  btnOut: { background:"none", border:`1px solid ${T.border}`, borderRadius:5, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:T.slate },
-  input:  { border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px", fontSize:12, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit" },
-  select: { border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px", fontSize:12, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
-  alert:  (ok) => ({ background:ok?T.greenLt:T.redLt, color:ok?T.green:T.red, border:`1px solid ${ok?"#86efac":"#fca5a5"}`, borderRadius:6, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
+  mono:   { fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12 },
+  badge:  (c,bg) => ({ background:bg||c, color:"#fff", borderRadius:3, padding:"2px 7px", fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:3 }),
+  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:5, padding:"9px 14px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
+  btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:4, padding:"4px 10px", fontWeight:700, fontSize:11, cursor:"pointer" }),
+  btnOut: { background:"#fff", border:`1px solid ${T.border}`, borderRadius:4, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:T.slate },
+  input:  { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:"#fff", fontFamily:"inherit" },
+  select: { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:T.navy, fontFamily:"inherit" },
+  alert:  (ok) => ({ background:ok?"#f0fdf4":"#fef2f2", color:ok?T.green:T.red, border:`1px solid ${ok?"#86efac":"#fca5a5"}`, borderRadius:5, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
   divider:{ borderTop:`1px solid ${T.border}`, margin:"12px 0" },
-  statCard: () => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
+  statCard: () => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:5, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
 };
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
