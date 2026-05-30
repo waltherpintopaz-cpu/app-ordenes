@@ -230,6 +230,7 @@ export default function SidebarApp() {
   const [pagando,  setPagando]    = useState(false);
   const [deletingFact, setDeletingFact] = useState(null);
   const [deletingPago, setDeletingPago] = useState(null);
+  const [activando,    setActivando]    = useState(false);
   // Comprobante Vision
   const [imgFile,  setImgFile]    = useState(null);
   const [imgPrev,  setImgPrev]    = useState(null);
@@ -618,6 +619,20 @@ export default function SidebarApp() {
       await buscarCliente(contact?.phone_number || "");
     } catch(e) { notify("Error: " + e.message, false); }
     setCreando(false);
+  }
+
+  // ── Activar servicio (cliente suspendido/cortado) ─────────────────────────
+  async function activarServicio() {
+    if (!window.confirm(`¿Activar el servicio de ${cliente.nombre}?\nEl cliente pasará a estado ACTIVO.`)) return;
+    setActivando(true);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const res = await mkwProxy(Number(cliente.nodo), "ActiveService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn);
+      const ok  = (res?.estado || "").toLowerCase() === "exito";
+      if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
+      else { notify("✅ Servicio activado correctamente"); await buscarCliente(contact?.phone_number || ""); }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setActivando(false);
   }
 
   // ── Eliminar factura ─────────────────────────────────────────────────────
@@ -1011,6 +1026,16 @@ export default function SidebarApp() {
               </button>
             </div>
           </div>
+
+          {/* Botón activar servicio (solo si suspendido/cortado) */}
+          {suspendido && (
+            <div style={{ padding:"10px 14px 0" }}>
+              <button onClick={activarServicio} disabled={activando}
+                style={{ ...S.btn("#16a34a"), width:"100%", fontSize:12, padding:"10px", opacity:activando?0.6:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                {activando ? "Activando..." : "⚡ Activar servicio"}
+              </button>
+            </div>
+          )}
 
           {/* Stats grid 2x2 */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:"12px 14px 4px" }}>
