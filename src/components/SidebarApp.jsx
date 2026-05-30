@@ -9,17 +9,39 @@ const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const ESTADOS_IGNORAR = ["pagado","PAGADO","paid","anulado","ANULADO","cancelled","canceled"];
+// ─── Tokens por agente ───────────────────────────────────────────────────────
+const AGENTES = {
+  americanet: [
+    { nombre: "Milagros Luna",  token: "WXJWQ21KODUvcllodTFPWW1rVVpOUT09" },
+    { nombre: "Walter Pinto",   token: "SEppOWVXR1JRTkdnRm1Zd2t6UzM4QT09" },
+    { nombre: "Sofia Rosales",  token: "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09" },
+  ],
+  dimfiber: [
+    { nombre: "Milagros Luna",  token: "SE8xNXBlNzBvR2NFTFlQVWl0Y0psZz09" },
+    { nombre: "admin",          token: "YjQ4cmZEZHQyNnBNQ2Z5d0R4R1NnUT09" },
+    { nombre: "Cynthia",        token: "a0dyNThoVUVpVkowVmMzdGtZdWErQT09" },
+    { nombre: "Rosa",           token: "VlJPODIycXg2R0t2VXVBUk5kQzByZz09" },
+  ],
+};
+// nod06 usa los mismos agentes que americanet
+AGENTES.nod06 = AGENTES.americanet;
+
+function getToken(empresa, nombre) {
+  const lista = AGENTES[empresa] || AGENTES.americanet;
+  return lista.find(a => a.nombre.toLowerCase() === (nombre||"").toLowerCase())?.token || null;
+}
+
 const PASARELAS = {
   americanet: ["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Walter Pinto","Americanet"],
   dimfiber:   ["Efectivo Oficina/Sucursal","Transferencia Bancaria","Aplicaciones bancarias","Pagos DIM","Americanet"],
   nod06:      ["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Walter Pinto","Americanet"],
 };
 
-async function mkwProxy(nodo, accion, payload) {
+async function mkwProxy(nodo, accion, payload, token) {
   const r = await fetch(PROXY_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nodo, accion, payload }),
+    body: JSON.stringify({ nodo, accion, payload, ...(token ? { token } : {}) }),
   });
   const json = await r.json();
   return json.data ?? json;
@@ -158,6 +180,8 @@ export default function SidebarApp() {
   const [diagResult, setDiagResult] = useState(null);
   const [diagError,  setDiagError]  = useState(null);
   const [showDiag,   setShowDiag]   = useState(false);
+  // Agente logueado (detectado de Chatwoot o seleccionado manualmente)
+  const [agente, setAgente] = useState(() => localStorage.getItem("sb_agente") || "");
   // Búsqueda por DNI cuando no se encuentra por teléfono
   const [dniBusq,    setDniBusq]    = useState("");
   const [dniBuscando,setDniBuscando]= useState(false);
@@ -192,6 +216,14 @@ export default function SidebarApp() {
         ct = d.contact; cv = d.conversation;
       } else if (d.message === "appContext" && d.contact) {
         ct = d.contact; cv = d.conversation;
+      }
+
+      // Detectar agente logueado en Chatwoot
+      const cwAgent = payload?.currentAgent || d.currentAgent || d.data?.currentAgent;
+      if (cwAgent?.name) {
+        const nombre = cwAgent.name;
+        setAgente(nombre);
+        localStorage.setItem("sb_agente", nombre);
       }
 
       if (ct) {
@@ -459,12 +491,13 @@ export default function SidebarApp() {
     }
     setPagando(true);
     try {
+      const tkn = getToken(cliente.empresa, agente);
       const res = await mkwProxy(Number(cliente.nodo), "PaidInvoice", {
         idcliente: parseInt(cliente.mikrowisp_id, 10),
         idfactura: parseInt(formPago.idfactura, 10),
         pasarela:  formPago.pasarela,
         cantidad:  parseFloat(formPago.monto),
-      });
+      }, tkn);
       const estado = (res?.estado || res?.result || res?.status || "").toLowerCase();
       const msgRes = (res?.message || res?.mensaje || "").toLowerCase();
       const esError = estado === "error" || estado === "failed" || msgRes.includes("error") || msgRes.includes("no existe") || msgRes.includes("menor al total");
@@ -503,10 +536,11 @@ export default function SidebarApp() {
     if (!cliente || !factForm.vencimiento) return notify("Selecciona la fecha de vencimiento", false);
     setCreando(true);
     try {
+      const tkn = getToken(cliente.empresa, agente);
       const res = await mkwProxy(Number(cliente.nodo), "CreateInvoice", {
         idcliente:  parseInt(cliente.mikrowisp_id, 10),
         vencimiento: factForm.vencimiento,
-      });
+      }, tkn);
       const ok = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || "Rechazado"), false); setCreando(false); return; }
       notify(`✅ Factura #${res.idfactura} creada correctamente`);
@@ -668,6 +702,7 @@ export default function SidebarApp() {
         notify(`Fecha fuera del rango permitido (máx. ${prorrInfo.diasMax} días)`, false);
         setProrrando(false); return;
       }
+      const tkn = getToken(cliente.empresa, agente);
       const res = await mkwProxy(Number(cliente.nodo), "PromesaPago", {
         idcliente: parseInt(cliente.mikrowisp_id, 10),
         idfactura: parseInt(prorrInfo.idfactura, 10),
@@ -738,6 +773,22 @@ export default function SidebarApp() {
         <img src={logoAmericanet} alt="Americanet" style={{ height:22, filter:"brightness(0) saturate(0) brightness(0.4)", opacity:0.5 }} />
         <span style={{ fontSize:10, color:T.muted, fontWeight:600, letterSpacing:0.5 }}>Panel de Agentes</span>
         <div style={{ flex:1 }} />
+        {/* Selector de agente */}
+        {cliente && (() => {
+          const lista = AGENTES[cliente.empresa] || AGENTES.americanet;
+          const token = getToken(cliente.empresa, agente);
+          return (
+            <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+              {!token && <span style={{ fontSize:9, color:T.red, fontWeight:700 }}>⚠️</span>}
+              <select value={agente}
+                onChange={e => { setAgente(e.target.value); localStorage.setItem("sb_agente", e.target.value); }}
+                style={{ border:`1px solid ${token?T.border:T.red}`, borderRadius:6, padding:"3px 6px", fontSize:10, fontWeight:600, color:T.navy, background:"#fff", cursor:"pointer" }}>
+                <option value="">— Agente —</option>
+                {lista.map(a => <option key={a.nombre} value={a.nombre}>{a.nombre}</option>)}
+              </select>
+            </div>
+          );
+        })()}
         {msg && <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red, border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:600 }}>{msg.text}</div>}
       </div>
 
