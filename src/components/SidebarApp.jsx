@@ -158,6 +158,11 @@ export default function SidebarApp() {
   const [diagResult, setDiagResult] = useState(null);
   const [diagError,  setDiagError]  = useState(null);
   const [showDiag,   setShowDiag]   = useState(false);
+  // Búsqueda por DNI cuando no se encuentra por teléfono
+  const [dniBusq,    setDniBusq]    = useState("");
+  const [dniBuscando,setDniBuscando]= useState(false);
+  const [dniResultado,setDniResultado]= useState(null); // row de mikrowisp_clientes
+  const [agregando,  setAgregando]  = useState(false);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -511,6 +516,50 @@ export default function SidebarApp() {
     setCreando(false);
   }
 
+  // ── Buscar por DNI cuando teléfono no encontrado ────────────────────────
+  async function buscarPorDni() {
+    const dni = dniBusq.replace(/\D/g, "").slice(0, 8);
+    if (dni.length < 7) return notify("Ingresa un DNI válido", false);
+    setDniBuscando(true);
+    setDniResultado(null);
+    try {
+      const { data } = await supabase
+        .from("mikrowisp_clientes")
+        .select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado")
+        .ilike("cedula", `%${dni}%`)
+        .limit(5);
+      if (!data?.length) { notify("No se encontró cliente con ese DNI", false); }
+      else { setDniResultado(data[0]); }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setDniBuscando(false);
+  }
+
+  async function agregarTelefono() {
+    if (!dniResultado || !contact?.phone_number) return;
+    setAgregando(true);
+    try {
+      const rawPhone = contact.phone_number.replace(/[^\d]/g, "");
+      const telActual = dniResultado.telefonos || "";
+      // Evitar duplicado
+      if (telActual.includes(rawPhone)) {
+        notify("Este número ya está registrado en el cliente", false);
+        setAgregando(false); return;
+      }
+      const nuevoTel = telActual && telActual !== "EMPTY" ? `${telActual},${rawPhone}` : rawPhone;
+      const { error: updErr } = await supabase
+        .from("mikrowisp_clientes")
+        .update({ telefonos: nuevoTel })
+        .eq("mikrowisp_id", dniResultado.mikrowisp_id);
+      if (updErr) throw updErr;
+      notify("✅ Número agregado. Cargando cliente...");
+      setDniResultado(null);
+      setDniBusq("");
+      setError(null);
+      await buscarCliente(contact.phone_number);
+    } catch(e) { notify("Error al guardar: " + e.message, false); }
+    setAgregando(false);
+  }
+
   // ── Diagnóstico MikroTik ──────────────────────────────────────────────────
   async function consultarDiagnostico() {
     if (!cliente) return;
@@ -692,11 +741,39 @@ export default function SidebarApp() {
         {msg && <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red, border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:600 }}>{msg.text}</div>}
       </div>
 
-      {/* Error */}
-      {error && <div style={{ ...S.alert(false), marginBottom:8 }}>
-        <div style={{ fontWeight:700, marginBottom:2 }}>Cliente no encontrado</div>
-        <div style={{ fontSize:10, opacity:0.75 }}>{contact?.phone_number}</div>
-      </div>}
+      {/* Error + búsqueda por DNI */}
+      {error && !cliente && (
+        <div style={{ ...S.card, padding:"16px 18px", border:`1.5px solid #fecaca` }}>
+          <div style={{ fontWeight:800, color:T.red, fontSize:13, marginBottom:4 }}>Cliente no encontrado</div>
+          <div style={{ fontSize:11, color:T.muted, marginBottom:14 }}>
+            Número <strong>{contact?.phone_number}</strong> no está registrado en Mikrowisp.
+          </div>
+
+          <div style={{ fontWeight:700, fontSize:12, color:T.navy, marginBottom:8 }}>Buscar por DNI</div>
+          <div style={{ display:"flex", gap:8, marginBottom:10 }}>
+            <input style={{ ...S.input, flex:1 }} type="text" inputMode="numeric" maxLength={8}
+              placeholder="DNI del cliente" value={dniBusq}
+              onChange={e => { setDniBusq(e.target.value.replace(/\D/g,"")); setDniResultado(null); }}
+              onKeyDown={e => e.key === "Enter" && buscarPorDni()} />
+            <button onClick={buscarPorDni} disabled={dniBuscando}
+              style={{ ...S.btnSm(T.blue), padding:"9px 14px", opacity:dniBuscando?0.6:1 }}>
+              {dniBuscando?"...":"Buscar"}
+            </button>
+          </div>
+
+          {dniResultado && (
+            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:10, padding:"12px 14px" }}>
+              <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:4 }}>{dniResultado.nombre}</div>
+              <div style={{ fontSize:11, color:T.muted, marginBottom:2 }}>DNI: {dniResultado.cedula} · ID: #{dniResultado.mikrowisp_id} · Nodo: {dniResultado.nodo}</div>
+              <div style={{ fontSize:11, color:T.muted, marginBottom:10 }}>Teléfonos actuales: {dniResultado.telefonos || "—"}</div>
+              <button onClick={agregarTelefono} disabled={agregando} className="sb-btn-action"
+                style={{ ...S.btn(agregando ? T.muted : T.green), opacity:agregando?0.6:1, fontSize:11, padding:"9px 12px" }}>
+                {agregando ? "Guardando..." : `➕ Agregar ${contact?.phone_number} a este cliente`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Cliente cargado ── */}
       {cliente && !loading && (<>
