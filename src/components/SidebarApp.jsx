@@ -240,6 +240,7 @@ export default function SidebarApp() {
   const [pagando,  setPagando]    = useState(false);
   const [deletingFact, setDeletingFact] = useState(null);
   const [deletingPago, setDeletingPago] = useState(null);
+  const [menuAbierto,  setMenuAbierto]  = useState(null); // fid de la fila con menú abierto
   const [activando,    setActivando]    = useState(false);
   const [editForm,     setEditForm]     = useState({ nombre:"", movil:"", telefono:"", correo:"", cedula:"", direccion_principal:"" });
   const [guardando,    setGuardando]    = useState(false);
@@ -552,6 +553,14 @@ export default function SidebarApp() {
   function onFileChange(e) {
     onImageFile(e.target.files?.[0]);
   }
+
+  // Cerrar menú de acciones al hacer click fuera
+  useEffect(() => {
+    if (!menuAbierto) return;
+    const close = () => setMenuAbierto(null);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuAbierto]);
 
   function onImageFile(file) {
     if (!file) return;
@@ -1308,30 +1317,50 @@ export default function SidebarApp() {
                           <td style={{ color:T.muted, fontSize:11 }}>{f.vencimiento||"—"}</td>
                           <td style={{ color:T.muted, fontSize:11 }}>{f.fechapago||f.fecha_pago||"—"}</td>
                           <td style={{ color:T.muted, fontSize:11 }}>{f.pasarela||f.forma_pago||"—"}</td>
-                          <td>
-                            <div style={{ display:"flex", gap:4, justifyContent:"center", alignItems:"center" }}>
-                              {!isPag && !isAnu && (
-                                <button title="Registrar pago"
-                                  onClick={() => { setFormPago(p => ({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); }}
-                                  style={{ background:T.blue, border:"none", borderRadius:5, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", color:"#fff", opacity:1 }}>
-                                  <CreditCard size={13} />
+                          <td style={{ position:"relative" }}>
+                            {/* Botón ⋮ */}
+                            <button
+                              onClick={e => { e.stopPropagation(); setMenuAbierto(menuAbierto === fid ? null : fid); }}
+                              style={{ background:"none", border:"1px solid #e5e7eb", borderRadius:5, padding:"4px 9px",
+                                cursor:"pointer", color:"#6b7280", fontSize:16, lineHeight:1, fontWeight:700,
+                                letterSpacing:"1px", display:"block", margin:"0 auto" }}>
+                              ···
+                            </button>
+
+                            {/* Dropdown */}
+                            {menuAbierto === fid && (
+                              <div onClick={e=>e.stopPropagation()}
+                                style={{ position:"absolute", right:4, top:"100%", zIndex:999,
+                                  background:"#fff", border:"1px solid #e5e7eb", borderRadius:7,
+                                  boxShadow:"0 4px 16px rgba(0,0,0,0.12)", minWidth:160, overflow:"hidden" }}>
+                                {!isPag && !isAnu && (
+                                  <button onClick={() => { setFormPago(p=>({...p,idfactura:String(fid),monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); setMenuAbierto(null); }}
+                                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 14px",
+                                      border:"none", background:"none", cursor:"pointer", fontSize:12, fontWeight:600,
+                                      color:"#003DA5", borderBottom:"1px solid #f3f4f6", fontFamily:"inherit" }}>
+                                    <CreditCard size={14}/> Registrar pago
+                                  </button>
+                                )}
+                                {isPag && (
+                                  <button onClick={() => { eliminarPago(fid); setMenuAbierto(null); }}
+                                    disabled={deletingPago===fid}
+                                    style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 14px",
+                                      border:"none", background:"none", cursor:"pointer", fontSize:12, fontWeight:600,
+                                      color:"#b45309", borderBottom:"1px solid #f3f4f6", fontFamily:"inherit",
+                                      opacity:deletingPago===fid?0.5:1 }}>
+                                    <XCircle size={14}/> {deletingPago===fid?"Eliminando...":"Anular pago"}
+                                  </button>
+                                )}
+                                <button onClick={() => { eliminarFactura(fid); setMenuAbierto(null); }}
+                                  disabled={deletingFact===fid}
+                                  style={{ display:"flex", alignItems:"center", gap:9, width:"100%", padding:"10px 14px",
+                                    border:"none", background:"none", cursor:"pointer", fontSize:12, fontWeight:600,
+                                    color:"#b91c1c", fontFamily:"inherit",
+                                    opacity:deletingFact===fid?0.5:1 }}>
+                                  <Trash2 size={14}/> {deletingFact===fid?"Eliminando...":"Eliminar factura"}
                                 </button>
-                              )}
-                              {isPag && (
-                                <button title="Eliminar pago"
-                                  onClick={() => eliminarPago(fid)}
-                                  disabled={deletingPago === fid}
-                                  style={{ background:T.amber, border:"none", borderRadius:5, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", color:"#fff", opacity:deletingPago===fid?0.4:1 }}>
-                                  <XCircle size={13} />
-                                </button>
-                              )}
-                              <button title="Eliminar factura"
-                                onClick={() => eliminarFactura(fid)}
-                                disabled={deletingFact === fid}
-                                style={{ background:"#fff", border:`1px solid #fecaca`, borderRadius:5, padding:"5px 7px", cursor:"pointer", display:"flex", alignItems:"center", color:T.red, opacity:deletingFact===fid?0.4:1 }}>
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
