@@ -228,6 +228,8 @@ export default function SidebarApp() {
   // Pago manual
   const [formPago, setFormPago]   = useState({ pasarela: "Yape", monto: "", idfactura: "" });
   const [pagando,  setPagando]    = useState(false);
+  const [deletingFact, setDeletingFact] = useState(null);
+  const [deletingPago, setDeletingPago] = useState(null);
   // Comprobante Vision
   const [imgFile,  setImgFile]    = useState(null);
   const [imgPrev,  setImgPrev]    = useState(null);
@@ -616,6 +618,36 @@ export default function SidebarApp() {
       await buscarCliente(contact?.phone_number || "");
     } catch(e) { notify("Error: " + e.message, false); }
     setCreando(false);
+  }
+
+  // ── Eliminar factura ─────────────────────────────────────────────────────
+  async function eliminarFactura(fid) {
+    if (!window.confirm(`¿Eliminar factura #${fid}?\nEsta acción no se puede deshacer.`)) return;
+    setDeletingFact(fid);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const res = await mkwProxy(Number(cliente.nodo), "DeleteInvoice", { idfactura: parseInt(fid, 10) }, tkn);
+      const msg = (res?.mensaje || res?.message || "").toLowerCase();
+      const ok  = (res?.estado || "").toLowerCase() === "exito" || msg.includes("correctamente") || msg.includes("eliminado");
+      if (!ok) { notify("Error: " + (res?.mensaje || res?.message || "Mikrowisp rechazó la operación"), false); }
+      else { notify("✅ Factura #" + fid + " eliminada"); setFactExpand(null); await buscarCliente(contact?.phone_number || ""); }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setDeletingFact(null);
+  }
+
+  // ── Eliminar pago ─────────────────────────────────────────────────────────
+  async function eliminarPago(fid) {
+    if (!window.confirm(`¿Eliminar el pago de la factura #${fid}?\nEsta acción no se puede deshacer.`)) return;
+    setDeletingPago(fid);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const res = await mkwProxy(Number(cliente.nodo), "DeleteTransaccion", { factura: parseInt(fid, 10) }, tkn);
+      const msg = (res?.mensaje || res?.message || "").toLowerCase();
+      const ok  = (res?.estado || "").toLowerCase() === "exito" || msg.includes("correctamente") || msg.includes("eliminado");
+      if (!ok) { notify("Error: " + (res?.mensaje || res?.message || "Mikrowisp rechazó la operación"), false); }
+      else { notify("✅ Pago de factura #" + fid + " eliminado"); await buscarCliente(contact?.phone_number || ""); }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setDeletingPago(null);
   }
 
   // ── Búsqueda flexible por DNI o nombre ──────────────────────────────────
@@ -1217,12 +1249,26 @@ export default function SidebarApp() {
                               </div>
                             ))}
                           </div>
-                          {!isPag && !isAnu && (
-                            <button onClick={(e)=>{ e.stopPropagation(); setFormPago(p=>({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); setFactExpand(null); }}
-                              style={{ ...S.btn(T.green), fontSize:11, padding:"9px 12px" }}>
-                              💳 Pagar esta factura
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                            {!isPag && !isAnu && (
+                              <button onClick={(e)=>{ e.stopPropagation(); setFormPago(p=>({...p, idfactura:String(fid), monto:String(Number(f.total||0).toFixed(2))})); setTab("pago"); setFactExpand(null); }}
+                                style={{ ...S.btn(T.green), fontSize:11, padding:"9px 12px" }}>
+                                💳 Pagar esta factura
+                              </button>
+                            )}
+                            {isPag && (
+                              <button onClick={(e)=>{ e.stopPropagation(); eliminarPago(fid); }}
+                                disabled={deletingPago===fid}
+                                style={{ ...S.btnOut, fontSize:11, padding:"9px 12px", borderColor:"#f97316", color:"#f97316", opacity:deletingPago===fid?0.6:1 }}>
+                                {deletingPago===fid ? "Eliminando..." : "🗑 Eliminar pago"}
+                              </button>
+                            )}
+                            <button onClick={(e)=>{ e.stopPropagation(); eliminarFactura(fid); }}
+                              disabled={deletingFact===fid}
+                              style={{ ...S.btnOut, fontSize:11, padding:"9px 12px", borderColor:T.red, color:T.red, opacity:deletingFact===fid?0.6:1 }}>
+                              {deletingFact===fid ? "Eliminando..." : "🗑 Eliminar factura"}
                             </button>
-                          )}
+                          </div>
                         </div>
                       )}
                     </div>
