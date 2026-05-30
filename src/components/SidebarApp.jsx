@@ -143,6 +143,8 @@ export default function SidebarApp() {
   const [senalLoad,setSenalLoad]= useState(false);
   const [showMap,    setShowMap]    = useState(false);
   const [factExpand, setFactExpand] = useState(null);
+  const [debugMsgs,  setDebugMsgs] = useState([]);
+  const isDebug = window.location.search.includes("debug");
   // Diagnóstico MikroTik
   const [diagLoad,   setDiagLoad]   = useState(false);
   const [diagResult, setDiagResult] = useState(null);
@@ -153,6 +155,10 @@ export default function SidebarApp() {
   useEffect(() => {
     function onMsg(e) {
       const d = e.data;
+      // Guardar para debug
+      if (d && typeof d === "object") {
+        setDebugMsgs(prev => [...prev.slice(-4), { origin: e.origin, data: JSON.stringify(d).slice(0,200) }]);
+      }
       if (!d || typeof d !== "object") return;
 
       // Formato 1: { event: "appContext", data: { contact, conversation } }
@@ -559,6 +565,15 @@ export default function SidebarApp() {
       {/* ── Splashes ── */}
       {!contact && <Splash loading={false} />}
       {contact && loading && <Splash loading={true} />}
+
+      {/* ── Debug overlay ── */}
+      {!contact && isDebug && (
+        <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.85)", color:"#0f0", fontFamily:"monospace", fontSize:10, padding:10, zIndex:9999, maxHeight:200, overflowY:"auto" }}>
+          <div style={{ color:"#ff0", marginBottom:4 }}>DEBUG — mensajes recibidos:</div>
+          {debugMsgs.length === 0 && <div style={{ color:"#888" }}>Ningún mensaje aún. Esperando postMessage...</div>}
+          {debugMsgs.map((m,i) => <div key={i} style={{ marginBottom:3, wordBreak:"break-all" }}><span style={{ color:"#888" }}>[{m.origin}]</span> {m.data}</div>)}
+        </div>
+      )}
 
       {/* ── Contenido ── */}
       {(!contact || loading) ? null : (
