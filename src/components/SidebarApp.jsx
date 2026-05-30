@@ -182,11 +182,12 @@ export default function SidebarApp() {
   const [showDiag,   setShowDiag]   = useState(false);
   // Agente logueado (detectado de Chatwoot o seleccionado manualmente)
   const [agente, setAgente] = useState(() => localStorage.getItem("sb_agente") || "");
-  // Búsqueda por DNI cuando no se encuentra por teléfono
-  const [dniBusq,    setDniBusq]    = useState("");
-  const [dniBuscando,setDniBuscando]= useState(false);
-  const [dniResultado,setDniResultado]= useState(null); // row de mikrowisp_clientes
-  const [agregando,  setAgregando]  = useState(false);
+  // Búsqueda flexible cuando teléfono no encontrado
+  const [dniBusq,      setDniBusq]      = useState("");
+  const [dniBuscando,  setDniBuscando]  = useState(false);
+  const [dniResultados,setDniResultados]= useState([]); // lista de resultados
+  const [dniSel,       setDniSel]       = useState(null); // row seleccionado
+  const [agregando,    setAgregando]    = useState(false);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -312,25 +313,63 @@ export default function SidebarApp() {
     setTimeout(() => setMsg(null), 4000);
   }
 
+  function resetEstado() {
+    setCliente(null); setDetalle(null); setFacturas([]);
+    setAnalisis(null); setImgFile(null); setImgPrev(null);
+    setProrrInfo(null); setProrrForm({ fecha: "" });
+    setSnOnu(null); setNodoReal(null); setSenal(null);
+    setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false);
+    setDniResultados([]); setDniSel(null); setDniBusq("");
+  }
+
+  // ── Cargar datos completos a partir de una row de mikrowisp_clientes ────────
+  async function cargarDesdeRow(row) {
+    const nodoNum = Number(row.nodo);
+    const empresa = nodoNum === 5 ? "dimfiber" : nodoNum === 11 ? "nod06" : "americanet";
+    const cli = { ...row, empresa };
+    setCliente(cli);
+    setError(null);
+
+    const id = parseInt(cli.mikrowisp_id, 10);
+    const [detRes, invRes] = await Promise.all([
+      mkwProxy(nodoNum, "GetClientsDetails", { idcliente: id }).catch(() => null),
+      mkwProxy(nodoNum, "GetInvoices",       { idcliente: id }).catch(() => null),
+    ]);
+
+    const clientes = detRes?.clientes || detRes?.datos || [];
+    const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
+    const servicio = Array.isArray(detCliente?.servicios) ? detCliente.servicios[0] : null;
+    setDetalle({ ...detCliente, _servicio: servicio });
+
+    const facts = invRes?.facturas || (Array.isArray(invRes) ? invRes : []);
+    setFacturas(facts);
+
+    const pend = facts.find(f => !ESTADOS_IGNORAR.includes(f.estado));
+    const pasarelaDefault = (PASARELAS[cli.empresa] || PASARELAS.americanet)[0];
+    if (pend) {
+      setFormPago(p => ({
+        ...p, pasarela: pasarelaDefault,
+        idfactura: String(pend.idfactura || pend.id || ""),
+        monto: String(parseFloat(pend.total || pend.monto || 0).toFixed(2)),
+      }));
+    } else {
+      setFormPago(p => ({ ...p, pasarela: pasarelaDefault }));
+    }
+
+    const pppuser = detRes?.datos?.[0]?.servicios?.[0]?.pppuser || detRes?.clientes?.[0]?.servicios?.[0]?.pppuser || "";
+    if (pppuser) {
+      const { data: snRows } = await supabase
+        .from("clientes").select("sn_onu, nodo").eq("usuario_nodo", pppuser).limit(1);
+      if (snRows?.[0]?.sn_onu) setSnOnu(snRows[0].sn_onu);
+      if (snRows?.[0]?.nodo)   setNodoReal(snRows[0].nodo);
+    }
+  }
+
   // ── Buscar cliente por teléfono ───────────────────────────────────────────
   async function buscarCliente(phone) {
     setLoading(true);
     setError(null);
-    setCliente(null);
-    setDetalle(null);
-    setFacturas([]);
-    setAnalisis(null);
-    setImgFile(null);
-    setImgPrev(null);
-    setProrrInfo(null);
-    setProrrForm({ dias: "", fecha: "" });
-    setSnOnu(null);
-    setNodoReal(null);
-    setSenal(null);
-    setShowMap(false);
-    setDiagResult(null);
-    setDiagError(null);
-    setShowDiag(false);
+    resetEstado();
 
     try {
       const raw = phone.replace(/[^\d]/g, "");
@@ -357,53 +396,7 @@ export default function SidebarApp() {
       if (!rows.length) { setError("Cliente no encontrado para este número"); setLoading(false); return; }
 
       const row = rows.find(r => r.estado === "ACTIVO") || rows[0];
-      const nodoNum = Number(row.nodo);
-      const empresa = nodoNum === 5 ? "dimfiber" : nodoNum === 11 ? "nod06" : "americanet";
-      const cli = { ...row, empresa };
-      setCliente(cli);
-
-      // Cargar detalle + facturas en paralelo via proxy n8n
-      const id = parseInt(cli.mikrowisp_id, 10);
-      const [detRes, invRes] = await Promise.all([
-        mkwProxy(nodoNum, "GetClientsDetails", { idcliente: id }).catch(() => null),
-        mkwProxy(nodoNum, "GetInvoices",       { idcliente: id }).catch(() => null),
-      ]);
-
-      const clientes = detRes?.clientes || detRes?.datos || [];
-      const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
-      const servicio = Array.isArray(detCliente?.servicios) ? detCliente.servicios[0] : null;
-      setDetalle({ ...detCliente, _servicio: servicio });
-
-      const facts = invRes?.facturas || (Array.isArray(invRes) ? invRes : []);
-      setFacturas(facts);
-
-      // Pre-llenar formulario con primera factura pendiente
-      const pend = facts.find(f => !ESTADOS_IGNORAR.includes(f.estado));
-      const pasarelaDefault = (PASARELAS[cli.empresa] || PASARELAS.americanet)[0];
-      if (pend) {
-        setFormPago(p => ({
-          ...p,
-          pasarela: pasarelaDefault,
-          idfactura: String(pend.idfactura || pend.id || ""),
-          monto: String(parseFloat(pend.total || pend.monto || 0).toFixed(2)),
-        }));
-      } else {
-        setFormPago(p => ({ ...p, pasarela: pasarelaDefault }));
-      }
-
-      // Buscar SN de ONU y nodo real por pppuser en tabla clientes
-      const pppuser = detRes?.datos?.[0]?.servicios?.[0]?.pppuser || detRes?.clientes?.[0]?.servicios?.[0]?.pppuser || "";
-      if (pppuser) {
-        const { data: snRows } = await supabase
-          .from("clientes")
-          .select("sn_onu, nodo")
-          .eq("usuario_nodo", pppuser)
-          .limit(1);
-        const sn  = snRows?.[0]?.sn_onu || "";
-        const nd  = snRows?.[0]?.nodo   || "";
-        if (sn) setSnOnu(sn);
-        if (nd) setNodoReal(nd); // ej: "Nod_01", "Nod_03" — nodo real para diagnóstico
-      }
+      await cargarDesdeRow(row);
     } catch(e) {
       setError("Error al cargar datos: " + e.message);
     }
@@ -550,31 +543,52 @@ export default function SidebarApp() {
     setCreando(false);
   }
 
-  // ── Buscar por DNI cuando teléfono no encontrado ────────────────────────
+  // ── Búsqueda flexible por DNI o nombre ──────────────────────────────────
   async function buscarPorDni() {
-    const dni = dniBusq.replace(/\D/g, "").slice(0, 8);
-    if (dni.length < 7) return notify("Ingresa un DNI válido", false);
+    const q = dniBusq.trim();
+    if (q.length < 2) return notify("Ingresa DNI o nombre", false);
     setDniBuscando(true);
-    setDniResultado(null);
+    setDniResultados([]);
+    setDniSel(null);
     try {
-      const { data } = await supabase
+      let qBuilder = supabase
         .from("mikrowisp_clientes")
         .select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado")
-        .ilike("cedula", `%${dni}%`)
-        .limit(5);
-      if (!data?.length) { notify("No se encontró cliente con ese DNI", false); }
-      else { setDniResultado(data[0]); }
+        .limit(6);
+
+      const isNumeric = /^\d+$/.test(q);
+      if (isNumeric) {
+        qBuilder = qBuilder.ilike("cedula", `%${q}%`);
+      } else {
+        // Buscar por cada palabra del nombre (en cualquier orden)
+        const palabras = q.split(/\s+/).filter(p => p.length > 1);
+        for (const p of palabras) qBuilder = qBuilder.ilike("nombre", `%${p}%`);
+      }
+
+      const { data } = await qBuilder;
+      if (!data?.length) notify("No se encontró cliente", false);
+      else setDniResultados(data);
     } catch(e) { notify("Error: " + e.message, false); }
     setDniBuscando(false);
   }
 
+  async function verInfoCliente(row) {
+    setError(null);
+    setDniResultados([]);
+    setDniSel(null);
+    setDniBusq("");
+    setLoading(true);
+    try { await cargarDesdeRow(row); }
+    catch(e) { setError("Error al cargar: " + e.message); }
+    setLoading(false);
+  }
+
   async function agregarTelefono() {
-    if (!dniResultado || !contact?.phone_number) return;
+    if (!dniSel || !contact?.phone_number) return;
     setAgregando(true);
     try {
       const rawPhone = contact.phone_number.replace(/[^\d]/g, "");
-      const telActual = dniResultado.telefonos || "";
-      // Evitar duplicado
+      const telActual = dniSel.telefonos || "";
       if (telActual.includes(rawPhone)) {
         notify("Este número ya está registrado en el cliente", false);
         setAgregando(false); return;
@@ -583,13 +597,10 @@ export default function SidebarApp() {
       const { error: updErr } = await supabase
         .from("mikrowisp_clientes")
         .update({ telefonos: nuevoTel })
-        .eq("mikrowisp_id", dniResultado.mikrowisp_id);
+        .eq("mikrowisp_id", dniSel.mikrowisp_id);
       if (updErr) throw updErr;
-      notify("✅ Número agregado. Cargando cliente...");
-      setDniResultado(null);
-      setDniBusq("");
-      setError(null);
-      await buscarCliente(contact.phone_number);
+      notify("✅ Número agregado");
+      await verInfoCliente({ ...dniSel, telefonos: nuevoTel });
     } catch(e) { notify("Error al guardar: " + e.message, false); }
     setAgregando(false);
   }
@@ -792,7 +803,7 @@ export default function SidebarApp() {
         {msg && <div style={{ background:msg.ok?"#f0fdf4":"#fef2f2", color:msg.ok?T.green:T.red, border:`1px solid ${msg.ok?"#bbf7d0":"#fecaca"}`, borderRadius:8, padding:"4px 10px", fontSize:11, fontWeight:600 }}>{msg.text}</div>}
       </div>
 
-      {/* Error + búsqueda por DNI */}
+      {/* Error + búsqueda flexible */}
       {error && !cliente && (
         <div style={{ ...S.card, padding:"16px 18px", border:`1.5px solid #fecaca` }}>
           <div style={{ fontWeight:800, color:T.red, fontSize:13, marginBottom:4 }}>Cliente no encontrado</div>
@@ -800,27 +811,52 @@ export default function SidebarApp() {
             Número <strong>{contact?.phone_number}</strong> no está registrado en Mikrowisp.
           </div>
 
-          <div style={{ fontWeight:700, fontSize:12, color:T.navy, marginBottom:8 }}>Buscar por DNI</div>
+          <div style={{ fontWeight:700, fontSize:12, color:T.navy, marginBottom:8 }}>Buscar cliente</div>
           <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-            <input style={{ ...S.input, flex:1 }} type="text" inputMode="numeric" maxLength={8}
-              placeholder="DNI del cliente" value={dniBusq}
-              onChange={e => { setDniBusq(e.target.value.replace(/\D/g,"")); setDniResultado(null); }}
+            <input style={{ ...S.input, flex:1 }} type="text"
+              placeholder="DNI o nombre (parcial, cualquier orden)" value={dniBusq}
+              onChange={e => { setDniBusq(e.target.value); setDniResultados([]); setDniSel(null); }}
               onKeyDown={e => e.key === "Enter" && buscarPorDni()} />
             <button onClick={buscarPorDni} disabled={dniBuscando}
               style={{ ...S.btnSm(T.blue), padding:"9px 14px", opacity:dniBuscando?0.6:1 }}>
-              {dniBuscando?"...":"Buscar"}
+              {dniBuscando ? "..." : "Buscar"}
             </button>
           </div>
 
-          {dniResultado && (
-            <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:10, padding:"12px 14px" }}>
-              <div style={{ fontWeight:800, fontSize:13, color:T.navy, marginBottom:4 }}>{dniResultado.nombre}</div>
-              <div style={{ fontSize:11, color:T.muted, marginBottom:2 }}>DNI: {dniResultado.cedula} · ID: #{dniResultado.mikrowisp_id} · Nodo: {dniResultado.nodo}</div>
-              <div style={{ fontSize:11, color:T.muted, marginBottom:10 }}>Teléfonos actuales: {dniResultado.telefonos || "—"}</div>
-              <button onClick={agregarTelefono} disabled={agregando} className="sb-btn-action"
-                style={{ ...S.btn(agregando ? T.muted : T.green), opacity:agregando?0.6:1, fontSize:11, padding:"9px 12px" }}>
-                {agregando ? "Guardando..." : `➕ Agregar ${contact?.phone_number} a este cliente`}
+          {/* Lista de resultados */}
+          {dniResultados.length > 0 && (
+            <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
+              {dniResultados.map(row => {
+                const sel = dniSel?.mikrowisp_id === row.mikrowisp_id;
+                return (
+                  <div key={row.mikrowisp_id} onClick={() => setDniSel(sel ? null : row)}
+                    style={{ background: sel ? "#f0fdf4" : T.bg, border:`1.5px solid ${sel?"#86efac":T.border}`,
+                      borderRadius:10, padding:"10px 12px", cursor:"pointer", transition:"all .15s" }}>
+                    <div style={{ fontWeight:700, fontSize:12, color:T.navy }}>{row.nombre}</div>
+                    <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>
+                      DNI: {row.cedula} · ID: #{row.mikrowisp_id} · Nodo: {row.nodo} · {row.estado}
+                    </div>
+                    {row.telefonos && row.telefonos !== "EMPTY" &&
+                      <div style={{ fontSize:10, color:T.muted }}>📞 {row.telefonos}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Acciones para el resultado seleccionado */}
+          {dniSel && (
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              <button onClick={() => verInfoCliente(dniSel)} className="sb-btn-action"
+                style={{ ...S.btn(T.blue), fontSize:11, padding:"9px 12px" }}>
+                👁 Ver información del cliente
               </button>
+              {contact?.phone_number && (
+                <button onClick={agregarTelefono} disabled={agregando} className="sb-btn-action"
+                  style={{ ...S.btn(agregando ? T.muted : T.green), opacity:agregando?0.6:1, fontSize:11, padding:"9px 12px" }}>
+                  {agregando ? "Guardando..." : `➕ Agregar ${contact.phone_number} y ver info`}
+                </button>
+              )}
             </div>
           )}
         </div>
