@@ -252,7 +252,7 @@ export default function SidebarApp() {
   const [analisis, setAnalisis]   = useState(null);
   const fileRef = useRef();
   // Prórroga
-  const [prorrForm, setProrrForm] = useState({ fecha: "" });
+  const [prorrForm, setProrrForm] = useState({ fecha: "", calMes: "" });
   const [prorrInfo, setProrrInfo] = useState(null);
   const [prorrando, setProrrando] = useState(false);
   // Crear factura
@@ -1700,22 +1700,36 @@ export default function SidebarApp() {
             {prorrando && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Verificando elegibilidad...</div>}
             {!prorrando && !prorrInfo && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Sin facturas pendientes para prorroga.</div>}
             {prorrInfo && (() => {
-              const corteStr = new Date(prorrInfo.corte).toISOString().split("T")[0];
-              const maxStr   = new Date(new Date(prorrInfo.corte).getTime() + prorrInfo.diasMax * 86400000).toISOString().split("T")[0];
-              const diasOpciones = Array.from({ length: prorrInfo.diasMax }, (_, i) => {
-                const d = new Date(prorrInfo.corte); d.setDate(d.getDate() + i + 1);
-                return { dias: i + 1, fecha: d.toISOString().split("T")[0],
-                  label: d.toLocaleDateString("es-PE", { day:"2-digit", month:"short" }) };
-              });
+              const minDate = new Date(prorrInfo.corte); minDate.setDate(minDate.getDate() + 1);
+              const maxDate = new Date(prorrInfo.corte); maxDate.setDate(maxDate.getDate() + prorrInfo.diasMax);
+              const minStr  = minDate.toISOString().split("T")[0];
+              const maxStr  = maxDate.toISOString().split("T")[0];
               const diasSelec = prorrForm.fecha
                 ? Math.round((new Date(prorrForm.fecha+"T00:00:00") - new Date(prorrInfo.corte)) / 86400000)
                 : 0;
+
+              // ── Calendario custom ─────────────────────────────────────────
+              const calBase  = prorrForm.calMes
+                ? new Date(prorrForm.calMes + "-01T00:00:00")
+                : new Date(minStr + "T00:00:00");
+              const calYear  = calBase.getFullYear();
+              const calMonth = calBase.getMonth();
+              const primerDia = new Date(calYear, calMonth, 1).getDay();
+              const diasEnMes = new Date(calYear, calMonth + 1, 0).getDate();
+              const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+              const DIAS_SEMANA = ["Do","Lu","Ma","Mi","Ju","Vi","Sa"];
+              const calKey = `${calYear}-${String(calMonth+1).padStart(2,"0")}`;
+              const irMes = (delta) => {
+                const nd = new Date(calYear, calMonth + delta, 1);
+                setProrrForm(p => ({ ...p, calMes: `${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}` }));
+              };
+
               return (<>
                 <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
                   {[["Factura", `#${prorrInfo.idfactura}`], ["Vencimiento", prorrInfo.vencimiento],
-                    ["Dias maximos", `${prorrInfo.diasMax} dias`], ["Fecha limite", prorrInfo.fechaMaxStr]
+                    ["Días máx.", `${prorrInfo.diasMax} días`], ["Fecha límite", prorrInfo.fechaMaxStr]
                   ].map(([l, v], i, arr) => (
-                    <div key={l} style={{ display:"grid", gridTemplateColumns:"130px 1fr",
+                    <div key={l} style={{ display:"grid", gridTemplateColumns:"110px 1fr",
                       borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
                       <div style={{ padding:"7px 10px", background:T.bg, borderRight:`1px solid ${T.border}`,
                         fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
@@ -1726,45 +1740,86 @@ export default function SidebarApp() {
                 {prorrInfo.suspendido && (
                   <div style={{ background:"#fffbeb", border:`1px solid #fde68a`, borderLeft:`3px solid #f59e0b`,
                     borderRadius:5, padding:"6px 10px", fontSize:11, color:"#92400e", fontWeight:600, marginBottom:10 }}>
-                    Suspendido — maximo 3 dias de prorroga
+                    Suspendido — máximo 3 días de prórroga
                   </div>
                 )}
-                {/* Botones rápidos — selección principal */}
-                <div style={{ marginBottom:10 }}>
-                  <label style={S.label}>Seleccionar días de prórroga</label>
-                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                    {diasOpciones.map(({ dias, fecha, label }) => (
-                      <button key={dias} onClick={() => setProrrForm({ fecha })}
-                        style={{ background: prorrForm.fecha === fecha ? T.blue : T.bg,
-                          color: prorrForm.fecha === fecha ? "#fff" : T.slate,
-                          border:`1px solid ${prorrForm.fecha === fecha ? T.blue : T.border}`,
-                          borderRadius:5, padding:"7px 10px", fontSize:12, fontWeight:700,
-                          cursor:"pointer", fontFamily:"inherit" }}>
-                        +{dias}d · {label}
-                      </button>
+
+                {/* ── Calendario interactivo ── */}
+                <div style={{ border:`1px solid ${T.border}`, borderRadius:8, overflow:"hidden", marginBottom:12, userSelect:"none" }}>
+                  {/* Cabecera mes */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                    background:T.blue, padding:"8px 12px" }}>
+                    <button onClick={() => irMes(-1)}
+                      style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:4,
+                        color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", padding:"2px 10px", lineHeight:1.4 }}>‹</button>
+                    <span style={{ color:"#fff", fontWeight:700, fontSize:13 }}>{MESES[calMonth]} {calYear}</span>
+                    <button onClick={() => irMes(1)}
+                      style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:4,
+                        color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", padding:"2px 10px", lineHeight:1.4 }}>›</button>
+                  </div>
+                  {/* Días semana */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:T.accent }}>
+                    {DIAS_SEMANA.map(d => (
+                      <div key={d} style={{ textAlign:"center", padding:"5px 0", fontSize:10, fontWeight:700, color:T.blue }}>{d}</div>
                     ))}
                   </div>
+                  {/* Celdas */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", background:"#fff" }}>
+                    {Array.from({ length: primerDia }).map((_, i) => <div key={`e${i}`} />)}
+                    {Array.from({ length: diasEnMes }, (_, i) => {
+                      const dia = i + 1;
+                      const fechaStr = `${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`;
+                      const selec    = fechaStr === prorrForm.fecha;
+                      const valida   = fechaStr >= minStr && fechaStr <= maxStr;
+                      const esDom    = (primerDia + i) % 7 === 0;
+                      return (
+                        <div key={dia}
+                          onClick={() => valida && setProrrForm(p => ({ ...p, fecha: fechaStr }))}
+                          style={{
+                            textAlign:"center", padding:"7px 0", fontSize:12, fontWeight: selec ? 800 : valida ? 600 : 400,
+                            cursor: valida ? "pointer" : "default",
+                            color: selec ? "#fff" : !valida ? "#d1d5db" : esDom ? "#dc2626" : T.navy,
+                            background: selec ? T.blue : valida && !selec ? "transparent" : "transparent",
+                            borderRadius: selec ? "50%" : 0,
+                            margin: selec ? "1px auto" : 0,
+                            width: selec ? 28 : "auto",
+                            height: selec ? 28 : "auto",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            transition:"background .1s",
+                          }}
+                          onMouseEnter={e => { if (valida && !selec) e.currentTarget.style.background = T.accent; }}
+                          onMouseLeave={e => { if (!selec) e.currentTarget.style.background = "transparent"; }}>
+                          {dia}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                {/* Input de fecha — alternativa manual */}
-                <div style={{ marginBottom:12 }}>
-                  <label style={S.label}>O escribir fecha manualmente</label>
-                  <input style={S.input} type="date" min={corteStr} max={maxStr}
-                    value={prorrForm.fecha}
-                    onChange={e => { if (e.target.value) setProrrForm({ fecha: e.target.value }); }}
-                    onInput={e => { if (e.target.value) setProrrForm({ fecha: e.target.value }); }} />
-                  {prorrForm.fecha && (
-                    <div style={{ marginTop:4, fontSize:11, color:T.blue, fontWeight:600 }}>
-                      Seleccionado: {new Date(prorrForm.fecha + "T00:00:00").toLocaleDateString("es-PE", { day:"2-digit", month:"long", year:"numeric" })}
-                      {" "}· +{diasSelec} día{diasSelec !== 1 ? "s" : ""} desde el corte
+
+                {/* Fecha seleccionada */}
+                {prorrForm.fecha ? (
+                  <div style={{ background:T.accent, border:`1px solid ${T.border}`, borderLeft:`3px solid ${T.blue}`,
+                    borderRadius:5, padding:"8px 12px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <div>
+                      <div style={{ fontSize:11, color:T.muted, fontWeight:600 }}>Fecha seleccionada</div>
+                      <div style={{ fontSize:13, fontWeight:800, color:T.navy }}>
+                        {new Date(prorrForm.fecha+"T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"long",year:"numeric"})}
+                      </div>
                     </div>
-                  )}
-                </div>
+                    <div style={{ fontSize:12, fontWeight:700, color:T.blue }}>+{diasSelec} día{diasSelec!==1?"s":""}</div>
+                  </div>
+                ) : (
+                  <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginBottom:12 }}>
+                    Toca un día resaltado para seleccionar la fecha
+                  </div>
+                )}
+
                 <button onClick={registrarProrroga} disabled={prorrando || !prorrForm.fecha} className="sb-btn-action"
                   style={{ ...S.btn(prorrando || !prorrForm.fecha ? "#9ca3af" : T.blue),
                     opacity: prorrando || !prorrForm.fecha ? 0.55 : 1 }}>
-                  {prorrando ? "Registrando..." : "Confirmar prorroga"}
+                  {prorrando ? "Registrando..." : "Confirmar prórroga"}
                 </button>
-                {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>El cliente sera notificado automaticamente</div>}
+                {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>El cliente será notificado automáticamente</div>}
               </>);
             })()}
           </div>
