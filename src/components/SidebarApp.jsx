@@ -925,8 +925,9 @@ export default function SidebarApp() {
 
   // ── Pre-llenar coordenadas del servicio cuando cambia el cliente ─────────
   useEffect(() => {
-    if (svc?.coordenadas) setOrdenForm(p => ({ ...p, coordenadas: svc.coordenadas }));
-  }, [svc?.coordenadas]);
+    const coords = detalle?._servicio?.coordenadas;
+    if (coords) setOrdenForm(p => ({ ...p, coordenadas: coords }));
+  }, [detalle?._servicio?.coordenadas]);
 
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
