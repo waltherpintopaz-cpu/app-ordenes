@@ -285,7 +285,10 @@ export default function SidebarApp() {
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
-  const [showOrdenMap, setShowOrdenMap] = useState(false);
+  const [showOrdenMap,  setShowOrdenMap]  = useState(false);
+  const [ordenesCliente,      setOrdenesCliente]      = useState([]);
+  const [liquidacionesCliente,setLiquidacionesCliente] = useState([]);
+  const [historialLoad, setHistorialLoad] = useState(false);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -419,6 +422,7 @@ export default function SidebarApp() {
     setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false);
     setDniResultados([]); setDniSel(null); setDniBusq("");
     setOrdenCreada(null);
+    setOrdenesCliente([]); setLiquidacionesCliente([]);
   }
 
   // ── Cargar datos completos a partir de una row de mikrowisp_clientes ────────
@@ -471,6 +475,9 @@ export default function SidebarApp() {
       if (snRows?.[0]?.sn_onu) setSnOnu(snRows[0].sn_onu);
       if (snRows?.[0]?.nodo)   setNodoReal(snRows[0].nodo);
     }
+
+    // Cargar historial de órdenes y liquidaciones del cliente
+    if (row.cedula) cargarHistorialOrdenes(row.cedula);
   }
 
   // ── Buscar cliente por teléfono ───────────────────────────────────────────
@@ -918,6 +925,23 @@ export default function SidebarApp() {
     setProrrando(false);
   }
 
+  // ── Historial de órdenes y liquidaciones del cliente ─────────────────────
+  async function cargarHistorialOrdenes(cedula) {
+    if (!cedula) return;
+    setHistorialLoad(true);
+    const [ordRes, liqRes] = await Promise.all([
+      supabase.from("ordenes")
+        .select("id,codigo,tipo_actuacion,estado,fecha_actuacion,tecnico,autor_orden,descripcion,fecha_creacion")
+        .eq("dni", cedula).order("fecha_creacion", { ascending: false }).limit(8),
+      supabase.from("liquidaciones")
+        .select("codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,cobro_realizado")
+        .eq("dni", cedula).order("fecha_liquidacion", { ascending: false }).limit(8),
+    ]);
+    if (ordRes.data) setOrdenesCliente(ordRes.data);
+    if (liqRes.data) setLiquidacionesCliente(liqRes.data);
+    setHistorialLoad(false);
+  }
+
   // ── Cargar técnicos y usuarios activos desde Supabase ────────────────────
   useEffect(() => {
     supabase.from("usuarios").select("nombre,rol,empresa").eq("activo",true).order("nombre")
@@ -1318,6 +1342,35 @@ export default function SidebarApp() {
             </button>
           </div>
         )}
+
+        {/* ══ BANNER ORDEN ACTIVA ══ */}
+        {(() => {
+          const ESTADOS_FINALES = ["liquidada","cancelada","completada","finalizada"];
+          const activas = ordenesCliente.filter(o => !ESTADOS_FINALES.includes((o.estado||"").toLowerCase()));
+          if (!activas.length) return null;
+          const ultima = activas[0];
+          return (
+            <div style={{ padding:"8px 8px 0" }}>
+              <div style={{ background:"#eff6ff", borderLeft:`3px solid #3b82f6`, border:`1px solid #bfdbfe`,
+                borderRadius:5, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:700, color:"#1d4ed8", textTransform:"uppercase", letterSpacing:"0.3px", marginBottom:2 }}>
+                    {activas.length === 1 ? "Orden activa" : `${activas.length} órdenes activas`}
+                  </div>
+                  <div style={{ fontFamily:"monospace", fontWeight:700, fontSize:12, color:"#1e3a8a" }}>{ultima.codigo}</div>
+                  <div style={{ fontSize:11, color:"#3b82f6", marginTop:1 }}>
+                    {ultima.tipo_actuacion} · {ultima.tecnico || "Sin técnico"} · {(ultima.fecha_actuacion||"").slice(0,10)}
+                  </div>
+                </div>
+                <button onClick={() => setTab("orden")}
+                  style={{ background:"#3b82f6", color:"#fff", border:"none", borderRadius:5,
+                    padding:"6px 12px", fontWeight:700, fontSize:11, cursor:"pointer", flexShrink:0 }}>
+                  Ver →
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ══ BANNER DEUDA ══ */}
         <div style={{ padding:"8px 8px 0" }}>
@@ -1853,6 +1906,64 @@ export default function SidebarApp() {
               </button>
               {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se enviará como nota interna en esta conversación</div>}
             </>)}
+
+            {/* ── Historial de órdenes y liquidaciones ── */}
+            {(ordenesCliente.length > 0 || liquidacionesCliente.length > 0 || historialLoad) && (
+              <div style={{ marginTop:14, borderTop:`1px solid ${T.border}`, paddingTop:12 }}>
+                <div style={{ fontWeight:700, fontSize:12, color:T.navy, marginBottom:8 }}>
+                  Historial {historialLoad && <span style={{ color:T.muted, fontWeight:400, fontSize:11 }}>cargando...</span>}
+                </div>
+
+                {/* Órdenes */}
+                {ordenesCliente.length > 0 && (<>
+                  <div style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:5 }}>Órdenes</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:5, marginBottom:10 }}>
+                    {ordenesCliente.map(o => {
+                      const FINALES = ["liquidada","cancelada","completada","finalizada"];
+                      const finalizada = FINALES.includes((o.estado||"").toLowerCase());
+                      const estadoColor = finalizada ? "#16a34a" : (o.estado||"").toLowerCase() === "cancelada" ? "#9ca3af" : "#f59e0b";
+                      const estadoBg   = finalizada ? "#f0fdf4" : (o.estado||"").toLowerCase() === "cancelada" ? "#f9fafb" : "#fffbeb";
+                      return (
+                        <div key={o.id} style={{ background:estadoBg, border:`1px solid ${finalizada?"#86efac":(o.estado||"").toLowerCase()==="cancelada"?"#e5e7eb":"#fde68a"}`,
+                          borderRadius:5, padding:"8px 10px" }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
+                            <span style={{ fontFamily:"monospace", fontWeight:700, fontSize:11, color:T.navy }}>{o.codigo}</span>
+                            <span style={{ background:estadoColor, color:"#fff", borderRadius:3, padding:"1px 7px", fontSize:10, fontWeight:700 }}>
+                              {o.estado || "Pendiente"}
+                            </span>
+                          </div>
+                          <div style={{ fontSize:11, color:T.muted }}>
+                            {o.tipo_actuacion} · {o.tecnico || "—"} · {(o.fecha_actuacion||"").slice(0,10)}
+                          </div>
+                          {o.descripcion && <div style={{ fontSize:10, color:"#64748b", marginTop:2, fontStyle:"italic" }}>{o.descripcion.slice(0,60)}{o.descripcion.length>60?"…":""}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>)}
+
+                {/* Liquidaciones */}
+                {liquidacionesCliente.length > 0 && (<>
+                  <div style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:5 }}>Liquidaciones</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    {liquidacionesCliente.map((l, i) => (
+                      <div key={i} style={{ background:T.greenLt, border:`1px solid #86efac`, borderRadius:5, padding:"8px 10px" }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
+                          <span style={{ fontFamily:"monospace", fontWeight:700, fontSize:11, color:T.navy }}>{l.codigo || "—"}</span>
+                          {l.monto_cobrado > 0 && (
+                            <span style={{ fontWeight:700, fontSize:11, color:T.green }}>S/ {Number(l.monto_cobrado).toFixed(2)}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize:11, color:T.muted }}>
+                          {l.tipo_actuacion} · {l.tecnico_liquida || "—"} · {(l.fecha_liquidacion||"").slice(0,10)}
+                        </div>
+                        {l.resultado_final && <div style={{ fontSize:10, color:T.green, marginTop:2, fontWeight:600 }}>{l.resultado_final}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </>)}
+              </div>
+            )}
           </div>
         )}
 
