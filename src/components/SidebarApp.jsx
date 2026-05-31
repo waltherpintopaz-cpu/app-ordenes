@@ -927,7 +927,9 @@ export default function SidebarApp() {
       const ok = (res?.estado || res?.result || res?.status || "").toLowerCase() !== "error";
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
       notify(`✅ Prórroga registrada hasta ${fechaStr}`);
-      if (convId) {
+      if (!convId) {
+        notify("⚠️ Sin conversación activa — mensaje no enviado al cliente", false);
+      } else {
         const nombreRaw = cliente?.nombre || "";
         const nombre = nombreRaw.includes(",")
           ? nombreRaw.split(",")[1].trim().split(" ")[0]
@@ -935,14 +937,19 @@ export default function SidebarApp() {
         const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
         const fechaFormato = new Date(fechaStr + "T00:00:00").toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"numeric" });
         const texto = `*PRÓRROGA ACEPTADA* ✅\n\nHola ${nombreFmt}, tu prórroga fue aprobada.\nTu servicio se mantiene activo hasta el ${fechaFormato}. Gracias por tu confianza. 💙`;
-        await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
-          body: JSON.stringify({ content: texto, message_type: "outgoing", private: false }),
-        }).catch(() => {});
+        try {
+          const msgRes = await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
+            body: JSON.stringify({ content: texto, message_type: "outgoing", private: false }),
+          });
+          if (!msgRes.ok) notify("⚠️ Prórroga OK pero error al enviar mensaje: " + msgRes.status, false);
+        } catch(e) {
+          notify("⚠️ Prórroga OK pero error al enviar mensaje: " + e.message, false);
+        }
       }
       setProrrInfo(null);
-      setProrrForm({ fecha: "" });
+      setProrrForm({ fecha: "", calMes: "" });
       setTab("info");
     } catch(e) { notify("Error: " + e.message, false); }
     setProrrando(false);
