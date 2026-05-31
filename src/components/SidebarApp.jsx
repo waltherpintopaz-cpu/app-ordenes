@@ -280,10 +280,11 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], tecnico: "", descripcion: "", coordenadas: "" });
+  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], tecnico: "", autorOrden: "", descripcion: "", coordenadas: "" });
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
+  const [autorLista,    setAutorLista]    = useState([]);
   const [showOrdenMap, setShowOrdenMap] = useState(false);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
@@ -917,10 +918,15 @@ export default function SidebarApp() {
     setProrrando(false);
   }
 
-  // ── Cargar técnicos activos desde Supabase ───────────────────────────────
+  // ── Cargar técnicos y usuarios activos desde Supabase ────────────────────
   useEffect(() => {
-    supabase.from("usuarios").select("nombre,empresa").eq("rol","Tecnico").eq("activo",true).order("nombre")
-      .then(({ data }) => { if (data?.length) setTecnicosLista(data); });
+    supabase.from("usuarios").select("nombre,rol,empresa").eq("activo",true).order("nombre")
+      .then(({ data }) => {
+        if (data?.length) {
+          setTecnicosLista(data.filter(u => u.rol === "Tecnico"));
+          setAutorLista(data);
+        }
+      });
   }, []);
 
   // ── Pre-llenar coordenadas del servicio cuando cambia el cliente ─────────
@@ -931,7 +937,7 @@ export default function SidebarApp() {
 
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
-    if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim()) return notify("Selecciona tipo de actuación y técnico", false);
+    if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
     setCreandoOrden(true);
     try {
       let codigo = "";
@@ -964,7 +970,7 @@ export default function SidebarApp() {
         descripcion:    ordenForm.descripcion || "",
         solicitar_pago: "NO",
         monto_cobrar:   0,
-        autor_orden:    agente,
+        autor_orden:    ordenForm.autorOrden || agente,
         tecnico:        ordenForm.tecnico,
         fecha_creacion: new Date().toISOString(),
       };
@@ -1759,11 +1765,19 @@ export default function SidebarApp() {
                       value={ordenForm.fechaActuacion} onChange={e => setOrdenForm(p => ({...p, fechaActuacion:e.target.value}))} />
                   </div>
                 </div>
-                {/* Autor (read-only) */}
+                {/* Autor */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Autor</div>
-                  <div style={{ padding:"8px 10px", fontSize:12, color:T.navy, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
-                    <span style={{ background:T.accent, color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:700, border:`1px solid ${T.border}` }}>{agente || "—"}</span>
+                  <div>
+                    {autorLista.length > 0 ? (
+                      <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                        value={ordenForm.autorOrden} onChange={e => setOrdenForm(p => ({...p, autorOrden:e.target.value}))}>
+                        <option value="">— Seleccionar autor —</option>
+                        {autorLista.map(u => <option key={u.nombre} value={u.nombre}>{u.nombre}{u.rol !== "Tecnico" ? ` (${u.rol})` : ""}</option>)}
+                      </select>
+                    ) : (
+                      <div style={{ padding:"8px 10px", fontSize:12, color:T.muted, fontStyle:"italic" }}>Cargando usuarios...</div>
+                    )}
                   </div>
                 </div>
                 {/* Técnico */}
@@ -1831,10 +1845,10 @@ export default function SidebarApp() {
                 </div>
               </div>
 
-              <button onClick={crearOrden} disabled={creandoOrden || !ordenForm.tipoActuacion || !ordenForm.tecnico.trim()}
+              <button onClick={crearOrden} disabled={creandoOrden || !ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()}
                 className="sb-btn-action"
-                style={{ ...S.btn(creandoOrden || !ordenForm.tecnico.trim() ? "#9ca3af" : T.blue),
-                  opacity: creandoOrden || !ordenForm.tecnico.trim() ? 0.55 : 1 }}>
+                style={{ ...S.btn(creandoOrden || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim() ? "#9ca3af" : T.blue),
+                  opacity: creandoOrden || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim() ? 0.55 : 1 }}>
                 {creandoOrden ? "Creando orden..." : "Crear orden de servicio"}
               </button>
               {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se enviará como nota interna en esta conversación</div>}
