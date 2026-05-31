@@ -928,7 +928,9 @@ export default function SidebarApp() {
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
       notify(`✅ Prórroga registrada hasta ${fechaStr}`);
       if (convId) {
-        const texto = `⏳ *PRÓRROGA REGISTRADA*\n\nTu pago ha sido programado hasta el ${fechaStr}.\nRecuerda realizar el pago antes de esa fecha para evitar la suspensión del servicio. 🙏`;
+        const nombre = primerNombre(cliente?.nombre);
+        const fechaFormato = new Date(fechaStr + "T00:00:00").toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"numeric" });
+        const texto = `*PRÓRROGA ACEPTADA* ✅\n\nHola ${nombre}, tu prórroga fue aprobada.\nTu servicio se mantiene activo hasta el ${fechaFormato}. Gracias por tu confianza. 💙`;
         await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
