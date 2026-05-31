@@ -943,7 +943,8 @@ export default function SidebarApp() {
             headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
             body: JSON.stringify({ content: texto, message_type: "outgoing", private: false }),
           });
-          if (!msgRes.ok) notify("⚠️ Prórroga OK pero error al enviar mensaje: " + msgRes.status, false);
+          if (!msgRes.ok) notify("⚠️ Error al enviar mensaje: " + msgRes.status, false);
+          else notify(`📨 Mensaje enviado — conv:${convId} acct:${acctId}`);
         } catch(e) {
           notify("⚠️ Prórroga OK pero error al enviar mensaje: " + e.message, false);
         }
