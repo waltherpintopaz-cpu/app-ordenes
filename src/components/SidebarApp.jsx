@@ -279,6 +279,11 @@ export default function SidebarApp() {
   const [dniResultados,setDniResultados]= useState([]); // lista de resultados
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
+  // Crear orden desde sidebar
+  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], tecnico: "", descripcion: "" });
+  const [creandoOrden, setCreandoOrden] = useState(false);
+  const [ordenCreada,  setOrdenCreada]  = useState(null);
+  const [tecnicosLista, setTecnicosLista] = useState([]);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -411,6 +416,7 @@ export default function SidebarApp() {
     setSnOnu(null); setNodoReal(null); setSenal(null);
     setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false);
     setDniResultados([]); setDniSel(null); setDniBusq("");
+    setOrdenCreada(null);
   }
 
   // ── Cargar datos completos a partir de una row de mikrowisp_clientes ────────
@@ -910,6 +916,76 @@ export default function SidebarApp() {
     setProrrando(false);
   }
 
+  // ── Cargar técnicos activos desde Supabase ───────────────────────────────
+  useEffect(() => {
+    supabase.from("usuarios").select("nombre,empresa").eq("rol","Tecnico").eq("activo",true).order("nombre")
+      .then(({ data }) => { if (data?.length) setTecnicosLista(data); });
+  }, []);
+
+  // ── Crear orden desde sidebar ─────────────────────────────────────────────
+  async function crearOrden() {
+    if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim()) return notify("Selecciona tipo de actuación y técnico", false);
+    setCreandoOrden(true);
+    try {
+      let codigo = "";
+      const { data: codigoData } = await supabase.rpc("generar_codigo_orden");
+      if (codigoData) {
+        codigo = String(codigoData);
+      } else {
+        codigo = `ORD-${String(Date.now()).slice(-4)}-${new Date().getFullYear()}`;
+      }
+
+      const empresaOrden = cliente.empresa === "dimfiber" ? "DIM" : "Americanet";
+      const payload = {
+        empresa:        empresaOrden,
+        codigo,
+        generar_usuario: "NO",
+        orden_tipo:     "ORDEN DE SERVICIO",
+        tipo_actuacion: ordenForm.tipoActuacion,
+        fecha_actuacion: ordenForm.fechaActuacion,
+        estado:         "Pendiente",
+        prioridad:      "Normal",
+        dni:            cliente.cedula || "",
+        nombre:         cliente.nombre || "",
+        direccion:      detalle?.direccion_principal || "",
+        celular:        detalle?.movil || (contact?.phone_number || "").replace(/[^\d]/g,"") || "",
+        email:          detalle?.correo || "",
+        nodo:           String(cliente.nodo),
+        usuario_nodo:   svc?.pppuser || "",
+        sn_onu:         snOnu || "",
+        descripcion:    ordenForm.descripcion || "",
+        solicitar_pago: "NO",
+        monto_cobrar:   0,
+        autor_orden:    agente,
+        tecnico:        ordenForm.tecnico,
+        fecha_creacion: new Date().toISOString(),
+      };
+
+      let res = await supabase.from("ordenes").insert([payload]).select("id,codigo").single();
+      if (res.error?.code === "23505") {
+        const { data: newCod } = await supabase.rpc("generar_codigo_orden");
+        if (newCod) { payload.codigo = String(newCod); res = await supabase.from("ordenes").insert([payload]).select("id,codigo").single(); }
+      }
+      if (res.error) throw res.error;
+
+      const codigoFinal = res.data?.codigo || codigo;
+      setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
+      notify(`✅ Orden ${codigoFinal} creada`);
+
+      if (convId) {
+        const texto = `📋 *ORDEN CREADA*\n\nCódigo: *${codigoFinal}*\nTipo: ${ordenForm.tipoActuacion}\nTécnico: ${ordenForm.tecnico}${ordenForm.descripcion ? `\nDetalle: ${ordenForm.descripcion}` : ""}`;
+        await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
+          body: JSON.stringify({ content: texto, message_type: "outgoing", private: true }),
+        }).catch(() => {});
+      }
+    } catch(e) {
+      notify("Error al crear orden: " + e.message, false);
+    }
+    setCreandoOrden(false);
+  }
+
   // ── Helpers de display ────────────────────────────────────────────────────
   const primerNombre = (n) => {
     if (!n) return "";
@@ -1260,16 +1336,16 @@ export default function SidebarApp() {
 
         {/* ══ TABS ══ */}
         <div style={{ background:T.card, marginTop:8, borderTop:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`, display:"flex" }}>
-          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorroga"],["nueva","Nueva"],["editar","Editar"]].map(([t, label]) => (
+          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorr."],["nueva","Factura"],["editar","Editar"],["orden","Orden"]].map(([t, label]) => (
             <button key={t} className="sb-tab-btn"
-              onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); }}
+              onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); if (t === "orden") setOrdenCreada(null); }}
               style={{ flex:1, border:"none",
                 borderBottom: tab === t ? `2px solid ${T.blue}` : "2px solid transparent",
                 borderTop:"none", borderLeft:"none", borderRight:`1px solid ${T.border}`,
                 background: tab === t ? T.accent : T.card,
                 color: tab === t ? T.blue : T.muted,
-                fontWeight: tab === t ? 700 : 500, fontSize:11,
-                padding:"9px 4px", cursor:"pointer", fontFamily:"inherit" }}>
+                fontWeight: tab === t ? 700 : 500, fontSize:10,
+                padding:"9px 2px", cursor:"pointer", fontFamily:"inherit" }}>
               {label}
             </button>
           ))}
@@ -1612,6 +1688,105 @@ export default function SidebarApp() {
                 {guardando ? "Guardando..." : "Guardar cambios"}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ══ TAB: CREAR ORDEN ══ */}
+        {tab === "orden" && (
+          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:4 }}>Crear orden de servicio</div>
+            <div style={{ color:T.muted, fontSize:11, marginBottom:12 }}>
+              Para <strong style={{ color:T.navy }}>{cliente.nombre}</strong> · DNI {cliente.cedula || "—"}
+            </div>
+
+            {/* Datos pre-llenados del cliente */}
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
+              {[
+                ["Empresa",   cliente.empresa === "dimfiber" ? "DIM" : "Americanet"],
+                ["Nodo",      String(cliente.nodo)],
+                ["Dirección", detalle?.direccion_principal || "—"],
+                ["Celular",   detalle?.movil || contact?.phone_number || "—"],
+                ...(svc?.pppuser ? [["PPPoE", svc.pppuser]] : []),
+              ].map(([l, v], i, arr) => (
+                <div key={l} style={{ display:"grid", gridTemplateColumns:"90px 1fr",
+                  borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
+                  <div style={{ padding:"5px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>{l}</div>
+                  <div style={{ padding:"5px 10px", fontSize:11, color:T.navy, fontWeight:500, wordBreak:"break-all" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Si la orden ya fue creada — mostrar resultado */}
+            {ordenCreada ? (
+              <div style={{ background:T.greenLt, border:`1px solid #86efac`, borderLeft:`3px solid ${T.green}`, borderRadius:5, padding:"14px 16px", marginBottom:12 }}>
+                <div style={{ fontWeight:800, fontSize:14, color:T.green, marginBottom:4 }}>Orden creada exitosamente</div>
+                <div style={{ fontFamily:"monospace", fontWeight:700, fontSize:15, color:T.navy, marginBottom:6 }}>{ordenCreada.codigo}</div>
+                <div style={{ fontSize:11, color:T.muted }}>La orden fue registrada en el sistema y notificada como nota interna en esta conversación.</div>
+                <button onClick={() => setOrdenCreada(null)} style={{ ...S.btnOut, marginTop:10, fontSize:11 }}>Crear otra orden</button>
+              </div>
+            ) : (<>
+              {/* Formulario */}
+              <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
+                {/* Tipo de actuación */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Tipo</div>
+                  <div>
+                    <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                      value={ordenForm.tipoActuacion} onChange={e => setOrdenForm(p => ({...p, tipoActuacion:e.target.value}))}>
+                      <option>Incidencia Internet</option>
+                      <option>Instalacion Internet</option>
+                      <option>Instalacion Internet y Cable</option>
+                      <option>Instalacion TV</option>
+                      <option>Mantenimiento</option>
+                      <option>Visita Tecnica</option>
+                      <option>Recojo de equipo</option>
+                    </select>
+                  </div>
+                </div>
+                {/* Fecha */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Fecha</div>
+                  <div>
+                    <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="date"
+                      value={ordenForm.fechaActuacion} onChange={e => setOrdenForm(p => ({...p, fechaActuacion:e.target.value}))} />
+                  </div>
+                </div>
+                {/* Técnico */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Técnico</div>
+                  <div>
+                    {tecnicosLista.length > 0 ? (
+                      <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                        value={ordenForm.tecnico} onChange={e => setOrdenForm(p => ({...p, tecnico:e.target.value}))}>
+                        <option value="">— Seleccionar —</option>
+                        {tecnicosLista.map(t => <option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
+                      </select>
+                    ) : (
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text"
+                        placeholder="Nombre del técnico" value={ordenForm.tecnico}
+                        onChange={e => setOrdenForm(p => ({...p, tecnico:e.target.value}))} />
+                    )}
+                  </div>
+                </div>
+                {/* Descripción */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr" }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, paddingTop:10 }}>Detalle</div>
+                  <div>
+                    <textarea style={{ ...S.input, border:"none", borderRadius:0, fontSize:12, resize:"vertical", minHeight:60 }}
+                      placeholder="Descripción del problema o trabajo (opcional)"
+                      value={ordenForm.descripcion} onChange={e => setOrdenForm(p => ({...p, descripcion:e.target.value}))} />
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={crearOrden} disabled={creandoOrden || !ordenForm.tipoActuacion || !ordenForm.tecnico.trim()}
+                className="sb-btn-action"
+                style={{ ...S.btn(creandoOrden || !ordenForm.tecnico.trim() ? "#9ca3af" : T.blue),
+                  opacity: creandoOrden || !ordenForm.tecnico.trim() ? 0.55 : 1 }}>
+                {creandoOrden ? "Creando orden..." : "Crear orden de servicio"}
+              </button>
+              {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se enviará como nota interna en esta conversación</div>}
+            </>)}
           </div>
         )}
 
