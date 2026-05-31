@@ -933,11 +933,12 @@ export default function SidebarApp() {
       if (!targetConvId && contact?.phone_number) {
         try {
           const phone = contact.phone_number.replace(/[^\d+]/g, "");
-          const sr = await fetch(`${CW_BASE}/api/v1/accounts/${targetAcctId}/contacts/search?q=${encodeURIComponent(phone)}`, {
+          const sr = await fetch(`${CW_BASE}/api/v1/accounts/${targetAcctId}/contacts/search?q=${encodeURIComponent(phone)}&include_contacts=true`, {
             headers: { "api_access_token": CW_TOKEN },
           });
           const sd = await sr.json();
-          const cid = sd?.payload?.[0]?.id;
+          const contacts = sd?.payload?.contacts || sd?.payload || [];
+          const cid = (Array.isArray(contacts) ? contacts[0] : null)?.id;
           if (cid) {
             const cr = await fetch(`${CW_BASE}/api/v1/accounts/${targetAcctId}/contacts/${cid}/conversations`, {
               headers: { "api_access_token": CW_TOKEN },
