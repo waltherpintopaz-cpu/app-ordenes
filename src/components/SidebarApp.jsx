@@ -1729,27 +1729,35 @@ export default function SidebarApp() {
                     Suspendido — maximo 3 dias de prorroga
                   </div>
                 )}
+                {/* Botones rápidos — selección principal */}
                 <div style={{ marginBottom:10 }}>
-                  <label style={S.label}>Fecha limite de pago</label>
-                  <input style={S.input} type="date" min={corteStr} max={maxStr} value={prorrForm.fecha}
-                    onChange={e => setProrrForm({ fecha: e.target.value })} />
+                  <label style={S.label}>Seleccionar días de prórroga</label>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    {diasOpciones.map(({ dias, fecha, label }) => (
+                      <button key={dias} onClick={() => setProrrForm({ fecha })}
+                        style={{ background: prorrForm.fecha === fecha ? T.blue : T.bg,
+                          color: prorrForm.fecha === fecha ? "#fff" : T.slate,
+                          border:`1px solid ${prorrForm.fecha === fecha ? T.blue : T.border}`,
+                          borderRadius:5, padding:"7px 10px", fontSize:12, fontWeight:700,
+                          cursor:"pointer", fontFamily:"inherit" }}>
+                        +{dias}d · {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Input de fecha — alternativa manual */}
+                <div style={{ marginBottom:12 }}>
+                  <label style={S.label}>O escribir fecha manualmente</label>
+                  <input style={S.input} type="date" min={corteStr} max={maxStr}
+                    value={prorrForm.fecha}
+                    onChange={e => { if (e.target.value) setProrrForm({ fecha: e.target.value }); }}
+                    onInput={e => { if (e.target.value) setProrrForm({ fecha: e.target.value }); }} />
                   {prorrForm.fecha && (
                     <div style={{ marginTop:4, fontSize:11, color:T.blue, fontWeight:600 }}>
-                      +{diasSelec} dia{diasSelec !== 1 ? "s" : ""} desde el corte
+                      Seleccionado: {new Date(prorrForm.fecha + "T00:00:00").toLocaleDateString("es-PE", { day:"2-digit", month:"long", year:"numeric" })}
+                      {" "}· +{diasSelec} día{diasSelec !== 1 ? "s" : ""} desde el corte
                     </div>
                   )}
-                </div>
-                <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:12 }}>
-                  {diasOpciones.map(({ dias, fecha, label }) => (
-                    <button key={dias} onClick={() => setProrrForm({ fecha })}
-                      style={{ background: prorrForm.fecha === fecha ? T.blue : T.bg,
-                        color: prorrForm.fecha === fecha ? "#fff" : T.slate,
-                        border:`1px solid ${prorrForm.fecha === fecha ? T.blue : T.border}`,
-                        borderRadius:5, padding:"5px 10px", fontSize:11, fontWeight:600,
-                        cursor:"pointer", fontFamily:"inherit" }}>
-                      +{dias}d · {label}
-                    </button>
-                  ))}
                 </div>
                 <button onClick={registrarProrroga} disabled={prorrando || !prorrForm.fecha} className="sb-btn-action"
                   style={{ ...S.btn(prorrando || !prorrForm.fecha ? "#9ca3af" : T.blue),
