@@ -927,30 +927,7 @@ export default function SidebarApp() {
       const ok = (res?.estado || res?.result || res?.status || "").toLowerCase() !== "error";
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
       notify(`✅ Prórroga registrada hasta ${fechaStr}`);
-      // Buscar convId por teléfono si no está disponible por postMessage
-      let targetConvId = convId;
-      let targetAcctId = acctId || "1";
-      if (!targetConvId && contact?.phone_number) {
-        try {
-          const phone = contact.phone_number.replace(/[^\d+]/g, "");
-          const sr = await fetch(`${CW_BASE}/api/v1/accounts/${targetAcctId}/contacts/search?q=${encodeURIComponent(phone)}&include_contacts=true`, {
-            headers: { "api_access_token": CW_TOKEN },
-          });
-          const sd = await sr.json();
-          const contacts = sd?.payload?.contacts || sd?.payload || [];
-          const cid = (Array.isArray(contacts) ? contacts[0] : null)?.id;
-          if (cid) {
-            const cr = await fetch(`${CW_BASE}/api/v1/accounts/${targetAcctId}/contacts/${cid}/conversations`, {
-              headers: { "api_access_token": CW_TOKEN },
-            });
-            const cd = await cr.json();
-            const convs = cd?.payload || [];
-            const conv = convs.find(c => c.status === "open") || convs[0];
-            if (conv) targetConvId = String(conv.id);
-          }
-        } catch(_) {}
-      }
-      if (targetConvId) {
+      if (contact?.phone_number) {
         const nombreRaw = cliente?.nombre || "";
         const nombre = nombreRaw.includes(",")
           ? nombreRaw.split(",")[1].trim().split(" ")[0]
@@ -958,10 +935,13 @@ export default function SidebarApp() {
         const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
         const fechaFormato = new Date(fechaStr + "T00:00:00").toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"numeric" });
         const texto = `*PRÓRROGA ACEPTADA* ✅\n\nHola ${nombreFmt}, tu prórroga fue aprobada.\nTu servicio se mantiene activo hasta el ${fechaFormato}. Gracias por tu confianza. 💙`;
-        await fetch(`${CW_BASE}/api/v1/accounts/${targetAcctId}/conversations/${targetConvId}/messages`, {
+        await fetch(PROXY_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
-          body: JSON.stringify({ content: texto, message_type: "outgoing", private: false }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accion: "ChatwootMessage",
+            payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" },
+          }),
         }).catch(() => {});
       }
       setProrrInfo(null);
