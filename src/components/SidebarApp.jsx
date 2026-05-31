@@ -280,10 +280,11 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], tecnico: "", descripcion: "" });
+  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], tecnico: "", descripcion: "", coordenadas: "" });
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
+  const [showOrdenMap, setShowOrdenMap] = useState(false);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -922,6 +923,11 @@ export default function SidebarApp() {
       .then(({ data }) => { if (data?.length) setTecnicosLista(data); });
   }, []);
 
+  // ── Pre-llenar coordenadas del servicio cuando cambia el cliente ─────────
+  useEffect(() => {
+    if (svc?.coordenadas) setOrdenForm(p => ({ ...p, coordenadas: svc.coordenadas }));
+  }, [svc?.coordenadas]);
+
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim()) return notify("Selecciona tipo de actuación y técnico", false);
@@ -953,6 +959,7 @@ export default function SidebarApp() {
         nodo:           String(cliente.nodo),
         usuario_nodo:   svc?.pppuser || "",
         sn_onu:         snOnu || "",
+        ubicacion:      ordenForm.coordenadas || "",
         descripcion:    ordenForm.descripcion || "",
         solicitar_pago: "NO",
         monto_cobrar:   0,
@@ -1751,6 +1758,13 @@ export default function SidebarApp() {
                       value={ordenForm.fechaActuacion} onChange={e => setOrdenForm(p => ({...p, fechaActuacion:e.target.value}))} />
                   </div>
                 </div>
+                {/* Autor (read-only) */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Autor</div>
+                  <div style={{ padding:"8px 10px", fontSize:12, color:T.navy, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
+                    <span style={{ background:T.accent, color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:700, border:`1px solid ${T.border}` }}>{agente || "—"}</span>
+                  </div>
+                </div>
                 {/* Técnico */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Técnico</div>
@@ -1768,6 +1782,43 @@ export default function SidebarApp() {
                     )}
                   </div>
                 </div>
+                {/* Coordenadas */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>
+                    <MapPin size={11} style={{ marginRight:3 }} />Coords.
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:0 }}>
+                    <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:11, flex:1, fontFamily:"monospace" }}
+                      type="text" placeholder="-16.438490, -71.598208"
+                      value={ordenForm.coordenadas}
+                      onChange={e => { setOrdenForm(p => ({...p, coordenadas:e.target.value})); setShowOrdenMap(false); }} />
+                    {(() => {
+                      const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+                      const valid = lat && lng && !isNaN(lat) && !isNaN(lng);
+                      return valid ? (
+                        <button onClick={() => setShowOrdenMap(m => !m)}
+                          style={{ ...S.btnSm(showOrdenMap ? T.blueDk : T.blue), borderRadius:0, padding:"0 10px", height:"100%", fontSize:10, whiteSpace:"nowrap", flexShrink:0 }}>
+                          {showOrdenMap ? "Ocultar" : "Ver mapa"}
+                        </button>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+                {/* Mapa */}
+                {showOrdenMap && (() => {
+                  const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+                  if (!lat || !lng) return null;
+                  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
+                  return (
+                    <div style={{ position:"relative" }}>
+                      <iframe src={mapUrl} title="Ubicación orden" style={{ width:"100%", height:160, border:"none", display:"block" }} loading="lazy" />
+                      <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
+                        style={{ position:"absolute", bottom:6, right:8, background:"rgba(0,0,0,0.6)", color:"#fff", fontSize:10, padding:"3px 8px", borderRadius:4, textDecoration:"none", fontWeight:600 }}>
+                        Google Maps ↗
+                      </a>
+                    </div>
+                  );
+                })()}
                 {/* Descripción */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr" }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, paddingTop:10 }}>Detalle</div>
