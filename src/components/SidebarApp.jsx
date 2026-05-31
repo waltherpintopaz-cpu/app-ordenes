@@ -921,8 +921,8 @@ export default function SidebarApp() {
       const res = await mkwProxy(Number(cliente.nodo), "PromesaPago", {
         idcliente:  parseInt(cliente.mikrowisp_id, 10),
         idfactura:  parseInt(prorrInfo.idfactura, 10),
-        fechalimite: fechaStr, // YYYY-MM-DD
-      });
+        fechalimite: fechaStr,
+      }, tkn);
       const ok = (res?.estado || res?.result || res?.status || "").toLowerCase() !== "error";
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
       notify(`✅ Prórroga registrada hasta ${fechaStr}`);
