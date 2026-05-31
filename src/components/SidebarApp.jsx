@@ -918,10 +918,11 @@ export default function SidebarApp() {
         setProrrando(false); return;
       }
       const tkn = getToken(cliente.empresa, agente);
+      const fechalimite = fechaStr.replace(/-/g, "/"); // YYYY/MM/DD
       const res = await mkwProxy(Number(cliente.nodo), "PromesaPago", {
-        idcliente: parseInt(cliente.mikrowisp_id, 10),
-        idfactura: parseInt(prorrInfo.idfactura, 10),
-        fecha: fechaStr,
+        idcliente:  parseInt(cliente.mikrowisp_id, 10),
+        idfactura:  parseInt(prorrInfo.idfactura, 10),
+        fechalimite,
       });
       const ok = (res?.estado || res?.result || res?.status || "").toLowerCase() !== "error";
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
