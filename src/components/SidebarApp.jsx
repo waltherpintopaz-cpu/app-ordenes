@@ -924,7 +924,7 @@ export default function SidebarApp() {
       .then(({ data }) => {
         if (data?.length) {
           setTecnicosLista(data.filter(u => u.rol === "Tecnico"));
-          setAutorLista(data);
+          setAutorLista(data.filter(u => u.rol !== "Tecnico"));
         }
       });
   }, []);
