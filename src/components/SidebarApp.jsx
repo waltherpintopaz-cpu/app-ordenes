@@ -242,6 +242,7 @@ export default function SidebarApp() {
   const [deletingPago, setDeletingPago] = useState(null);
   const [menuAbierto,  setMenuAbierto]  = useState(null); // fid de la fila con menú abierto
   const [activando,    setActivando]    = useState(false);
+  const [suspendiendo, setSuspendiendo] = useState(false);
   const [editForm,     setEditForm]     = useState({ nombre:"", movil:"", telefono:"", correo:"", cedula:"", direccion_principal:"" });
   const [guardando,    setGuardando]    = useState(false);
   // Comprobante Vision
@@ -702,6 +703,20 @@ export default function SidebarApp() {
       else { notify("✅ Servicio activado correctamente"); await buscarCliente(contact?.phone_number || ""); }
     } catch(e) { notify("Error: " + e.message, false); }
     setActivando(false);
+  }
+
+  // ── Suspender servicio (cliente activo) ───────────────────────────────────
+  async function suspenderServicio() {
+    if (!window.confirm(`¿Suspender el servicio de ${cliente.nombre}?\nEl cliente pasará a estado SUSPENDIDO.`)) return;
+    setSuspendiendo(true);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const res = await mkwProxy(Number(cliente.nodo), "SuspendService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn);
+      const ok  = (res?.estado || "").toLowerCase() === "exito";
+      if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
+      else { notify("⚠️ Servicio suspendido"); await buscarCliente(contact?.phone_number || ""); }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setSuspendiendo(false);
   }
 
   // ── Eliminar factura ─────────────────────────────────────────────────────
@@ -1334,13 +1349,21 @@ export default function SidebarApp() {
           </div>
         )}
 
-        {/* ══ BOTÓN ACTIVAR (solo si suspendido) ══ */}
-        {suspendido && (
-          <div style={{ padding:"8px 8px 0" }}>
-            <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
-              style={{ ...S.btn(T.green), display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1, borderRadius:5 }}>
-              <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
-            </button>
+        {/* ══ BOTONES ACTIVAR / SUSPENDER ══ */}
+        {(suspendido || estadoServicio === "ACTIVO") && (
+          <div style={{ padding:"8px 8px 0", display:"flex", gap:6 }}>
+            {suspendido && (
+              <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
+                style={{ ...S.btn(T.green), flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1, borderRadius:5 }}>
+                <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
+              </button>
+            )}
+            {estadoServicio === "ACTIVO" && (
+              <button onClick={suspenderServicio} disabled={suspendiendo} className="sb-btn-action"
+                style={{ ...S.btn(T.amber), flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:suspendiendo?0.6:1, borderRadius:5 }}>
+                <Zap size={14} />{suspendiendo ? "Suspendiendo..." : "Suspender servicio"}
+              </button>
+            )}
           </div>
         )}
 
