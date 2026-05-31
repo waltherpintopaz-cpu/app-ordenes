@@ -455,7 +455,6 @@ export default function SidebarApp() {
     });
 
     const facts = invRes?.facturas || (Array.isArray(invRes) ? invRes : []);
-    if (facts[0]) console.log("[SB] campos factura Mikrowisp:", Object.keys(facts[0]), facts[0]);
     setFacturas(facts);
 
     const pend = facts.find(f => !ESTADOS_IGNORAR.includes(f.estado));
@@ -1526,8 +1525,8 @@ export default function SidebarApp() {
                           </td>
                           <td style={{ textAlign:"right", fontWeight:700, color:T.navy }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</td>
                           <td style={{ color:T.muted, fontSize:11 }}>{f.vencimiento||"—"}</td>
-                          <td style={{ color:T.muted, fontSize:11 }}>{f.fechapago||f.fecha_pago||f.fechaPago||"—"}</td>
-                          <td style={{ color:T.muted, fontSize:11 }}>{f.pasarela||f.forma_pago||f.tipopago||f.tipo_pago||f.banco||f.gateway||f.medio||f.metodo||f.formapago||"—"}</td>
+                          <td style={{ color:T.muted, fontSize:11 }}>{(f.fechapago && f.fechapago !== "0000-00-00") ? f.fechapago : "—"}</td>
+                          <td style={{ color:T.muted, fontSize:11 }}>{f.formapago||f.pasarela||f.forma_pago||"—"}</td>
                           <td style={{ position:"relative" }}>
                             {/* Botón ⋮ */}
                             <button
