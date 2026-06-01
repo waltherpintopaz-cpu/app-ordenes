@@ -325,6 +325,7 @@ export default function SidebarApp() {
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
   const [showUsuarioDrop,   setShowUsuarioDrop]   = useState(false);
+  const [buscandoCoords,    setBuscandoCoords]    = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -1168,6 +1169,75 @@ export default function SidebarApp() {
     } catch(e) {}
   }
 
+  // ── Extraer coordenadas del chat (todos los escenarios) ─────────────────
+  async function extraerCoordsDeChat() {
+    if (!contact?.phone_number) return notify("No hay número de contacto", false);
+    setBuscandoCoords(true);
+    try {
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accion: "GetChatwootMessages",
+          payload: { phone: contact.phone_number, account_id: acctId || "1" },
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { notify("No se pudo obtener mensajes: " + (data.error||""), false); setBuscandoCoords(false); return; }
+
+      const messages = (data.messages || []).slice().reverse(); // más recientes primero
+      let coords = null;
+
+      for (const msg of messages) {
+        // Escenario 1: PIN de WhatsApp / live location (content_type = "location")
+        if (msg.content_type === "location") {
+          const lat = msg.content_attributes?.lat || msg.content_attributes?.latitude;
+          const lng = msg.content_attributes?.long || msg.content_attributes?.longitude || msg.content_attributes?.lng;
+          if (lat && lng) { coords = `${lat}, ${lng}`; break; }
+        }
+
+        const text = String(msg.content || "");
+
+        // Escenario 2: Google Maps URL completa con @lat,lng,zoom
+        const m1 = text.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+        if (m1) { coords = `${m1[1]}, ${m1[2]}`; break; }
+
+        // Escenario 3: Google Maps ?q=lat,lng o &q=lat,lng
+        const m2 = text.match(/[?&]q=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+        if (m2) { coords = `${m2[1]}, ${m2[2]}`; break; }
+
+        // Escenario 4: OpenStreetMap mlat/mlon
+        const m3 = text.match(/mlat=(-?\d+\.?\d+).*mlon=(-?\d+\.?\d+)/);
+        if (m3) { coords = `${m3[1]}, ${m3[2]}`; break; }
+
+        // Escenario 5: coordenadas en texto plano (-16.xxxx, -71.xxxx)
+        const m4 = text.match(/(-?\d{1,3}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
+        if (m4) { coords = `${m4[1]}, ${m4[2]}`; break; }
+
+        // Escenario 6: attachment tipo location
+        const attachments = msg.attachments || [];
+        for (const att of attachments) {
+          if (att.file_type === "location" || att.content_type === "location") {
+            const lat = att.lat || att.latitude;
+            const lng = att.long || att.longitude || att.lng;
+            if (lat && lng) { coords = `${lat}, ${lng}`; break; }
+          }
+        }
+        if (coords) break;
+      }
+
+      if (coords) {
+        setOrdenForm(p => ({ ...p, coordenadas: coords }));
+        notify(`📍 Coordenadas extraídas: ${coords}`);
+      } else {
+        notify("No se encontró ubicación en los mensajes recientes", false);
+      }
+    } catch(e) {
+      notify("Error: " + e.message, false);
+    }
+    setBuscandoCoords(false);
+  }
+
   // ── Helpers de display ────────────────────────────────────────────────────
   const primerNombre = (n) => {
     if (!n) return "";
@@ -1418,6 +1488,30 @@ export default function SidebarApp() {
                     )}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
                     {fila("Caja NAP", inp("cajaNap","NAP-01"))}
+                    {fila("Coordenadas",
+                      <div style={{display:"flex",flexDirection:"column"}}>
+                        <div style={{display:"flex",alignItems:"center"}}>
+                          <input style={{...S.input,border:"none",borderRadius:0,fontSize:11,flex:1,fontFamily:"monospace"}} type="text" placeholder="-16.438490, -71.598208"
+                            value={ordenForm.coordenadas} onChange={e=>setOrdenForm(p=>({...p,coordenadas:e.target.value}))} />
+                          <button onClick={extraerCoordsDeChat} disabled={buscandoCoords}
+                            style={{...S.btnSm("#16a34a"),borderRadius:0,padding:"0 8px",height:"100%",fontSize:11,whiteSpace:"nowrap",flexShrink:0,opacity:buscandoCoords?0.6:1}}>
+                            {buscandoCoords?"...":"📍 Chat"}
+                          </button>
+                        </div>
+                        {(() => {
+                          const [lat,lng]=(ordenForm.coordenadas||"").split(",").map(Number);
+                          if(!lat||!lng||isNaN(lat)||isNaN(lng)) return null;
+                          const mapUrl=`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
+                          return(<div style={{position:"relative",marginTop:4}}>
+                            <iframe src={mapUrl} title="Ubicación" style={{width:"100%",height:130,border:`1px solid ${T.border}`,borderRadius:4,display:"block"}} loading="lazy" />
+                            <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
+                              style={{position:"absolute",bottom:6,right:8,background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:10,padding:"3px 8px",borderRadius:4,textDecoration:"none",fontWeight:600}}>
+                              Google Maps ↗
+                            </a>
+                          </div>);
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
@@ -2403,19 +2497,28 @@ export default function SidebarApp() {
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>
                     <MapPin size={11} style={{ marginRight:3 }} />Coords.
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:0 }}>
-                    <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:11, flex:1, fontFamily:"monospace" }}
-                      type="text" placeholder="-16.438490, -71.598208"
-                      value={ordenForm.coordenadas}
-                      onChange={e => { setOrdenForm(p => ({...p, coordenadas:e.target.value})); setShowOrdenMap(false); }} />
+                  <div style={{ display:"flex", flexDirection:"column" }}>
+                    <div style={{ display:"flex", alignItems:"center" }}>
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:11, flex:1, fontFamily:"monospace" }}
+                        type="text" placeholder="-16.438490, -71.598208"
+                        value={ordenForm.coordenadas}
+                        onChange={e => { setOrdenForm(p => ({...p, coordenadas:e.target.value})); setShowOrdenMap(false); }} />
+                      <button onClick={extraerCoordsDeChat} disabled={buscandoCoords}
+                        title="Extraer ubicación del chat"
+                        style={{ ...S.btnSm("#16a34a"), borderRadius:0, padding:"0 8px", height:"100%", fontSize:11, whiteSpace:"nowrap", flexShrink:0, opacity:buscandoCoords?0.6:1 }}>
+                        {buscandoCoords ? "..." : "📍 Chat"}
+                      </button>
+                    </div>
                     {(() => {
                       const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
                       const valid = lat && lng && !isNaN(lat) && !isNaN(lng);
                       return valid ? (
+                        <div style={{ display:"flex" }}>
                         <button onClick={() => setShowOrdenMap(m => !m)}
-                          style={{ ...S.btnSm(showOrdenMap ? T.blueDk : T.blue), borderRadius:0, padding:"0 10px", height:"100%", fontSize:10, whiteSpace:"nowrap", flexShrink:0 }}>
-                          {showOrdenMap ? "Ocultar" : "Ver mapa"}
+                          style={{ ...S.btnSm(showOrdenMap ? T.blueDk : T.blue), borderRadius:0, flex:1, padding:"4px 10px", fontSize:10, whiteSpace:"nowrap" }}>
+                          {showOrdenMap ? "Ocultar mapa" : "Ver mapa"}
                         </button>
+                        </div>
                       ) : null;
                     })()}
                   </div>
