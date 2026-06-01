@@ -281,7 +281,8 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], hora: "", tecnico: "", autorOrden: "", descripcion: "", coordenadas: "" });
+  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], hora: "", tecnico: "", autorOrden: "", descripcion: "", coordenadas: "", nombre: "", dni: "", celular: "", direccion: "", empresa: "Americanet", nodo: "" });
+  const [showOrdenNuevo, setShowOrdenNuevo] = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -988,6 +989,7 @@ export default function SidebarApp() {
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
+    if (!cliente && (!ordenForm.nombre.trim() || !ordenForm.dni.trim())) return notify("Ingresa nombre y DNI del cliente nuevo", false);
     setCreandoOrden(true);
     try {
       let codigo = "";
@@ -998,23 +1000,25 @@ export default function SidebarApp() {
         codigo = `ORD-${String(Date.now()).slice(-4)}-${new Date().getFullYear()}`;
       }
 
-      const empresaOrden = cliente.empresa === "dimfiber" ? "DIM" : "Americanet";
+      const empresaOrden = cliente
+        ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet")
+        : ordenForm.empresa;
       const payload = {
         empresa:        empresaOrden,
         codigo,
-        generar_usuario: "NO",
+        generar_usuario: "SI",
         orden_tipo:     "ORDEN DE SERVICIO",
         tipo_actuacion: ordenForm.tipoActuacion,
         fecha_actuacion: ordenForm.fechaActuacion,
         hora:           ordenForm.hora || null,
         estado:         "Pendiente",
         prioridad:      "Normal",
-        dni:            cliente.cedula || "",
-        nombre:         cliente.nombre || "",
-        direccion:      detalle?.direccion_principal || "",
-        celular:        detalle?.movil || (contact?.phone_number || "").replace(/[^\d]/g,"") || "",
+        dni:            cliente ? (cliente.cedula || "") : ordenForm.dni.trim(),
+        nombre:         cliente ? (cliente.nombre || "") : ordenForm.nombre.trim(),
+        direccion:      cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim(),
+        celular:        cliente ? (detalle?.movil || (contact?.phone_number || "").replace(/[^\d]/g,"") || "") : ((contact?.phone_number || "").replace(/[^\d]/g,"") || ordenForm.celular.trim()),
         email:          detalle?.correo || "",
-        nodo:           String(cliente.nodo),
+        nodo:           cliente ? String(cliente.nodo) : ordenForm.nodo.trim(),
         usuario_nodo:   svc?.pppuser || "",
         sn_onu:         snOnu || "",
         ubicacion:      ordenForm.coordenadas || "",
@@ -1175,6 +1179,106 @@ export default function SidebarApp() {
               )}
             </div>
           )}
+
+          {/* ── Orden de instalación para cliente nuevo ── */}
+          <div style={S.divider} />
+          <button onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }}
+            style={{ ...S.btn(showOrdenNuevo ? "#6b7280" : "#7c3aed"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            📋 {showOrdenNuevo ? "Cancelar" : "Crear orden de instalación"}
+          </button>
+
+          {showOrdenNuevo && (<>
+            {ordenCreada ? (
+              <div style={{ background:T.greenLt, border:`1px solid #86efac`, borderLeft:`3px solid ${T.green}`, borderRadius:5, padding:"12px 14px", marginTop:10 }}>
+                <div style={{ fontWeight:800, fontSize:13, color:T.green }}>Orden creada: {ordenCreada.codigo}</div>
+                <button onClick={() => { setOrdenCreada(null); setShowOrdenNuevo(false); }} style={{ ...S.btnOut, marginTop:8, fontSize:11 }}>Cerrar</button>
+              </div>
+            ) : (
+              <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginTop:10 }}>
+                {/* Datos del cliente nuevo */}
+                {[
+                  { key:"nombre", label:"Nombre", placeholder:"Apellidos, Nombres" },
+                  { key:"dni",    label:"DNI",     placeholder:"Ej: 12345678" },
+                  { key:"celular",label:"Celular",  placeholder:"Ej: 987654321" },
+                  { key:"direccion",label:"Dirección",placeholder:"Av. ..." },
+                ].map(({ key, label, placeholder }, i) => (
+                  <div key={key} style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>{label}</div>
+                    <div><input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text" placeholder={placeholder}
+                      value={ordenForm[key]} onChange={e => setOrdenForm(p=>({...p,[key]:e.target.value}))} /></div>
+                  </div>
+                ))}
+                {/* Empresa y Nodo */}
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Empresa</div>
+                  <div><select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }} value={ordenForm.empresa} onChange={e=>setOrdenForm(p=>({...p,empresa:e.target.value}))}>
+                    <option>Americanet</option><option>DIM</option>
+                  </select></div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Nodo</div>
+                  <div><input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text" placeholder="Ej: 1"
+                    value={ordenForm.nodo} onChange={e=>setOrdenForm(p=>({...p,nodo:e.target.value}))} /></div>
+                </div>
+                {/* Tipo, Fecha, Hora — mismos campos que orden normal */}
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Tipo</div>
+                  <div><select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }} value={ordenForm.tipoActuacion} onChange={e=>setOrdenForm(p=>({...p,tipoActuacion:e.target.value}))}>
+                    <option>Instalacion Internet</option><option>Instalacion Internet y Cable</option><option>Instalacion TV</option><option>Incidencia Internet</option><option>Mantenimiento</option><option>Visita Tecnica</option>
+                  </select></div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Fecha</div>
+                  <div><input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="date" value={ordenForm.fechaActuacion} onChange={e=>setOrdenForm(p=>({...p,fechaActuacion:e.target.value}))} /></div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Hora</div>
+                  <div style={{ padding:"6px 8px" }}>
+                    {(() => {
+                      const h24str = ordenForm.hora||""; const [hhStr,mmStr]=h24str.split(":"); const hh24=parseInt(hhStr||"0",10);
+                      const cur12=hh24===0?12:hh24>12?hh24-12:hh24; const curAmpm=hh24>=12?"PM":"AM"; const curMm=mmStr||"00";
+                      const autoAmpm=(h)=>{const n=parseInt(h,10);if(isNaN(n))return"AM";return(n>=1&&n<=6)?"PM":"AM";};
+                      const smartH24=(h,mm,ampm)=>{let h2=parseInt(h,10);if(isNaN(h2)||h2<1||h2>12)return"";if(ampm==="PM")h2=h2===12?12:h2+12;else h2=h2===12?0:h2;return`${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`;};
+                      return(<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                        <input type="number" min="1" max="12" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:"none",borderRadius:0}} value={h24str?cur12:""} placeholder="H" onChange={e=>{const ampm=autoAmpm(e.target.value);setOrdenForm(p=>({...p,hora:smartH24(e.target.value,curMm,ampm)}));}} />
+                        <span style={{fontWeight:800,color:T.muted}}>:</span>
+                        <input type="number" min="0" max="59" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:"none",borderRadius:0}} value={h24str?curMm:""} placeholder="MM" onChange={e=>{const mm=String(parseInt(e.target.value||"0",10)).padStart(2,"0");setOrdenForm(p=>({...p,hora:smartH24(cur12,mm,curAmpm)}));}} />
+                        <button type="button" onClick={()=>{const na=curAmpm==="AM"?"PM":"AM";setOrdenForm(p=>({...p,hora:smartH24(cur12,curMm,na)}));}} style={{padding:"4px 8px",borderRadius:5,border:`2px solid ${curAmpm==="PM"?"#f59e0b":"#3b82f6"}`,background:curAmpm==="PM"?"#fef3c7":"#eff6ff",color:curAmpm==="PM"?"#92400e":"#1e40af",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{h24str?curAmpm:"AM/PM"}</button>
+                        {h24str&&<span style={{fontSize:10,color:T.muted,fontWeight:600}}>{cur12}:{curMm} {curAmpm}</span>}
+                      </div>);
+                    })()}
+                  </div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Autor</div>
+                  <div><select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }} value={ordenForm.autorOrden} onChange={e=>setOrdenForm(p=>({...p,autorOrden:e.target.value}))}>
+                    <option value="">— Seleccionar —</option>
+                    {autorLista.map(u=><option key={u.nombre} value={u.nombre}>{u.nombre}{u.rol!=="Tecnico"?` (${u.rol})`:""}</option>)}
+                  </select></div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Técnico</div>
+                  <div>{tecnicosLista.length>0?(
+                    <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.tecnico} onChange={e=>setOrdenForm(p=>({...p,tecnico:e.target.value}))}>
+                      <option value="">— Seleccionar —</option>
+                      {tecnicosLista.map(t=><option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
+                    </select>):(
+                    <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} type="text" placeholder="Nombre del técnico" value={ordenForm.tecnico} onChange={e=>setOrdenForm(p=>({...p,tecnico:e.target.value}))} />
+                  )}</div>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr" }}>
+                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed" }}>Detalle</div>
+                  <div><textarea style={{...S.input,border:"none",borderRadius:0,fontSize:12,resize:"vertical",minHeight:50}} placeholder="Descripción (opcional)" value={ordenForm.descripcion} onChange={e=>setOrdenForm(p=>({...p,descripcion:e.target.value}))} /></div>
+                </div>
+                <div style={{ padding:"10px" }}>
+                  <button onClick={crearOrden} disabled={creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()}
+                    style={{...S.btn("#7c3aed"),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim())?0.55:1}}>
+                    {creandoOrden?"Creando...":"Crear orden de instalación"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>)}
         </div>
       )}
 
