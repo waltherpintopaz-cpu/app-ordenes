@@ -1186,7 +1186,8 @@ export default function SidebarApp() {
       if (!data.ok) { notify("No se pudo obtener mensajes: " + (data.error||""), false); setBuscandoCoords(false); return; }
 
       const messages = (data.messages || []).slice().reverse(); // más recientes primero
-let coords = null;
+      messages.slice(0,10).forEach((m,i) => console.log(`[SB-LOC] msg[${i}]`, JSON.stringify({ ct:m.content_type, c:String(m.content||"").slice(0,200), ca:m.content_attributes, att:(m.attachments||[]).map(a=>({ft:a.file_type,clat:a.coordinates_lat,clng:a.coordinates_long,lat:a.lat,lng:a.lng})) })));
+      let coords = null;
 
       for (const msg of messages) {
         // Escenario 1: content_attributes con lat/long en CUALQUIER tipo de mensaje
