@@ -326,6 +326,7 @@ export default function SidebarApp() {
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
   const [showUsuarioDrop,   setShowUsuarioDrop]   = useState(false);
   const [buscandoCoords,    setBuscandoCoords]    = useState(false);
+  const [coordsLista,       setCoordsLista]       = useState([]);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -1186,72 +1187,75 @@ export default function SidebarApp() {
       if (!data.ok) { notify("No se pudo obtener mensajes: " + (data.error||""), false); setBuscandoCoords(false); return; }
 
       const messages = (data.messages || []).slice().reverse(); // más recientes primero
-      messages.slice(0,10).forEach((m,i) => console.log(`[SB-LOC] msg[${i}]`, JSON.stringify({ ct:m.content_type, c:String(m.content||"").slice(0,200), ca:m.content_attributes, att:(m.attachments||[]).map(a=>({ft:a.file_type,clat:a.coordinates_lat,clng:a.coordinates_long,lat:a.lat,lng:a.lng})) })));
-      let coords = null;
+      const found = [];
+      const seen = new Set();
+
+      const addCoord = (lat, lng) => {
+        const key = `${parseFloat(lat).toFixed(5)},${parseFloat(lng).toFixed(5)}`;
+        if (!seen.has(key)) { seen.add(key); found.push(`${lat}, ${lng}`); }
+      };
 
       for (const msg of messages) {
-        // Escenario 1: content_attributes con lat/long en CUALQUIER tipo de mensaje
-        // (WhatsApp location aparece como content_type "input_select" o "location" con coords en attributes)
+        // Escenario 1: content_attributes con lat/long
         const ca = msg.content_attributes || {};
         const caLat = ca.lat ?? ca.latitude ?? ca.Lat;
         const caLng = ca.long ?? ca.longitude ?? ca.lng ?? ca.Lng ?? ca.Long;
-        if (caLat != null && caLng != null) { coords = `${caLat}, ${caLng}`; break; }
+        if (caLat != null && caLng != null) addCoord(caLat, caLng);
 
-        // Escenario 2: items con botón "Ver en el mapa" → extraer URL del value/url
-        const items = ca.items || [];
-        for (const item of items) {
-          // Coordenadas directas en el item
+        // Escenario 2: items con botón "Ver en el mapa"
+        for (const item of (ca.items || [])) {
           const iLat = item.lat ?? item.latitude;
           const iLng = item.long ?? item.longitude ?? item.lng;
-          if (iLat != null && iLng != null) { coords = `${iLat}, ${iLng}`; break; }
-          // URL del botón (value o url del item)
+          if (iLat != null && iLng != null) { addCoord(iLat, iLng); continue; }
           const url = String(item.value || item.url || item.link || "");
-          const um = url.match(/[?&]q=(-?\d+\.?\d+),(-?\d+\.?\d+)/) ||
+          const um = url.match(/[?&](?:q|query)=(-?\d+\.?\d+),(-?\d+\.?\d+)/) ||
                      url.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/) ||
                      url.match(/(-?\d{1,3}\.\d{4,}),(-?\d{1,3}\.\d{4,})/);
-          if (um) { coords = `${um[1]}, ${um[2]}`; break; }
+          if (um) addCoord(um[1], um[2]);
         }
-        if (coords) break;
 
         const text = String(msg.content || "");
 
-        // Escenario 3: Google Maps URL completa con @lat,lng,zoom
+        // Escenario 3: @lat,lng (Google Maps zoom URL)
         const m1 = text.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
-        if (m1) { coords = `${m1[1]}, ${m1[2]}`; break; }
+        if (m1) addCoord(m1[1], m1[2]);
 
-        // Escenario 4: Google Maps ?q= o &q= o &query= (WhatsApp search URL)
+        // Escenario 4: ?q= &q= &query=
         const m2 = text.match(/[?&](?:q|query)=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
-        if (m2) { coords = `${m2[1]}, ${m2[2]}`; break; }
+        if (m2) addCoord(m2[1], m2[2]);
 
-        // Escenario 4b: texto plano "Latitude: x \n Longitude: y" (segundo tipo WhatsApp)
+        // Escenario 5: Latitude:/Longitude: texto
         const mLat = text.match(/Latitude[:\s]+(-?\d+\.?\d+)/i);
         const mLng = text.match(/Longitude[:\s]+(-?\d+\.?\d+)/i);
-        if (mLat && mLng) { coords = `${mLat[1]}, ${mLng[1]}`; break; }
+        if (mLat && mLng) addCoord(mLat[1], mLng[1]);
 
-        // Escenario 5: Google Maps /place/.../@lat,lng
+        // Escenario 6: Google Maps /place/@lat,lng
         const m3 = text.match(/google\.com\/maps.*\/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
-        if (m3) { coords = `${m3[1]}, ${m3[2]}`; break; }
+        if (m3) addCoord(m3[1], m3[2]);
 
-        // Escenario 6: OpenStreetMap mlat/mlon
+        // Escenario 7: OpenStreetMap mlat/mlon
         const m4 = text.match(/mlat=(-?\d+\.?\d+).*mlon=(-?\d+\.?\d+)/);
-        if (m4) { coords = `${m4[1]}, ${m4[2]}`; break; }
+        if (m4) addCoord(m4[1], m4[2]);
 
-        // Escenario 7: coordenadas en texto plano (-16.xxxx, -71.xxxx)
+        // Escenario 8: texto plano con coordenadas
         const m5 = text.match(/(-?\d{1,3}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
-        if (m5) { coords = `${m5[1]}, ${m5[2]}`; break; }
+        if (m5) addCoord(m5[1], m5[2]);
 
-        // Escenario 8: attachments con coordenadas (Chatwoot usa coordinates_lat/coordinates_long)
+        // Escenario 9: attachments (coordinates_lat/long de Chatwoot)
         for (const att of (msg.attachments || [])) {
           const aLat = att.coordinates_lat ?? att.lat ?? att.latitude;
           const aLng = att.coordinates_long ?? att.long ?? att.longitude ?? att.lng;
-          if (aLat != null && aLng != null) { coords = `${aLat}, ${aLng}`; break; }
+          if (aLat != null && aLng != null) addCoord(aLat, aLng);
         }
-        if (coords) break;
       }
 
-      if (coords) {
-        setOrdenForm(p => ({ ...p, coordenadas: coords }));
-        notify(`📍 Coordenadas extraídas: ${coords}`);
+      if (found.length === 1) {
+        setOrdenForm(p => ({ ...p, coordenadas: found[0] }));
+        setCoordsLista([]);
+        notify(`📍 Coordenadas: ${found[0]}`);
+      } else if (found.length > 1) {
+        setCoordsLista(found);
+        notify(`📍 Se encontraron ${found.length} ubicaciones — seleccioná una`);
       } else {
         notify("No se encontró ubicación en los mensajes recientes", false);
       }
@@ -1533,6 +1537,21 @@ export default function SidebarApp() {
                             </a>
                           </div>);
                         })()}
+                        {/* Selector múltiples ubicaciones */}
+                        {coordsLista.length > 0 && (
+                          <div style={{ marginTop:4, background:"#f0fdf4", border:`1px solid #86efac`, borderRadius:4, padding:"6px 8px" }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#16a34a", marginBottom:4 }}>📍 {coordsLista.length} ubicaciones — elegí:</div>
+                            {coordsLista.map((c,i) => (
+                              <div key={i} style={{ display:"flex", alignItems:"center", gap:5, marginBottom:3 }}>
+                                <button onClick={()=>{ setOrdenForm(p=>({...p,coordenadas:c})); setCoordsLista([]); }}
+                                  style={{...S.btnSm(ordenForm.coordenadas===c?"#16a34a":T.blue),fontSize:10,flex:1,textAlign:"left",padding:"3px 8px",fontFamily:"monospace"}}>
+                                  {ordenForm.coordenadas===c?"✓ ":""}{c}
+                                </button>
+                                <a href={`https://maps.google.com/?q=${c}`} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:T.blue,fontWeight:600}}>G↗</a>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2532,6 +2551,24 @@ export default function SidebarApp() {
                         {buscandoCoords ? "..." : "📍 Chat"}
                       </button>
                     </div>
+                    {/* Selector cuando hay múltiples ubicaciones */}
+                    {coordsLista.length > 0 && (
+                      <div style={{ borderTop:`1px solid ${T.border}`, padding:"6px 8px", background:"#f0fdf4" }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:"#16a34a", marginBottom:5 }}>
+                          📍 {coordsLista.length} ubicaciones encontradas — elegí una:
+                        </div>
+                        {coordsLista.map((c, i) => (
+                          <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                            <button onClick={() => { setOrdenForm(p=>({...p,coordenadas:c})); setCoordsLista([]); setShowOrdenMap(false); }}
+                              style={{ ...S.btnSm(ordenForm.coordenadas===c ? T.green : T.blue), fontSize:10, flex:1, textAlign:"left", padding:"4px 8px", fontFamily:"monospace" }}>
+                              {ordenForm.coordenadas===c ? "✓ " : ""}{c}
+                            </button>
+                            <a href={`https://maps.google.com/?q=${c}`} target="_blank" rel="noopener noreferrer"
+                              style={{ fontSize:10, color:T.blue, textDecoration:"none", fontWeight:600, flexShrink:0 }}>G↗</a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {(() => {
                       const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
                       const valid = lat && lng && !isNaN(lat) && !isNaN(lng);
