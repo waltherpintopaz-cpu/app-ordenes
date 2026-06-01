@@ -1030,6 +1030,59 @@ export default function SidebarApp() {
     if (coords) setOrdenForm(p => ({ ...p, coordenadas: coords }));
   }, [detalle?._servicio?.coordenadas]);
 
+  // ── WhatsApp al cliente al crear orden ───────────────────────────────────
+  async function sendWhatsAppOrden(ordenData = {}) {
+    try {
+      const numero = String(ordenData.celular || "").trim();
+      if (!numero) return;
+      const empresa = String(ordenData.empresa || "Americanet").trim();
+      let waCfg = {};
+      try {
+        const { data } = await supabase.from("whatsapp_config").select("*").eq("empresa", empresa).maybeSingle();
+        if (data) waCfg = data;
+        else {
+          const raw = localStorage.getItem("whatsapp_config_local");
+          if (raw) waCfg = JSON.parse(raw)?.[empresa] || {};
+        }
+      } catch {
+        const raw = localStorage.getItem("whatsapp_config_local");
+        try { if (raw) waCfg = JSON.parse(raw)?.[empresa] || {}; } catch { return; }
+      }
+      if (!waCfg.habilitado || !waCfg.base_url || !waCfg.api_key || !waCfg.instance_name) return;
+
+      const tipoOrden = String(ordenData.tipo_actuacion || "").toUpperCase();
+      let tpl = waCfg.template_instalacion || "";
+      if (tipoOrden.includes("INCIDEN")) tpl = waCfg.template_incidencia || "";
+      else if (tipoOrden.includes("RECUP") || tipoOrden.includes("RECOJ")) tpl = waCfg.template_recuperacion || "";
+      if (!tpl.trim()) return;
+
+      const message = tpl
+        .replace(/{nombre}/g, ordenData.nombre || "")
+        .replace(/{codigo}/g, ordenData.codigo || "")
+        .replace(/{empresa}/g, empresa)
+        .replace(/{tecnico}/g, ordenData.tecnico || "")
+        .replace(/{fecha}/g, ordenData.fecha_actuacion || "")
+        .replace(/{direccion}/g, ordenData.direccion || "")
+        .replace(/{resultado}/g, "");
+
+      let phone = numero.replace(/[\s\-\(\)]/g, "");
+      if (phone.startsWith("+")) phone = phone.slice(1);
+      if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+
+      const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: waCfg.api_key },
+          body: JSON.stringify({ number: phone, text: message }),
+          signal: ctrl.signal,
+        });
+      } finally { clearTimeout(t); }
+    } catch { /* silencioso */ }
+  }
+
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
@@ -1089,6 +1142,25 @@ export default function SidebarApp() {
       const codigoFinal = res.data?.codigo || codigo;
       setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
       notify(`✅ Orden ${codigoFinal} creada`);
+
+      // WhatsApp al cliente
+      void sendWhatsAppOrden({ ...payload, codigo: codigoFinal });
+
+      // Notificación push al técnico asignado
+      if (ordenForm.tecnico) {
+        void supabase.functions.invoke("send-push-notification", {
+          body: {
+            tecnico_nombre: ordenForm.tecnico,
+            title: "Nueva orden asignada",
+            body: `${codigoFinal} — ${payload.nombre || "Cliente"}`,
+            data: {
+              tipo: "nueva_orden",
+              orden_codigo: String(codigoFinal),
+              orden_id: String(res.data?.id || ""),
+            },
+          },
+        });
+      }
 
       if (convId) {
         const texto = `📋 *ORDEN CREADA*\n\nCódigo: *${codigoFinal}*\nTipo: ${ordenForm.tipoActuacion}\nTécnico: ${ordenForm.tecnico}${ordenForm.descripcion ? `\nDetalle: ${ordenForm.descripcion}` : ""}`;
