@@ -42,6 +42,39 @@ const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
 const empresaPorNodo = (n) => DIM_NODOS.has(String(n||"").trim().toLowerCase()) ? "DIM" : "Americanet";
 const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"];
 
+const NODO_USUARIO_RULES = {
+  NOD_01: { prefix:"user",     start:801, suffix:"@americanet", pad:0 },
+  NOD_02: { prefix:"usuario_", start:600, suffix:"",            pad:0 },
+  NOD_03: { prefix:"",         start:501, suffix:"@americanet", pad:4 },
+  NOD_04: { prefix:"user",     start:467, suffix:"@fiber",      pad:0 },
+  NOD_05: { prefix:"",         start:1,   suffix:"@dim",        pad:3 },
+  NOD_06: { prefix:"",         start:130, suffix:"@amnet",      pad:0 },
+};
+const NODO_PASSWORD_RULES = {
+  NOD_01:"madrid0021", NOD_02:"speedy2000", NOD_03:"aqp0021",
+  NOD_04:"uchumayo0021", NOD_05:"selva0021", NOD_06:"apipa0021",
+};
+const normalizeNodoKey = (v="") => String(v||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"_");
+function listarUsuariosParaNodo(nodo="", usados=[], cantidad=8) {
+  const key = normalizeNodoKey(nodo);
+  const rule = NODO_USUARIO_RULES[key];
+  if (!rule) return [];
+  const prefix=String(rule.prefix||""), suffix=String(rule.suffix||""), base=Number(rule.start||1), pad=Number(rule.pad||0);
+  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}(\\d+)${suffix.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}$`,"i");
+  const usadosSet = new Set((usados||[]).map(v=>String(v||"").trim().toLowerCase()));
+  const nums = (usados||[]).map(v=>{ const m=String(v||"").match(pattern); return m?Number(m[1]):NaN; }).filter(Number.isFinite);
+  const maxUsado = nums.length ? Math.max(...nums) : base-1;
+  const resultado=[]; let n=Math.max(base,maxUsado+1);
+  while (resultado.length < cantidad) {
+    const numText = pad>0 ? String(n).padStart(pad,"0") : String(n);
+    const candidate = `${prefix}${numText}${suffix}`;
+    resultado.push({ usuario:candidate, ocupado: usadosSet.has(candidate.toLowerCase()) });
+    n++; if (n>base+9999) break;
+  }
+  return resultado;
+}
+const DNI_API_KEY = "cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx";
+
 async function mkwProxy(nodo, accion, payload, token) {
   const r = await fetch(PROXY_URL, {
     method: "POST",
@@ -286,7 +319,10 @@ export default function SidebarApp() {
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
   const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", snOnu:"", cajaNap:"" });
-  const [showOrdenNuevo, setShowOrdenNuevo] = useState(false);
+  const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
+  const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
+  const [usuariosNodo,      setUsuariosNodo]      = useState([]);
+  const [showUsuarioDrop,   setShowUsuarioDrop]   = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -1064,6 +1100,72 @@ export default function SidebarApp() {
     setCreandoOrden(false);
   }
 
+  // ── Búsqueda DNI RENIEC para orden nueva ─────────────────────────────────
+  async function buscarDniNuevo() {
+    const dni = ordenForm.dni.trim();
+    if (dni.length !== 8) return notify("El DNI debe tener 8 dígitos", false);
+    setBuscandoDniNew(true);
+    try {
+      // Primero busca en Supabase clientes internos
+      const { data: srvs } = await supabase.from("clientes")
+        .select("nombre,direccion,celular,email,nodo,usuario_nodo,caja_nap,sn_onu")
+        .eq("dni", dni).order("id",{ascending:false}).limit(1);
+      if (srvs?.[0]) {
+        const c = srvs[0];
+        setOrdenForm(p=>({ ...p,
+          nombre:    c.nombre    || p.nombre,
+          direccion: c.direccion || p.direccion,
+          celular:   c.celular   || p.celular,
+          email:     c.email     || p.email,
+          nodo:      c.nodo      || p.nodo,
+          usuarioNodo: c.usuario_nodo || p.usuarioNodo,
+          cajaNap:   c.caja_nap  || p.cajaNap,
+          snOnu:     c.sn_onu    || p.snOnu,
+          empresa:   c.nodo ? empresaPorNodo(c.nodo) : p.empresa,
+        }));
+        notify("✅ Cliente encontrado en base de datos");
+      } else {
+        // Consultar RENIEC via perudevs
+        const ctrl = new AbortController();
+        const timer = setTimeout(()=>ctrl.abort(), 8000);
+        try {
+          const res = await fetch(`https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=${DNI_API_KEY}`, { signal:ctrl.signal });
+          const data = await res.json();
+          clearTimeout(timer);
+          if (data?.estado && data?.resultado?.nombre_completo) {
+            setOrdenForm(p=>({ ...p, nombre: data.resultado.nombre_completo }));
+            notify("✅ Nombre obtenido de RENIEC");
+          } else {
+            notify("DNI no encontrado en RENIEC", false);
+          }
+        } finally { clearTimeout(timer); }
+      }
+    } catch(e) { notify("Error al buscar DNI: " + e.message, false); }
+    setBuscandoDniNew(false);
+  }
+
+  // ── Cargar usuarios disponibles cuando cambia el nodo ────────────────────
+  async function cargarUsuariosNodo(nodo) {
+    if (!nodo) { setUsuariosNodo([]); return; }
+    try {
+      const { data } = await supabase.from("ordenes")
+        .select("usuario_nodo,estado")
+        .eq("nodo", nodo)
+        .not("usuario_nodo","is",null);
+      const usados = (data||[])
+        .filter(o => !["cancelada","cancelado"].includes((o.estado||"").toLowerCase()) && o.usuario_nodo)
+        .map(o => o.usuario_nodo);
+      // También de clientes
+      const { data: clts } = await supabase.from("clientes").select("usuario_nodo").eq("nodo",nodo);
+      const usadosClientes = (clts||[]).map(c=>c.usuario_nodo).filter(Boolean);
+      const todosUsados = [...new Set([...usados,...usadosClientes])];
+      setUsuariosNodo(listarUsuariosParaNodo(nodo, todosUsados, 10));
+      // Auto-sugerir password
+      const pwd = NODO_PASSWORD_RULES[normalizeNodoKey(nodo)];
+      if (pwd) setOrdenForm(p=>({...p, empresa:empresaPorNodo(nodo)}));
+    } catch(e) {}
+  }
+
   // ── Helpers de display ────────────────────────────────────────────────────
   const primerNombre = (n) => {
     if (!n) return "";
@@ -1253,7 +1355,17 @@ export default function SidebarApp() {
                     <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>👤 PASO 2 · Datos del cliente</span>
                   </div>
                   <div style={{ background:"#fff" }}>
-                    {fila("DNI *", inp("dni","12345678"))}
+                    {fila("DNI *",
+                      <div style={{ display:"flex", alignItems:"center", gap:0 }}>
+                        <input style={{...S.input,border:"none",borderRadius:0,fontSize:12,flex:1}} type="text" placeholder="12345678" maxLength={8}
+                          value={ordenForm.dni} onChange={e=>setOrdenForm(p=>({...p,dni:e.target.value.replace(/\D/g,"")}))}
+                          onKeyDown={e=>e.key==="Enter"&&buscarDniNuevo()} />
+                        <button onClick={buscarDniNuevo} disabled={buscandoDniNew||ordenForm.dni.length!==8}
+                          style={{...S.btnSm(buscandoDniNew?"#9ca3af":"#7c3aed"),borderRadius:0,padding:"0 12px",height:"100%",fontSize:11,flexShrink:0,opacity:ordenForm.dni.length!==8?0.5:1}}>
+                          {buscandoDniNew?"...":"🔍 Buscar"}
+                        </button>
+                      </div>
+                    )}
                     {fila("Nombre *", inp("nombre","APELLIDOS, Nombres"))}
                     {fila("Celular", inp("celular","987654321"))}
                     {fila("Email", inp("email","correo@ejemplo.com","email"))}
@@ -1266,7 +1378,13 @@ export default function SidebarApp() {
                   <div style={{ background:"#fff" }}>
                     {fila("Nodo",
                       <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.nodo}
-                        onChange={e=>setOrdenForm(p=>({...p,nodo:e.target.value,empresa:empresaPorNodo(e.target.value)}))}>
+                        onChange={e=>{
+                          const n=e.target.value;
+                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:""}));
+                          setUsuariosNodo([]);
+                          setShowUsuarioDrop(false);
+                          if(n) cargarUsuariosNodo(n);
+                        }}>
                         <option value="">— Seleccionar —</option>
                         {NODOS_BASE.map(n=><option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
                       </select>
@@ -1274,7 +1392,28 @@ export default function SidebarApp() {
                     {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?"#7c3aed":T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
                     {esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))}
                     {esInst && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
-                    {fila("Usuario nodo", inp("usuarioNodo","user730@americanet"))}
+                    {fila("Usuario nodo",
+                      <div style={{position:"relative"}}>
+                        <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} placeholder={NODO_USUARIO_RULES[normalizeNodoKey(ordenForm.nodo)]?`Ej: ${listarUsuariosParaNodo(ordenForm.nodo,[],1)[0]?.usuario||""}` : "user730@americanet"}
+                          value={ordenForm.usuarioNodo}
+                          onChange={e=>setOrdenForm(p=>({...p,usuarioNodo:e.target.value}))}
+                          onFocus={()=>setShowUsuarioDrop(true)}
+                          onBlur={()=>setTimeout(()=>setShowUsuarioDrop(false),150)} />
+                        {showUsuarioDrop && usuariosNodo.length>0 && (
+                          <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:6,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:999,maxHeight:200,overflowY:"auto"}}>
+                            {usuariosNodo.map((u,i)=>(
+                              <div key={u.usuario} onMouseDown={()=>{setOrdenForm(p=>({...p,usuarioNodo:u.usuario}));setShowUsuarioDrop(false);}}
+                                style={{padding:"8px 12px",cursor:u.ocupado?"default":"pointer",fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",
+                                  color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151",fontWeight:i===0?700:400,
+                                  background:i===0&&!u.ocupado?"#eff6ff":"transparent",borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none"}}>
+                                <span>{u.usuario}{i===0&&!u.ocupado?" ✓":""}</span>
+                                {u.ocupado&&<span style={{fontSize:10,background:"#fef2f2",color:"#dc2626",borderRadius:4,padding:"1px 6px",fontWeight:700}}>Ocupado</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
                     {fila("Caja NAP", inp("cajaNap","NAP-01"))}
                   </div>
@@ -1302,14 +1441,48 @@ export default function SidebarApp() {
                       true
                     )}
                   </div>
-                  <div style={{ padding:"12px", background:"#faf5ff", borderTop:`1px solid #7c3aed33` }}>
-                    <button onClick={crearOrden}
-                      disabled={creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo}
-                      style={{...S.btn("#7c3aed"),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo)?0.55:1}}>
-                      {creandoOrden ? "Creando orden..." : "Guardar orden de instalación"}
-                    </button>
-                    <div style={{fontSize:10,color:"#7c3aed",textAlign:"center",marginTop:5}}>Campos con * son obligatorios · Empresa se asigna automáticamente por nodo</div>
-                  </div>
+                  {/* ── Checklist de progreso ── */}
+                  {(() => {
+                    const checks = [
+                      { label:"DNI",         ok: ordenForm.dni.length===8 },
+                      { label:"Nombre",      ok: !!ordenForm.nombre.trim() },
+                      { label:"Dirección",   ok: !!ordenForm.direccion.trim() },
+                      { label:"Nodo",        ok: !!ordenForm.nodo },
+                      { label:"Usuario nodo",ok: !!ordenForm.usuarioNodo.trim() },
+                      { label:"Tipo",        ok: !!ordenForm.tipoActuacion },
+                      { label:"Fecha",       ok: !!ordenForm.fechaActuacion },
+                      { label:"Hora",        ok: !!ordenForm.hora },
+                      { label:"Autor",       ok: !!ordenForm.autorOrden },
+                      { label:"Técnico",     ok: !!ordenForm.tecnico.trim() },
+                    ];
+                    const ok = checks.filter(c=>c.ok).length;
+                    const pct = Math.round(ok/checks.length*100);
+                    return (
+                      <div style={{padding:"10px 12px",background:"#faf5ff",borderTop:`1px solid #7c3aed33`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                          <span style={{fontSize:11,fontWeight:700,color:"#7c3aed"}}>Progreso del formulario</span>
+                          <span style={{fontSize:13,fontWeight:800,color:"#7c3aed"}}>{pct}%</span>
+                        </div>
+                        <div style={{background:"#e9d5ff",borderRadius:4,height:6,overflow:"hidden",marginBottom:8}}>
+                          <div style={{width:`${pct}%`,height:"100%",background:"#7c3aed",borderRadius:4,transition:"width .3s"}} />
+                        </div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
+                          {checks.map(c=>(
+                            <span key={c.label} style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:600,
+                              background:c.ok?"#f0fdf4":"#fef2f2",color:c.ok?"#16a34a":"#dc2626",
+                              border:`1px solid ${c.ok?"#86efac":"#fca5a5"}`}}>
+                              {c.ok?"✓":"○"} {c.label}
+                            </span>
+                          ))}
+                        </div>
+                        <button onClick={crearOrden}
+                          disabled={creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo}
+                          style={{...S.btn("#7c3aed"),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo)?0.55:1}}>
+                          {creandoOrden ? "Creando orden..." : `Guardar orden · ${ok}/${checks.length} campos`}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
