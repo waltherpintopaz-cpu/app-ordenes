@@ -1218,9 +1218,14 @@ let coords = null;
         const m1 = text.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
         if (m1) { coords = `${m1[1]}, ${m1[2]}`; break; }
 
-        // Escenario 4: Google Maps ?q=lat,lng o &q=lat,lng
-        const m2 = text.match(/[?&]q=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+        // Escenario 4: Google Maps ?q= o &q= o &query= (WhatsApp search URL)
+        const m2 = text.match(/[?&](?:q|query)=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
         if (m2) { coords = `${m2[1]}, ${m2[2]}`; break; }
+
+        // Escenario 4b: texto plano "Latitude: x \n Longitude: y" (segundo tipo WhatsApp)
+        const mLat = text.match(/Latitude[:\s]+(-?\d+\.?\d+)/i);
+        const mLng = text.match(/Longitude[:\s]+(-?\d+\.?\d+)/i);
+        if (mLat && mLng) { coords = `${mLat[1]}, ${mLng[1]}`; break; }
 
         // Escenario 5: Google Maps /place/.../@lat,lng
         const m3 = text.match(/google\.com\/maps.*\/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
