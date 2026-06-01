@@ -682,13 +682,13 @@ export default function SidebarApp() {
         const fecha     = analisis?.fecha || new Date().toLocaleDateString("es-PE");
         const ref       = analisis?.referencia ? `\n🔖 Op. ${analisis.referencia}` : "";
 
-        // Obtener URL del PDF de la boleta
+        // Obtener URL del PDF de la boleta vía GetInvoice
         let urlPdf = "";
         try {
           const invRes = await mkwProxy(Number(cliente.nodo), "GetInvoice", {
             idfactura: parseInt(formPago.idfactura, 10),
           }, tkn);
-          urlPdf = invRes?.factura?.urlpdf || "";
+          urlPdf = invRes?.factura?.urlpdf || invRes?.urlpdf || "";
         } catch { /* silencioso */ }
 
         const pdfLinea = urlPdf ? `\n\n📄 *Boleta:* ${urlPdf}` : "";
