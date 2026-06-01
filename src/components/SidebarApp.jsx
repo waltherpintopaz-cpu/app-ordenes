@@ -1985,9 +1985,36 @@ export default function SidebarApp() {
                 {/* Hora */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Hora</div>
-                  <div>
-                    <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="time"
-                      value={ordenForm.hora} onChange={e => setOrdenForm(p => ({...p, hora:e.target.value}))} />
+                  <div style={{ padding:"6px 8px" }}>
+                    {(() => {
+                      const h24str = ordenForm.hora || "";
+                      const [hhStr, mmStr] = h24str.split(":");
+                      const hh24 = parseInt(hhStr || "0", 10);
+                      const cur12 = hh24 === 0 ? 12 : hh24 > 12 ? hh24 - 12 : hh24;
+                      const curAmpm = hh24 >= 12 ? "PM" : "AM";
+                      const curMm = mmStr || "00";
+                      const autoAmpm = (h) => { const n = parseInt(h,10); if(isNaN(n)) return "AM"; return (n>=1&&n<=6)?"PM":"AM"; };
+                      const smartH24 = (h, mm, ampm) => { let h2=parseInt(h,10); if(isNaN(h2)||h2<1||h2>12) return ""; if(ampm==="PM") h2=h2===12?12:h2+12; else h2=h2===12?0:h2; return `${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`; };
+                      return (
+                        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                          <input type="number" min="1" max="12"
+                            style={{ ...S.input, width:48, textAlign:"center", padding:"5px 4px", fontSize:13, fontWeight:700 }}
+                            value={h24str ? cur12 : ""} placeholder="H"
+                            onChange={e => { const ampm=autoAmpm(e.target.value); setOrdenForm(p=>({...p,hora:smartH24(e.target.value,curMm,ampm)})); }} />
+                          <span style={{ fontWeight:800, color:T.muted }}>:</span>
+                          <input type="number" min="0" max="59"
+                            style={{ ...S.input, width:48, textAlign:"center", padding:"5px 4px", fontSize:13, fontWeight:700 }}
+                            value={h24str ? curMm : ""} placeholder="MM"
+                            onChange={e => { const mm=String(parseInt(e.target.value||"0",10)).padStart(2,"0"); setOrdenForm(p=>({...p,hora:smartH24(cur12,mm,curAmpm)})); }} />
+                          <button type="button"
+                            onClick={() => { const na=curAmpm==="AM"?"PM":"AM"; setOrdenForm(p=>({...p,hora:smartH24(cur12,curMm,na)})); }}
+                            style={{ padding:"5px 10px", borderRadius:5, border:`2px solid ${curAmpm==="PM"?"#f59e0b":"#3b82f6"}`, background:curAmpm==="PM"?"#fef3c7":"#eff6ff", color:curAmpm==="PM"?"#92400e":"#1e40af", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                            {h24str ? curAmpm : "AM/PM"}
+                          </button>
+                          {h24str && <span style={{ fontSize:11, color:T.muted, fontWeight:600 }}>{cur12}:{curMm} {curAmpm}</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                 {/* Autor */}
