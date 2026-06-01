@@ -1186,6 +1186,8 @@ export default function SidebarApp() {
       if (!data.ok) { notify("No se pudo obtener mensajes: " + (data.error||""), false); setBuscandoCoords(false); return; }
 
       const messages = (data.messages || []).slice().reverse(); // más recientes primero
+      console.log("[SB] Mensajes recibidos:", messages.length);
+      messages.slice(0,5).forEach((m,i) => console.log(`[SB] msg[${i}]`, JSON.stringify({ content_type:m.content_type, content:m.content, content_attributes:m.content_attributes, attachments:m.attachments }).slice(0,400)));
       let coords = null;
 
       for (const msg of messages) {
