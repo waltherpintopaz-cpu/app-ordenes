@@ -1186,9 +1186,7 @@ export default function SidebarApp() {
       if (!data.ok) { notify("No se pudo obtener mensajes: " + (data.error||""), false); setBuscandoCoords(false); return; }
 
       const messages = (data.messages || []).slice().reverse(); // más recientes primero
-      console.log("[SB] Mensajes recibidos:", messages.length);
-      messages.slice(0,5).forEach((m,i) => console.log(`[SB] msg[${i}]`, JSON.stringify({ content_type:m.content_type, content:m.content, content_attributes:m.content_attributes, attachments:m.attachments }).slice(0,400)));
-      let coords = null;
+let coords = null;
 
       for (const msg of messages) {
         // Escenario 1: content_attributes con lat/long en CUALQUIER tipo de mensaje
@@ -1236,10 +1234,10 @@ export default function SidebarApp() {
         const m5 = text.match(/(-?\d{1,3}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
         if (m5) { coords = `${m5[1]}, ${m5[2]}`; break; }
 
-        // Escenario 8: attachments con lat/long
+        // Escenario 8: attachments con coordenadas (Chatwoot usa coordinates_lat/coordinates_long)
         for (const att of (msg.attachments || [])) {
-          const aLat = att.lat ?? att.latitude;
-          const aLng = att.long ?? att.longitude ?? att.lng;
+          const aLat = att.coordinates_lat ?? att.lat ?? att.latitude;
+          const aLng = att.coordinates_long ?? att.long ?? att.longitude ?? att.lng;
           if (aLat != null && aLng != null) { coords = `${aLat}, ${aLng}`; break; }
         }
         if (coords) break;
