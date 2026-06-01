@@ -1179,7 +1179,7 @@ export default function SidebarApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accion: "GetChatwootMessages",
-          payload: { phone: contact.phone_number, account_id: acctId || "1" },
+          payload: { phone: contact.phone_number, account_id: acctId || "1", ...(convId ? { conv_id: convId } : {}) },
         }),
       });
       const data = await res.json();
