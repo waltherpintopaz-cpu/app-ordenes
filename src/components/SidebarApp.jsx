@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin } from "lucide-react";
