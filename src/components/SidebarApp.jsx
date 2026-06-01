@@ -1987,7 +1987,7 @@ export default function SidebarApp() {
                       <th style={{ textAlign:"left", padding:"8px 10px" }}>Estado</th>
                       <th style={{ textAlign:"right", padding:"8px 10px" }}>Total</th>
                       <th style={{ textAlign:"left", padding:"8px 10px" }}>Vence</th>
-                      <th style={{ textAlign:"left", padding:"8px 10px" }}>F. Pago</th>
+                      <th style={{ textAlign:"left", padding:"8px 10px" }}>Pago</th>
                       <th style={{ textAlign:"center", padding:"8px 10px" }}>Acc.</th>
                     </tr>
                   </thead>
@@ -2008,7 +2008,10 @@ export default function SidebarApp() {
                           </td>
                           <td style={{ textAlign:"right", fontWeight:700, color:T.navy }}>S/ {Number(f.total||f.monto||0).toFixed(2)}</td>
                           <td style={{ color:T.muted, fontSize:11 }}>{f.vencimiento||"—"}</td>
-                          <td style={{ color:T.muted, fontSize:11 }}>{(f.fechapago && f.fechapago !== "0000-00-00") ? f.fechapago : "—"}</td>
+                          <td style={{ color:T.muted, fontSize:11 }}>
+                            {(f.fechapago && f.fechapago !== "0000-00-00") ? f.fechapago : "—"}
+                            {(f.formapago||f.pasarela||f.forma_pago) && <div style={{ fontSize:10, color:T.muted, marginTop:1 }}>{f.formapago||f.pasarela||f.forma_pago}</div>}
+                          </td>
                           <td style={{ position:"relative" }}>
                             {/* Botón ⋮ */}
                             <button
