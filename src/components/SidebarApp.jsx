@@ -96,6 +96,8 @@ const globalCSS = `
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
   .sb-tbl { border-collapse: collapse; width: 100%; }
   .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
+  .sb-hora-num::-webkit-outer-spin-button, .sb-hora-num::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  .sb-hora-num[type=number] { -moz-appearance:textfield; }
   .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; background: #003DA5; border-bottom: none; white-space: nowrap; }
   .sb-tbl td { font-size: 12px; color: #0A0A1A; border-bottom: 1px solid #D9E3F8; }
   .sb-tbl tr:last-child td { border-bottom: none; }
@@ -2268,11 +2270,45 @@ export default function SidebarApp() {
                 <button onClick={() => setOrdenCreada(null)} style={{ ...S.btnOut, marginTop:10, fontSize:11 }}>Crear otra orden</button>
               </div>
             ) : (<>
+              {/* Botones rápidos de tipo */}
+              <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
+                {[
+                  { label:"🔧 Incidencia",    tipo:"Incidencia Internet",         orden:"INCIDENCIA" },
+                  { label:"📡 Instalación",   tipo:"Instalacion Internet",         orden:"ORDEN DE SERVICIO" },
+                  { label:"📺 Cable",         tipo:"Instalacion Internet y Cable", orden:"ORDEN DE SERVICIO" },
+                  { label:"📦 Recuperación",  tipo:"Recojo de equipo",             orden:"RECUPERACION DE EQUIPO" },
+                ].map(({ label, tipo, orden:ot }) => (
+                  <button key={tipo} onClick={() => setOrdenForm(p=>({...p, tipoActuacion:tipo, ordenTipo:ot }))}
+                    style={{ ...S.btnSm(ordenForm.tipoActuacion===tipo ? T.blue : "#e5e7eb"),
+                      color: ordenForm.tipoActuacion===tipo ? "#fff" : T.slate,
+                      borderRadius:20, padding:"5px 12px", fontSize:11, fontFamily:"inherit" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               {/* Formulario */}
               <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
+                {/* Tipo de orden */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Orden</div>
+                  <div>
+                    <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                      value={ordenForm.ordenTipo} onChange={e => {
+                        const ot = e.target.value;
+                        const tipoMap = { "RECUPERACION DE EQUIPO":"Recojo de equipo", "INCIDENCIA":"Incidencia Internet", "MANTENIMIENTO":"Mantenimiento" };
+                        setOrdenForm(p=>({...p, ordenTipo:ot, tipoActuacion: tipoMap[ot] || p.tipoActuacion }));
+                      }}>
+                      <option>ORDEN DE SERVICIO</option>
+                      <option>INCIDENCIA</option>
+                      <option>MANTENIMIENTO</option>
+                      <option>RECUPERACION DE EQUIPO</option>
+                    </select>
+                  </div>
+                </div>
                 {/* Tipo de actuación */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Tipo</div>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Actuación</div>
                   <div>
                     <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
                       value={ordenForm.tipoActuacion} onChange={e => setOrdenForm(p => ({...p, tipoActuacion:e.target.value}))}>
@@ -2294,7 +2330,7 @@ export default function SidebarApp() {
                       value={ordenForm.fechaActuacion} onChange={e => setOrdenForm(p => ({...p, fechaActuacion:e.target.value}))} />
                   </div>
                 </div>
-                {/* Hora */}
+                {/* Hora — sin spinners, con auto AM/PM */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Hora</div>
                   <div style={{ padding:"6px 8px" }}>
@@ -2305,25 +2341,26 @@ export default function SidebarApp() {
                       const cur12 = hh24 === 0 ? 12 : hh24 > 12 ? hh24 - 12 : hh24;
                       const curAmpm = hh24 >= 12 ? "PM" : "AM";
                       const curMm = mmStr || "00";
-                      const autoAmpm = (h) => { const n = parseInt(h,10); if(isNaN(n)) return "AM"; return (n>=1&&n<=6)?"PM":"AM"; };
-                      const smartH24 = (h, mm, ampm) => { let h2=parseInt(h,10); if(isNaN(h2)||h2<1||h2>12) return ""; if(ampm==="PM") h2=h2===12?12:h2+12; else h2=h2===12?0:h2; return `${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`; };
+                      const aA = (h) => { const n=parseInt(h,10); if(isNaN(n)) return "AM"; return (n>=1&&n<=6)?"PM":"AM"; };
+                      const sH = (h,mm,ampm) => { let h2=parseInt(h,10); if(isNaN(h2)||h2<1||h2>12) return ""; if(ampm==="PM") h2=h2===12?12:h2+12; else h2=h2===12?0:h2; return `${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`; };
                       return (
                         <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-                          <input type="number" min="1" max="12"
-                            style={{ ...S.input, width:48, textAlign:"center", padding:"5px 4px", fontSize:13, fontWeight:700 }}
+                          <input type="number" min="1" max="12" className="sb-hora-num"
+                            style={{ ...S.input, width:44, textAlign:"center", padding:"5px 4px", fontSize:14, fontWeight:800 }}
                             value={h24str ? cur12 : ""} placeholder="H"
-                            onChange={e => { const ampm=autoAmpm(e.target.value); setOrdenForm(p=>({...p,hora:smartH24(e.target.value,curMm,ampm)})); }} />
-                          <span style={{ fontWeight:800, color:T.muted }}>:</span>
-                          <input type="number" min="0" max="59"
-                            style={{ ...S.input, width:48, textAlign:"center", padding:"5px 4px", fontSize:13, fontWeight:700 }}
+                            onChange={e => { const ampm=aA(e.target.value); setOrdenForm(p=>({...p,hora:sH(e.target.value,curMm,ampm)})); }}
+                            onBlur={e => { const h=parseInt(e.target.value,10); if(!h||h<1||h>12) return; setOrdenForm(p=>({...p,hora:sH(h,curMm,aA(h))})); }} />
+                          <span style={{ fontWeight:800, fontSize:16, color:T.muted }}>:</span>
+                          <input type="number" min="0" max="59" className="sb-hora-num"
+                            style={{ ...S.input, width:44, textAlign:"center", padding:"5px 4px", fontSize:14, fontWeight:800 }}
                             value={h24str ? curMm : ""} placeholder="MM"
-                            onChange={e => { const mm=String(parseInt(e.target.value||"0",10)).padStart(2,"0"); setOrdenForm(p=>({...p,hora:smartH24(cur12,mm,curAmpm)})); }} />
+                            onChange={e => { const mm=String(parseInt(e.target.value||"0",10)).padStart(2,"0"); setOrdenForm(p=>({...p,hora:sH(cur12,mm,curAmpm)})); }} />
                           <button type="button"
-                            onClick={() => { const na=curAmpm==="AM"?"PM":"AM"; setOrdenForm(p=>({...p,hora:smartH24(cur12,curMm,na)})); }}
-                            style={{ padding:"5px 10px", borderRadius:5, border:`2px solid ${curAmpm==="PM"?"#f59e0b":"#3b82f6"}`, background:curAmpm==="PM"?"#fef3c7":"#eff6ff", color:curAmpm==="PM"?"#92400e":"#1e40af", fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"inherit" }}>
+                            onClick={() => { const na=curAmpm==="AM"?"PM":"AM"; setOrdenForm(p=>({...p,hora:sH(cur12,curMm,na)})); }}
+                            style={{ padding:"6px 12px", borderRadius:6, border:`2px solid ${curAmpm==="PM"?"#f59e0b":"#3b82f6"}`, background:curAmpm==="PM"?"#fef3c7":"#eff6ff", color:curAmpm==="PM"?"#92400e":"#1e40af", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>
                             {h24str ? curAmpm : "AM/PM"}
                           </button>
-                          {h24str && <span style={{ fontSize:11, color:T.muted, fontWeight:600 }}>{cur12}:{curMm} {curAmpm}</span>}
+                          {h24str && <span style={{ fontSize:12, color:T.muted, fontWeight:700 }}>{cur12}:{curMm} {curAmpm}</span>}
                         </div>
                       );
                     })()}
