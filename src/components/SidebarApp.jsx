@@ -681,7 +681,18 @@ export default function SidebarApp() {
         const banco     = formPago.pasarela || "banco";
         const fecha     = analisis?.fecha || new Date().toLocaleDateString("es-PE");
         const ref       = analisis?.referencia ? `\n🔖 Op. ${analisis.referencia}` : "";
-        const texto = `*PAGO VALIDADO* ✅\n\nHola ${nombreFmt}, tu pago de *S/ ${montoStr}* (${banco}) del ${fecha} ha sido verificado con éxito.${ref}\n\nGracias por tu confianza. 💙\nTu servicio continúa activo.`;
+
+        // Obtener URL del PDF de la boleta
+        let urlPdf = "";
+        try {
+          const invRes = await mkwProxy(Number(cliente.nodo), "GetInvoice", {
+            idfactura: parseInt(formPago.idfactura, 10),
+          }, tkn);
+          urlPdf = invRes?.factura?.urlpdf || "";
+        } catch { /* silencioso */ }
+
+        const pdfLinea = urlPdf ? `\n\n📄 *Boleta:* ${urlPdf}` : "";
+        const texto = `*PAGO VALIDADO* ✅\n\nHola ${nombreFmt}, tu pago de *S/ ${montoStr}* (${banco}) del ${fecha} ha sido verificado con éxito.${ref}${pdfLinea}\n\nGracias por tu confianza. 💙\nTu servicio continúa activo.`;
         await fetch(PROXY_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
