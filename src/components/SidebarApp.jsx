@@ -672,10 +672,11 @@ export default function SidebarApp() {
       // Enviar confirmación al cliente vía n8n (igual que prórroga)
       if (contact?.phone_number) {
         const nombreRaw = cliente?.nombre || "";
-        const nombre = nombreRaw.includes(",")
-          ? nombreRaw.split(",")[1].trim().split(" ")[0]
-          : nombreRaw.split(" ")[0];
-        const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
+        const nombreFmt = nombreRaw
+          ? (nombreRaw.includes(",")
+            ? nombreRaw.split(",").reverse().join(" ").trim()
+            : nombreRaw).toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+          : "cliente";
         const montoStr  = Number(formPago.monto).toFixed(2);
         const banco     = formPago.pasarela || "banco";
         const fecha     = analisis?.fecha || new Date().toLocaleDateString("es-PE");
