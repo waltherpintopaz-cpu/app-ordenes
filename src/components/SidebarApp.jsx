@@ -2565,6 +2565,18 @@ export default function SidebarApp() {
                     })()}
                   </div>
                 </div>
+                {/* Prioridad */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Prioridad</div>
+                  <div>
+                    <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                      value={ordenForm.prioridad} onChange={e => setOrdenForm(p => ({...p, prioridad:e.target.value}))}>
+                      <option>Normal</option>
+                      <option>Alta</option>
+                      <option>Urgente</option>
+                    </select>
+                  </div>
+                </div>
                 {/* Autor */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Autor</div>
