@@ -38,6 +38,10 @@ const PASARELAS = {
   nod06:      ["Depósito bancario","Transferencia Bancaria","Efectivo Oficina/Sucursal","Walter Pinto","Americanet"],
 };
 
+const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
+const empresaPorNodo = (n) => DIM_NODOS.has(String(n||"").trim().toLowerCase()) ? "DIM" : "Americanet";
+const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"];
+
 async function mkwProxy(nodo, accion, payload, token) {
   const r = await fetch(PROXY_URL, {
     method: "POST",
@@ -281,7 +285,7 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], hora: "", tecnico: "", autorOrden: "", descripcion: "", coordenadas: "", nombre: "", dni: "", celular: "", direccion: "", empresa: "Americanet", nodo: "" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", snOnu:"", cajaNap:"" });
   const [showOrdenNuevo, setShowOrdenNuevo] = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
@@ -1002,25 +1006,30 @@ export default function SidebarApp() {
 
       const empresaOrden = cliente
         ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet")
-        : ordenForm.empresa;
+        : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa);
+      const esInstalacion = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
       const payload = {
         empresa:        empresaOrden,
         codigo,
-        generar_usuario: "SI",
-        orden_tipo:     "ORDEN DE SERVICIO",
+        generar_usuario: esInstalacion ? "SI" : "NO",
+        orden_tipo:     cliente ? "ORDEN DE SERVICIO" : ordenForm.ordenTipo,
         tipo_actuacion: ordenForm.tipoActuacion,
         fecha_actuacion: ordenForm.fechaActuacion,
         hora:           ordenForm.hora || null,
         estado:         "Pendiente",
-        prioridad:      "Normal",
+        prioridad:      ordenForm.prioridad || "Normal",
         dni:            cliente ? (cliente.cedula || "") : ordenForm.dni.trim(),
         nombre:         cliente ? (cliente.nombre || "") : ordenForm.nombre.trim(),
         direccion:      cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim(),
-        celular:        cliente ? (detalle?.movil || (contact?.phone_number || "").replace(/[^\d]/g,"") || "") : ((contact?.phone_number || "").replace(/[^\d]/g,"") || ordenForm.celular.trim()),
-        email:          detalle?.correo || "",
+        celular:        cliente ? (detalle?.movil || (contact?.phone_number||"").replace(/[^\d]/g,"") || "") : ((contact?.phone_number||"").replace(/[^\d]/g,"") || ordenForm.celular.trim()),
+        email:          cliente ? (detalle?.correo || "") : ordenForm.email.trim(),
+        contacto:       ordenForm.contacto || "",
+        velocidad:      ordenForm.velocidad || "",
+        precio_plan:    ordenForm.precioPlan ? Number(ordenForm.precioPlan) : null,
         nodo:           cliente ? String(cliente.nodo) : ordenForm.nodo.trim(),
-        usuario_nodo:   svc?.pppuser || "",
-        sn_onu:         snOnu || "",
+        usuario_nodo:   cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim(),
+        sn_onu:         cliente ? (snOnu || "") : ordenForm.snOnu.trim(),
+        caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
         descripcion:    ordenForm.descripcion || "",
         solicitar_pago: "NO",
@@ -1180,9 +1189,9 @@ export default function SidebarApp() {
             </div>
           )}
 
-          {/* ── Orden de instalación para cliente nuevo ── */}
+          {/* ── Orden nueva para cliente no registrado ── */}
           <div style={S.divider} />
-          <button onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }}
+          <button onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }}
             style={{ ...S.btn(showOrdenNuevo ? "#6b7280" : "#7c3aed"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
             📋 {showOrdenNuevo ? "Cancelar" : "Crear orden de instalación"}
           </button>
@@ -1190,94 +1199,120 @@ export default function SidebarApp() {
           {showOrdenNuevo && (<>
             {ordenCreada ? (
               <div style={{ background:T.greenLt, border:`1px solid #86efac`, borderLeft:`3px solid ${T.green}`, borderRadius:5, padding:"12px 14px", marginTop:10 }}>
-                <div style={{ fontWeight:800, fontSize:13, color:T.green }}>Orden creada: {ordenCreada.codigo}</div>
-                <button onClick={() => { setOrdenCreada(null); setShowOrdenNuevo(false); }} style={{ ...S.btnOut, marginTop:8, fontSize:11 }}>Cerrar</button>
+                <div style={{ fontWeight:800, fontSize:13, color:T.green, marginBottom:4 }}>✅ Orden creada: {ordenCreada.codigo}</div>
+                <button onClick={() => { setOrdenCreada(null); setShowOrdenNuevo(false); }} style={{ ...S.btnOut, fontSize:11 }}>Cerrar</button>
               </div>
-            ) : (
-              <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginTop:10 }}>
-                {/* Datos del cliente nuevo */}
-                {[
-                  { key:"nombre", label:"Nombre", placeholder:"Apellidos, Nombres" },
-                  { key:"dni",    label:"DNI",     placeholder:"Ej: 12345678" },
-                  { key:"celular",label:"Celular",  placeholder:"Ej: 987654321" },
-                  { key:"direccion",label:"Dirección",placeholder:"Av. ..." },
-                ].map(({ key, label, placeholder }, i) => (
-                  <div key={key} style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                    <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>{label}</div>
-                    <div><input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text" placeholder={placeholder}
-                      value={ordenForm[key]} onChange={e => setOrdenForm(p=>({...p,[key]:e.target.value}))} /></div>
+            ) : (() => {
+              const LBL = "#7c3aed"; const BG = "#faf5ff";
+              const fila = (label, content, last=false) => (
+                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:last?"none":`1px solid ${T.border}` }}>
+                  <div style={{ padding:"7px 10px", background:BG, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:LBL, display:"flex", alignItems:"center" }}>{label}</div>
+                  <div>{content}</div>
+                </div>
+              );
+              const inp = (key, placeholder, type="text") => (
+                <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} type={type} placeholder={placeholder}
+                  value={ordenForm[key]} onChange={e=>setOrdenForm(p=>({...p,[key]:e.target.value}))} />
+              );
+              const sel = (key, opts, onChange) => (
+                <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm[key]}
+                  onChange={onChange || (e=>setOrdenForm(p=>({...p,[key]:e.target.value})))}>
+                  {opts.map(o=>Array.isArray(o)?<option key={o[0]} value={o[0]}>{o[1]}</option>:<option key={o}>{o}</option>)}
+                </select>
+              );
+              const horaPicker = () => {
+                const h24str=ordenForm.hora||""; const [hhStr,mmStr]=h24str.split(":"); const hh24=parseInt(hhStr||"0",10);
+                const cur12=hh24===0?12:hh24>12?hh24-12:hh24; const curAmpm=hh24>=12?"PM":"AM"; const curMm=mmStr||"00";
+                const aA=(h)=>{const n=parseInt(h,10);if(isNaN(n))return"AM";return(n>=1&&n<=6)?"PM":"AM";};
+                const sH=(h,mm,ampm)=>{let h2=parseInt(h,10);if(isNaN(h2)||h2<1||h2>12)return"";if(ampm==="PM")h2=h2===12?12:h2+12;else h2=h2===12?0:h2;return`${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`;};
+                return(<div style={{display:"flex",gap:4,alignItems:"center",padding:"6px 8px"}}>
+                  <input type="number" min="1" max="12" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:`1px solid ${T.border}`,borderRadius:4}} value={h24str?cur12:""} placeholder="H" onChange={e=>{setOrdenForm(p=>({...p,hora:sH(e.target.value,curMm,aA(e.target.value))}));}} />
+                  <span style={{fontWeight:800,color:T.muted}}>:</span>
+                  <input type="number" min="0" max="59" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:`1px solid ${T.border}`,borderRadius:4}} value={h24str?curMm:""} placeholder="MM" onChange={e=>{const mm=String(parseInt(e.target.value||"0",10)).padStart(2,"0");setOrdenForm(p=>({...p,hora:sH(cur12,mm,curAmpm)}));}} />
+                  <button type="button" onClick={()=>{const na=curAmpm==="AM"?"PM":"AM";setOrdenForm(p=>({...p,hora:sH(cur12,curMm,na)}));}} style={{padding:"5px 10px",borderRadius:5,border:`2px solid ${curAmpm==="PM"?"#f59e0b":"#3b82f6"}`,background:curAmpm==="PM"?"#fef3c7":"#eff6ff",color:curAmpm==="PM"?"#92400e":"#1e40af",fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{h24str?curAmpm:"AM/PM"}</button>
+                  {h24str&&<span style={{fontSize:11,color:T.muted,fontWeight:600}}>{cur12}:{curMm} {curAmpm}</span>}
+                </div>);
+              };
+              const esInst = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
+              const empAutoNodo = ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa;
+              return (
+                <div style={{ border:`2px solid #7c3aed33`, borderRadius:8, overflow:"hidden", marginTop:10 }}>
+                  {/* Encabezado */}
+                  <div style={{ background:"#7c3aed", padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>📋 PASO 1 · Datos de la orden</span>
                   </div>
-                ))}
-                {/* Empresa y Nodo */}
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Empresa</div>
-                  <div><select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }} value={ordenForm.empresa} onChange={e=>setOrdenForm(p=>({...p,empresa:e.target.value}))}>
-                    <option>Americanet</option><option>DIM</option>
-                  </select></div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Nodo</div>
-                  <div><input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text" placeholder="Ej: 1"
-                    value={ordenForm.nodo} onChange={e=>setOrdenForm(p=>({...p,nodo:e.target.value}))} /></div>
-                </div>
-                {/* Tipo, Fecha, Hora — mismos campos que orden normal */}
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Tipo</div>
-                  <div><select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }} value={ordenForm.tipoActuacion} onChange={e=>setOrdenForm(p=>({...p,tipoActuacion:e.target.value}))}>
-                    <option>Instalacion Internet</option><option>Instalacion Internet y Cable</option><option>Instalacion TV</option><option>Incidencia Internet</option><option>Mantenimiento</option><option>Visita Tecnica</option>
-                  </select></div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Fecha</div>
-                  <div><input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="date" value={ordenForm.fechaActuacion} onChange={e=>setOrdenForm(p=>({...p,fechaActuacion:e.target.value}))} /></div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Hora</div>
-                  <div style={{ padding:"6px 8px" }}>
-                    {(() => {
-                      const h24str = ordenForm.hora||""; const [hhStr,mmStr]=h24str.split(":"); const hh24=parseInt(hhStr||"0",10);
-                      const cur12=hh24===0?12:hh24>12?hh24-12:hh24; const curAmpm=hh24>=12?"PM":"AM"; const curMm=mmStr||"00";
-                      const autoAmpm=(h)=>{const n=parseInt(h,10);if(isNaN(n))return"AM";return(n>=1&&n<=6)?"PM":"AM";};
-                      const smartH24=(h,mm,ampm)=>{let h2=parseInt(h,10);if(isNaN(h2)||h2<1||h2>12)return"";if(ampm==="PM")h2=h2===12?12:h2+12;else h2=h2===12?0:h2;return`${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`;};
-                      return(<div style={{display:"flex",gap:4,alignItems:"center"}}>
-                        <input type="number" min="1" max="12" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:"none",borderRadius:0}} value={h24str?cur12:""} placeholder="H" onChange={e=>{const ampm=autoAmpm(e.target.value);setOrdenForm(p=>({...p,hora:smartH24(e.target.value,curMm,ampm)}));}} />
-                        <span style={{fontWeight:800,color:T.muted}}>:</span>
-                        <input type="number" min="0" max="59" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:"none",borderRadius:0}} value={h24str?curMm:""} placeholder="MM" onChange={e=>{const mm=String(parseInt(e.target.value||"0",10)).padStart(2,"0");setOrdenForm(p=>({...p,hora:smartH24(cur12,mm,curAmpm)}));}} />
-                        <button type="button" onClick={()=>{const na=curAmpm==="AM"?"PM":"AM";setOrdenForm(p=>({...p,hora:smartH24(cur12,curMm,na)}));}} style={{padding:"4px 8px",borderRadius:5,border:`2px solid ${curAmpm==="PM"?"#f59e0b":"#3b82f6"}`,background:curAmpm==="PM"?"#fef3c7":"#eff6ff",color:curAmpm==="PM"?"#92400e":"#1e40af",fontWeight:800,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>{h24str?curAmpm:"AM/PM"}</button>
-                        {h24str&&<span style={{fontSize:10,color:T.muted,fontWeight:600}}>{cur12}:{curMm} {curAmpm}</span>}
-                      </div>);
-                    })()}
+                  <div style={{ background:"#fff" }}>
+                    {fila("Tipo orden", sel("ordenTipo", ["ORDEN DE SERVICIO","INCIDENCIA","MANTENIMIENTO","RECUPERACION DE EQUIPO"]))}
+                    {fila("Actuación", sel("tipoActuacion", ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV","Incidencia Internet","Mantenimiento","Visita Tecnica","Recojo de equipo"]))}
+                    {fila("Fecha", inp("fechaActuacion","",  "date"))}
+                    {fila("Hora", horaPicker())}
+                    {fila("Prioridad", sel("prioridad", ["Normal","Alta","Urgente"]))}
+                  </div>
+
+                  <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
+                    <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>👤 PASO 2 · Datos del cliente</span>
+                  </div>
+                  <div style={{ background:"#fff" }}>
+                    {fila("DNI *", inp("dni","12345678"))}
+                    {fila("Nombre *", inp("nombre","APELLIDOS, Nombres"))}
+                    {fila("Celular", inp("celular","987654321"))}
+                    {fila("Email", inp("email","correo@ejemplo.com","email"))}
+                    {fila("Dirección", inp("direccion","Av. ..."))}
+                  </div>
+
+                  <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
+                    <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>🌐 PASO 3 · Servicio</span>
+                  </div>
+                  <div style={{ background:"#fff" }}>
+                    {fila("Nodo",
+                      <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.nodo}
+                        onChange={e=>setOrdenForm(p=>({...p,nodo:e.target.value,empresa:empresaPorNodo(e.target.value)}))}>
+                        <option value="">— Seleccionar —</option>
+                        {NODOS_BASE.map(n=><option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
+                      </select>
+                    )}
+                    {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?"#7c3aed":T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
+                    {esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))}
+                    {esInst && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
+                    {fila("Usuario nodo", inp("usuarioNodo","user730@americanet"))}
+                    {fila("SN ONU", inp("snOnu","HWTC12345678"))}
+                    {fila("Caja NAP", inp("cajaNap","NAP-01"))}
+                  </div>
+
+                  <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
+                    <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>👷 PASO 4 · Asignación</span>
+                  </div>
+                  <div style={{ background:"#fff" }}>
+                    {fila("Autor *",
+                      <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.autorOrden} onChange={e=>setOrdenForm(p=>({...p,autorOrden:e.target.value}))}>
+                        <option value="">— Seleccionar —</option>
+                        {autorLista.map(u=><option key={u.nombre} value={u.nombre}>{u.nombre}{u.rol!=="Tecnico"?` (${u.rol})`:""}</option>)}
+                      </select>
+                    )}
+                    {fila("Técnico *",
+                      tecnicosLista.length>0
+                        ? <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.tecnico} onChange={e=>setOrdenForm(p=>({...p,tecnico:e.target.value}))}>
+                            <option value="">— Seleccionar —</option>
+                            {tecnicosLista.map(t=><option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
+                          </select>
+                        : inp("tecnico","Nombre del técnico")
+                    )}
+                    {fila("Observación",
+                      <textarea style={{...S.input,border:"none",borderRadius:0,fontSize:12,resize:"vertical",minHeight:50}} placeholder="Descripción del trabajo (opcional)" value={ordenForm.descripcion} onChange={e=>setOrdenForm(p=>({...p,descripcion:e.target.value}))} />,
+                      true
+                    )}
+                  </div>
+                  <div style={{ padding:"12px", background:"#faf5ff", borderTop:`1px solid #7c3aed33` }}>
+                    <button onClick={crearOrden}
+                      disabled={creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo}
+                      style={{...S.btn("#7c3aed"),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo)?0.55:1}}>
+                      {creandoOrden ? "Creando orden..." : "Guardar orden de instalación"}
+                    </button>
+                    <div style={{fontSize:10,color:"#7c3aed",textAlign:"center",marginTop:5}}>Campos con * son obligatorios · Empresa se asigna automáticamente por nodo</div>
                   </div>
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Autor</div>
-                  <div><select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }} value={ordenForm.autorOrden} onChange={e=>setOrdenForm(p=>({...p,autorOrden:e.target.value}))}>
-                    <option value="">— Seleccionar —</option>
-                    {autorLista.map(u=><option key={u.nombre} value={u.nombre}>{u.nombre}{u.rol!=="Tecnico"?` (${u.rol})`:""}</option>)}
-                  </select></div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed", display:"flex", alignItems:"center" }}>Técnico</div>
-                  <div>{tecnicosLista.length>0?(
-                    <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.tecnico} onChange={e=>setOrdenForm(p=>({...p,tecnico:e.target.value}))}>
-                      <option value="">— Seleccionar —</option>
-                      {tecnicosLista.map(t=><option key={t.nombre} value={t.nombre}>{t.nombre}</option>)}
-                    </select>):(
-                    <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} type="text" placeholder="Nombre del técnico" value={ordenForm.tecnico} onChange={e=>setOrdenForm(p=>({...p,tecnico:e.target.value}))} />
-                  )}</div>
-                </div>
-                <div style={{ display:"grid", gridTemplateColumns:"90px 1fr" }}>
-                  <div style={{ padding:"7px 10px", background:"#faf5ff", borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:"#7c3aed" }}>Detalle</div>
-                  <div><textarea style={{...S.input,border:"none",borderRadius:0,fontSize:12,resize:"vertical",minHeight:50}} placeholder="Descripción (opcional)" value={ordenForm.descripcion} onChange={e=>setOrdenForm(p=>({...p,descripcion:e.target.value}))} /></div>
-                </div>
-                <div style={{ padding:"10px" }}>
-                  <button onClick={crearOrden} disabled={creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()}
-                    style={{...S.btn("#7c3aed"),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim())?0.55:1}}>
-                    {creandoOrden?"Creando...":"Crear orden de instalación"}
-                  </button>
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </>)}
         </div>
       )}
