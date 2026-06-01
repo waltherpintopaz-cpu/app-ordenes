@@ -1196,12 +1196,19 @@ export default function SidebarApp() {
         const caLng = ca.long ?? ca.longitude ?? ca.lng ?? ca.Lng ?? ca.Long;
         if (caLat != null && caLng != null) { coords = `${caLat}, ${caLng}`; break; }
 
-        // Escenario 2: items dentro de content_attributes (formato Chatwoot WhatsApp location)
+        // Escenario 2: items con botón "Ver en el mapa" → extraer URL del value/url
         const items = ca.items || [];
         for (const item of items) {
+          // Coordenadas directas en el item
           const iLat = item.lat ?? item.latitude;
           const iLng = item.long ?? item.longitude ?? item.lng;
           if (iLat != null && iLng != null) { coords = `${iLat}, ${iLng}`; break; }
+          // URL del botón (value o url del item)
+          const url = String(item.value || item.url || item.link || "");
+          const um = url.match(/[?&]q=(-?\d+\.?\d+),(-?\d+\.?\d+)/) ||
+                     url.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/) ||
+                     url.match(/(-?\d{1,3}\.\d{4,}),(-?\d{1,3}\.\d{4,})/);
+          if (um) { coords = `${um[1]}, ${um[2]}`; break; }
         }
         if (coords) break;
 
