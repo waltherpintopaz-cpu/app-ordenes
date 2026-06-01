@@ -281,7 +281,7 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], tecnico: "", autorOrden: "", descripcion: "", coordenadas: "" });
+  const [ordenForm,   setOrdenForm]   = useState({ tipoActuacion: "Incidencia Internet", fechaActuacion: new Date().toISOString().split("T")[0], hora: "", tecnico: "", autorOrden: "", descripcion: "", coordenadas: "" });
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -1006,6 +1006,7 @@ export default function SidebarApp() {
         orden_tipo:     "ORDEN DE SERVICIO",
         tipo_actuacion: ordenForm.tipoActuacion,
         fecha_actuacion: ordenForm.fechaActuacion,
+        hora:           ordenForm.hora || null,
         estado:         "Pendiente",
         prioridad:      "Normal",
         dni:            cliente.cedula || "",
@@ -1979,6 +1980,14 @@ export default function SidebarApp() {
                   <div>
                     <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="date"
                       value={ordenForm.fechaActuacion} onChange={e => setOrdenForm(p => ({...p, fechaActuacion:e.target.value}))} />
+                  </div>
+                </div>
+                {/* Hora */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Hora</div>
+                  <div>
+                    <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="time"
+                      value={ordenForm.hora} onChange={e => setOrdenForm(p => ({...p, hora:e.target.value}))} />
                   </div>
                 </div>
                 {/* Autor */}
