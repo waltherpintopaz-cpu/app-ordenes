@@ -1189,39 +1189,49 @@ export default function SidebarApp() {
       let coords = null;
 
       for (const msg of messages) {
-        // Escenario 1: PIN de WhatsApp / live location (content_type = "location")
-        if (msg.content_type === "location") {
-          const lat = msg.content_attributes?.lat || msg.content_attributes?.latitude;
-          const lng = msg.content_attributes?.long || msg.content_attributes?.longitude || msg.content_attributes?.lng;
-          if (lat && lng) { coords = `${lat}, ${lng}`; break; }
+        // Escenario 1: content_attributes con lat/long en CUALQUIER tipo de mensaje
+        // (WhatsApp location aparece como content_type "input_select" o "location" con coords en attributes)
+        const ca = msg.content_attributes || {};
+        const caLat = ca.lat ?? ca.latitude ?? ca.Lat;
+        const caLng = ca.long ?? ca.longitude ?? ca.lng ?? ca.Lng ?? ca.Long;
+        if (caLat != null && caLng != null) { coords = `${caLat}, ${caLng}`; break; }
+
+        // Escenario 2: items dentro de content_attributes (formato Chatwoot WhatsApp location)
+        const items = ca.items || [];
+        for (const item of items) {
+          const iLat = item.lat ?? item.latitude;
+          const iLng = item.long ?? item.longitude ?? item.lng;
+          if (iLat != null && iLng != null) { coords = `${iLat}, ${iLng}`; break; }
         }
+        if (coords) break;
 
         const text = String(msg.content || "");
 
-        // Escenario 2: Google Maps URL completa con @lat,lng,zoom
+        // Escenario 3: Google Maps URL completa con @lat,lng,zoom
         const m1 = text.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
         if (m1) { coords = `${m1[1]}, ${m1[2]}`; break; }
 
-        // Escenario 3: Google Maps ?q=lat,lng o &q=lat,lng
+        // Escenario 4: Google Maps ?q=lat,lng o &q=lat,lng
         const m2 = text.match(/[?&]q=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
         if (m2) { coords = `${m2[1]}, ${m2[2]}`; break; }
 
-        // Escenario 4: OpenStreetMap mlat/mlon
-        const m3 = text.match(/mlat=(-?\d+\.?\d+).*mlon=(-?\d+\.?\d+)/);
+        // Escenario 5: Google Maps /place/.../@lat,lng
+        const m3 = text.match(/google\.com\/maps.*\/@(-?\d+\.?\d+),(-?\d+\.?\d+)/);
         if (m3) { coords = `${m3[1]}, ${m3[2]}`; break; }
 
-        // Escenario 5: coordenadas en texto plano (-16.xxxx, -71.xxxx)
-        const m4 = text.match(/(-?\d{1,3}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
+        // Escenario 6: OpenStreetMap mlat/mlon
+        const m4 = text.match(/mlat=(-?\d+\.?\d+).*mlon=(-?\d+\.?\d+)/);
         if (m4) { coords = `${m4[1]}, ${m4[2]}`; break; }
 
-        // Escenario 6: attachment tipo location
-        const attachments = msg.attachments || [];
-        for (const att of attachments) {
-          if (att.file_type === "location" || att.content_type === "location") {
-            const lat = att.lat || att.latitude;
-            const lng = att.long || att.longitude || att.lng;
-            if (lat && lng) { coords = `${lat}, ${lng}`; break; }
-          }
+        // Escenario 7: coordenadas en texto plano (-16.xxxx, -71.xxxx)
+        const m5 = text.match(/(-?\d{1,3}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
+        if (m5) { coords = `${m5[1]}, ${m5[2]}`; break; }
+
+        // Escenario 8: attachments con lat/long
+        for (const att of (msg.attachments || [])) {
+          const aLat = att.lat ?? att.latitude;
+          const aLng = att.long ?? att.longitude ?? att.lng;
+          if (aLat != null && aLng != null) { coords = `${aLat}, ${aLng}`; break; }
         }
         if (coords) break;
       }
