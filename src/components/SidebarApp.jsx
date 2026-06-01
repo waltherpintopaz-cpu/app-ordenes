@@ -669,19 +669,25 @@ export default function SidebarApp() {
 
       notify("✅ Pago registrado correctamente");
 
-      // Enviar confirmación al cliente en Chatwoot
-      if (convId) {
-        const nombre   = cliente.nombre || "Cliente";
-        const cedula   = cliente.cedula ? `\n🪪 DNI ${cliente.cedula}` : "";
-        const montoStr = Number(formPago.monto).toFixed(2);
-        const banco    = formPago.pasarela;
-        const fecha    = analisis?.fecha || new Date().toLocaleDateString("es-PE");
-        const ref      = analisis?.referencia ? `    Op. ${analisis.referencia}` : "";
-        const texto    = `✅ *PAGO CONFIRMADO*\n\n👤 ${nombre}${cedula}\n\n💳 ${banco}          S/ ${montoStr}\n📅 ${fecha}${ref}\n\n⏱ Tu factura se actualizará en los próximos 5 minutos.\n¿Consultas? Escríbenos, un asesor te atenderá. 🙏`;
-        await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
+      // Enviar confirmación al cliente vía n8n (igual que prórroga)
+      if (contact?.phone_number) {
+        const nombreRaw = cliente?.nombre || "";
+        const nombre = nombreRaw.includes(",")
+          ? nombreRaw.split(",")[1].trim().split(" ")[0]
+          : nombreRaw.split(" ")[0];
+        const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
+        const montoStr  = Number(formPago.monto).toFixed(2);
+        const banco     = formPago.pasarela || "banco";
+        const fecha     = analisis?.fecha || new Date().toLocaleDateString("es-PE");
+        const ref       = analisis?.referencia ? `\n🔖 Op. ${analisis.referencia}` : "";
+        const texto = `*PAGO VALIDADO* ✅\n\nHola ${nombreFmt}, tu pago de *S/ ${montoStr}* (${banco}) del ${fecha} ha sido verificado con éxito.${ref}\n\nGracias por tu confianza. 💙\nTu servicio continúa activo.`;
+        await fetch(PROXY_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
-          body: JSON.stringify({ content: texto, message_type: "outgoing", private: false }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accion: "ChatwootMessage",
+            payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" },
+          }),
         }).catch(() => {});
       }
 
