@@ -41,6 +41,7 @@ import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
+const HISTORIAL_PAGE_SIZE = 25;
 const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "0cb1ad391ea4458cab6efe97769c761d").trim();
 const SMART_OLT_API = (path) => {
   const p = String(path || "");
@@ -2059,8 +2060,9 @@ export default function App() {
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
   const [histFiltroNodo, setHistFiltroNodo] = useState("TODOS");
   const [histFiltroTipo, setHistFiltroTipo] = useState("TODOS");
-  const [histFiltroDesde, setHistFiltroDesde] = useState(() => new Date().toISOString().slice(0, 10));
-  const [histFiltroHasta, setHistFiltroHasta] = useState(() => new Date().toISOString().slice(0, 10));
+  const [histFiltroDesde, setHistFiltroDesde] = useState("");
+  const [histFiltroHasta, setHistFiltroHasta] = useState("");
+  const [historialPagina, setHistorialPagina] = useState(1);
   const [usuarioSesionId, setUsuarioSesionId] = useState(() => {
     const guardado = localStorage.getItem("usuarioSesionId");
     return guardado ? Number(guardado) : null;
@@ -2723,6 +2725,9 @@ export default function App() {
     setHistorialAppsheetPagina(1);
   }, [historialAppsheetBusqueda, historialAppsheetFiltro]);
 
+  useEffect(() => {
+    setHistorialPagina(1);
+  }, [busquedaHistorial, histFiltroNodo, histFiltroTipo, histFiltroDesde, histFiltroHasta]);
   useEffect(() => {
     setHistorialAppsheetLiqPagina(1);
   }, [historialAppsheetLiqBusqueda, historialAppsheetLiqFiltro]);
@@ -14358,78 +14363,100 @@ export default function App() {
             </div>
 
             {/* Lista */}
-            {liquidacionesFiltradas.length === 0 ? (
-              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E2E8F0", padding: "52px 24px", textAlign: "center" }}>
-                <div style={{ fontSize: 40, marginBottom: 10 }}>🗂️</div>
-                <p style={{ color: "#94A3B8", fontWeight: 700, fontSize: 15, margin: 0 }}>Sin liquidaciones para los filtros seleccionados</p>
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: "10px" }}>
-                {liquidacionesFiltradas.map((item) => {
-                  const ti = tipoInfo(item.tipoActuacion);
-                  const resultado = String(item.liquidacion?.resultadoFinal || "Liquidada");
-                  const resColor = resultado.toLowerCase().includes("no") || resultado.toLowerCase().includes("cancel") ? "#DC2626" :
-                    resultado.toLowerCase().includes("complet") || resultado.toLowerCase().includes("instal") ? "#16A34A" : "#D97706";
-                  return (
-                    <div key={item.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #E2E8F0", borderLeft: `4px solid ${ti.color}`, padding: "14px 18px", display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
-                      {/* Left content */}
-                      <div style={{ flex: 1, minWidth: 200 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                          <span style={{ fontWeight: 800, fontSize: 14, color: "#0A2E5F" }}>{item.codigo}</span>
-                          <span style={{ background: ti.bg, color: ti.color, border: `1px solid ${ti.border}`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.tipoActuacion || "—"}</span>
-                          {item.nodo && (
-                            <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.nodo}</span>
-                          )}
-                          <span style={{ background: resColor + "18", color: resColor, border: `1px solid ${resColor}40`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{resultado}</span>
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", marginBottom: 3 }}>{item.nombre || "—"}</div>
-                        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 12, color: "#64748B" }}>DNI: <b>{item.dni || "-"}</b></span>
-                          {item.celular && <span style={{ fontSize: 12, color: "#64748B" }}>Cel: <b>{item.celular}</b></span>}
-                          <span style={{ fontSize: 12, color: "#64748B" }}>Técnico: <b>{item.liquidacion?.tecnicoLiquida || item.tecnico || "-"}</b></span>
-                          <span style={{ fontSize: 12, color: "#64748B" }}>📅 <b>{item.fechaLiquidacion}</b></span>
-                        </div>
-                        {(item.velocidad || item.usuarioNodo) && (
-                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
-                            {item.velocidad && <span style={{ fontSize: 11, color: "#64748B" }}>Plan: <b>{item.velocidad}</b></span>}
-                            {item.usuarioNodo && <span style={{ fontSize: 11, color: "#64748B" }}>Usuario: <b>{item.usuarioNodo}</b></span>}
+            {(() => {
+              const totalPaginas = Math.max(1, Math.ceil(liquidacionesFiltradas.length / HISTORIAL_PAGE_SIZE));
+              const paginaSegura = Math.min(historialPagina, totalPaginas);
+              const inicio = (paginaSegura - 1) * HISTORIAL_PAGE_SIZE;
+              const pagina = liquidacionesFiltradas.slice(inicio, inicio + HISTORIAL_PAGE_SIZE);
+              return liquidacionesFiltradas.length === 0 ? (
+                <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #E2E8F0", padding: "52px 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 10 }}>🗂️</div>
+                  <p style={{ color: "#94A3B8", fontWeight: 700, fontSize: 15, margin: 0 }}>Sin liquidaciones para los filtros seleccionados</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "grid", gap: "10px" }}>
+                    {pagina.map((item) => {
+                      const ti = tipoInfo(item.tipoActuacion);
+                      const resultado = String(item.liquidacion?.resultadoFinal || "Liquidada");
+                      const resColor = resultado.toLowerCase().includes("no") || resultado.toLowerCase().includes("cancel") ? "#DC2626" :
+                        resultado.toLowerCase().includes("complet") || resultado.toLowerCase().includes("instal") ? "#16A34A" : "#D97706";
+                      return (
+                        <div key={item.id} style={{ background: "#fff", borderRadius: 14, border: "1px solid #E2E8F0", borderLeft: `4px solid ${ti.color}`, padding: "14px 18px", display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
+                          {/* Left content */}
+                          <div style={{ flex: 1, minWidth: 200 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                              <span style={{ fontWeight: 800, fontSize: 14, color: "#0A2E5F" }}>{item.codigo}</span>
+                              <span style={{ background: ti.bg, color: ti.color, border: `1px solid ${ti.border}`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.tipoActuacion || "—"}</span>
+                              {item.nodo && (
+                                <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.nodo}</span>
+                              )}
+                              <span style={{ background: resColor + "18", color: resColor, border: `1px solid ${resColor}40`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{resultado}</span>
+                            </div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A", marginBottom: 3 }}>{item.nombre || "—"}</div>
+                            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 12, color: "#64748B" }}>DNI: <b>{item.dni || "-"}</b></span>
+                              {item.celular && <span style={{ fontSize: 12, color: "#64748B" }}>Cel: <b>{item.celular}</b></span>}
+                              <span style={{ fontSize: 12, color: "#64748B" }}>Técnico: <b>{item.liquidacion?.tecnicoLiquida || item.tecnico || "-"}</b></span>
+                              <span style={{ fontSize: 12, color: "#64748B" }}>📅 <b>{item.fechaLiquidacion}</b></span>
+                            </div>
+                            {(item.velocidad || item.usuarioNodo) && (
+                              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+                                {item.velocidad && <span style={{ fontSize: 11, color: "#64748B" }}>Plan: <b>{item.velocidad}</b></span>}
+                                {item.usuarioNodo && <span style={{ fontSize: 11, color: "#64748B" }}>Usuario: <b>{item.usuarioNodo}</b></span>}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      {/* Actions */}
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                        <button onClick={() => void abrirDetalleLiquidacionHistorial(item)} style={{ ...infoButton, padding: "7px 14px", fontSize: 12 }}>
-                          Ver detalle
-                        </button>
-                        {puedeEditarLiquidacion && (
-                          <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
-                            Editar
-                          </button>
-                        )}
-                        {esAdminSesion && (
-                          <button
-                            onClick={() => {
-                              if (!window.confirm(`¿Restaurar cliente "${item.nombre}" (${item.dni}) desde esta liquidación?`)) return;
-                              void guardarClienteDesdeLiquidacion({ ...item, liquidacion: item.liquidacion || {} }, { isEditing: false });
-                              alert("Cliente enviado a base de datos.");
-                            }}
-                            style={{ padding: "7px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#166534", cursor: "pointer" }}
-                            title="Restaurar cliente en base de datos (solo admin)"
-                          >
-                            + Cliente
-                          </button>
-                        )}
-                        {puedeEliminarLiquidacion && (
-                          <button onClick={() => eliminarLiquidacion(item)} style={{ ...dangerButton, padding: "7px 12px", fontSize: 12 }}>
-                            ✕
-                          </button>
-                        )}
+                          {/* Actions */}
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                            <button onClick={() => void abrirDetalleLiquidacionHistorial(item)} style={{ ...infoButton, padding: "7px 14px", fontSize: 12 }}>
+                              Ver detalle
+                            </button>
+                            {puedeEditarLiquidacion && (
+                              <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
+                                Editar
+                              </button>
+                            )}
+                            {esAdminSesion && (
+                              <button
+                                onClick={() => {
+                                  if (!window.confirm(`¿Restaurar cliente "${item.nombre}" (${item.dni}) desde esta liquidación?`)) return;
+                                  void guardarClienteDesdeLiquidacion({ ...item, liquidacion: item.liquidacion || {} }, { isEditing: false });
+                                  alert("Cliente enviado a base de datos.");
+                                }}
+                                style={{ padding: "7px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#166534", cursor: "pointer" }}
+                                title="Restaurar cliente en base de datos (solo admin)"
+                              >
+                                + Cliente
+                              </button>
+                            )}
+                            {puedeEliminarLiquidacion && (
+                              <button onClick={() => eliminarLiquidacion(item)} style={{ ...dangerButton, padding: "7px 12px", fontSize: 12 }}>
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {totalPaginas > 1 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", borderRadius: 12, border: "1px solid #E2E8F0", padding: "12px 18px" }}>
+                      <span style={{ fontSize: 12, color: "#64748B" }}>
+                        Mostrando {inicio + 1}–{Math.min(inicio + HISTORIAL_PAGE_SIZE, liquidacionesFiltradas.length)} de {liquidacionesFiltradas.length} registros
+                      </span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <button onClick={() => setHistorialPagina(1)} disabled={paginaSegura <= 1} style={{ padding: "7px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: paginaSegura <= 1 ? "default" : "pointer", color: paginaSegura <= 1 ? "#CBD5E1" : "#475569" }}>«</button>
+                        <button onClick={() => setHistorialPagina(p => Math.max(1, p - 1))} disabled={paginaSegura <= 1} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: paginaSegura <= 1 ? "default" : "pointer", color: paginaSegura <= 1 ? "#CBD5E1" : "#475569" }}>← Ant.</button>
+                        <span style={{ fontSize: 12, color: "#64748B", padding: "0 8px" }}>Pág. {paginaSegura} / {totalPaginas}</span>
+                        <button onClick={() => setHistorialPagina(p => Math.min(totalPaginas, p + 1))} disabled={paginaSegura >= totalPaginas} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: paginaSegura >= totalPaginas ? "default" : "pointer", color: paginaSegura >= totalPaginas ? "#CBD5E1" : "#475569" }}>Sig. →</button>
+                        <button onClick={() => setHistorialPagina(totalPaginas)} disabled={paginaSegura >= totalPaginas} style={{ padding: "7px 12px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: paginaSegura >= totalPaginas ? "default" : "pointer", color: paginaSegura >= totalPaginas ? "#CBD5E1" : "#475569" }}>»</button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </>
+              );
+            })()}
           </div>
           );
         })()}
