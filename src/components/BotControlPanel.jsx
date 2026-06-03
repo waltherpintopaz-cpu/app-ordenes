@@ -303,6 +303,7 @@ export default function BotControlPanel() {
             ⚡ <strong>Flujo activo:</strong> imagen detectada → Vision analiza → si es comprobante válido → registra en Mikrowisp → confirma al cliente → resuelve en 5 min.
           </div>
         )}
+
       </div>
 
       {/* ── Avería masiva ── */}
