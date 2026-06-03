@@ -9,6 +9,7 @@ const DEFAULT_CONFIG = {
   averia_tiempo_estimado: "",
   modo_bot: "lista",
   pago_rapido_activo: false,
+  pago_rapido_inboxes: [],
 };
 
 const NODOS = [1, 2, 3, 4, 5, 6];
@@ -303,6 +304,29 @@ export default function BotControlPanel() {
             ⚡ <strong>Flujo activo:</strong> imagen detectada → Vision analiza → si es comprobante válido → registra en Mikrowisp → confirma al cliente → resuelve en 5 min.
           </div>
         )}
+
+        {/* Bandejas */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #e5e7eb" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>📥 Bandejas permitidas</div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>Solo estas bandejas procesarán comprobantes con Pago Rápido.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+            {(config.pago_rapido_inboxes || []).length === 0 && (
+              <span style={{ fontSize: 12, color: "#9ca3af", fontStyle: "italic" }}>Sin bandejas — agrega al menos una</span>
+            )}
+            {(config.pago_rapido_inboxes || []).map((inbox, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, background: "#ede9fe", border: "1px solid #c4b5fd", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "#5b21b6" }}>
+                {inbox}
+                <button onClick={() => { const upd = (config.pago_rapido_inboxes || []).filter((_, j) => j !== i); save({ pago_rapido_inboxes: upd }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#7c3aed", fontSize: 15, lineHeight: 1, padding: "0 2px", marginLeft: 2 }}>×</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input id="pr-inbox-input" type="text" placeholder="Nombre exacto de bandeja..." style={{ flex: 1, padding: "7px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 13, outline: "none" }}
+              onKeyDown={(e) => { if (e.key === "Enter" && e.target.value.trim()) { const v = e.target.value.trim(); const cur = config.pago_rapido_inboxes || []; if (!cur.includes(v)) save({ pago_rapido_inboxes: [...cur, v] }); e.target.value = ""; } }} />
+            <button onClick={() => { const inp = document.getElementById("pr-inbox-input"); if (inp?.value.trim()) { const v = inp.value.trim(); const cur = config.pago_rapido_inboxes || []; if (!cur.includes(v)) save({ pago_rapido_inboxes: [...cur, v] }); inp.value = ""; } }}
+              style={{ padding: "7px 14px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>+ Agregar</button>
+          </div>
+        </div>
 
       </div>
 
