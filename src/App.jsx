@@ -3283,7 +3283,13 @@ export default function App() {
       setMkwMasivoInfo(`Consultando ${i + 1}/${base.length} — ${c.nombre || c.dni}...`);
       try {
         const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""), String(c.nodo || ""));
-        const { data: prev } = await supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id).maybeSingle();
+        const _esNod04Prev = String(c.nodo || "").trim() === "Nod_04";
+        const _nodoServicioPrev = datos[0]?.servicios?.[0]?.nodo ?? null;
+        const _nodoNumPrev = (_nodoServicioPrev ?? (_esNod04Prev ? 5 : null));
+        const _nodoNumPrevN = _nodoNumPrev !== null ? Number(_nodoNumPrev) : null;
+        let _prevQ = supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id);
+        if (_nodoNumPrevN !== null) _prevQ = _prevQ.eq("nodo", _nodoNumPrevN); else _prevQ = _prevQ.is("nodo", null);
+        const { data: prev } = await _prevQ.maybeSingle();
         const res = await mkwUpsert(datos, { sobreescribir: mkwMasivoSobreescribir });
         if (res.ok) {
           ok++; if (!prev) nuevo++;
@@ -3305,14 +3311,16 @@ export default function App() {
 
   const mkwLimpiarDuplicados = async () => {
     setMkwLimpiandoDup(true); setMkwLimpiezaInfo("Leyendo registros...");
-    const { data: rows } = await supabase.from("mikrowisp_clientes").select("mikrowisp_id,telefonos");
+    const { data: rows } = await supabase.from("mikrowisp_clientes").select("mikrowisp_id,telefonos,nodo");
     if (!rows?.length) { setMkwLimpiezaInfo("No hay registros."); setMkwLimpiandoDup(false); return; }
     let fixed = 0;
     for (const row of rows) {
       const nums = String(row.telefonos || "").split(",").map(t => t.trim()).filter(Boolean);
       const unicos = [...new Set(nums)];
       if (unicos.length !== nums.length) {
-        await supabase.from("mikrowisp_clientes").update({ telefonos: unicos.join(",") }).eq("mikrowisp_id", row.mikrowisp_id);
+        let upd = supabase.from("mikrowisp_clientes").update({ telefonos: unicos.join(",") }).eq("mikrowisp_id", row.mikrowisp_id);
+        if (row.nodo !== null && row.nodo !== undefined) upd = upd.eq("nodo", row.nodo); else upd = upd.is("nodo", null);
+        await upd;
         fixed++;
       }
     }
