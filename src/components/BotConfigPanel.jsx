@@ -221,6 +221,8 @@ export default function BotConfigPanel() {
   const [histLoading, setHistLoading] = useState(false);
   const [histFiltro, setHistFiltro] = useState("todos");
   const [histFecha, setHistFecha] = useState("");
+  const [histPage, setHistPage] = useState(0);
+  const HIST_PER_PAGE = 20;
   const [editingBenef, setEditingBenef] = useState([]);
 
   const loadHistorial = useCallback(async () => {
@@ -233,6 +235,7 @@ export default function BotConfigPanel() {
     if (histFiltro !== "todos") q = q.eq("resultado", histFiltro);
     if (histFecha) q = q.gte("fecha", histFecha + "T00:00:00").lte("fecha", histFecha + "T23:59:59");
     const { data, error } = await q;
+    setHistPage(0);
     if (error) setMsg({ type: "error", text: "Error al cargar historial: " + error.message });
     setHistorial(data || []);
     setHistLoading(false);
@@ -1119,48 +1122,90 @@ export default function BotConfigPanel() {
               <div style={{ textAlign: "center", padding: 32, color: "#6b7280", fontSize: 14 }}>Cargando...</div>
             ) : historial.length === 0 ? (
               <div style={{ textAlign: "center", padding: 32, color: "#9ca3af", fontSize: 14 }}>Sin registros para los filtros seleccionados.</div>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc" }}>
-                      {["Fecha", "Cliente", "Nodo", "Banco", "Beneficiario", "Resultado", "Motivo"].map(h => (
-                        <th key={h} style={{ padding: "9px 10px", textAlign: "left", fontWeight: 700, color: "#6b7280", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {historial.map((row, i) => {
-                      const s = RESULTADO_STYLES[row.resultado] || RESULTADO_STYLES.NO;
-                      const fechaLocal = row.fecha ? new Date(row.fecha).toLocaleString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-";
-                      return (
-                        <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6", transition: "background 0.1s" }}
-                          onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
-                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                        >
-                          <td style={{ padding: "9px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fechaLocal}</td>
-                          <td style={{ padding: "9px 10px", fontWeight: 600, color: "#111827", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.cliente}>{row.cliente || "-"}</td>
-                          <td style={{ padding: "9px 10px", color: "#374151" }}>
-                            <span style={{ padding: "2px 8px", borderRadius: 6, background: "#f3f4f6", fontSize: 12, fontWeight: 600 }}>
-                              {NODO_LABELS[Number(row.nodo)] || row.nodo || "-"}
-                            </span>
-                          </td>
-                          <td style={{ padding: "9px 10px", color: "#374151", whiteSpace: "nowrap" }}>{row.banco || <span style={{ color: "#d1d5db" }}>—</span>}</td>
-                          <td style={{ padding: "9px 10px", color: "#374151", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.beneficiario}>{row.beneficiario || <span style={{ color: "#d1d5db" }}>—</span>}</td>
-                          <td style={{ padding: "9px 10px" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontWeight: 700, fontSize: 11 }}>
-                              {s.icon} {row.resultado}
-                            </span>
-                          </td>
-                          <td style={{ padding: "9px 10px", color: "#6b7280", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.motivo}>{row.motivo || <span style={{ color: "#d1d5db" }}>—</span>}</td>
+            ) : (() => {
+              const totalPages = Math.ceil(historial.length / HIST_PER_PAGE);
+              const pagina = historial.slice(histPage * HIST_PER_PAGE, (histPage + 1) * HIST_PER_PAGE);
+              function formatCliente(c) {
+                if (!c) return "-";
+                // Formato IA: "12345678_APELLIDO NOMBRE_..." → extraer solo nombre
+                const parts = c.split("_");
+                if (parts.length >= 3 && /^\d{6,}$/.test(parts[0])) {
+                  return parts[1].split(",").reverse().join(" ").trim().substring(0, 22) ||
+                         parts.slice(1, 3).join(" ").substring(0, 22);
+                }
+                return c.substring(0, 22);
+              }
+              return (
+                <>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc" }}>
+                          {["Fecha", "Cliente", "Nodo", "Banco", "Beneficiario", "Resultado", "Motivo"].map(h => (
+                            <th key={h} style={{ padding: "9px 10px", textAlign: "left", fontWeight: 700, color: "#6b7280", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <div style={{ ...hint, textAlign: "right", marginTop: 8 }}>Últimos {historial.length} registros</div>
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {pagina.map(row => {
+                          const s = RESULTADO_STYLES[row.resultado] || RESULTADO_STYLES.NO;
+                          const fechaLocal = row.fecha ? new Date(row.fecha).toLocaleString("es-PE", { timeZone: "America/Lima", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-";
+                          const clienteDisplay = formatCliente(row.cliente);
+                          return (
+                            <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6", transition: "background 0.1s" }}
+                              onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                              onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                            >
+                              <td style={{ padding: "9px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fechaLocal}</td>
+                              <td style={{ padding: "9px 10px", fontWeight: 600, color: "#111827", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.cliente}>{clienteDisplay}</td>
+                              <td style={{ padding: "9px 10px" }}>
+                                <span style={{ padding: "2px 8px", borderRadius: 6, background: "#f3f4f6", fontSize: 12, fontWeight: 600, color: "#374151" }}>
+                                  {NODO_LABELS[Number(row.nodo)] || row.nodo || "-"}
+                                </span>
+                              </td>
+                              <td style={{ padding: "9px 10px", color: "#374151", whiteSpace: "nowrap" }}>{row.banco || <span style={{ color: "#d1d5db" }}>—</span>}</td>
+                              <td style={{ padding: "9px 10px", color: "#374151", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.beneficiario}>{row.beneficiario || <span style={{ color: "#d1d5db" }}>—</span>}</td>
+                              <td style={{ padding: "9px 10px" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 20, background: s.bg, color: s.color, border: `1px solid ${s.border}`, fontWeight: 700, fontSize: 11 }}>
+                                  {s.icon} {row.resultado}
+                                </span>
+                              </td>
+                              <td style={{ padding: "9px 10px", color: "#6b7280", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.motivo}>{row.motivo || <span style={{ color: "#d1d5db" }}>—</span>}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Paginación */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>
+                      Mostrando {histPage * HIST_PER_PAGE + 1}–{Math.min((histPage + 1) * HIST_PER_PAGE, historial.length)} de {historial.length} registros
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button
+                        onClick={() => setHistPage(p => Math.max(0, p - 1))}
+                        disabled={histPage === 0}
+                        style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #e5e7eb", background: histPage === 0 ? "#f9fafb" : "#fff", color: histPage === 0 ? "#d1d5db" : "#374151", fontSize: 12, fontWeight: 600, cursor: histPage === 0 ? "default" : "pointer" }}
+                      >
+                        ← Ant.
+                      </button>
+                      <span style={{ fontSize: 12, color: "#6b7280", padding: "0 4px" }}>
+                        {histPage + 1} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setHistPage(p => Math.min(totalPages - 1, p + 1))}
+                        disabled={histPage >= totalPages - 1}
+                        style={{ padding: "5px 12px", borderRadius: 7, border: "1px solid #e5e7eb", background: histPage >= totalPages - 1 ? "#f9fafb" : "#fff", color: histPage >= totalPages - 1 ? "#d1d5db" : "#374151", fontSize: 12, fontWeight: 600, cursor: histPage >= totalPages - 1 ? "default" : "pointer" }}
+                      >
+                        Sig. →
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
