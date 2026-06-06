@@ -128,6 +128,44 @@ const infoBanner = (color = "blue") => {
 
 const NODO_LABELS = { 1:"Nod_01",7:"Nod_01",8:"Nod_01",9:"Nod_01",2:"Nod_02",3:"Nod_03",10:"Nod_03",5:"Nod_04",6:"Nod_04",11:"Nod_06" };
 
+function TagInput({ values = [], onChange, placeholder = "Agregar...", hint: hintText }) {
+  const [inputVal, setInputVal] = useState("");
+  function add() {
+    const v = inputVal.trim();
+    if (!v || values.includes(v)) return;
+    onChange([...values, v]);
+    setInputVal("");
+  }
+  return (
+    <div>
+      {values.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+          {values.map((v, i) => (
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "#4f46e5", fontWeight: 500 }}>
+              {v}
+              <button onClick={() => onChange(values.filter((_, j) => j !== i))} style={{ background: "none", border: "none", cursor: "pointer", color: "#818cf8", fontSize: 15, lineHeight: 1, padding: "0 1px", marginLeft: 1 }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          type="text"
+          value={inputVal}
+          onChange={e => setInputVal(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          placeholder={placeholder}
+          style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, outline: "none", fontFamily: "inherit", color: "#111827" }}
+        />
+        <button onClick={add} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#6366f1", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+          + Agregar
+        </button>
+      </div>
+      {hintText && <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4, lineHeight: 1.5 }}>{hintText}</div>}
+    </div>
+  );
+}
+
 const RESULTADO_STYLES = {
   SI:        { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0", icon: <CheckCircle size={13} /> },
   NO:        { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", icon: <XCircle size={13} /> },
@@ -274,8 +312,6 @@ export default function BotConfigPanel() {
   function removeBenef(idx) {
     set("beneficiarios", beneficiarios.filter((_, i) => i !== idx));
   }
-
-  const numerosAdicionales = (cfg.notif_numeros_adicionales || "").split(",").map(s => s.trim()).filter(Boolean);
 
   if (loading)
     return <div style={{ padding: 60, textAlign: "center", color: "#6b7280", fontSize: 14 }}>Cargando configuración...</div>;
@@ -559,7 +595,7 @@ export default function BotConfigPanel() {
               <div style={cardTitle()}>
                 <MessageSquare size={16} color="#6366f1" /> Mensajes de horario
               </div>
-              <div style={{ marginBottom: 14 }}>
+              <div>
                 <label style={lbl}>Descripción del horario (para el agente IA)</label>
                 <input
                   type="text"
@@ -669,14 +705,12 @@ export default function BotConfigPanel() {
               <div style={cardTitle()}>
                 <Settings size={16} color="#6366f1" /> Inboxes excluidos del bot
               </div>
-              <input
-                type="text"
-                value={cfg.inboxes_excluidos}
-                onChange={e => set("inboxes_excluidos", e.target.value)}
-                style={inp}
-                placeholder="DIM Ventas, Ventas Meta"
+              <TagInput
+                values={(cfg.inboxes_excluidos || "").split(",").map(s => s.trim()).filter(Boolean)}
+                onChange={arr => set("inboxes_excluidos", arr.join(", "))}
+                placeholder="Nombre exacto de bandeja..."
+                hint="El bot no responderá en estos canales."
               />
-              <div style={hint}>Nombres exactos separados por coma. El bot no responderá en estos canales.</div>
             </div>
           </>
         )}
@@ -929,9 +963,21 @@ export default function BotConfigPanel() {
                     </div>
 
                     <div style={{ marginBottom: 10 }}>
-                      <label style={lbl}>Tokens de validación <span style={{ color: "#9ca3af", fontWeight: 400, textTransform: "none" }}>(separados por coma)</span></label>
-                      <input type="text" value={b.tokens} onChange={e => editing && setBenef(idx, "tokens", e.target.value)} readOnly={!editing} style={editing ? inp : readonlyInp} placeholder="walter,pinto,paz" />
-                      {editing && <div style={hint}>El bot acepta si detecta al menos 2 de estos tokens en el comprobante.</div>}
+                      <label style={lbl}>Tokens de validación</label>
+                      {editing ? (
+                        <TagInput
+                          values={Array.isArray(b.tokens) ? b.tokens : String(b.tokens || "").split(",").map(t => t.trim()).filter(Boolean)}
+                          onChange={arr => setBenef(idx, "tokens", arr)}
+                          placeholder="walter"
+                          hint="El bot acepta si detecta al menos 2 de estos tokens en el comprobante."
+                        />
+                      ) : (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 4 }}>
+                          {(Array.isArray(b.tokens) ? b.tokens : String(b.tokens || "").split(",").map(t => t.trim()).filter(Boolean)).map((t, ti) => (
+                            <span key={ti} style={{ padding: "2px 8px", borderRadius: 5, background: "#f3f4f6", border: "1px solid #e5e7eb", fontSize: 12, color: "#6b7280" }}>{t}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -977,9 +1023,13 @@ export default function BotConfigPanel() {
                 </div>
               </div>
               <div>
-                <label style={lbl}>Bancos con excepción de año <span style={{ color: "#9ca3af", fontWeight: 400, textTransform: "none" }}>(separados por coma)</span></label>
-                <input type="text" value={cfg.bancos_excepcion_anio} onChange={e => set("bancos_excepcion_anio", e.target.value)} style={inp} placeholder="Scotiabank, BCP" />
-                <div style={hint}>Para estos bancos el bot corrige automáticamente el año si aparece incorrecto.</div>
+                <label style={lbl}>Bancos con excepción de año</label>
+                <TagInput
+                  values={(cfg.bancos_excepcion_anio || "").split(",").map(s => s.trim()).filter(Boolean)}
+                  onChange={arr => set("bancos_excepcion_anio", arr.join(", "))}
+                  placeholder="Scotiabank"
+                  hint="Para estos bancos el bot corrige automáticamente el año si aparece incorrecto."
+                />
               </div>
             </div>
 
@@ -997,18 +1047,13 @@ export default function BotConfigPanel() {
                 <div style={hint}>ID del grupo en formato Evolution API. Termina en @g.us para grupos.</div>
               </div>
               <div>
-                <label style={lbl}>Números adicionales <span style={{ color: "#9ca3af", fontWeight: 400, textTransform: "none" }}>(separados por coma)</span></label>
-                <input type="text" value={cfg.notif_numeros_adicionales} onChange={e => set("notif_numeros_adicionales", e.target.value)} style={inp} placeholder="51980196764, 51949529785" />
-                <div style={hint}>Números personales que también recibirán el aviso. Sin + ni espacios.</div>
-                {numerosAdicionales.length > 0 && (
-                  <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {numerosAdicionales.map((n, i) => (
-                      <span key={i} style={{ padding: "3px 10px", borderRadius: 20, background: "#eef2ff", color: "#4f46e5", fontSize: 12, fontWeight: 600 }}>
-                        📱 {n}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <label style={lbl}>Números adicionales</label>
+                <TagInput
+                  values={(cfg.notif_numeros_adicionales || "").split(",").map(s => s.trim()).filter(Boolean)}
+                  onChange={arr => set("notif_numeros_adicionales", arr.join(", "))}
+                  placeholder="51980196764"
+                  hint="Números personales que también recibirán el aviso. Sin + ni espacios."
+                />
               </div>
             </div>
           </>
