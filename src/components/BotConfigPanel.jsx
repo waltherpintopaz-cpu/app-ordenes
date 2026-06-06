@@ -220,7 +220,8 @@ export default function BotConfigPanel() {
   const [historial, setHistorial] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
   const [histFiltro, setHistFiltro] = useState("todos");
-  const [histFecha, setHistFecha] = useState("");
+  const [histDesde, setHistDesde] = useState("");
+  const [histHasta, setHistHasta] = useState("");
   const [histPage, setHistPage] = useState(0);
   const HIST_PER_PAGE = 20;
   const [editingBenef, setEditingBenef] = useState([]);
@@ -231,15 +232,16 @@ export default function BotConfigPanel() {
       .from("bot_pagos_log")
       .select("*")
       .order("fecha", { ascending: false })
-      .limit(100);
+      .limit(500);
     if (histFiltro !== "todos") q = q.eq("resultado", histFiltro);
-    if (histFecha) q = q.gte("fecha", histFecha + "T00:00:00").lte("fecha", histFecha + "T23:59:59");
+    if (histDesde) q = q.gte("fecha", histDesde + "T00:00:00");
+    if (histHasta) q = q.lte("fecha", histHasta + "T23:59:59");
     const { data, error } = await q;
     setHistPage(0);
     if (error) setMsg({ type: "error", text: "Error al cargar historial: " + error.message });
     setHistorial(data || []);
     setHistLoading(false);
-  }, [histFiltro, histFecha]);
+  }, [histFiltro, histDesde, histHasta]);
 
   useEffect(() => {
     if (tab === "historial") loadHistorial();
@@ -1080,7 +1082,7 @@ export default function BotConfigPanel() {
             </div>
 
             {/* Filtros */}
-            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "flex-end" }}>
               <div>
                 <label style={lbl}>Resultado</label>
                 <select value={histFiltro} onChange={e => setHistFiltro(e.target.value)} style={{ ...inp, width: "auto", minWidth: 130 }}>
@@ -1091,31 +1093,49 @@ export default function BotConfigPanel() {
                 </select>
               </div>
               <div>
-                <label style={lbl}>Fecha</label>
-                <input type="date" value={histFecha} onChange={e => setHistFecha(e.target.value)} style={{ ...inp, width: "auto" }} />
+                <label style={lbl}>Desde</label>
+                <input type="date" value={histDesde} onChange={e => setHistDesde(e.target.value)} style={{ ...inp, width: "auto" }} />
               </div>
-              {histFecha && (
-                <button onClick={() => setHistFecha("")} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 12, color: "#6b7280" }}>
-                  Limpiar
+              <div>
+                <label style={lbl}>Hasta</label>
+                <input type="date" value={histHasta} onChange={e => setHistHasta(e.target.value)} style={{ ...inp, width: "auto" }} />
+              </div>
+              {(histDesde || histHasta) && (
+                <button onClick={() => { setHistDesde(""); setHistHasta(""); }} style={{ padding: "9px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 12, color: "#6b7280" }}>
+                  Limpiar fechas
                 </button>
               )}
             </div>
 
-            {/* Contadores */}
-            {historial.length > 0 && (
-              <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-                {["SI", "NO", "NOTIFICAR"].map(r => {
-                  const count = historial.filter(h => h.resultado === r).length;
-                  const s = RESULTADO_STYLES[r];
-                  return (
-                    <div key={r} style={{ flex: 1, padding: "10px 14px", borderRadius: 8, background: s.bg, border: `1px solid ${s.border}`, textAlign: "center" }}>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{count}</div>
-                      <div style={{ fontSize: 11, color: s.color, fontWeight: 600 }}>{r === "SI" ? "Aprobados" : r === "NO" ? "Rechazados" : "Notificar"}</div>
+            {/* Resumen */}
+            {historial.length > 0 && (() => {
+              const aprobados  = historial.filter(h => h.resultado === "SI");
+              const rechazados = historial.filter(h => h.resultado === "NO");
+              const notificar  = historial.filter(h => h.resultado === "NOTIFICAR");
+              const sumaMontos = aprobados.reduce((acc, h) => acc + (Number(h.monto) || 0), 0);
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.2fr", gap: 10, marginBottom: 16 }}>
+                  <div style={{ padding: "12px 14px", borderRadius: 8, background: "#f0fdf4", border: "1px solid #bbf7d0", textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#166534" }}>{aprobados.length}</div>
+                    <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>Aprobados</div>
+                  </div>
+                  <div style={{ padding: "12px 14px", borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#991b1b" }}>{rechazados.length}</div>
+                    <div style={{ fontSize: 11, color: "#991b1b", fontWeight: 600 }}>Rechazados</div>
+                  </div>
+                  <div style={{ padding: "12px 14px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "#92400e" }}>{notificar.length}</div>
+                    <div style={{ fontSize: 11, color: "#92400e", fontWeight: 600 }}>Notificar</div>
+                  </div>
+                  <div style={{ padding: "12px 14px", borderRadius: 8, background: "#eef2ff", border: "1px solid #c7d2fe", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#4f46e5" }}>
+                      {sumaMontos > 0 ? `S/ ${sumaMontos.toFixed(2)}` : "—"}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <div style={{ fontSize: 11, color: "#4f46e5", fontWeight: 600 }}>Total cobrado</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Tabla */}
             {histLoading ? (
@@ -1141,8 +1161,8 @@ export default function BotConfigPanel() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: "#f8fafc" }}>
-                          {["Fecha", "Cliente", "Nodo", "Banco", "Beneficiario", "Resultado", "Motivo"].map(h => (
-                            <th key={h} style={{ padding: "9px 10px", textAlign: "left", fontWeight: 700, color: "#6b7280", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                          {["Fecha", "Cliente", "Nodo", "Monto", "Banco", "Beneficiario", "Resultado", "Motivo"].map(h => (
+                            <th key={h} style={{ padding: "9px 10px", textAlign: h === "Monto" ? "right" : "left", fontWeight: 700, color: "#6b7280", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -1162,6 +1182,9 @@ export default function BotConfigPanel() {
                                 <span style={{ padding: "2px 8px", borderRadius: 6, background: "#f3f4f6", fontSize: 12, fontWeight: 600, color: "#374151" }}>
                                   {NODO_LABELS[Number(row.nodo)] || row.nodo || "-"}
                                 </span>
+                              </td>
+                              <td style={{ padding: "9px 10px", textAlign: "right", fontWeight: 600, color: row.monto ? "#166534" : "#d1d5db", whiteSpace: "nowrap" }}>
+                                {row.monto ? `S/ ${Number(row.monto).toFixed(2)}` : "—"}
                               </td>
                               <td style={{ padding: "9px 10px", color: "#374151", whiteSpace: "nowrap" }}>{row.banco || <span style={{ color: "#d1d5db" }}>—</span>}</td>
                               <td style={{ padding: "9px 10px", color: "#374151", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.beneficiario}>{row.beneficiario || <span style={{ color: "#d1d5db" }}>—</span>}</td>
