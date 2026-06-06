@@ -99,6 +99,8 @@ const input = {
 
 const hint = { fontSize: 12, color: "#9ca3af", marginTop: 4 };
 
+const NODO_LABELS = { 1:"Nod_01",7:"Nod_01",8:"Nod_01",9:"Nod_01",2:"Nod_02",3:"Nod_03",10:"Nod_03",5:"Nod_04",6:"Nod_04",11:"Nod_06" };
+
 const RESULTADO_STYLES = {
   SI:        { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0", icon: <CheckCircle size={13} /> },
   NO:        { bg: "#fef2f2", color: "#991b1b", border: "#fecaca", icon: <XCircle size={13} /> },
@@ -1271,7 +1273,7 @@ export default function BotConfigPanel() {
                       <tr key={row.id} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "8px 10px", whiteSpace: "nowrap", color: "#6b7280" }}>{fechaLocal}</td>
                         <td style={{ padding: "8px 10px", fontWeight: 600, color: "#111827", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.cliente}>{row.cliente || "-"}</td>
-                        <td style={{ padding: "8px 10px", color: "#374151" }}>{row.nodo || "-"}</td>
+                        <td style={{ padding: "8px 10px", color: "#374151" }}>{NODO_LABELS[Number(row.nodo)] || row.nodo || "-"}</td>
                         <td style={{ padding: "8px 10px", color: "#374151", whiteSpace: "nowrap" }}>{row.banco || "-"}</td>
                         <td style={{ padding: "8px 10px", color: "#374151", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.beneficiario}>{row.beneficiario || "-"}</td>
                         <td style={{ padding: "8px 10px" }}>
