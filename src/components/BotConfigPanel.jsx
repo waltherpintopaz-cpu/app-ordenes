@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
-import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle, Power, AlertOctagon, Menu, Pencil, Lock } from "lucide-react";
+import { Clock, MessageSquare, Save, CreditCard, Banknote, ShieldCheck, Plus, Trash2, Bell, History, RefreshCw, CheckCircle, XCircle, AlertTriangle, Power, AlertOctagon, Menu, Pencil, Lock, Bot, CalendarClock, Users } from "lucide-react";
 
 const DIAS = [
   { val: 1, label: "Lun" },
@@ -40,8 +40,19 @@ const DEFAULT = {
     { nombre: "Americanet Fiber Solutions Sac", tokens: "americanet", nodos: "1,2,3,4,5,6,7,8,9,10", nodo_notificar: "11", pasarela: "Americanet", accion: "SI" },
     { nombre: "Cynthia Hua / Cynthia L Huanqui M", tokens: "cynthia,hua,huanqui", nodos: "5", nodo_notificar: "", pasarela: "Pagos DIM", accion: "SI" },
   ],
+  horario_texto: "lunes a sábado de 8am a 9pm",
+  prorroga_tolerancia_amer: 10,
+  prorroga_tolerancia_dim: 14,
+  prorroga_max_consecutivos: 3,
+  prorroga_max_dias_activo: 10,
+  prorroga_max_dias_suspendido: 3,
+  equipo_soporte_id: 1,
+  equipo_ventas_id: 2,
+  equipo_pagos_id: 3,
+  bot_agent_id: 10,
   comprobante_dias_max: 7,
   bancos_excepcion_anio: "Scotiabank",
+  modo_bot: "ia",
   bot_activo: true,
   averia_activa: false,
   averia_contexto: "",
@@ -55,6 +66,8 @@ const DEFAULT = {
     "💳 ::::: MÉTODOS DE PAGO 02 :::::\n🏦 Interbank: 3003142688665\n🏦 BCP: 215 31452862 0 63\n🏦 Banco de la Nación: 04-088-311855\n🏦 Caja Arequipa: 00317717802100001001\n📱 YAPE/PLIN: 989 521 677\n👤 Walter Pinto P.",
   dim_metodos:
     "💳 Caja Digital Soles: 00125001202100003012\n💳 BCP Soles: 21515624156071\n📲 Yape / Plin: 950170192\n👤 Cynthia Lizbeth Huanqui Mamani",
+  nod11_metodos:
+    "📲 *Yape*\nNúmero: 980 196 764\nTitular: Gustavo Ramírez\n\n🏦 *BCP*\nCuenta: 21515064826092\nCCI: 00221511506482609227\nTitular: Gustavo Ramírez",
 };
 
 const card = {
@@ -153,9 +166,19 @@ export default function BotConfigPanel() {
   async function save() {
     setSaving(true);
     setMsg(null);
+    // Normalizar beneficiarios: tokens siempre como array (el bot usa .some())
+    const cfgToSave = {
+      ...cfg,
+      beneficiarios: (cfg.beneficiarios || []).map(b => ({
+        ...b,
+        tokens: Array.isArray(b.tokens)
+          ? b.tokens
+          : String(b.tokens || "").split(",").map(t => t.trim()).filter(Boolean),
+      })),
+    };
     const { error } = await supabase
       .from("bot_config")
-      .upsert({ id: 1, ...cfg }, { onConflict: "id" });
+      .upsert({ id: 1, ...cfgToSave }, { onConflict: "id" });
     if (error) setMsg({ type: "error", text: "Error: " + error.message });
     else setMsg({ type: "ok", text: "Guardado correctamente" });
     setSaving(false);
@@ -196,6 +219,8 @@ export default function BotConfigPanel() {
     { key: "mensajes", label: "Mensajes", icon: <MessageSquare size={15} /> },
     { key: "metodos", label: "Métodos de pago", icon: <Banknote size={15} /> },
     { key: "nod06", label: "Pagos Nod-06", icon: <CreditCard size={15} /> },
+    { key: "prorroga", label: "Prórrogas", icon: <CalendarClock size={15} /> },
+    { key: "equipos", label: "Equipos", icon: <Users size={15} /> },
     { key: "pagos", label: "Validación pagos", icon: <ShieldCheck size={15} /> },
     { key: "historial", label: "Historial", icon: <History size={15} /> },
   ];
@@ -278,6 +303,35 @@ export default function BotConfigPanel() {
       {/* ── TAB: Estado del bot ── */}
       {tab === "estado" && (
         <>
+          {/* Modo bot IA / Lista */}
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <Bot size={16} color="#6366f1" /> Modo de atención
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {[
+                { val: "ia", label: "🤖 Agente IA", desc: "Conversación libre. La IA entiende cualquier mensaje y responde de forma natural." },
+                { val: "lista", label: "📋 Menú Lista", desc: "El cliente elige una opción numerada del menú (1-6). Flujo estructurado." },
+              ].map(opt => (
+                <button
+                  key={opt.val}
+                  onClick={() => set("modo_bot", opt.val)}
+                  style={{
+                    flex: 1, padding: "14px 16px", borderRadius: 10, cursor: "pointer", textAlign: "left",
+                    border: cfg.modo_bot === opt.val ? "2px solid #6366f1" : "2px solid #e5e7eb",
+                    background: cfg.modo_bot === opt.val ? "#eef2ff" : "#f9fafb",
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 700, color: cfg.modo_bot === opt.val ? "#4f46e5" : "#374151", marginBottom: 4 }}>{opt.label}</div>
+                  <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.4 }}>{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ ...hint, marginTop: 10 }}>
+              El cambio se aplica en máx 5 minutos. El modo activo aparece resaltado en azul.
+            </div>
+          </div>
+
           {/* Bot ON/OFF */}
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -438,6 +492,22 @@ export default function BotConfigPanel() {
             </div>
             <div style={{ ...hint, marginTop: 10 }}>
               Horario actual: {HORAS.find(h => h.val === cfg.horario_inicio)?.label} – {HORAS.find(h => h.val === cfg.horario_fin)?.label} (hora Lima)
+            </div>
+          </div>
+
+          <div style={card}>
+            <label style={{ ...label, fontSize: 15, fontWeight: 700, color: "#111827" }}>
+              Descripción del horario (para el agente IA)
+            </label>
+            <input
+              type="text"
+              value={cfg.horario_texto}
+              onChange={(e) => set("horario_texto", e.target.value)}
+              style={input}
+              placeholder="lunes a sábado de 8am a 9pm"
+            />
+            <div style={hint}>
+              Texto que el agente IA usa al mencionar el horario en conversaciones. Ej: "lunes a sábado de 8am a 9pm".
             </div>
           </div>
 
@@ -649,6 +719,21 @@ export default function BotConfigPanel() {
               style={{ ...input, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
             />
           </div>
+
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 18 }}>🔌</span> Nod-11
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+              Métodos de pago para clientes del Nodo 11.
+            </div>
+            <textarea
+              value={cfg.nod11_metodos}
+              onChange={(e) => set("nod11_metodos", e.target.value)}
+              rows={6}
+              style={{ ...input, resize: "vertical", fontFamily: "monospace", fontSize: 13 }}
+            />
+          </div>
         </>
       )}
 
@@ -729,6 +814,150 @@ export default function BotConfigPanel() {
             />
             <div style={hint}>
               El bot indicará a los clientes nod_06 que envíen su comprobante a este número.
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── TAB: Prórrogas ── */}
+      {tab === "prorroga" && (
+        <>
+          <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8 }}>
+            💡 Estos valores controlan cuándo se ofrece prórroga y cuántos días se pueden conceder por ISP.
+          </div>
+
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <CalendarClock size={16} color="#6366f1" /> Período de tolerancia (días después del vencimiento)
+            </div>
+            <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 14, padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8 }}>
+              ⚠️ Durante la tolerancia el servicio sigue activo. El bot informa la fecha límite y <b>no registra prórroga</b>. Solo ofrece prórroga si el servicio ya está suspendido.
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={label}>Americanet (días)</label>
+                <input
+                  type="number" min={0} max={30}
+                  value={cfg.prorroga_tolerancia_amer}
+                  onChange={e => set("prorroga_tolerancia_amer", Number(e.target.value))}
+                  style={{ ...input, width: 80 }}
+                />
+                <div style={hint}>Días después del vencimiento antes de suspender.</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={label}>DimFiber (días)</label>
+                <input
+                  type="number" min={0} max={30}
+                  value={cfg.prorroga_tolerancia_dim}
+                  onChange={e => set("prorroga_tolerancia_dim", Number(e.target.value))}
+                  style={{ ...input, width: 80 }}
+                />
+                <div style={hint}>Días después del vencimiento antes de suspender.</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 16 }}>
+              Límites de prórroga
+            </div>
+            <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={label}>Días máximos (servicio activo)</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={1} max={30}
+                    value={cfg.prorroga_max_dias_activo}
+                    onChange={e => set("prorroga_max_dias_activo", Number(e.target.value))}
+                    style={{ ...input, width: 80 }}
+                  />
+                  <span style={{ fontSize: 14, color: "#6b7280" }}>días</span>
+                </div>
+                <div style={hint}>Desde el corte para clientes aún activos.</div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={label}>Días máximos (suspendido)</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={1} max={30}
+                    value={cfg.prorroga_max_dias_suspendido}
+                    onChange={e => set("prorroga_max_dias_suspendido", Number(e.target.value))}
+                    style={{ ...input, width: 80 }}
+                  />
+                  <span style={{ fontSize: 14, color: "#6b7280" }}>días</span>
+                </div>
+                <div style={hint}>Desde hoy para clientes con servicio suspendido.</div>
+              </div>
+            </div>
+            <div>
+              <label style={label}>Prórrogas consecutivas máximas</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="number" min={1} max={10}
+                  value={cfg.prorroga_max_consecutivos}
+                  onChange={e => set("prorroga_max_consecutivos", Number(e.target.value))}
+                  style={{ ...input, width: 80 }}
+                />
+                <span style={{ fontSize: 14, color: "#6b7280" }}>seguidas</span>
+              </div>
+              <div style={hint}>Si el cliente supera este límite, se escala a un asesor de pagos.</div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── TAB: Equipos ── */}
+      {tab === "equipos" && (
+        <>
+          <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8 }}>
+            💡 IDs de los equipos y agentes en Chatwoot. El bot los usa al escalar conversaciones. Puedes ver estos IDs en Configuración → Equipos de tu Chatwoot.
+          </div>
+
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <Users size={16} color="#6366f1" /> Equipos de Chatwoot
+            </div>
+            {[
+              { key: "equipo_soporte_id", label: "Equipo Soporte", desc: "Problemas técnicos y averías", color: "#2563eb" },
+              { key: "equipo_pagos_id", label: "Equipo Pagos", desc: "Validación de comprobantes", color: "#16a34a" },
+              { key: "equipo_ventas_id", label: "Equipo Ventas", desc: "Nuevos clientes y planes", color: "#d97706" },
+            ].map(eq => (
+              <div key={eq.key} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={label}>{eq.label}</label>
+                  <div style={{ fontSize: 12, color: "#9ca3af" }}>{eq.desc}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, color: "#6b7280" }}>ID:</span>
+                  <input
+                    type="number" min={1}
+                    value={cfg[eq.key]}
+                    onChange={e => set(eq.key, Number(e.target.value))}
+                    style={{ ...input, width: 80 }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+              <Bot size={16} color="#6366f1" /> Agente Bot
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={label}>ID del Bot_agent en Chatwoot</label>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>El bot se auto-asigna con este ID cuando retoma una conversación.</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "#6b7280" }}>ID:</span>
+                <input
+                  type="number" min={1}
+                  value={cfg.bot_agent_id}
+                  onChange={e => set("bot_agent_id", Number(e.target.value))}
+                  style={{ ...input, width: 80 }}
+                />
+              </div>
             </div>
           </div>
         </>
