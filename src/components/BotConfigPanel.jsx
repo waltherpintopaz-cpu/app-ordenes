@@ -132,7 +132,8 @@ export default function BotConfigPanel() {
       .limit(100);
     if (histFiltro !== "todos") q = q.eq("resultado", histFiltro);
     if (histFecha) q = q.gte("fecha", histFecha + "T00:00:00").lte("fecha", histFecha + "T23:59:59");
-    const { data } = await q;
+    const { data, error } = await q;
+    if (error) setMsg({ type: "error", text: "Error al cargar historial: " + error.message });
     setHistorial(data || []);
     setHistLoading(false);
   }, [histFiltro, histFecha]);
