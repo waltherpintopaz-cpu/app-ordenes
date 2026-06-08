@@ -2642,7 +2642,12 @@ export default function SidebarApp() {
                     <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
                       value={ordenForm.ordenTipo} onChange={e => {
                         const ot = e.target.value;
-                        const tipoMap = { "RECUPERACION DE EQUIPO":"Recojo de equipo", "INCIDENCIA":"Incidencia Internet", "MANTENIMIENTO":"Mantenimiento" };
+                        const tipoMap = {
+                          "ORDEN DE SERVICIO":     "Instalacion Internet",
+                          "INCIDENCIA":            "Incidencia Internet",
+                          "MANTENIMIENTO":         "Mantenimiento",
+                          "RECUPERACION DE EQUIPO":"Recojo de equipo",
+                        };
                         setOrdenForm(p=>({...p, ordenTipo:ot, tipoActuacion: tipoMap[ot] || p.tipoActuacion }));
                       }}>
                       <option>ORDEN DE SERVICIO</option>
@@ -2657,7 +2662,19 @@ export default function SidebarApp() {
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Actuación</div>
                   <div>
                     <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
-                      value={ordenForm.tipoActuacion} onChange={e => setOrdenForm(p => ({...p, tipoActuacion:e.target.value}))}>
+                      value={ordenForm.tipoActuacion} onChange={e => {
+                        const ta = e.target.value;
+                        const ordenMap = {
+                          "Instalacion Internet":         "ORDEN DE SERVICIO",
+                          "Instalacion Internet y Cable": "ORDEN DE SERVICIO",
+                          "Instalacion TV":               "ORDEN DE SERVICIO",
+                          "Incidencia Internet":          "INCIDENCIA",
+                          "Mantenimiento":                "MANTENIMIENTO",
+                          "Visita Tecnica":               "ORDEN DE SERVICIO",
+                          "Recojo de equipo":             "RECUPERACION DE EQUIPO",
+                        };
+                        setOrdenForm(p => ({...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo }));
+                      }}>
                       <option>Incidencia Internet</option>
                       <option>Instalacion Internet</option>
                       <option>Instalacion Internet y Cable</option>
@@ -2724,6 +2741,57 @@ export default function SidebarApp() {
                     </select>
                   </div>
                 </div>
+                {/* Campos solo para instalación */}
+                {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && (<>
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Velocidad</div>
+                    <div>
+                      <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                        value={ordenForm.velocidad} onChange={e => setOrdenForm(p=>({...p, velocidad:e.target.value}))}>
+                        <option value="">— Seleccionar —</option>
+                        {["100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"].map(v=><option key={v}>{v}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Precio plan</div>
+                    <div>
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="number" placeholder="S/ 0.00"
+                        value={ordenForm.precioPlan} onChange={e => setOrdenForm(p=>({...p, precioPlan:e.target.value}))} />
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Usuario nodo</div>
+                    <div style={{ position:"relative" }}>
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }}
+                        placeholder="user@americanet"
+                        value={ordenForm.usuarioNodo}
+                        onChange={e => setOrdenForm(p=>({...p, usuarioNodo:e.target.value}))}
+                        onFocus={() => { setShowUsuarioDrop(true); if(!usuariosNodo.length && cliente?.nodo) cargarUsuariosNodo(cliente.nodo); }}
+                        onBlur={() => setTimeout(()=>setShowUsuarioDrop(false),150)} />
+                      {showUsuarioDrop && usuariosNodo.length > 0 && (
+                        <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:`1px solid ${T.border}`, borderRadius:6, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:999, maxHeight:180, overflowY:"auto" }}>
+                          {usuariosNodo.map((u,i) => (
+                            <div key={u.usuario} onMouseDown={() => { setOrdenForm(p=>({...p, usuarioNodo:u.usuario})); setShowUsuarioDrop(false); }}
+                              style={{ padding:"8px 12px", cursor:u.ocupado?"default":"pointer", fontSize:12, display:"flex", justifyContent:"space-between", alignItems:"center",
+                                color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151", fontWeight:i===0?700:400,
+                                background:i===0&&!u.ocupado?"#eff6ff":"transparent", borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none" }}>
+                              <span>{u.usuario}{i===0&&!u.ocupado?" ✓":""}</span>
+                              {u.ocupado && <span style={{ fontSize:10, background:"#fef2f2", color:"#dc2626", borderRadius:4, padding:"1px 6px", fontWeight:700 }}>Ocupado</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>SN ONU</div>
+                    <div>
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text" placeholder="HWTC12345678"
+                        value={ordenForm.snOnu} onChange={e => setOrdenForm(p=>({...p, snOnu:e.target.value}))} />
+                    </div>
+                  </div>
+                </>)}
                 {/* Autor */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Autor</div>
