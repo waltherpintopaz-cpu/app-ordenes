@@ -18975,7 +18975,7 @@ export default function App() {
                         {steps.map(({icon,label},i) => {
                           const n=i+1, done=stepsStatus[i], active=mkwWizardStep===n;
                           return (
-                            <button key={n} onClick={() => setMkwWizardStep(n)}
+                            <button key={n} onClick={async () => { setMkwWizardStep(n); if (n===3 && !factPanelCliId && !factPanelLoading) await abrirFactPanel(cli); if (n===2 && !svcNuevoCliId && !svcNuevoLoading) await abrirSvcNuevo(cli); }}
                               style={{ flex:1, padding:"10px 4px 8px", border:"none", borderBottom:`2px solid ${active?"#2563eb":"transparent"}`, background:active?"#fff":"transparent", cursor:"pointer", textAlign:"center" }}>
                               <div style={{ fontSize:17 }}>{done?"✅":active?icon:"○"}</div>
                               <div style={{ fontSize:9, fontWeight:800, marginTop:2, textTransform:"uppercase", letterSpacing:"0.05em", color:done?"#16a34a":active?"#2563eb":"#94a3b8" }}>{label}</div>
