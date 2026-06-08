@@ -1934,6 +1934,13 @@ export default function App() {
   const [svcFactVencimiento, setSvcFactVencimiento] = useState("");
   const [svcFactMonto,       setSvcFactMonto]       = useState("");
   const [svcFactDescripcion, setSvcFactDescripcion] = useState("");
+  const [svcFactStep,        setSvcFactStep]        = useState(1); // 1=primera factura, 2=prorrateo
+  const [svcFactF1Monto,     setSvcFactF1Monto]     = useState("");
+  const [svcFactF1Vence,     setSvcFactF1Vence]     = useState("");
+  const [svcFactF1Pagada,    setSvcFactF1Pagada]    = useState(true);
+  const [svcFactF2Vence,     setSvcFactF2Vence]     = useState("");
+  const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
+  const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
   const [svcFactCreando,     setSvcFactCreando]     = useState(false);
   const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
@@ -3156,7 +3163,10 @@ export default function App() {
     setSvcNuevoCliId(null);
     setSvcNuevoPerfiles([]);
     setSvcNuevoCreado(null);
-    setSvcFactVencimiento("");
+    setSvcFactStep(1);
+    setSvcFactF1Monto(""); setSvcFactF1Vence(""); setSvcFactF1Pagada(true);
+    setSvcFactF2Vence(""); setSvcFactF2FechaInst(""); setSvcFactF2PrecPlan("");
+    setSvcFactMonto(""); setSvcFactVencimiento("");
     setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"",
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
@@ -18854,55 +18864,143 @@ export default function App() {
                         </div>
                       </div>
                       <div style={{ background:"#fff", border:"1.5px solid #86efac", borderRadius:10, padding:"16px" }}>
-                        <div style={{ fontWeight:700, fontSize:13, color:"#15803d", marginBottom:12 }}>📄 Crear primera factura (prorrateo)</div>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-                          <div>
-                            <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha vencimiento *</label>
-                            <input type="date" value={svcFactVencimiento}
-                              onChange={e => setSvcFactVencimiento(e.target.value)}
-                              style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                        {/* Tabs */}
+                        <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+                          {[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l}) => (
+                            <button key={s} onClick={() => setSvcFactStep(s)}
+                              style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:12, fontWeight:700, cursor:"pointer",
+                                background: svcFactStep===s ? "#16a34a" : "#f0fdf4", color: svcFactStep===s ? "#fff" : "#15803d" }}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* PASO 1: Factura instalación */}
+                        {svcFactStep === 1 && (
+                          <div style={{ display:"grid", gap:10 }}>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Monto pagado S/ *</label>
+                                <input type="number" step="0.01" placeholder="50.00" value={svcFactF1Monto}
+                                  onChange={e => setSvcFactF1Monto(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha vencimiento *</label>
+                                <input type="date" value={svcFactF1Vence}
+                                  onChange={e => setSvcFactF1Vence(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                              </div>
+                            </div>
+                            <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, fontWeight:600, color:"#15803d" }}>
+                              <input type="checkbox" checked={svcFactF1Pagada} onChange={e => setSvcFactF1Pagada(e.target.checked)} style={{ width:15, height:15 }} />
+                              Registrar como pagada automáticamente
+                            </label>
+                            <div style={{ display:"flex", gap:8 }}>
+                              <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto}
+                                onClick={async () => {
+                                  setSvcFactCreando(true);
+                                  try {
+                                    const { id_cliente, esDim } = svcNuevoCreado;
+                                    const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence, total: parseFloat(svcFactF1Monto), descripcion:"Pago de instalación" };
+                                    const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
+                                    const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+                                    if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                    if (svcFactF1Pagada && inv.json?.idfactura) {
+                                      await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(inv.json.idfactura,10), pasarela:"Efectivo Oficina/Sucursal", cantidad: parseFloat(svcFactF1Monto) });
+                                    }
+                                    window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
+                                    setSvcFactStep(2);
+                                  } catch(e) { window.alert("Error: " + e.message); }
+                                  setSvcFactCreando(false);
+                                }}
+                                style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
+                              </button>
+                              <button onClick={() => setSvcFactStep(2)}
+                                style={{ padding:"10px 14px", background:"#f0fdf4", color:"#15803d", border:"1px solid #86efac", borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                Omitir →
+                              </button>
+                            </div>
                           </div>
-                          <div>
-                            <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Monto S/ <span style={{fontWeight:400}}>(prorrateo)</span></label>
-                            <input type="number" step="0.01" placeholder="Monto del período"
-                              value={svcFactMonto}
-                              onChange={e => setSvcFactMonto(e.target.value)}
-                              style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
-                          </div>
-                        </div>
-                        <div style={{ marginBottom:12 }}>
-                          <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Descripción <span style={{fontWeight:400}}>(opcional)</span></label>
-                          <input type="text" placeholder="Ej: Prorrateo junio 2026"
-                            value={svcFactDescripcion}
-                            onChange={e => setSvcFactDescripcion(e.target.value)}
-                            style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
-                        </div>
-                        <div style={{ display:"flex", gap:8 }}>
-                          <button disabled={svcFactCreando || !svcFactVencimiento}
-                            onClick={async () => {
-                              setSvcFactCreando(true);
-                              try {
-                                const { id_cliente, esDim } = svcNuevoCreado;
-                                const invPayload = { idcliente: id_cliente, vencimiento: svcFactVencimiento };
-                                if (svcFactMonto)       invPayload.total       = parseFloat(svcFactMonto);
-                                if (svcFactDescripcion) invPayload.descripcion = svcFactDescripcion;
-                                const inv = esDim
-                                  ? await mkFetchNod04("CreateInvoice", invPayload)
-                                  : await mkFetch("CreateInvoice", invPayload);
-                                const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                if (invOk) { window.alert(`✅ Factura #${inv.json?.idfactura || "—"} creada correctamente`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
-                                else window.alert("Error: " + (inv.json?.mensaje || inv.json?.message || "No se pudo crear la factura"));
-                              } catch(e) { window.alert("Error: " + e.message); }
-                              setSvcFactCreando(false);
-                            }}
-                            style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactVencimiento ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
-                            {svcFactCreando ? "Creando..." : "✓ Crear factura"}
-                          </button>
-                          <button onClick={() => { setSvcNuevoOpen(null); setSvcNuevoCreado(null); }}
-                            style={{ padding:"10px 16px", background:"#fff", color:"#6b7280", border:"1px solid #d1d5db", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer" }}>
-                            Omitir
-                          </button>
-                        </div>
+                        )}
+
+                        {/* PASO 2: Prorrateo */}
+                        {svcFactStep === 2 && (() => {
+                          const instDate  = svcFactF2FechaInst ? new Date(svcFactF2FechaInst + "T00:00:00") : null;
+                          const venceDate = svcFactF2Vence     ? new Date(svcFactF2Vence     + "T00:00:00") : null;
+                          const precPlan  = parseFloat(svcFactF2PrecPlan) || 0;
+                          let diasServicio = 0, diasPeriodo = 0, montoAuto = "";
+                          if (instDate && venceDate && venceDate > instDate) {
+                            diasServicio = Math.round((venceDate - instDate) / 86400000);
+                            const inicio = new Date(venceDate);
+                            inicio.setMonth(inicio.getMonth() - 1);
+                            diasPeriodo = Math.round((venceDate - inicio) / 86400000);
+                            if (precPlan > 0 && diasPeriodo > 0)
+                              montoAuto = (precPlan * diasServicio / diasPeriodo).toFixed(2);
+                          }
+                          return (
+                            <div style={{ display:"grid", gap:10 }}>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha instalación</label>
+                                  <input type="date" value={svcFactF2FechaInst} onChange={e => setSvcFactF2FechaInst(e.target.value)}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Próx. vencimiento *</label>
+                                  <input type="date" value={svcFactF2Vence} onChange={e => setSvcFactF2Vence(e.target.value)}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Precio plan S/</label>
+                                  <input type="number" step="0.01" placeholder="70.00" value={svcFactF2PrecPlan} onChange={e => setSvcFactF2PrecPlan(e.target.value)}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                              </div>
+                              {montoAuto && (
+                                <div style={{ background:"#f0fdf4", border:"1px solid #86efac", borderRadius:8, padding:"10px 12px" }}>
+                                  <div style={{ fontSize:12, color:"#166534", fontWeight:700 }}>
+                                    S/{precPlan.toFixed(2)} × {diasServicio} días / {diasPeriodo} días = <span style={{ fontSize:16, fontWeight:800 }}>S/{montoAuto}</span>
+                                  </div>
+                                  <div style={{ fontSize:10, color:"#4ade80", marginTop:2 }}>
+                                    {instDate?.toLocaleDateString("es-PE")} → {venceDate?.toLocaleDateString("es-PE")}
+                                  </div>
+                                </div>
+                              )}
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Monto prorrateo S/ <span style={{fontWeight:400}}>(editable)</span></label>
+                                <input type="number" step="0.01" placeholder={montoAuto || "Auto-calculado"}
+                                  value={svcFactMonto} onChange={e => setSvcFactMonto(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:13, fontWeight:700, boxSizing:"border-box" }} />
+                              </div>
+                              <div style={{ display:"flex", gap:8 }}>
+                                <button disabled={svcFactCreando || !svcFactF2Vence}
+                                  onClick={async () => {
+                                    setSvcFactCreando(true);
+                                    try {
+                                      const { id_cliente, esDim } = svcNuevoCreado;
+                                      const monto = parseFloat(svcFactMonto || montoAuto) || 0;
+                                      const p = { idcliente: id_cliente, vencimiento: svcFactF2Vence, descripcion:`Prorrateo — ${diasServicio} días` };
+                                      if (monto > 0) p.total = monto;
+                                      const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
+                                      const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+                                      if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.idfactura} creada`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
+                                      else window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear"));
+                                    } catch(e) { window.alert("Error: " + e.message); }
+                                    setSvcFactCreando(false);
+                                  }}
+                                  style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                  {svcFactCreando ? "Creando..." : "✓ Crear factura prorrateo"}
+                                </button>
+                                <button onClick={() => { setSvcNuevoOpen(null); setSvcNuevoCreado(null); }}
+                                  style={{ padding:"10px 14px", background:"#fff", color:"#6b7280", border:"1px solid #d1d5db", borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                  Omitir
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   ) : svcNuevoLoading ? (
