@@ -1929,7 +1929,8 @@ export default function App() {
   const [svcNuevoLoading,   setSvcNuevoLoading]    = useState(false);
   const [svcNuevoGuardando, setSvcNuevoGuardando]  = useState(false);
   const [svcNuevoIpLoading, setSvcNuevoIpLoading]  = useState(false);
-  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
+  const [svcNuevoRedes,     setSvcNuevoRedes]      = useState([]);
+  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
   const [mkwResultado, setMkwResultado] = useState(null);
@@ -3116,21 +3117,32 @@ export default function App() {
   // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
   const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo || ""));
 
+  const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
+  const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
+
   const cargarPerfilesSvcNuevo = async (nodo) => {
-    const N8N_PROXY = "https://n8n.americanet.space/webhook/sidebar-proxy";
     const esDim = esDimNodo(nodo);
-    const nodoNum = ({ "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 })[nodo] ?? 1;
+    const nodoNum = NODO_ROUTER_MAP_SVC[nodo] ?? 1;
     try {
-      const res = await fetch(N8N_PROXY, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "GetPerfiles", payload: {} }),
-      });
-      const json = await res.json().catch(() => ({}));
-      const data = json?.data ?? json;
-      const lista = data?.datos || data?.perfiles || (Array.isArray(data) ? data : []);
+      const [perfRes, redesRes] = await Promise.all([
+        fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetPerfiles", payload:{} }) }),
+        fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetRedesIpv4", payload:{ id_router: nodoNum } }) }),
+      ]);
+      const pj = await perfRes.json().catch(() => ({}));
+      const rj = await redesRes.json().catch(() => ({}));
+
+      const pd = pj?.data ?? pj;
+      const lista = pd?.datos || pd?.perfiles || (Array.isArray(pd) ? pd : []);
       setSvcNuevoPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
-    } catch { setSvcNuevoPerfiles([]); }
+
+      const rd = rj?.data ?? rj;
+      const redes = rd?.datos || (Array.isArray(rd) ? rd : []);
+      setSvcNuevoRedes(redes);
+      // Auto-seleccionar el último rango
+      if (redes.length) setSvcNuevoForm(f => ({...f, id_red_ipv4: String(redes[redes.length - 1].id)}));
+    } catch { setSvcNuevoPerfiles([]); setSvcNuevoRedes([]); }
   };
 
   const abrirSvcNuevo = async (cli) => {
@@ -3163,10 +3175,12 @@ export default function App() {
     const esDim = esDimNodo(svcNuevoForm.nodo);
     const NODO_ROUTER_ID = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
     const nodoNum = NODO_ROUTER_ID[svcNuevoForm.nodo] ?? parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
+    if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     const payload = {
-      id_cliente: svcNuevoCliId,
-      id_router:  nodoNum,
-      id_perfil:  Number(svcNuevoForm.id_perfil),
+      id_cliente:   svcNuevoCliId,
+      id_router:    nodoNum,
+      id_perfil:    Number(svcNuevoForm.id_perfil),
+      id_red_ipv4:  Number(svcNuevoForm.id_red_ipv4),
     };
     if (svcNuevoForm.userppp)           payload.userppp            = svcNuevoForm.userppp;
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
@@ -18833,6 +18847,22 @@ export default function App() {
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                             <option value="">— Seleccionar —</option>
                             {svcNuevoPerfiles.map(p => <option key={p.id} value={p.id}>{p.plan} — S/{p.costo}</option>)}
+                          </select>
+                        </div>
+                        {/* Rango IPv4 */}
+                        <div style={{ gridColumn: "1 / -1" }}>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>
+                            Rango IPv4 * {svcNuevoRedes.length === 0 && <span style={{ fontWeight:400, color:"#6b7280" }}>(cargando...)</span>}
+                          </label>
+                          <select value={svcNuevoForm.id_red_ipv4}
+                            onChange={e => setSvcNuevoForm(f => ({...f, id_red_ipv4: e.target.value}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                            <option value="">— Seleccionar rango —</option>
+                            {svcNuevoRedes.map((r, i) => (
+                              <option key={r.id} value={r.id}>
+                                {r.nombre} — {r.red}/{r.cidr} ({r.total_libres} libres){i === svcNuevoRedes.length - 1 ? " ← último" : ""}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         {/* Costo */}
