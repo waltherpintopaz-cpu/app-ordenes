@@ -1942,6 +1942,11 @@ export default function App() {
   const [svcFactF1Modo,      setSvcFactF1Modo]      = useState("normal"); // "normal" | "libre"
   const [svcFactF1Desc,      setSvcFactF1Desc]      = useState("");
   const [svcFactF2Vence,     setSvcFactF2Vence]     = useState("");
+  const [mkwWizardOpen,      setMkwWizardOpen]      = useState(null);
+  const [mkwWizardStep,      setMkwWizardStep]       = useState(1);
+  const [mkwWizardCli,       setMkwWizardCli]        = useState(null);
+  const [mkwWizardSvcDone,   setMkwWizardSvcDone]    = useState(false);
+  const [mkwWizardFactDone,  setMkwWizardFactDone]   = useState(false);
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
   const [svcFactCreando,     setSvcFactCreando]     = useState(false);
@@ -3170,6 +3175,17 @@ export default function App() {
     setFactPanelLoading(false);
   };
 
+  const abrirMkwWizard = async (cli) => {
+    const wid = String(cli.id || cli.dni || "");
+    const s1done = cli.en_mikrowisp || !!mikrowisp_ok[wid];
+    setMkwWizardCli(cli);
+    setMkwWizardOpen(cli.id);
+    setMkwWizardSvcDone(false);
+    setMkwWizardFactDone(false);
+    if (!s1done) { setMkwWizardStep(1); }
+    else { setMkwWizardStep(2); await abrirSvcNuevo(cli); }
+  };
+
   const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
   const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
 
@@ -3301,7 +3317,13 @@ export default function App() {
         precioPlan: svcNuevoForm.costo || planSeleccionado?.costo || "",
         planNombre: planSeleccionado?.nombre || "",
       });
+      if (mkwWizardOpen && mkwWizardCli) {
+        setMkwWizardSvcDone(true);
+        await abrirFactPanel(mkwWizardCli);
+        setMkwWizardStep(3);
+      }
       setSvcFactVencimiento("");
+      return true;
     } catch(e) {
       window.alert("Error: " + (e?.message || String(e)));
     }
@@ -18856,43 +18878,27 @@ export default function App() {
                     <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
-                  <button onClick={() => factPanelOpen === cli.id ? setFactPanelOpen(null) : abrirFactPanel(cli)}
-                    style={{ padding: "8px 15px", background: factPanelOpen === cli.id ? "#0f172a" : "#faf5ff", border: `1.5px solid ${factPanelOpen === cli.id ? "#0f172a" : "#d8b4fe"}`, borderRadius: 10, color: factPanelOpen === cli.id ? "#fff" : "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    📄 {factPanelOpen === cli.id ? "Cerrar" : "Facturas"}
-                  </button>
-                  <button onClick={() => svcNuevoOpen === cli.id ? setSvcNuevoOpen(null) : abrirSvcNuevo(cli)}
-                    style={{ padding: "8px 15px", background: svcNuevoOpen === cli.id ? "#0f172a" : "#f0fdf4", border: `1.5px solid ${svcNuevoOpen === cli.id ? "#0f172a" : "#86efac"}`, borderRadius: 10, color: svcNuevoOpen === cli.id ? "#fff" : "#16a34a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    🌐 {svcNuevoOpen === cli.id ? "Cerrar" : "Agregar Servicio"}
-                  </button>
-                  {MIKROWISP_NODOS.includes(String(cli.nodo || "")) && (() => {
-                    const id = String(cli.id || cli.dni || "");
-                    const yaAgregado = cli.en_mikrowisp || mikrowisp_ok[id];
-                    const cargando = mikrowisp_loading[id];
-                    const sincOk = mkwCliOk[id];
+                  {/* ── Wizard Mikrowisp ── */}
+                  {(() => {
+                    const wid = String(cli.id || cli.dni || "");
+                    const s = [
+                      !!(cli.en_mikrowisp || mikrowisp_ok[wid]),
+                      mkwWizardOpen === cli.id && mkwWizardSvcDone,
+                      mkwWizardOpen === cli.id && mkwWizardFactDone,
+                      !!(mkwCliOk[wid]),
+                    ];
+                    const cnt = s.filter(Boolean).length;
+                    const all = cnt === 4;
+                    const bg = all ? "#f0fdf4" : cnt > 0 ? "#eff6ff" : "#fffbeb";
+                    const bo = all ? "#86efac" : cnt > 0 ? "#93c5fd" : "#fcd34d";
+                    const tx = all ? "#15803d" : cnt > 0 ? "#1d4ed8" : "#92400e";
                     return (
-                      <button
-                        onClick={() => void agregarClienteMikrowisp(cli)}
-                        disabled={cargando || yaAgregado}
-                        title={yaAgregado ? "Ya agregado a Mikrowisp" : "Agregar cliente a Mikrowisp"}
-                        style={{ padding: "8px 15px", background: yaAgregado ? "#f0fdf4" : "#fffbeb", border: `1.5px solid ${yaAgregado ? "#86efac" : "#fcd34d"}`, borderRadius: 10, color: yaAgregado ? "#16a34a" : "#92400e", fontSize: 12, fontWeight: 700, cursor: yaAgregado ? "default" : "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}
-                      >
-                        {cargando ? "Agregando..." : yaAgregado ? "✓ En Mikrowisp" : "Mikrowisp +"}
-                        {sincOk && <span title="Sincronizado" style={{ background: "#f97316", color: "#fff", borderRadius: 6, padding: "1px 5px", fontSize: 10, fontWeight: 800 }}>✓ sync</span>}
-                      </button>
-                    );
-                  })()}
-                  {(esAdminSesion || esGestorSesion) && cli.dni && (() => {
-                    const cid = String(cli.id || cli.dni || "");
-                    const cargando = mkwCliLoading[cid];
-                    const sincOk = mkwCliOk[cid];
-                    return (
-                      <button
-                        onClick={() => void mkwSincronizarCliente(cli)}
-                        disabled={cargando}
-                        title="Sincronizar con MikroWisp"
-                        style={{ padding: "8px 15px", background: sincOk ? "#fff7ed" : "#f0f9ff", color: sincOk ? "#c2410c" : "#0369a1", border: `1.5px solid ${sincOk ? "#fdba74" : "#bae6fd"}`, borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: cargando ? "wait" : "pointer" }}
-                      >
-                        {cargando ? "⏳ Sincronizando..." : sincOk ? "✓ MW Sincronizado" : "📱 Sync MW"}
+                      <button onClick={() => void abrirMkwWizard(cli)}
+                        style={{ padding:"8px 14px", background:bg, border:`1.5px solid ${bo}`, borderRadius:10, color:tx, fontSize:12, fontWeight:700, cursor:"pointer", display:"inline-flex", alignItems:"center", gap:8 }}>
+                        <span>{all ? "✅" : "🚀"} Mikrowisp</span>
+                        <span style={{ display:"flex", gap:3, alignItems:"center" }}>
+                          {s.map((d, i) => <span key={i} style={{ width:7, height:7, borderRadius:"50%", background: d ? tx : bo, display:"inline-block" }} />)}
+                        </span>
                       </button>
                     );
                   })()}
@@ -18911,8 +18917,343 @@ export default function App() {
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
               )}
 
+              {/* ── Wizard Mikrowisp ── */}
+              {mkwWizardOpen === cli.id && (() => {
+                const wid = String(cli.id || cli.dni || "");
+                const stepsStatus = [
+                  !!(cli.en_mikrowisp || mikrowisp_ok[wid]),
+                  mkwWizardSvcDone,
+                  mkwWizardFactDone,
+                  !!(mkwCliOk[wid]),
+                ];
+                const steps = [
+                  { icon:"👤", label:"Cliente" },
+                  { icon:"🌐", label:"Servicio" },
+                  { icon:"📄", label:"Facturas" },
+                  { icon:"📱", label:"Sync" },
+                ];
+                const doneCount = stepsStatus.filter(Boolean).length;
+                return (
+                  <div onClick={e => { if (e.target===e.currentTarget) setMkwWizardOpen(null); }}
+                    style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.45)", zIndex:2000, display:"flex", justifyContent:"flex-end" }}>
+                    <div style={{ background:"#fff", width:520, height:"100vh", overflow:"hidden", display:"flex", flexDirection:"column", boxShadow:"-8px 0 40px rgba(0,0,0,0.25)" }}>
+
+                      {/* Header */}
+                      <div style={{ background:"linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%)", padding:"22px 24px 16px", flexShrink:0 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                          <div>
+                            <div style={{ color:"#fff", fontWeight:800, fontSize:16 }}>🚀 Mikrowisp Setup</div>
+                            <div style={{ color:"#bfdbfe", fontSize:12, marginTop:3 }}>{cli.nombre} · {cli.nodo} · Plan {cli.velocidad||"—"} · S/{cli.precioPlan||"—"}</div>
+                          </div>
+                          <button onClick={() => setMkwWizardOpen(null)}
+                            style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:8, color:"#fff", padding:"6px 11px", cursor:"pointer", fontSize:15, fontWeight:700 }}>✕</button>
+                        </div>
+                        <div style={{ display:"flex", gap:3, marginBottom:5 }}>
+                          {stepsStatus.map((done,i) => (
+                            <div key={i} style={{ flex:1, height:3, borderRadius:2, background: done?"#4ade80":mkwWizardStep===i+1?"#93c5fd":"rgba(255,255,255,0.2)" }} />
+                          ))}
+                        </div>
+                        <div style={{ color:"#bfdbfe", fontSize:10, fontWeight:600 }}>{doneCount}/4 pasos completados</div>
+                      </div>
+
+                      {/* Step tabs */}
+                      <div style={{ display:"flex", background:"#f8fafc", borderBottom:"1px solid #e2e8f0", flexShrink:0 }}>
+                        {steps.map(({icon,label},i) => {
+                          const n=i+1, done=stepsStatus[i], active=mkwWizardStep===n;
+                          return (
+                            <button key={n} onClick={() => setMkwWizardStep(n)}
+                              style={{ flex:1, padding:"10px 4px 8px", border:"none", borderBottom:`2px solid ${active?"#2563eb":"transparent"}`, background:active?"#fff":"transparent", cursor:"pointer", textAlign:"center" }}>
+                              <div style={{ fontSize:17 }}>{done?"✅":active?icon:"○"}</div>
+                              <div style={{ fontSize:9, fontWeight:800, marginTop:2, textTransform:"uppercase", letterSpacing:"0.05em", color:done?"#16a34a":active?"#2563eb":"#94a3b8" }}>{label}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Content */}
+                      <div style={{ flex:1, overflow:"auto", padding:"22px 24px" }}>
+
+                        {/* STEP 1 */}
+                        {mkwWizardStep===1 && (() => {
+                          const done=stepsStatus[0], cargando=mikrowisp_loading[wid];
+                          return (
+                            <div style={{ display:"grid", gap:16 }}>
+                              <div style={{ fontSize:13, color:"#64748b", lineHeight:1.6 }}>Registra al cliente en Mikrowisp para poder asignarle un plan de servicio.</div>
+                              {done ? (
+                                <>
+                                  <div style={{ background:"#f0fdf4", border:"1.5px solid #86efac", borderRadius:12, padding:"16px 18px", display:"flex", alignItems:"center", gap:12 }}>
+                                    <span style={{ fontSize:26 }}>✅</span>
+                                    <div><div style={{ fontWeight:800, color:"#15803d", fontSize:13 }}>Cliente registrado en Mikrowisp</div><div style={{ fontSize:11, color:"#166534", marginTop:2 }}>Listo para agregar servicio.</div></div>
+                                  </div>
+                                  <button onClick={async () => { await abrirSvcNuevo(cli); setMkwWizardStep(2); }}
+                                    style={{ padding:"11px 18px", background:"#2563eb", border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                    Siguiente: Crear Servicio →
+                                  </button>
+                                </>
+                              ) : MIKROWISP_NODOS.includes(String(cli.nodo||"")) ? (
+                                <button onClick={() => void agregarClienteMikrowisp(cli)} disabled={cargando}
+                                  style={{ padding:"12px 20px", background:cargando?"#9ca3af":"#f59e0b", border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:cargando?"wait":"pointer" }}>
+                                  {cargando?"Agregando...":"➕ Agregar a Mikrowisp"}
+                                </button>
+                              ) : (
+                                <div style={{ background:"#fef9c3", border:"1px solid #fde047", borderRadius:10, padding:"12px 16px", color:"#854d0e", fontSize:12, fontWeight:600 }}>
+                                  ⚠ El nodo {cli.nodo} no está habilitado para Mikrowisp.
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* STEP 2 */}
+                        {mkwWizardStep===2 && (() => {
+                          if (mkwWizardSvcDone) return (
+                            <div style={{ display:"grid", gap:16 }}>
+                              <div style={{ background:"#f0fdf4", border:"1.5px solid #86efac", borderRadius:12, padding:"16px 18px", display:"flex", alignItems:"center", gap:12 }}>
+                                <span style={{ fontSize:26 }}>✅</span>
+                                <div><div style={{ fontWeight:800, color:"#15803d", fontSize:13 }}>Servicio creado correctamente</div></div>
+                              </div>
+                              <button onClick={() => { abrirFactPanel(cli); setMkwWizardStep(3); }}
+                                style={{ padding:"11px 18px", background:"#2563eb", border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                Siguiente: Crear Facturas →
+                              </button>
+                            </div>
+                          );
+                          if (!stepsStatus[0]) return (
+                            <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:10, padding:"14px 16px", color:"#dc2626", fontSize:13, fontWeight:600 }}>
+                              ⚠ Primero completa el Paso 1: registrar el cliente en Mikrowisp.
+                            </div>
+                          );
+                          if (svcNuevoLoading) return <div style={{ textAlign:"center", color:"#16a34a", fontSize:13, padding:"30px 0" }}>Cargando datos de Mikrowisp...</div>;
+                          if (!svcNuevoCliId) return (
+                            <div style={{ display:"grid", gap:12 }}>
+                              <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"12px 16px", color:"#dc2626", fontSize:13 }}>⚠ No se encontró el cliente en Mikrowisp.</div>
+                              <button onClick={() => void abrirSvcNuevo(cli)} style={{ padding:"10px", background:"#f0fdf4", border:"1px solid #86efac", borderRadius:8, color:"#15803d", fontSize:12, fontWeight:700, cursor:"pointer" }}>🔄 Reintentar</button>
+                            </div>
+                          );
+                          return (
+                            <div style={{ display:"grid", gap:12 }}>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Nodo / Router</label>
+                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n); }}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                                    {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n=><option key={n} value={n}>{n}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Plan *</label>
+                                  <select value={svcNuevoForm.id_perfil} onChange={e => { const pid=e.target.value; const pl=svcNuevoPerfiles.find(p=>String(p.id)===pid); setSvcNuevoForm(f=>({...f,id_perfil:pid,costo:pl?pl.costo:f.costo})); }}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                                    <option value="">— Seleccionar —</option>
+                                    {svcNuevoPerfiles.map(p=><option key={p.id} value={p.id}>{p.plan} — S/{p.costo}</option>)}
+                                  </select>
+                                </div>
+                                <div style={{ gridColumn:"1/-1" }}>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Rango IPv4 *</label>
+                                  <select value={svcNuevoForm.id_red_ipv4} onChange={e => setSvcNuevoForm(f=>({...f,id_red_ipv4:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                                    <option value="">— Seleccionar rango —</option>
+                                    {svcNuevoRedes.map(r=><option key={r.id} value={r.id}>{r.red} ({r.disponibles??'?'} disp.)</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha instalación</label>
+                                  <input type="date" value={svcNuevoForm.fecha_instalacion} onChange={e=>setSvcNuevoForm(f=>({...f,fecha_instalacion:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Costo mensual S/</label>
+                                  <input type="number" step="0.01" placeholder="50.00" value={svcNuevoForm.costo} onChange={e=>setSvcNuevoForm(f=>({...f,costo:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Usuario PPP</label>
+                                  <input type="text" value={svcNuevoForm.userppp} onChange={e=>setSvcNuevoForm(f=>({...f,userppp:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Contraseña PPP</label>
+                                  <input type="text" value={svcNuevoForm.passppp} onChange={e=>setSvcNuevoForm(f=>({...f,passppp:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                              </div>
+                              <button onClick={async () => {
+                                const ok = await guardarSvcNuevo();
+                                if (ok && mkwWizardOpen) {
+                                  setMkwWizardSvcDone(true);
+                                  await abrirFactPanel(cli);
+                                  setMkwWizardStep(3);
+                                }
+                              }} disabled={svcNuevoGuardando||!svcNuevoForm.id_perfil||!svcNuevoForm.id_red_ipv4}
+                                style={{ padding:"11px 18px", background:svcNuevoGuardando||!svcNuevoForm.id_perfil||!svcNuevoForm.id_red_ipv4?"#9ca3af":"#16a34a", border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                {svcNuevoGuardando?"Creando servicio...":"✓ Crear Servicio"}
+                              </button>
+                            </div>
+                          );
+                        })()}
+
+                        {/* STEP 3 */}
+                        {mkwWizardStep===3 && (() => {
+                          const c="#7c3aed", bo="#d8b4fe";
+                          if (factPanelLoading) return <div style={{ textAlign:"center", color:c, fontSize:13, padding:"30px 0" }}>Cargando datos de Mikrowisp...</div>;
+                          if (!factPanelCliId) return <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"12px 16px", color:"#dc2626", fontSize:13 }}>⚠ No se encontró el cliente en Mikrowisp.</div>;
+                          return (
+                            <div style={{ display:"grid", gap:12 }}>
+                              <div style={{ display:"flex", gap:6 }}>
+                                {[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(
+                                  <button key={s} onClick={()=>setSvcFactStep(s)} style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:12, fontWeight:700, cursor:"pointer", background:svcFactStep===s?c:"#f5f3ff", color:svcFactStep===s?"#fff":c }}>{l}</button>
+                                ))}
+                              </div>
+                              {svcFactStep===1 && (
+                                <div style={{ display:"grid", gap:10 }}>
+                                  <div style={{ display:"flex", gap:6 }}>
+                                    {[{m:"normal",l:"📄 Normal"},{m:"libre",l:"🎁 Libre / Promo"}].map(({m,l})=>(
+                                      <button key={m} onClick={()=>setSvcFactF1Modo(m)} style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:11, fontWeight:700, cursor:"pointer", background:svcFactF1Modo===m?c:"#f5f3ff", color:svcFactF1Modo===m?"#fff":c }}>{l}</button>
+                                    ))}
+                                  </div>
+                                  {svcFactF1Modo==="libre" && (
+                                    <div>
+                                      <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Descripción *</label>
+                                      <input type="text" placeholder="Plan 1000 Mbps - Promoción 1er mes" value={svcFactF1Desc} onChange={e=>setSvcFactF1Desc(e.target.value)}
+                                        style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:13, boxSizing:"border-box" }} />
+                                    </div>
+                                  )}
+                                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                                    <div>
+                                      <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Monto S/ *</label>
+                                      <input type="number" step="0.01" placeholder="50.00" value={svcFactF1Monto} onChange={e=>setSvcFactF1Monto(e.target.value)}
+                                        style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:13, boxSizing:"border-box" }} />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Vencimiento *</label>
+                                      <input type="date" value={svcFactF1Vence} onChange={e=>setSvcFactF1Vence(e.target.value)}
+                                        style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                    </div>
+                                  </div>
+                                  <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, fontWeight:600, color:c }}>
+                                    <input type="checkbox" checked={svcFactF1Pagada} onChange={e=>setSvcFactF1Pagada(e.target.checked)} style={{ width:15, height:15 }} />
+                                    Registrar como pagada automáticamente
+                                  </label>
+                                  {svcFactF1Pagada && (
+                                    <select value={svcFactF1Pasarela} onChange={e=>setSvcFactF1Pasarela(e.target.value)}
+                                      style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:12, background:"#fff" }}>
+                                      {["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Yape","Aplicaciones bancarias","Walter Pinto","Americanet"].map(p=><option key={p}>{p}</option>)}
+                                    </select>
+                                  )}
+                                  <div style={{ display:"flex", gap:8 }}>
+                                    <button disabled={svcFactCreando||!svcFactF1Vence||!svcFactF1Monto||(svcFactF1Modo==="libre"&&!svcFactF1Desc)}
+                                      onClick={async()=>{
+                                        setSvcFactCreando(true);
+                                        try {
+                                          const mkN8n=async(accion,payload)=>{ const r=await fetch(N8N_PROXY_SVC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nodo:factPanelNodo,accion,payload})}); const j=await r.json().catch(()=>({})); return j?.data??j; };
+                                          let idfactura;
+                                          if (svcFactF1Modo==="libre") {
+                                            const d=await mkN8n("CreateInvoiceLibre",{id_cliente:factPanelCliId,fecha_vencimiento:svcFactF1Vence,items:[{descripcion:svcFactF1Desc,cantidad:1,precio:parseFloat(svcFactF1Monto),impuesto:18}]});
+                                            if (!(d?.code==="200"||d?.factura_id)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));setSvcFactCreando(false);return;}
+                                            idfactura=d?.factura_id;
+                                            if(svcFactF1Pagada&&idfactura) await mkN8n("PaidInvoice",{idcliente:factPanelCliId,idfactura:parseInt(idfactura,10),pasarela:svcFactF1Pasarela,cantidad:parseFloat(svcFactF1Monto)});
+                                          } else {
+                                            const d=await mkN8n("CreateInvoice",{idcliente:factPanelCliId,vencimiento:svcFactF1Vence});
+                                            if(!(d?.estado==="exito"||d?.idfactura)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));setSvcFactCreando(false);return;}
+                                            idfactura=d?.idfactura;
+                                            if(svcFactF1Pagada&&idfactura) await mkN8n("PaidInvoice",{idcliente:factPanelCliId,idfactura:parseInt(idfactura,10),pasarela:svcFactF1Pasarela,cantidad:parseFloat(svcFactF1Monto)});
+                                          }
+                                          window.alert(`✅ Factura #${idfactura} creada${svcFactF1Pagada?" y pagada":""}`);
+                                          setMkwWizardFactDone(true);
+                                          setSvcFactStep(2);
+                                          if(!svcFactF2PrecPlan&&cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
+                                        } catch(e){window.alert("Error: "+e.message);}
+                                        setSvcFactCreando(false);
+                                      }}
+                                      style={{ flex:1, padding:"10px 16px", background:svcFactCreando||!svcFactF1Vence||!svcFactF1Monto||(svcFactF1Modo==="libre"&&!svcFactF1Desc)?"#9ca3af":c, color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                      {svcFactCreando?"Creando...":"✓ Crear y continuar →"}
+                                    </button>
+                                    <button onClick={()=>{setSvcFactStep(2);setMkwWizardFactDone(true);if(!svcFactF2PrecPlan&&cli.precioPlan)setSvcFactF2PrecPlan(String(cli.precioPlan));}}
+                                      style={{ padding:"10px 14px", background:"#f5f3ff", color:c, border:`1px solid ${bo}`, borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                      Omitir →
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                              {svcFactStep===2 && (()=>{
+                                const instDate=svcFactF2FechaInst?new Date(svcFactF2FechaInst+"T00:00:00"):null;
+                                const venceDate=svcFactF2Vence?new Date(svcFactF2Vence+"T00:00:00"):null;
+                                const precPlan=parseFloat(svcFactF2PrecPlan)||0;
+                                let diasServicio=0,diasPeriodo=0,montoAuto="";
+                                if(instDate&&venceDate&&venceDate>instDate){
+                                  diasServicio=Math.round((venceDate-instDate)/86400000);
+                                  const inicio=new Date(venceDate);inicio.setMonth(inicio.getMonth()-1);
+                                  diasPeriodo=Math.round((venceDate-inicio)/86400000);
+                                  if(precPlan>0&&diasPeriodo>0) montoAuto=String(Math.round(precPlan*diasServicio/diasPeriodo));
+                                }
+                                return (
+                                  <div style={{ display:"grid", gap:10 }}>
+                                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                                      <div><label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Fecha instalación</label><input type="date" value={svcFactF2FechaInst} onChange={e=>setSvcFactF2FechaInst(e.target.value)} style={{ width:"100%", padding:"8px 10px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:12, boxSizing:"border-box" }} /></div>
+                                      <div><label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Próx. vencimiento *</label><input type="date" value={svcFactF2Vence} onChange={e=>setSvcFactF2Vence(e.target.value)} style={{ width:"100%", padding:"8px 10px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:12, boxSizing:"border-box" }} /></div>
+                                      <div><label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Precio plan S/</label><input type="number" step="0.01" value={svcFactF2PrecPlan} onChange={e=>setSvcFactF2PrecPlan(e.target.value)} style={{ width:"100%", padding:"8px 10px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:12, boxSizing:"border-box" }} /></div>
+                                    </div>
+                                    {montoAuto&&(<div style={{ background:"#f5f3ff", border:`1px solid ${bo}`, borderRadius:8, padding:"10px 12px" }}><div style={{ fontSize:12, color:"#6d28d9", fontWeight:700 }}>S/{precPlan.toFixed(2)} × {diasServicio} días / {diasPeriodo} días = <span style={{ fontSize:16, fontWeight:800 }}>S/{montoAuto}</span></div><div style={{ fontSize:10, color:"#a78bfa", marginTop:2 }}>{instDate?.toLocaleDateString("es-PE")} → {venceDate?.toLocaleDateString("es-PE")}</div></div>)}
+                                    <div><label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Monto prorrateo S/ <span style={{fontWeight:400}}>(editable)</span></label><input type="number" step="0.01" placeholder={montoAuto||"Auto-calculado"} value={svcFactMonto} onChange={e=>setSvcFactMonto(e.target.value)} style={{ width:"100%", padding:"9px 12px", border:`1.5px solid ${bo}`, borderRadius:8, fontSize:13, fontWeight:700, boxSizing:"border-box" }} /></div>
+                                    <div style={{ display:"flex", gap:8 }}>
+                                      <button disabled={svcFactCreando||!svcFactF2Vence||!(parseFloat(svcFactMonto||montoAuto)>0)}
+                                        onClick={async()=>{
+                                          setSvcFactCreando(true);
+                                          try{
+                                            const mkN8n=async(accion,payload)=>{const r=await fetch(N8N_PROXY_SVC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nodo:factPanelNodo,accion,payload})});const j=await r.json().catch(()=>({}));return j?.data??j;};
+                                            const montoFinal=parseFloat(svcFactMonto||montoAuto)||0;
+                                            const descPlan=cli.velocidad?`Prorrateo Plan ${cli.velocidad}`:"Prorrateo servicio internet";
+                                            const d=await mkN8n("CreateInvoiceLibre",{id_cliente:factPanelCliId,fecha_vencimiento:svcFactF2Vence,items:[{descripcion:descPlan,cantidad:1,precio:montoFinal,impuesto:18}]});
+                                            const ok=d?.code==="200"||d?.factura_id;
+                                            if(ok){window.alert(`✅ Prorrateo #${d?.factura_id} creado por S/${montoFinal}`);setMkwWizardStep(4);}
+                                            else window.alert("Error: "+(d?.mensaje||d?.message||"No se pudo crear"));
+                                          }catch(e){window.alert("Error: "+e.message);}
+                                          setSvcFactCreando(false);
+                                        }}
+                                        style={{ flex:1, padding:"10px 16px", background:svcFactCreando||!svcFactF2Vence||!(parseFloat(svcFactMonto||montoAuto)>0)?"#9ca3af":c, color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                        {svcFactCreando?"Creando...":"✓ Crear factura prorrateo"}
+                                      </button>
+                                      <button onClick={()=>setMkwWizardStep(4)} style={{ padding:"10px 14px", background:"#f5f3ff", color:c, border:`1px solid ${bo}`, borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>Omitir</button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          );
+                        })()}
+
+                        {/* STEP 4 */}
+                        {mkwWizardStep===4 && (() => {
+                          const done=stepsStatus[3], cargando=mkwCliLoading[wid];
+                          return (
+                            <div style={{ display:"grid", gap:16 }}>
+                              <div style={{ fontSize:13, color:"#64748b", lineHeight:1.6 }}>Sincroniza los datos del cliente (nombre, DNI, dirección) entre el sistema y Mikrowisp.</div>
+                              {done ? (
+                                <div style={{ background:"#fff7ed", border:"1.5px solid #fdba74", borderRadius:12, padding:"16px 18px", display:"flex", alignItems:"center", gap:12 }}>
+                                  <span style={{ fontSize:26 }}>✅</span>
+                                  <div><div style={{ fontWeight:800, color:"#c2410c", fontSize:13 }}>MW Sincronizado correctamente</div><div style={{ fontSize:11, color:"#9a3412", marginTop:2 }}>Todos los pasos completados.</div></div>
+                                </div>
+                              ) : (
+                                <button onClick={()=>void mkwSincronizarCliente(cli)} disabled={cargando}
+                                  style={{ padding:"12px 20px", background:cargando?"#9ca3af":"#0369a1", border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:cargando?"wait":"pointer" }}>
+                                  {cargando?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}
+                                </button>
+                              )}
+                              <button onClick={()=>setMkwWizardOpen(null)}
+                                style={{ padding:"10px 16px", background:done?"#16a34a":"#f1f5f9", border:"none", borderRadius:10, color:done?"#fff":"#64748b", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                {done?"✅ Finalizar":"Cerrar"}
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* ── Panel: Facturas con prorrateo ── */}
-              {factPanelOpen === cli.id && (
+              {factPanelOpen === cli.id && !mkwWizardOpen && (
                 <div style={{ background: "#faf5ff", border: "1.5px solid #d8b4fe", borderRadius: 16, padding: "20px 24px" }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: "#7c3aed", marginBottom: 4 }}>📄 Crear Facturas</div>
                   <div style={{ fontSize: 11, color: "#a78bfa", marginBottom: 16 }}>Para: <strong>{cli.nombre}</strong> · {cli.nodo} · Plan {cli.velocidad || "—"} · S/{cli.precioPlan || "—"}</div>
@@ -19116,7 +19457,7 @@ export default function App() {
               )}
 
               {/* ── Panel: Agregar Servicio Mikrowisp ── */}
-              {svcNuevoOpen === cli.id && (
+              {svcNuevoOpen === cli.id && !mkwWizardOpen && (
                 <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 16, padding: "20px 24px" }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: "#15803d", marginBottom: 4 }}>🌐 Agregar Servicio a Mikrowisp</div>
                   <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 16 }}>Para: <strong>{cli.nombre}</strong> · DNI {cli.dni}</div>
