@@ -1951,6 +1951,8 @@ export default function App() {
   const [mkwWizardFactDone,       setMkwWizardFactDone]        = useState(false);
   const [mkwWizardFacturas,       setMkwWizardFacturas]        = useState([]);
   const [mkwWizardFacturasLoad,   setMkwWizardFacturasLoad]    = useState(false);
+  const [mkwWizardLiq,            setMkwWizardLiq]             = useState([]);
+  const [mkwWizardLiqLoad,        setMkwWizardLiqLoad]         = useState(false);
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
   const [svcFactCreando,     setSvcFactCreando]     = useState(false);
@@ -3212,7 +3214,21 @@ export default function App() {
     setMkwWizardOpen(cli.id);
     setMkwWizardSvcDone(false);
     setMkwWizardFactDone(false);
+    setMkwWizardLiq([]);
     setMkwWizardStep(1);
+    // Cargar liquidaciones del cliente
+    try {
+      setMkwWizardLiqLoad(true);
+      const dni = String(cli.dni || "").trim();
+      const { data } = await supabase
+        .from("liquidaciones")
+        .select("codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,medio_pago,cobro_realizado")
+        .eq("dni", dni)
+        .order("fecha_liquidacion", { ascending: false })
+        .limit(5);
+      setMkwWizardLiq(data || []);
+    } catch { setMkwWizardLiq([]); }
+    finally { setMkwWizardLiqLoad(false); }
     // Verificar primero estado local (sesión o campo DB)
     // Siempre verificar via API (estado DB puede estar desactualizado si se eliminó de Mikrowisp)
     try {
@@ -19081,6 +19097,35 @@ export default function App() {
                         })()}
 
                         {/* STEP 2 */}
+                        {/* Panel liquidación reutilizable en pasos 2 y 3 */}
+                        {(mkwWizardStep===2 || mkwWizardStep===3) && mkwWizardLiq.length > 0 && (
+                          <div style={{ background:"#f5f3ff", border:"1.5px solid #d8b4fe", borderRadius:12, padding:"12px 16px", marginBottom:4 }}>
+                            <div style={{ fontSize:10, fontWeight:800, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
+                            <div style={{ display:"grid", gap:6 }}>
+                              {mkwWizardLiq.map((l,i) => {
+                                const cobrado = l.cobro_realizado === true || l.cobro_realizado === "SI" || l.cobro_realizado === 1;
+                                return (
+                                  <div key={i} style={{ background:"#fff", border:`1px solid ${cobrado?"#86efac":"#fde047"}`, borderRadius:8, padding:"8px 12px" }}>
+                                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                                      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                        <span style={{ fontWeight:800, fontSize:12, color:"#7c3aed" }}>{l.codigo}</span>
+                                        <span style={{ fontSize:10, background: cobrado?"#dcfce7":"#fef9c3", color: cobrado?"#15803d":"#854d0e", padding:"1px 6px", borderRadius:99, fontWeight:700 }}>{cobrado?"✓ Cobrado":"Pendiente"}</span>
+                                      </div>
+                                      {l.monto_cobrado && <span style={{ fontWeight:800, fontSize:13, color: cobrado?"#16a34a":"#92400e" }}>S/{l.monto_cobrado}</span>}
+                                    </div>
+                                    <div style={{ fontSize:11, color:"#64748b", marginTop:3, display:"flex", gap:10, flexWrap:"wrap" }}>
+                                      {l.tipo_actuacion && <span>{l.tipo_actuacion}</span>}
+                                      {l.medio_pago && <span>· {l.medio_pago}</span>}
+                                      {l.tecnico_liquida && <span>· {l.tecnico_liquida}</span>}
+                                      {l.fecha_liquidacion && <span>· {String(l.fecha_liquidacion).split("T")[0]}</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         {mkwWizardStep===2 && (() => {
                           if (mkwWizardSvcDone) return (
                             <div style={{ display:"grid", gap:16 }}>
