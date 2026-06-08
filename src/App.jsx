@@ -19052,7 +19052,7 @@ export default function App() {
                                       const invData2 = await mkN8n2("CreateInvoiceLibre", {
                                         id_cliente: factPanelCliId,
                                         fecha_vencimiento: svcFactF2Vence,
-                                        items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 0 }]
+                                        items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 18 }]
                                       });
                                       const invOk = invData2?.code === "200" || invData2?.factura_id;
                                       if (invOk) { window.alert(`✅ Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`); setFactPanelOpen(null); }
@@ -19227,7 +19227,7 @@ export default function App() {
                                       const p = {
                                         id_cliente,
                                         fecha_vencimiento: svcFactF2Vence,
-                                        items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 0 }]
+                                        items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 18 }]
                                       };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
                                       const invOk = inv.json?.code === "200" || inv.json?.factura_id;
