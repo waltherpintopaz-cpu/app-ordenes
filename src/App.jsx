@@ -1942,11 +1942,13 @@ export default function App() {
   const [svcFactF1Modo,      setSvcFactF1Modo]      = useState("normal"); // "normal" | "libre"
   const [svcFactF1Desc,      setSvcFactF1Desc]      = useState("");
   const [svcFactF2Vence,     setSvcFactF2Vence]     = useState("");
-  const [mkwWizardOpen,      setMkwWizardOpen]      = useState(null);
-  const [mkwWizardStep,      setMkwWizardStep]       = useState(1);
-  const [mkwWizardCli,       setMkwWizardCli]        = useState(null);
-  const [mkwWizardSvcDone,   setMkwWizardSvcDone]    = useState(false);
-  const [mkwWizardFactDone,  setMkwWizardFactDone]   = useState(false);
+  const [mkwWizardOpen,           setMkwWizardOpen]           = useState(null);
+  const [mkwWizardStep,           setMkwWizardStep]            = useState(1);
+  const [mkwWizardCli,            setMkwWizardCli]             = useState(null);
+  const [mkwWizardSvcDone,        setMkwWizardSvcDone]         = useState(false);
+  const [mkwWizardFactDone,       setMkwWizardFactDone]        = useState(false);
+  const [mkwWizardFacturas,       setMkwWizardFacturas]        = useState([]);
+  const [mkwWizardFacturasLoad,   setMkwWizardFacturasLoad]    = useState(false);
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
   const [svcFactCreando,     setSvcFactCreando]     = useState(false);
@@ -3171,7 +3173,23 @@ export default function App() {
     const esDim = esDimNodo(cli.nodo);
     const res = esDim ? await mkFetchNod04("GetClientsDetails", { cedula: dni }) : await mkFetch("GetClientsDetails", { cedula: dni });
     const datos = res.json?.datos?.[0] || res.json?.data?.[0];
-    if (datos?.id) setFactPanelCliId(datos.id);
+    if (datos?.id) {
+      setFactPanelCliId(datos.id);
+      // Cargar facturas existentes para el wizard
+      try {
+        const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 }[cli.nodo] ?? 1;
+        setMkwWizardFacturasLoad(true);
+        setMkwWizardFacturas([]);
+        const r = await fetch("https://n8n.americanet.space/webhook/sidebar-proxy", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nodo: nodoNum, accion: "GetInvoices", payload: { idcliente: datos.id } })
+        });
+        const j = await r.json().catch(() => ({}));
+        const facts = j?.data?.facturas || j?.data?.datos || j?.data || [];
+        setMkwWizardFacturas(Array.isArray(facts) ? facts : []);
+      } catch { setMkwWizardFacturas([]); }
+      setMkwWizardFacturasLoad(false);
+    }
     setFactPanelLoading(false);
   };
 
@@ -19135,9 +19153,33 @@ export default function App() {
                         {mkwWizardStep===3 && (() => {
                           const c="#7c3aed", bo="#d8b4fe";
                           if (factPanelLoading) return <div style={{ textAlign:"center", color:c, fontSize:13, padding:"30px 0" }}>Cargando datos de Mikrowisp...</div>;
+                          // Facturas existentes
+                          const listaFacturas = mkwWizardFacturasLoad ? (
+                            <div style={{ fontSize:11, color:"#94a3b8", padding:"8px 0" }}>Cargando facturas...</div>
+                          ) : mkwWizardFacturas.length > 0 ? (
+                            <div style={{ marginBottom:14 }}>
+                              <div style={{ fontSize:11, fontWeight:800, color:"#7c3aed", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>Facturas existentes</div>
+                              <div style={{ display:"grid", gap:5 }}>
+                                {mkwWizardFacturas.slice(0,5).map((f,i) => {
+                                  const pagada = String(f.estado||f.status||"").toLowerCase().includes("pagad") || String(f.estado||"").toLowerCase().includes("paid");
+                                  return (
+                                    <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background: pagada?"#f0fdf4":"#fef9c3", border:`1px solid ${pagada?"#86efac":"#fde047"}`, borderRadius:8, fontSize:12 }}>
+                                      <div>
+                                        <span style={{ fontWeight:700, color: pagada?"#15803d":"#854d0e" }}>#{f.idfactura||f.id}</span>
+                                        <span style={{ color:"#64748b", marginLeft:6 }}>{f.vencimiento||f.fecha_vencimiento||""}</span>
+                                        {f.descripcion && <span style={{ color:"#94a3b8", marginLeft:6, fontSize:10 }}>{String(f.descripcion).slice(0,30)}</span>}
+                                      </div>
+                                      <span style={{ fontWeight:800, color: pagada?"#16a34a":"#92400e" }}>S/{f.total||f.monto||"—"}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null;
                           if (!factPanelCliId) return <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"12px 16px", color:"#dc2626", fontSize:13 }}>⚠ No se encontró el cliente en Mikrowisp.</div>;
                           return (
                             <div style={{ display:"grid", gap:12 }}>
+                              {listaFacturas}
                               <div style={{ display:"flex", gap:6 }}>
                                 {[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(
                                   <button key={s} onClick={()=>setSvcFactStep(s)} style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:12, fontWeight:700, cursor:"pointer", background:svcFactStep===s?c:"#f5f3ff", color:svcFactStep===s?"#fff":c }}>{l}</button>
