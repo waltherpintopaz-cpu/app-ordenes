@@ -3325,7 +3325,6 @@ export default function App() {
       id_router:    nodoNum,
       id_perfil:    Number(svcNuevoForm.id_perfil),
       id_red_ipv4:  Number(svcNuevoForm.id_red_ipv4),
-      id_plantilla: svcNuevoPlantillaId || 2,
     };
     if (svcNuevoForm.userppp)           payload.userppp            = svcNuevoForm.userppp;
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
@@ -3366,6 +3365,14 @@ export default function App() {
           }
         } catch { /* silencioso — coordenadas no críticas */ }
       }
+
+      // Aplicar plantilla de facturación al cliente
+      try {
+        await fetch(N8N_PROXY_SVC, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "ChangeFacturacionConfig", payload: { id_cliente: svcNuevoCliId, id_plantilla: svcNuevoPlantillaId || 2 } })
+        });
+      } catch { /* no crítico */ }
 
       // Servicio creado — pasar a paso 2: crear factura
       const planSeleccionado = svcNuevoPerfiles.find(p => String(p.id) === String(svcNuevoForm.id_perfil));
