@@ -3121,6 +3121,7 @@ export default function App() {
         telefono: "",
         movil: String(cliente.celular || "").trim(),
         direccion_principal: String(cliente.direccion || "").trim(),
+        codigo: dni,
       };
       const add = esNod04
         ? await mkFetchNod04("NewUser", payload)
