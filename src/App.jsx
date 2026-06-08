@@ -1939,6 +1939,8 @@ export default function App() {
   const [svcFactF1Vence,     setSvcFactF1Vence]     = useState("");
   const [svcFactF1Pagada,    setSvcFactF1Pagada]    = useState(true);
   const [svcFactF1Pasarela,  setSvcFactF1Pasarela]  = useState("Efectivo Oficina/Sucursal");
+  const [svcFactF1Modo,      setSvcFactF1Modo]      = useState("normal"); // "normal" | "libre"
+  const [svcFactF1Desc,      setSvcFactF1Desc]      = useState("");
   const [svcFactF2Vence,     setSvcFactF2Vence]     = useState("");
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
@@ -3146,6 +3148,7 @@ export default function App() {
     // Reset estados factura
     setSvcFactStep(1); setSvcFactMonto("");
     setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
+    setSvcFactF1Modo("normal"); setSvcFactF1Desc("");
     const fechaInst = cli.fechaRegistro ? String(cli.fechaRegistro).split("T")[0] : new Date().toISOString().split("T")[0];
     const hoy = new Date().toISOString().split("T")[0];
     setSvcFactF1Monto(String(cli.precioPlan || ""));
@@ -3203,6 +3206,7 @@ export default function App() {
     setSvcNuevoCreado(null);
     setSvcFactStep(1);
     setSvcFactF1Monto(""); setSvcFactF1Vence(""); setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
+    setSvcFactF1Modo("normal"); setSvcFactF1Desc("");
     setSvcFactF2Vence(""); setSvcFactF2FechaInst(""); setSvcFactF2PrecPlan("");
     setSvcFactMonto(""); setSvcFactVencimiento("");
     // Auto-fill paso 1: vencimiento = fecha instalación
@@ -18935,6 +18939,25 @@ export default function App() {
                         {/* PASO 1 */}
                         {svcFactStep === 1 && (
                           <div style={{ display:"grid", gap:10 }}>
+                            {/* Toggle normal / libre */}
+                            <div style={{ display:"flex", gap:6 }}>
+                              {[{m:"normal",l:"📄 Factura normal"},{m:"libre",l:"🎁 Factura libre / Promoción"}].map(({m,l}) => (
+                                <button key={m} onClick={() => setSvcFactF1Modo(m)}
+                                  style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:12, fontWeight:700, cursor:"pointer",
+                                    background: svcFactF1Modo===m ? "#7c3aed" : "#f5f3ff", color: svcFactF1Modo===m ? "#fff" : "#7c3aed" }}>
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                            {/* Descripción solo en modo libre */}
+                            {svcFactF1Modo === "libre" && (
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Descripción *</label>
+                                <input type="text" placeholder="Plan 1000 Mbps - Promoción 1er mes"
+                                  value={svcFactF1Desc} onChange={e => setSvcFactF1Desc(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                            )}
                             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                               <div>
                                 <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Monto pagado S/ *</label>
@@ -18961,7 +18984,7 @@ export default function App() {
                               </div>
                             )}
                             <div style={{ display:"flex", gap:8 }}>
-                              <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto}
+                              <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc)}
                                 onClick={async () => {
                                   setSvcFactCreando(true);
                                   try {
@@ -18969,20 +18992,35 @@ export default function App() {
                                       const r = await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nodo: factPanelNodo, accion, payload }) });
                                       const j = await r.json().catch(()=>({})); return j?.data ?? j;
                                     };
-                                    const invData = await mkN8n("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
-                                    const inv = { json: invData };
-                                    const invOk = invData?.estado === "exito" || invData?.idfactura;
-                                    if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); setSvcFactCreando(false); return; }
-                                    if (svcFactF1Pagada && invData?.idfactura) {
-                                      await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(invData.idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                    let invData, idfactura;
+                                    if (svcFactF1Modo === "libre") {
+                                      invData = await mkN8n("CreateInvoiceLibre", {
+                                        id_cliente: factPanelCliId,
+                                        fecha_vencimiento: svcFactF1Vence,
+                                        items: [{ descripcion: svcFactF1Desc, cantidad: 1, precio: parseFloat(svcFactF1Monto), impuesto: 18 }]
+                                      });
+                                      const invOk = invData?.code === "200" || invData?.factura_id;
+                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      idfactura = invData?.factura_id;
+                                      if (svcFactF1Pagada && idfactura) {
+                                        await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                      }
+                                    } else {
+                                      invData = await mkN8n("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
+                                      const invOk = invData?.estado === "exito" || invData?.idfactura;
+                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      idfactura = invData?.idfactura;
+                                      if (svcFactF1Pagada && idfactura) {
+                                        await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                      }
                                     }
-                                    window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
+                                    window.alert(`✅ Factura #${idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
                                     setSvcFactStep(2);
                                     if (!svcFactF2PrecPlan && cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
                                   } catch(e) { window.alert("Error: " + e.message); }
                                   setSvcFactCreando(false);
                                 }}
-                                style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc) ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
                               </button>
                               <button onClick={() => { setSvcFactStep(2); if (!svcFactF2PrecPlan && cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan)); }}
@@ -19108,6 +19146,25 @@ export default function App() {
                         {/* PASO 1: Factura instalación */}
                         {svcFactStep === 1 && (
                           <div style={{ display:"grid", gap:10 }}>
+                            {/* Toggle normal / libre */}
+                            <div style={{ display:"flex", gap:6 }}>
+                              {[{m:"normal",l:"📄 Factura normal"},{m:"libre",l:"🎁 Factura libre / Promoción"}].map(({m,l}) => (
+                                <button key={m} onClick={() => setSvcFactF1Modo(m)}
+                                  style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:12, fontWeight:700, cursor:"pointer",
+                                    background: svcFactF1Modo===m ? "#16a34a" : "#f0fdf4", color: svcFactF1Modo===m ? "#fff" : "#15803d" }}>
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                            {/* Descripción solo en modo libre */}
+                            {svcFactF1Modo === "libre" && (
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Descripción *</label>
+                                <input type="text" placeholder="Plan 1000 Mbps - Promoción 1er mes"
+                                  value={svcFactF1Desc} onChange={e => setSvcFactF1Desc(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                            )}
                             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                               <div>
                                 <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Monto pagado S/ *</label>
@@ -19138,25 +19195,38 @@ export default function App() {
                               </div>
                             )}
                             <div style={{ display:"flex", gap:8 }}>
-                              <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto}
+                              <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc)}
                                 onClick={async () => {
                                   setSvcFactCreando(true);
                                   try {
                                     const { id_cliente, esDim } = svcNuevoCreado;
-                                    const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence };
-                                    const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
-                                    const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                    if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
-                                    if (svcFactF1Pagada && inv.json?.idfactura) {
-                                      await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(inv.json.idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                    let idfactura;
+                                    if (svcFactF1Modo === "libre") {
+                                      const p = { id_cliente, fecha_vencimiento: svcFactF1Vence, items: [{ descripcion: svcFactF1Desc, cantidad: 1, precio: parseFloat(svcFactF1Monto), impuesto: 18 }] };
+                                      const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
+                                      const invOk = inv.json?.code === "200" || inv.json?.factura_id;
+                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      idfactura = inv.json?.factura_id;
+                                      if (svcFactF1Pagada && idfactura) {
+                                        await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                      }
+                                    } else {
+                                      const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence };
+                                      const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
+                                      const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      idfactura = inv.json?.idfactura;
+                                      if (svcFactF1Pagada && idfactura) {
+                                        await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                      }
                                     }
-                                    window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
+                                    window.alert(`✅ Factura #${idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
                                     setSvcFactStep(2);
                                     if (!svcFactF2PrecPlan && svcNuevoCreado?.precioPlan) setSvcFactF2PrecPlan(String(svcNuevoCreado.precioPlan));
                                   } catch(e) { window.alert("Error: " + e.message); }
                                   setSvcFactCreando(false);
                                 }}
-                                style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc) ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
                               </button>
                               <button onClick={() => { setSvcFactStep(2); if (!svcFactF2PrecPlan && svcNuevoCreado?.precioPlan) setSvcFactF2PrecPlan(String(svcNuevoCreado.precioPlan)); }}
