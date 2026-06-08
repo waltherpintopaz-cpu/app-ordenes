@@ -3168,6 +3168,18 @@ export default function App() {
     setSvcFactF1Monto(""); setSvcFactF1Vence(""); setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
     setSvcFactF2Vence(""); setSvcFactF2FechaInst(""); setSvcFactF2PrecPlan("");
     setSvcFactMonto(""); setSvcFactVencimiento("");
+    // Auto-fill paso 1: vencimiento = fecha instalación
+    const fechaInst = svcNuevoForm.fecha_instalacion || new Date().toISOString().split("T")[0];
+    setSvcFactF1Vence(fechaInst);
+    // Auto-fill paso 2: fecha instalación y próximo vencimiento (día 2 del siguiente mes)
+    setSvcFactF2FechaInst(fechaInst);
+    const instDate = new Date(fechaInst + "T00:00:00");
+    // Calcular próximo 2 del mes
+    let proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 1, 2);
+    // Si restan menos de 10 días hasta el próximo día 2, saltar al mes siguiente
+    const diasHastaVence = Math.round((proxVence - instDate) / 86400000);
+    if (diasHastaVence < 10) proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 2, 2);
+    setSvcFactF2Vence(proxVence.toISOString().split("T")[0]);
     setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"",
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
@@ -3241,7 +3253,12 @@ export default function App() {
       }
 
       // Servicio creado — pasar a paso 2: crear factura
-      setSvcNuevoCreado({ id_cliente: svcNuevoCliId, esDim, nodoNum });
+      const planSeleccionado = svcNuevoPerfiles.find(p => String(p.id) === String(svcNuevoForm.id_perfil));
+      setSvcNuevoCreado({
+        id_cliente: svcNuevoCliId, esDim, nodoNum,
+        fechaInstalacion: svcNuevoForm.fecha_instalacion || new Date().toISOString().split("T")[0],
+        precioPlan: svcNuevoForm.costo || planSeleccionado?.costo || "",
+      });
       setSvcFactVencimiento("");
     } catch(e) {
       window.alert("Error: " + (e?.message || String(e)));
@@ -18923,13 +18940,14 @@ export default function App() {
                                     }
                                     window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
                                     setSvcFactStep(2);
+                                    if (!svcFactF2PrecPlan && svcNuevoCreado?.precioPlan) setSvcFactF2PrecPlan(String(svcNuevoCreado.precioPlan));
                                   } catch(e) { window.alert("Error: " + e.message); }
                                   setSvcFactCreando(false);
                                 }}
                                 style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
                               </button>
-                              <button onClick={() => setSvcFactStep(2)}
+                              <button onClick={() => { setSvcFactStep(2); if (!svcFactF2PrecPlan && svcNuevoCreado?.precioPlan) setSvcFactF2PrecPlan(String(svcNuevoCreado.precioPlan)); }}
                                 style={{ padding:"10px 14px", background:"#f0fdf4", color:"#15803d", border:"1px solid #86efac", borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>
                                 Omitir →
                               </button>
