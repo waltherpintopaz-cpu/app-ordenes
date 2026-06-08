@@ -2767,7 +2767,7 @@ export default function SidebarApp() {
                         placeholder="user@americanet"
                         value={ordenForm.usuarioNodo}
                         onChange={e => setOrdenForm(p=>({...p, usuarioNodo:e.target.value}))}
-                        onFocus={() => { setShowUsuarioDrop(true); if(!usuariosNodo.length && cliente?.nodo) cargarUsuariosNodo(cliente.nodo); }}
+                        onFocus={() => { setShowUsuarioDrop(true); if(!usuariosNodo.length && cliente?.nodo) cargarUsuariosNodo(`Nod_${String(cliente.nodo).padStart(2,"0")}`); }}
                         onBlur={() => setTimeout(()=>setShowUsuarioDrop(false),150)} />
                       {showUsuarioDrop && usuariosNodo.length > 0 && (
                         <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:`1px solid ${T.border}`, borderRadius:6, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:999, maxHeight:180, overflowY:"auto" }}>
