@@ -1928,6 +1928,7 @@ export default function App() {
   const [svcNuevoPerfiles,  setSvcNuevoPerfiles]   = useState([]);
   const [svcNuevoLoading,   setSvcNuevoLoading]    = useState(false);
   const [svcNuevoGuardando, setSvcNuevoGuardando]  = useState(false);
+  const [svcNuevoIpLoading, setSvcNuevoIpLoading]  = useState(false);
   const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
@@ -3142,7 +3143,7 @@ export default function App() {
       passppp:  cli.passwordUsuario  || "",
       ip:       "",
       fecha_instalacion: cli.fechaRegistro ? String(cli.fechaRegistro).split("T")[0] : new Date().toISOString().split("T")[0],
-      coordenadas: cli.coordenadas || "", crearFactura: false, vencimientoFactura:"" });
+      coordenadas: cli.ubicacion || "", crearFactura: false, vencimientoFactura:"" });
     setSvcNuevoLoading(true);
     const dni = String(cli.dni || "").replace(/\D/g, "");
     const esDim = esDimNodo(nodoInicial);
@@ -18876,17 +18877,23 @@ export default function App() {
                             value={svcNuevoForm.ip}
                             onChange={e => setSvcNuevoForm(f => ({...f, ip: e.target.value}))}
                             style={{ flex:1, padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
-                          {clienteDiagnosticoRapidoResultado?.mikrotik?.ip && (
-                            <button onClick={() => setSvcNuevoForm(f => ({...f, ip: clienteDiagnosticoRapidoResultado.mikrotik.ip}))}
-                              title={`Usar IP de MikroTik: ${clienteDiagnosticoRapidoResultado.mikrotik.ip}`}
-                              style={{ padding:"8px 12px", background:"#eff6ff", border:"1.5px solid #93c5fd", borderRadius:8, fontSize:11, fontWeight:700, color:"#1d4ed8", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
-                              📋 {clienteDiagnosticoRapidoResultado.mikrotik.ip}
-                            </button>
-                          )}
+                          <button
+                            disabled={svcNuevoIpLoading || !svcNuevoForm.userppp}
+                            onClick={async () => {
+                              setSvcNuevoIpLoading(true);
+                              try {
+                                const { dni, nodo, userPppoe, clienteNombre } = resolverDiagnosticoServicioDesdeCliente(cli);
+                                const json = await ejecutarDiagnosticoServicioRequest({ dni, cliente: clienteNombre, nodo, userPppoe });
+                                const ip = json?.mikrotik?.ip || "";
+                                if (ip) setSvcNuevoForm(f => ({...f, ip}));
+                                else window.alert("No se encontró IP activa en MikroTik");
+                              } catch { window.alert("Error al consultar MikroTik"); }
+                              setSvcNuevoIpLoading(false);
+                            }}
+                            style={{ padding:"8px 12px", background: svcNuevoIpLoading ? "#d1fae5" : "#f0fdf4", border:"1.5px solid #86efac", borderRadius:8, fontSize:11, fontWeight:700, color:"#15803d", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+                            {svcNuevoIpLoading ? "..." : "🔍 IP MikroTik"}
+                          </button>
                         </div>
-                        {!clienteDiagnosticoRapidoResultado?.mikrotik?.ip && (
-                          <div style={{ fontSize:10, color:"#6b7280", marginTop:3 }}>Abre el diagnóstico MikroTik para ver la IP activa</div>
-                        )}
                       </div>
                       {/* Coordenadas */}
                       <div>
