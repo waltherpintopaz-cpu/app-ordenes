@@ -19076,6 +19076,11 @@ export default function App() {
                                   <input type="text" value={svcNuevoForm.passppp} onChange={e=>setSvcNuevoForm(f=>({...f,passppp:e.target.value}))}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
                                 </div>
+                                <div style={{ gridColumn:"1/-1" }}>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>IP asignada <span style={{fontWeight:400}}>(opcional)</span></label>
+                                  <input type="text" placeholder="Ej: 192.168.1.100" value={svcNuevoForm.ip} onChange={e=>setSvcNuevoForm(f=>({...f,ip:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
                               </div>
                               <button onClick={async () => {
                                 const ok = await guardarSvcNuevo();
