@@ -3131,14 +3131,20 @@ export default function App() {
       if (!add.ok) {
         throw new Error(add.json?.mensaje || add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
-      // Establecer codigo = DNI como contraseña del portal
+      // Establecer codigo = DNI como contraseña del portal + SMS bienvenida
       try {
         const nuevoId = add.json?.idcliente || add.json?.id_cliente || add.json?.id;
         if (nuevoId) {
-          const upd = esNod04
-            ? await mkFetchNod04("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } })
-            : await mkFetch("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } });
-          void upd;
+          await (esNod04
+            ? mkFetchNod04("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } })
+            : mkFetch("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } }));
+          const nombre = String(cliente.nombre || "").trim();
+          const msgSMS = `BIENVENIDA ${nombre} ${dni} ${dni}`;
+          const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 }[String(cliente.nodo||"")] ?? 1;
+          await fetch(N8N_PROXY_SVC, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nodo: esNod04 ? 4 : nodoNum, accion: "NewSMS", payload: { idcliente: nuevoId, mensaje: msgSMS } })
+          });
         }
       } catch { /* no crítico */ }
       setMikrowispOk((p) => ({ ...p, [id]: true }));
