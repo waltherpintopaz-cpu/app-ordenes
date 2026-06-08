@@ -3115,6 +3115,13 @@ export default function App() {
   // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
   const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo || ""));
 
+  const cargarPerfilesSvcNuevo = async (nodo) => {
+    const esDim = esDimNodo(nodo);
+    const perfRes = esDim ? await mkFetchNod04("GetPerfiles", {}) : await mkFetch("GetPerfiles", {});
+    const lista = perfRes.json?.datos || perfRes.json?.perfiles || (Array.isArray(perfRes.json) ? perfRes.json : []);
+    setSvcNuevoPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
+  };
+
   const abrirSvcNuevo = async (cli) => {
     const nodoInicial = String(cli.nodo || "Nod_01");
     setSvcNuevoOpen(cli.id);
@@ -18796,9 +18803,9 @@ export default function App() {
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Nodo / Router</label>
                           <select value={svcNuevoForm.nodo}
-                            onChange={e => setSvcNuevoForm(p => ({...p, nodo: e.target.value, id_perfil:"", costo:""}))}
+                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n); }}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
-                            {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
+                            {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
                         </div>
                         {/* Plan */}
