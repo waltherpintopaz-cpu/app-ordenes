@@ -3328,7 +3328,7 @@ export default function App() {
     };
     if (svcNuevoForm.userppp)           payload.userppp            = svcNuevoForm.userppp;
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
-    if (svcNuevoForm.costo)             payload.costo              = svcNuevoForm.costo;
+    if (svcNuevoForm.costo)             payload.costo              = Number(svcNuevoForm.costo);
     if (svcNuevoForm.ip)                payload.ipv4               = [svcNuevoForm.ip];
     if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas;
     if (svcNuevoForm.fecha_instalacion) payload.fecha_instalacion  = svcNuevoForm.fecha_instalacion;
