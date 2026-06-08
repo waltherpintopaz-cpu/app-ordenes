@@ -18931,7 +18931,7 @@ export default function App() {
                                   setSvcFactCreando(true);
                                   try {
                                     const { id_cliente, esDim } = svcNuevoCreado;
-                                    const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence, total: parseFloat(svcFactF1Monto), descripcion:"Pago de instalación" };
+                                    const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence };
                                     const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
                                     const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
                                     if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
@@ -19011,8 +19011,7 @@ export default function App() {
                                     try {
                                       const { id_cliente, esDim } = svcNuevoCreado;
                                       const monto = parseFloat(svcFactMonto || montoAuto) || 0;
-                                      const p = { idcliente: id_cliente, vencimiento: svcFactF2Vence, descripcion:`Prorrateo — ${diasServicio} días` };
-                                      if (monto > 0) p.total = monto;
+                                      const p = { idcliente: id_cliente, vencimiento: svcFactF2Vence };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
                                       const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
                                       if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.idfactura} creada`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
