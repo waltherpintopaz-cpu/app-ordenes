@@ -335,6 +335,7 @@ export default function SidebarApp() {
   // Editar servicio
   const [perfiles,      setPerfiles]      = useState([]);
   const [loadingPerf,   setLoadingPerf]   = useState(false);
+  const [errorPerf,     setErrorPerf]     = useState(false);
   const [svcForm,       setSvcForm]       = useState({ id_perfil:"", precio:"", pppuser:"", ppppass:"", ip:"" });
   const [guardandoSvc,  setGuardandoSvc]  = useState(false);
   const [ordenesCliente,      setOrdenesCliente]      = useState([]);
@@ -760,15 +761,17 @@ export default function SidebarApp() {
   }
 
   // ── Cargar perfiles/planes disponibles ───────────────────────────────────
-  async function cargarPerfiles() {
-    if (perfiles.length || loadingPerf) return;
+  async function cargarPerfiles(force = false) {
+    if ((perfiles.length || loadingPerf) && !force) return;
     setLoadingPerf(true);
+    setErrorPerf(false);
     try {
       const tkn = getToken(cliente.empresa, agente);
       const res = await mkwProxy(Number(cliente.nodo), "GetPerfiles", {}, tkn);
       const lista = res?.datos || res?.perfiles || (Array.isArray(res) ? res : []);
-      setPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
-    } catch { /* silencioso */ }
+      if (!lista.length) { setErrorPerf(true); }
+      else setPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
+    } catch { setErrorPerf(true); }
     setLoadingPerf(false);
   }
 
@@ -2092,7 +2095,7 @@ export default function SidebarApp() {
         <div style={{ background:T.card, marginTop:8, borderTop:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`, display:"flex" }}>
           {[["info","Facturas"],["pago","Pago"],["prorroga","Prorr."],["nueva","Factura"],["editar","Editar"],["orden","Orden"]].map(([t, label]) => (
             <button key={t} className="sb-tab-btn"
-              onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); if (t === "orden") setOrdenCreada(null); }}
+              onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); if (t === "orden") setOrdenCreada(null); if (t === "editar") cargarPerfiles(); }}
               style={{ flex:1, border:"none",
                 borderBottom: tab === t ? `2px solid ${T.blue}` : "2px solid transparent",
                 borderTop:"none", borderLeft:"none", borderRight:`1px solid ${T.border}`,
@@ -2509,20 +2512,23 @@ export default function SidebarApp() {
                 {/* Plan */}
                 <div style={{ display:"grid", gridTemplateColumns:"120px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Plan</div>
-                  <div style={{ padding:"6px 10px" }}>
-                    <select style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0, fontSize:12 }}
+                  <div style={{ padding:"6px 10px", display:"flex", alignItems:"center", gap:6 }}>
+                    <select style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0, fontSize:12, flex:1 }}
                       value={svcForm.id_perfil}
-                      onFocus={cargarPerfiles}
                       onChange={e => {
                         const pid = e.target.value;
                         const plan = perfiles.find(p => String(p.id) === pid);
                         setSvcForm(f => ({ ...f, id_perfil: pid, precio: plan ? plan.costo : f.precio }));
                       }}>
-                      <option value="">— {loadingPerf ? "Cargando planes..." : "Seleccionar plan"} —</option>
+                      <option value="">— {loadingPerf ? "Cargando..." : errorPerf ? "Error al cargar" : "Seleccionar plan"} —</option>
                       {perfiles.map(p => (
                         <option key={p.id} value={p.id}>{p.plan} — S/ {p.costo}</option>
                       ))}
                     </select>
+                    <button onClick={() => cargarPerfiles(true)} title="Recargar planes"
+                      style={{ background:"none", border:`1px solid ${T.border}`, borderRadius:5, padding:"3px 7px", cursor:"pointer", fontSize:12, color:T.muted, flexShrink:0 }}>
+                      ↺
+                    </button>
                   </div>
                 </div>
                 {/* Precio */}
