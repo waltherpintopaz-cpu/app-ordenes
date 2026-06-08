@@ -3142,7 +3142,8 @@ export default function App() {
     if (!svcNuevoForm.id_perfil) return window.alert("Selecciona un plan.");
     setSvcNuevoGuardando(true);
     const esDim = esDimNodo(svcNuevoForm.nodo);
-    const nodoNum = parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
+    const NODO_ROUTER_ID = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
+    const nodoNum = NODO_ROUTER_ID[svcNuevoForm.nodo] ?? parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
     const payload = {
       id_cliente: svcNuevoCliId,
       id_router:  nodoNum,
