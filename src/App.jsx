@@ -3219,20 +3219,27 @@ export default function App() {
     setMkwWizardFactDone(false);
     setMkwWizardStep(1);
     // Verificar primero estado local (sesión o campo DB)
-    const s1local = cli.en_mikrowisp || !!mikrowisp_ok[wid];
-    if (s1local) { setMkwWizardStep(2); await abrirSvcNuevo(cli); return; }
-    // Si no hay certeza local, consultar API para evitar duplicar
+    // Siempre verificar via API (estado DB puede estar desactualizado si se eliminó de Mikrowisp)
     try {
       const dni = String(cli.dni || "").replace(/\D/g, "");
       const esDim = esDimNodo(cli.nodo);
       const res = esDim ? await mkFetchNod04("GetClientsDetails", { cedula: dni }) : await mkFetch("GetClientsDetails", { cedula: dni });
       const datos = res.json?.datos?.[0] || res.json?.data?.[0];
       if (datos?.id) {
+        // Existe en Mikrowisp → paso 2
         setMikrowispOk(prev => ({ ...prev, [wid]: true }));
         setMkwWizardStep(2);
         await abrirSvcNuevo(cli);
+      } else {
+        // No existe (fue eliminado) → resetear flag y mostrar paso 1
+        setMikrowispOk(prev => ({ ...prev, [wid]: false }));
+        if (isSupabaseConfigured && cli.id) {
+          await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: false }).eq("id", cli.id);
+          setClientes(prev => prev.map(c => c.id === cli.id ? { ...c, en_mikrowisp: false } : c));
+        }
+        setMkwWizardStep(1);
       }
-    } catch { /* si falla, mostrar paso 1 */ }
+    } catch { setMkwWizardStep(1); /* si API falla, mostrar paso 1 */ }
   };
 
   const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
