@@ -3295,6 +3295,7 @@ export default function App() {
         id_cliente: svcNuevoCliId, esDim, nodoNum,
         fechaInstalacion: svcNuevoForm.fecha_instalacion || new Date().toISOString().split("T")[0],
         precioPlan: svcNuevoForm.costo || planSeleccionado?.costo || "",
+        planNombre: planSeleccionado?.nombre || "",
       });
       setSvcFactVencimiento("");
     } catch(e) {
@@ -19038,7 +19039,7 @@ export default function App() {
                                   style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:13, fontWeight:700, boxSizing:"border-box" }} />
                               </div>
                               <div style={{ display:"flex", gap:8 }}>
-                                <button disabled={svcFactCreando || !svcFactF2Vence}
+                                <button disabled={svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0)}
                                   onClick={async () => {
                                     setSvcFactCreando(true);
                                     try {
@@ -19046,14 +19047,20 @@ export default function App() {
                                         const r = await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nodo: factPanelNodo, accion, payload }) });
                                         const j = await r.json().catch(()=>({})); return j?.data ?? j;
                                       };
-                                      const invData2 = await mkN8n2("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF2Vence });
-                                      const invOk = invData2?.estado === "exito" || invData2?.idfactura;
-                                      if (invOk) { window.alert(`✅ Factura prorrateo #${invData2?.idfactura} creada`); setFactPanelOpen(null); }
+                                      const montoFinal = parseFloat(svcFactMonto || montoAuto) || 0;
+                                      const descPlan = cli.velocidad ? `Prorrateo Plan ${cli.velocidad}` : "Prorrateo servicio internet";
+                                      const invData2 = await mkN8n2("CreateInvoiceLibre", {
+                                        id_cliente: factPanelCliId,
+                                        fecha_vencimiento: svcFactF2Vence,
+                                        items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 0 }]
+                                      });
+                                      const invOk = invData2?.code === "200" || invData2?.factura_id;
+                                      if (invOk) { window.alert(`✅ Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`); setFactPanelOpen(null); }
                                       else window.alert("Error: " + (invData2?.mensaje || invData2?.message || "No se pudo crear"));
                                     } catch(e) { window.alert("Error: " + e.message); }
                                     setSvcFactCreando(false);
                                   }}
-                                  style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                  style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0) ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                   {svcFactCreando ? "Creando..." : "✓ Crear factura prorrateo"}
                                 </button>
                                 <button onClick={() => setFactPanelOpen(null)}
@@ -19210,21 +19217,26 @@ export default function App() {
                                   style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:13, fontWeight:700, boxSizing:"border-box" }} />
                               </div>
                               <div style={{ display:"flex", gap:8 }}>
-                                <button disabled={svcFactCreando || !svcFactF2Vence}
+                                <button disabled={svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0)}
                                   onClick={async () => {
                                     setSvcFactCreando(true);
                                     try {
                                       const { id_cliente, esDim } = svcNuevoCreado;
-                                      const monto = parseFloat(svcFactMonto || montoAuto) || 0;
-                                      const p = { idcliente: id_cliente, vencimiento: svcFactF2Vence };
-                                      const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
-                                      const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                      if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.idfactura} creada`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
+                                      const montoFinal = parseFloat(svcFactMonto || montoAuto) || 0;
+                                      const descPlan = svcNuevoCreado.planNombre ? `Prorrateo Plan ${svcNuevoCreado.planNombre}` : "Prorrateo servicio internet";
+                                      const p = {
+                                        id_cliente,
+                                        fecha_vencimiento: svcFactF2Vence,
+                                        items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 0 }]
+                                      };
+                                      const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
+                                      const invOk = inv.json?.code === "200" || inv.json?.factura_id;
+                                      if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.factura_id} creada por S/${montoFinal}`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
                                       else window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear"));
                                     } catch(e) { window.alert("Error: " + e.message); }
                                     setSvcFactCreando(false);
                                   }}
-                                  style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                  style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0) ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                   {svcFactCreando ? "Creando..." : "✓ Crear factura prorrateo"}
                                 </button>
                                 <button onClick={() => { setSvcNuevoOpen(null); setSvcNuevoCreado(null); }}
