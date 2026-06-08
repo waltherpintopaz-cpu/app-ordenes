@@ -332,6 +332,11 @@ export default function SidebarApp() {
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
   const [showOrdenMap,  setShowOrdenMap]  = useState(false);
+  // Editar servicio
+  const [perfiles,      setPerfiles]      = useState([]);
+  const [loadingPerf,   setLoadingPerf]   = useState(false);
+  const [svcForm,       setSvcForm]       = useState({ id_perfil:"", precio:"", pppuser:"", ppppass:"", ip:"" });
+  const [guardandoSvc,  setGuardandoSvc]  = useState(false);
   const [ordenesCliente,      setOrdenesCliente]      = useState([]);
   const [liquidacionesCliente,setLiquidacionesCliente] = useState([]);
   const [historialLoad, setHistorialLoad] = useState(false);
@@ -752,6 +757,47 @@ export default function SidebarApp() {
       else { notify("✅ Datos actualizados correctamente"); await buscarCliente(contact?.phone_number || ""); setTab("info"); }
     } catch(e) { notify("Error: " + e.message, false); }
     setGuardando(false);
+  }
+
+  // ── Cargar perfiles/planes disponibles ───────────────────────────────────
+  async function cargarPerfiles() {
+    if (perfiles.length || loadingPerf) return;
+    setLoadingPerf(true);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const res = await mkwProxy(Number(cliente.nodo), "GetPerfiles", {}, tkn);
+      const lista = res?.datos || res?.perfiles || (Array.isArray(res) ? res : []);
+      setPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
+    } catch { /* silencioso */ }
+    setLoadingPerf(false);
+  }
+
+  // ── Editar servicio (plan, PPPoE, IP) ─────────────────────────────────────
+  async function editarServicio() {
+    if (!cliente || !svcForm.id_perfil) return notify("Selecciona un plan", false);
+    setGuardandoSvc(true);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const svc = detalle?._servicio;
+      const payload = {
+        id_servicio: svc.id,
+        id_router:   Number(svc.nodo),
+        id_perfil:   Number(svcForm.id_perfil),
+      };
+      if (svcForm.pppuser.trim()) payload.userppp = svcForm.pppuser.trim();
+      if (svcForm.ppppass.trim()) payload.passppp = svcForm.ppppass.trim();
+      if (svcForm.ip.trim())      payload.ip      = svcForm.ip.trim();
+      const res = await mkwProxy(Number(cliente.nodo), "EditService", payload, tkn);
+      const ok = (res?.estado || res?.code || "").toString().toLowerCase() === "exito"
+               || (res?.estado || res?.code || "").toString() === "200";
+      if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
+      else {
+        notify("✅ Servicio actualizado correctamente");
+        await buscarCliente(contact?.phone_number || "");
+        setTab("info");
+      }
+    } catch(e) { notify("Error: " + e.message, false); }
+    setGuardandoSvc(false);
   }
 
   // ── Activar servicio (cliente suspendido/cortado) ─────────────────────────
@@ -2413,7 +2459,7 @@ export default function SidebarApp() {
         )}
 
         {/* ══ TAB: EDITAR CLIENTE ══ */}
-        {tab === "editar" && (
+        {tab === "editar" && (<>
           <div style={{ margin:"8px", ...S.card }}>
             <div style={{ padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:700, fontSize:13, color:T.navy }}>Editar datos del cliente</div>
@@ -2451,7 +2497,84 @@ export default function SidebarApp() {
               </button>
             </div>
           </div>
-        )}
+
+          {/* ── Editar servicio ── */}
+          {detalle?._servicio && (
+            <div style={{ ...S.card, marginTop:8 }}>
+              <div style={{ padding:"10px 14px", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div style={{ fontWeight:700, fontSize:13, color:T.navy }}>Editar servicio</div>
+                <div style={{ fontSize:11, color:T.muted }}>Plan actual: <strong>{detalle._servicio.perfil}</strong></div>
+              </div>
+              <div>
+                {/* Plan */}
+                <div style={{ display:"grid", gridTemplateColumns:"120px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Plan</div>
+                  <div style={{ padding:"6px 10px" }}>
+                    <select style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0, fontSize:12 }}
+                      value={svcForm.id_perfil}
+                      onFocus={cargarPerfiles}
+                      onChange={e => {
+                        const pid = e.target.value;
+                        const plan = perfiles.find(p => String(p.id) === pid);
+                        setSvcForm(f => ({ ...f, id_perfil: pid, precio: plan ? plan.costo : f.precio }));
+                      }}>
+                      <option value="">— {loadingPerf ? "Cargando planes..." : "Seleccionar plan"} —</option>
+                      {perfiles.map(p => (
+                        <option key={p.id} value={p.id}>{p.plan} — S/ {p.costo}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {/* Precio */}
+                <div style={{ display:"grid", gridTemplateColumns:"120px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Precio (S/)</div>
+                  <div style={{ padding:"6px 10px" }}>
+                    <input style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0 }}
+                      type="number" step="0.01" placeholder={detalle._servicio.costo || "0.00"}
+                      value={svcForm.precio}
+                      onChange={e => setSvcForm(f => ({ ...f, precio: e.target.value }))} />
+                  </div>
+                </div>
+                {/* PPPoE usuario */}
+                <div style={{ display:"grid", gridTemplateColumns:"120px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Usuario PPPoE</div>
+                  <div style={{ padding:"6px 10px" }}>
+                    <input style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0, fontFamily:"monospace", fontSize:11 }}
+                      type="text" placeholder={detalle._servicio.pppuser || "user@americanet"}
+                      value={svcForm.pppuser}
+                      onChange={e => setSvcForm(f => ({ ...f, pppuser: e.target.value }))} />
+                  </div>
+                </div>
+                {/* PPPoE contraseña */}
+                <div style={{ display:"grid", gridTemplateColumns:"120px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Contraseña PPPoE</div>
+                  <div style={{ padding:"6px 10px" }}>
+                    <input style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0, fontFamily:"monospace", fontSize:11 }}
+                      type="text" placeholder={detalle._servicio.ppppass || "contraseña"}
+                      value={svcForm.ppppass}
+                      onChange={e => setSvcForm(f => ({ ...f, ppppass: e.target.value }))} />
+                  </div>
+                </div>
+                {/* IP */}
+                <div style={{ display:"grid", gridTemplateColumns:"120px 1fr" }}>
+                  <div style={{ padding:"10px 12px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>IP</div>
+                  <div style={{ padding:"6px 10px" }}>
+                    <input style={{ ...S.input, border:"none", padding:"4px 0", background:"transparent", borderBottom:`1px solid ${T.border}`, borderRadius:0, fontFamily:"monospace", fontSize:11 }}
+                      type="text" placeholder={detalle._servicio.ip || "192.168.x.x"}
+                      value={svcForm.ip}
+                      onChange={e => setSvcForm(f => ({ ...f, ip: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding:"12px 14px" }}>
+                <button onClick={editarServicio} disabled={guardandoSvc || !svcForm.id_perfil} className="sb-btn-action"
+                  style={{ ...S.btn(guardandoSvc || !svcForm.id_perfil ? "#9ca3af" : "#7c3aed"), opacity: guardandoSvc || !svcForm.id_perfil ? 0.55 : 1 }}>
+                  {guardandoSvc ? "Guardando..." : "Actualizar servicio"}
+                </button>
+              </div>
+            </div>
+          )}
+        </>)}
 
         {/* ══ TAB: CREAR ORDEN ══ */}
         {tab === "orden" && (
