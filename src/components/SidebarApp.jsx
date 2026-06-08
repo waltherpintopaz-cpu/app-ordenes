@@ -2743,6 +2743,23 @@ export default function SidebarApp() {
                 </div>
                 {/* Campos solo para instalación */}
                 {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && (<>
+                  {/* Nodo — seleccionable para instalaciones */}
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Nodo</div>
+                    <div>
+                      <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                        value={ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`}
+                        onChange={e => {
+                          const n = e.target.value;
+                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:""}));
+                          setUsuariosNodo([]);
+                          setShowUsuarioDrop(false);
+                          if(n) cargarUsuariosNodo(n);
+                        }}>
+                        {NODOS_BASE.map(n => <option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
+                      </select>
+                    </div>
+                  </div>
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Velocidad</div>
                     <div>
@@ -2767,7 +2784,7 @@ export default function SidebarApp() {
                         placeholder="user@americanet"
                         value={ordenForm.usuarioNodo}
                         onChange={e => setOrdenForm(p=>({...p, usuarioNodo:e.target.value}))}
-                        onFocus={() => { setShowUsuarioDrop(true); if(!usuariosNodo.length && cliente?.nodo) cargarUsuariosNodo(`Nod_${String(cliente.nodo).padStart(2,"0")}`); }}
+                        onFocus={() => { setShowUsuarioDrop(true); const n = ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`; if(!usuariosNodo.length && n) cargarUsuariosNodo(n); }}
                         onBlur={() => setTimeout(()=>setShowUsuarioDrop(false),150)} />
                       {showUsuarioDrop && usuariosNodo.length > 0 && (
                         <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:`1px solid ${T.border}`, borderRadius:6, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:999, maxHeight:180, overflowY:"auto" }}>
