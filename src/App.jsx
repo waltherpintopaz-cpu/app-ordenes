@@ -18946,8 +18946,9 @@ export default function App() {
                   { icon:"📱", label:"Sync" },
                 ];
                 const doneCount = stepsStatus.filter(Boolean).length;
+                const cerrarWizard = () => { setMkwWizardOpen(null); setSvcNuevoOpen(null); setFactPanelOpen(null); setSvcNuevoCreado(null); };
                 return (
-                  <div onClick={e => { if (e.target===e.currentTarget) setMkwWizardOpen(null); }}
+                  <div onClick={e => { if (e.target===e.currentTarget) cerrarWizard(); }}
                     style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.45)", zIndex:2000, display:"flex", justifyContent:"flex-end" }}>
                     <div style={{ background:"#fff", width:520, height:"100vh", overflow:"hidden", display:"flex", flexDirection:"column", boxShadow:"-8px 0 40px rgba(0,0,0,0.25)" }}>
 
@@ -18958,7 +18959,7 @@ export default function App() {
                             <div style={{ color:"#fff", fontWeight:800, fontSize:16 }}>🚀 Mikrowisp Setup</div>
                             <div style={{ color:"#bfdbfe", fontSize:12, marginTop:3 }}>{cli.nombre} · {cli.nodo} · Plan {cli.velocidad||"—"} · S/{cli.precioPlan||"—"}</div>
                           </div>
-                          <button onClick={() => setMkwWizardOpen(null)}
+                          <button onClick={cerrarWizard}
                             style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:8, color:"#fff", padding:"6px 11px", cursor:"pointer", fontSize:15, fontWeight:700 }}>✕</button>
                         </div>
                         <div style={{ display:"flex", gap:3, marginBottom:5 }}>
@@ -19277,7 +19278,7 @@ export default function App() {
                                   {cargando?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}
                                 </button>
                               )}
-                              <button onClick={()=>setMkwWizardOpen(null)}
+                              <button onClick={cerrarWizard}
                                 style={{ padding:"10px 16px", background:done?"#16a34a":"#f1f5f9", border:"none", borderRadius:10, color:done?"#fff":"#64748b", fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {done?"✅ Finalizar":"Cerrar"}
                               </button>
