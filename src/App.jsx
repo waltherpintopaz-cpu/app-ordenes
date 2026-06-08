@@ -1943,6 +1943,11 @@ export default function App() {
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
   const [svcFactCreando,     setSvcFactCreando]     = useState(false);
+  // Panel facturas independiente (clientes con servicio existente)
+  const [factPanelOpen,     setFactPanelOpen]     = useState(null); // cli.id
+  const [factPanelCliId,    setFactPanelCliId]    = useState(null); // id Mikrowisp
+  const [factPanelLoading,  setFactPanelLoading]  = useState(false);
+  const [factPanelEsDim,    setFactPanelEsDim]    = useState(false);
   const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
@@ -3129,6 +3134,34 @@ export default function App() {
 
   // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
   const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo || ""));
+
+  const abrirFactPanel = async (cli) => {
+    setFactPanelOpen(cli.id);
+    setFactPanelCliId(null);
+    setFactPanelLoading(true);
+    setFactPanelEsDim(esDimNodo(cli.nodo));
+    // Reset estados factura
+    setSvcFactStep(1); setSvcFactMonto("");
+    setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
+    const fechaInst = cli.fechaRegistro ? String(cli.fechaRegistro).split("T")[0] : new Date().toISOString().split("T")[0];
+    setSvcFactF1Monto(String(cli.precioPlan || ""));
+    setSvcFactF1Vence(fechaInst);
+    setSvcFactF2FechaInst(fechaInst);
+    setSvcFactF2PrecPlan(String(cli.precioPlan || ""));
+    // Próximo vencimiento: día 2 del siguiente mes
+    const instDate = new Date(fechaInst + "T00:00:00");
+    let proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 1, 2);
+    if (Math.round((proxVence - instDate) / 86400000) < 10)
+      proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 2, 2);
+    setSvcFactF2Vence(proxVence.toISOString().split("T")[0]);
+    // Obtener ID Mikrowisp
+    const dni = String(cli.dni || "").replace(/\D/g, "");
+    const esDim = esDimNodo(cli.nodo);
+    const res = esDim ? await mkFetchNod04("GetClientsDetails", { cedula: dni }) : await mkFetch("GetClientsDetails", { cedula: dni });
+    const datos = res.json?.datos?.[0] || res.json?.data?.[0];
+    if (datos?.id) setFactPanelCliId(datos.id);
+    setFactPanelLoading(false);
+  };
 
   const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
   const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
@@ -18814,6 +18847,10 @@ export default function App() {
                     <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
+                  <button onClick={() => factPanelOpen === cli.id ? setFactPanelOpen(null) : abrirFactPanel(cli)}
+                    style={{ padding: "8px 15px", background: factPanelOpen === cli.id ? "#0f172a" : "#faf5ff", border: `1.5px solid ${factPanelOpen === cli.id ? "#0f172a" : "#d8b4fe"}`, borderRadius: 10, color: factPanelOpen === cli.id ? "#fff" : "#7c3aed", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    📄 {factPanelOpen === cli.id ? "Cerrar" : "Facturas"}
+                  </button>
                   <button onClick={() => svcNuevoOpen === cli.id ? setSvcNuevoOpen(null) : abrirSvcNuevo(cli)}
                     style={{ padding: "8px 15px", background: svcNuevoOpen === cli.id ? "#0f172a" : "#f0fdf4", border: `1.5px solid ${svcNuevoOpen === cli.id ? "#0f172a" : "#86efac"}`, borderRadius: 10, color: svcNuevoOpen === cli.id ? "#fff" : "#16a34a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                     🌐 {svcNuevoOpen === cli.id ? "Cerrar" : "Agregar Servicio"}
@@ -18863,6 +18900,165 @@ export default function App() {
 
               {clienteMikrotikAccionInfo && (
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
+              )}
+
+              {/* ── Panel: Facturas con prorrateo ── */}
+              {factPanelOpen === cli.id && (
+                <div style={{ background: "#faf5ff", border: "1.5px solid #d8b4fe", borderRadius: 16, padding: "20px 24px" }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "#7c3aed", marginBottom: 4 }}>📄 Crear Facturas</div>
+                  <div style={{ fontSize: 11, color: "#a78bfa", marginBottom: 16 }}>Para: <strong>{cli.nombre}</strong> · {cli.nodo} · Plan {cli.velocidad || "—"} · S/{cli.precioPlan || "—"}</div>
+                  {factPanelLoading ? (
+                    <div style={{ textAlign:"center", color:"#7c3aed", fontSize:13, padding:"20px 0" }}>Cargando datos de Mikrowisp...</div>
+                  ) : !factPanelCliId ? (
+                    <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:8, padding:"12px 16px", color:"#dc2626", fontSize:13 }}>
+                      ⚠ No se encontró el cliente en Mikrowisp.
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Reutiliza el mismo panel de tabs del flujo Agregar Servicio */}
+                      <div style={{ background:"#fff", border:"1.5px solid #d8b4fe", borderRadius:10, padding:"16px" }}>
+                        <div style={{ display:"flex", gap:6, marginBottom:14 }}>
+                          {[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l}) => (
+                            <button key={s} onClick={() => setSvcFactStep(s)}
+                              style={{ flex:1, padding:"7px", borderRadius:8, border:"none", fontSize:12, fontWeight:700, cursor:"pointer",
+                                background: svcFactStep===s ? "#7c3aed" : "#f5f3ff", color: svcFactStep===s ? "#fff" : "#7c3aed" }}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* PASO 1 */}
+                        {svcFactStep === 1 && (
+                          <div style={{ display:"grid", gap:10 }}>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Monto pagado S/ *</label>
+                                <input type="number" step="0.01" placeholder="50.00" value={svcFactF1Monto} onChange={e => setSvcFactF1Monto(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Fecha vencimiento *</label>
+                                <input type="date" value={svcFactF1Vence} onChange={e => setSvcFactF1Vence(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                              </div>
+                            </div>
+                            <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, fontWeight:600, color:"#7c3aed" }}>
+                              <input type="checkbox" checked={svcFactF1Pagada} onChange={e => setSvcFactF1Pagada(e.target.checked)} style={{ width:15, height:15 }} />
+                              Registrar como pagada automáticamente
+                            </label>
+                            {svcFactF1Pagada && (
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Forma de pago *</label>
+                                <select value={svcFactF1Pasarela} onChange={e => setSvcFactF1Pasarela(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:12, background:"#fff" }}>
+                                  {["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Yape","Aplicaciones bancarias","Walter Pinto","Americanet"].map(p => <option key={p}>{p}</option>)}
+                                </select>
+                              </div>
+                            )}
+                            <div style={{ display:"flex", gap:8 }}>
+                              <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto}
+                                onClick={async () => {
+                                  setSvcFactCreando(true);
+                                  try {
+                                    const inv = factPanelEsDim
+                                      ? await mkFetchNod04("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence })
+                                      : await mkFetch("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
+                                    const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+                                    if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                    if (svcFactF1Pagada && inv.json?.idfactura) {
+                                      await (factPanelEsDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(inv.json.idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                    }
+                                    window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
+                                    setSvcFactStep(2);
+                                    if (!svcFactF2PrecPlan && cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
+                                  } catch(e) { window.alert("Error: " + e.message); }
+                                  setSvcFactCreando(false);
+                                }}
+                                style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
+                              </button>
+                              <button onClick={() => { setSvcFactStep(2); if (!svcFactF2PrecPlan && cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan)); }}
+                                style={{ padding:"10px 14px", background:"#f5f3ff", color:"#7c3aed", border:"1px solid #d8b4fe", borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                Omitir →
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* PASO 2 - Prorrateo */}
+                        {svcFactStep === 2 && (() => {
+                          const instDate  = svcFactF2FechaInst ? new Date(svcFactF2FechaInst + "T00:00:00") : null;
+                          const venceDate = svcFactF2Vence     ? new Date(svcFactF2Vence     + "T00:00:00") : null;
+                          const precPlan  = parseFloat(svcFactF2PrecPlan) || 0;
+                          let diasServicio = 0, diasPeriodo = 0, montoAuto = "";
+                          if (instDate && venceDate && venceDate > instDate) {
+                            diasServicio = Math.round((venceDate - instDate) / 86400000);
+                            const inicio = new Date(venceDate); inicio.setMonth(inicio.getMonth() - 1);
+                            diasPeriodo = Math.round((venceDate - inicio) / 86400000);
+                            if (precPlan > 0 && diasPeriodo > 0) montoAuto = String(Math.round(precPlan * diasServicio / diasPeriodo));
+                          }
+                          return (
+                            <div style={{ display:"grid", gap:10 }}>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Fecha instalación</label>
+                                  <input type="date" value={svcFactF2FechaInst} onChange={e => setSvcFactF2FechaInst(e.target.value)}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Próx. vencimiento *</label>
+                                  <input type="date" value={svcFactF2Vence} onChange={e => setSvcFactF2Vence(e.target.value)}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Precio plan S/</label>
+                                  <input type="number" step="0.01" placeholder="70.00" value={svcFactF2PrecPlan} onChange={e => setSvcFactF2PrecPlan(e.target.value)}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                              </div>
+                              {montoAuto && (
+                                <div style={{ background:"#f5f3ff", border:"1px solid #d8b4fe", borderRadius:8, padding:"10px 12px" }}>
+                                  <div style={{ fontSize:12, color:"#6d28d9", fontWeight:700 }}>
+                                    S/{precPlan.toFixed(2)} × {diasServicio} días / {diasPeriodo} días = <span style={{ fontSize:16, fontWeight:800 }}>S/{montoAuto}</span>
+                                  </div>
+                                  <div style={{ fontSize:10, color:"#a78bfa", marginTop:2 }}>{instDate?.toLocaleDateString("es-PE")} → {venceDate?.toLocaleDateString("es-PE")}</div>
+                                </div>
+                              )}
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#6d28d9", display:"block", marginBottom:4 }}>Monto prorrateo S/ <span style={{fontWeight:400}}>(editable)</span></label>
+                                <input type="number" step="0.01" placeholder={montoAuto || "Auto-calculado"}
+                                  value={svcFactMonto} onChange={e => setSvcFactMonto(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #d8b4fe", borderRadius:8, fontSize:13, fontWeight:700, boxSizing:"border-box" }} />
+                              </div>
+                              <div style={{ display:"flex", gap:8 }}>
+                                <button disabled={svcFactCreando || !svcFactF2Vence}
+                                  onClick={async () => {
+                                    setSvcFactCreando(true);
+                                    try {
+                                      const inv = factPanelEsDim
+                                        ? await mkFetchNod04("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF2Vence })
+                                        : await mkFetch("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF2Vence });
+                                      const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+                                      if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.idfactura} creada`); setFactPanelOpen(null); }
+                                      else window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear"));
+                                    } catch(e) { window.alert("Error: " + e.message); }
+                                    setSvcFactCreando(false);
+                                  }}
+                                  style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                                  {svcFactCreando ? "Creando..." : "✓ Crear factura prorrateo"}
+                                </button>
+                                <button onClick={() => setFactPanelOpen(null)}
+                                  style={{ padding:"10px 14px", background:"#fff", color:"#6b7280", border:"1px solid #d1d5db", borderRadius:10, fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                  Cerrar
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ── Panel: Agregar Servicio Mikrowisp ── */}
