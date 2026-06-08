@@ -1928,7 +1928,7 @@ export default function App() {
   const [svcNuevoPerfiles,  setSvcNuevoPerfiles]   = useState([]);
   const [svcNuevoLoading,   setSvcNuevoLoading]    = useState(false);
   const [svcNuevoGuardando, setSvcNuevoGuardando]  = useState(false);
-  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", costo:"", userppp:"", passppp:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
+  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
   const [mkwResultado, setMkwResultado] = useState(null);
@@ -3127,7 +3127,10 @@ export default function App() {
     setSvcNuevoOpen(cli.id);
     setSvcNuevoCliId(null);
     setSvcNuevoPerfiles([]);
-    setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"", userppp:"", passppp:"",
+    setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"",
+      userppp:  cli.usuarioNodo      || "",
+      passppp:  cli.passwordUsuario  || "",
+      ip:       "",
       fecha_instalacion: new Date().toISOString().split("T")[0],
       coordenadas: cli.coordenadas || "", crearFactura: false, vencimientoFactura:"" });
     setSvcNuevoLoading(true);
@@ -3159,6 +3162,7 @@ export default function App() {
     if (svcNuevoForm.userppp)           payload.userppp            = svcNuevoForm.userppp;
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
     if (svcNuevoForm.costo)             payload.costo              = svcNuevoForm.costo;
+    if (svcNuevoForm.ip)                payload.ipv4               = [svcNuevoForm.ip];
     if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas;
     if (svcNuevoForm.fecha_instalacion) payload.fecha_instalacion  = svcNuevoForm.fecha_instalacion;
     try {
@@ -18853,6 +18857,28 @@ export default function App() {
                             onChange={e => setSvcNuevoForm(f => ({...f, passppp: e.target.value}))}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
                         </div>
+                      </div>
+                      {/* IP */}
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>
+                          IP asignada <span style={{ fontWeight: 400 }}>(opcional)</span>
+                        </label>
+                        <div style={{ display:"flex", gap:6 }}>
+                          <input type="text" placeholder="192.168.x.x"
+                            value={svcNuevoForm.ip}
+                            onChange={e => setSvcNuevoForm(f => ({...f, ip: e.target.value}))}
+                            style={{ flex:1, padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
+                          {clienteDiagnosticoRapidoResultado?.mikrotik?.ip && (
+                            <button onClick={() => setSvcNuevoForm(f => ({...f, ip: clienteDiagnosticoRapidoResultado.mikrotik.ip}))}
+                              title={`Usar IP de MikroTik: ${clienteDiagnosticoRapidoResultado.mikrotik.ip}`}
+                              style={{ padding:"8px 12px", background:"#eff6ff", border:"1.5px solid #93c5fd", borderRadius:8, fontSize:11, fontWeight:700, color:"#1d4ed8", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
+                              📋 {clienteDiagnosticoRapidoResultado.mikrotik.ip}
+                            </button>
+                          )}
+                        </div>
+                        {!clienteDiagnosticoRapidoResultado?.mikrotik?.ip && (
+                          <div style={{ fontSize:10, color:"#6b7280", marginTop:3 }}>Abre el diagnóstico MikroTik para ver la IP activa</div>
+                        )}
                       </div>
                       {/* Coordenadas */}
                       <div>
