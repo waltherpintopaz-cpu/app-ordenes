@@ -3131,6 +3131,16 @@ export default function App() {
       if (!add.ok) {
         throw new Error(add.json?.mensaje || add.json?.message || add.json?.error || `HTTP ${add.status}`);
       }
+      // Establecer codigo = DNI como contraseña del portal
+      try {
+        const nuevoId = add.json?.idcliente || add.json?.id_cliente || add.json?.id;
+        if (nuevoId) {
+          const upd = esNod04
+            ? await mkFetchNod04("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } })
+            : await mkFetch("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } });
+          void upd;
+        }
+      } catch { /* no crítico */ }
       setMikrowispOk((p) => ({ ...p, [id]: true }));
       if (isSupabaseConfigured && cliente.id) {
         await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cliente.id);
@@ -3501,6 +3511,16 @@ export default function App() {
       const datos = await mkwConsultarCedula(dni, nodo);
       const { ok, msg } = await mkwUpsert(datos);
       if (ok) {
+        // Asegurar que codigo = DNI (contraseña portal)
+        try {
+          const mkwId = datos?.id || datos?.idcliente;
+          if (mkwId) {
+            const esDim = esDimNodo(nodo);
+            esDim
+              ? await mkFetchNod04("UpdateUser", { idcliente: mkwId, datos: { codigo: dni } })
+              : await mkFetch("UpdateUser", { idcliente: mkwId, datos: { codigo: dni } });
+          }
+        } catch { /* no crítico */ }
         setMkwCliOk((p) => ({ ...p, [cid]: true }));
         if (isSupabaseConfigured && cliente.id) {
           const { error: syncErr } = await supabase.from(CLIENTES_TABLE).update({ mikrowisp_sync_ok: true }).eq("id", cliente.id);
