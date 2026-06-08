@@ -19076,11 +19076,31 @@ export default function App() {
                                   <input type="text" value={svcNuevoForm.passppp} onChange={e=>setSvcNuevoForm(f=>({...f,passppp:e.target.value}))}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
                                 </div>
-                                <div style={{ gridColumn:"1/-1" }}>
-                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>IP asignada <span style={{fontWeight:400}}>(opcional)</span></label>
-                                  <input type="text" placeholder="Ej: 192.168.1.100" value={svcNuevoForm.ip} onChange={e=>setSvcNuevoForm(f=>({...f,ip:e.target.value}))}
-                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>IP asignada <span style={{fontWeight:400}}>(opcional)</span></label>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <input type="text" placeholder="192.168.x.x" value={svcNuevoForm.ip} onChange={e=>setSvcNuevoForm(f=>({...f,ip:e.target.value}))}
+                                    style={{ flex:1, padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
+                                  <button disabled={svcNuevoIpLoading||!svcNuevoForm.userppp} onClick={async()=>{
+                                    setSvcNuevoIpLoading(true);
+                                    try {
+                                      const {dni,nodo,userPppoe,clienteNombre}=resolverDiagnosticoServicioDesdeCliente(cli);
+                                      const json=await ejecutarDiagnosticoServicioRequest({dni,cliente:clienteNombre,nodo,userPppoe});
+                                      const ip=json?.mikrotik?.ip||"";
+                                      if(ip) setSvcNuevoForm(f=>({...f,ip}));
+                                      else window.alert("No se encontró IP activa en MikroTik");
+                                    } catch { window.alert("Error al consultar MikroTik"); }
+                                    setSvcNuevoIpLoading(false);
+                                  }} style={{ padding:"8px 12px", background:svcNuevoIpLoading?"#d1fae5":"#f0fdf4", border:"1.5px solid #86efac", borderRadius:8, fontSize:11, fontWeight:700, color:"#15803d", cursor:"pointer", whiteSpace:"nowrap" }}>
+                                    {svcNuevoIpLoading?"...":"🔍 IP MikroTik"}
+                                  </button>
                                 </div>
+                              </div>
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Coordenadas <span style={{fontWeight:400}}>(opcional)</span></label>
+                                <input type="text" placeholder="-16.438490, -71.598208" value={svcNuevoForm.coordenadas} onChange={e=>setSvcNuevoForm(f=>({...f,coordenadas:e.target.value}))}
+                                  style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
                               </div>
                               <button onClick={async () => {
                                 const ok = await guardarSvcNuevo();
