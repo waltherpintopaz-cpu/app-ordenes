@@ -1928,8 +1928,11 @@ export default function App() {
   const [svcNuevoPerfiles,  setSvcNuevoPerfiles]   = useState([]);
   const [svcNuevoLoading,   setSvcNuevoLoading]    = useState(false);
   const [svcNuevoGuardando, setSvcNuevoGuardando]  = useState(false);
-  const [svcNuevoIpLoading, setSvcNuevoIpLoading]  = useState(false);
-  const [svcNuevoRedes,     setSvcNuevoRedes]      = useState([]);
+  const [svcNuevoIpLoading,  setSvcNuevoIpLoading]  = useState(false);
+  const [svcNuevoRedes,      setSvcNuevoRedes]      = useState([]);
+  const [svcNuevoCreado,     setSvcNuevoCreado]     = useState(null); // { id_cliente, esDim, nodoNum } tras éxito
+  const [svcFactVencimiento, setSvcFactVencimiento] = useState("");
+  const [svcFactCreando,     setSvcFactCreando]     = useState(false);
   const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
@@ -3150,6 +3153,8 @@ export default function App() {
     setSvcNuevoOpen(cli.id);
     setSvcNuevoCliId(null);
     setSvcNuevoPerfiles([]);
+    setSvcNuevoCreado(null);
+    setSvcFactVencimiento("");
     setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"",
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
@@ -3193,18 +3198,9 @@ export default function App() {
       const ok = res.json?.estado === "exito" || String(res.json?.code) === "200" || res.ok;
       if (!ok) throw new Error(res.json?.mensaje || res.json?.message || `HTTP ${res.status}`);
 
-      if (svcNuevoForm.crearFactura && svcNuevoForm.vencimientoFactura) {
-        const inv = esDim
-          ? await mkFetchNod04("CreateInvoice", { idcliente: svcNuevoCliId, vencimiento: svcNuevoForm.vencimientoFactura })
-          : await mkFetch("CreateInvoice", { idcliente: svcNuevoCliId, vencimiento: svcNuevoForm.vencimientoFactura });
-        const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-        window.alert(invOk
-          ? `✅ Servicio creado y factura #${inv.json?.idfactura || "—"} generada correctamente`
-          : `✅ Servicio creado, pero no se pudo crear factura: ${inv.json?.mensaje || ""}`);
-      } else {
-        window.alert("✅ Servicio agregado correctamente a Mikrowisp");
-      }
-      setSvcNuevoOpen(null);
+      // Servicio creado — pasar a paso 2: crear factura
+      setSvcNuevoCreado({ id_cliente: svcNuevoCliId, esDim, nodoNum });
+      setSvcFactVencimiento("");
     } catch(e) {
       window.alert("Error: " + (e?.message || String(e)));
     }
@@ -18816,7 +18812,48 @@ export default function App() {
                   <div style={{ fontWeight: 800, fontSize: 14, color: "#15803d", marginBottom: 4 }}>🌐 Agregar Servicio a Mikrowisp</div>
                   <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 16 }}>Para: <strong>{cli.nombre}</strong> · DNI {cli.dni}</div>
 
-                  {svcNuevoLoading ? (
+                  {svcNuevoCreado ? (
+                    /* ── Paso 2: Crear primera factura ── */
+                    <div style={{ display:"grid", gap:12 }}>
+                      <div style={{ background:"#dcfce7", border:"1.5px solid #86efac", borderRadius:10, padding:"14px 16px", display:"flex", alignItems:"center", gap:10 }}>
+                        <span style={{ fontSize:20 }}>✅</span>
+                        <div>
+                          <div style={{ fontWeight:800, fontSize:13, color:"#15803d" }}>Servicio creado correctamente</div>
+                          <div style={{ fontSize:11, color:"#166534", marginTop:2 }}>Ahora puedes generar la primera factura con el prorrateo correspondiente.</div>
+                        </div>
+                      </div>
+                      <div style={{ background:"#fff", border:"1.5px solid #86efac", borderRadius:10, padding:"16px" }}>
+                        <div style={{ fontWeight:700, fontSize:13, color:"#15803d", marginBottom:12 }}>📄 Crear primera factura</div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:6 }}>Fecha de vencimiento (prorrateo) *</label>
+                        <input type="date" value={svcFactVencimiento}
+                          onChange={e => setSvcFactVencimiento(e.target.value)}
+                          style={{ padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:13, marginBottom:12, display:"block" }} />
+                        <div style={{ display:"flex", gap:8 }}>
+                          <button disabled={svcFactCreando || !svcFactVencimiento}
+                            onClick={async () => {
+                              setSvcFactCreando(true);
+                              try {
+                                const { id_cliente, esDim } = svcNuevoCreado;
+                                const inv = esDim
+                                  ? await mkFetchNod04("CreateInvoice", { idcliente: id_cliente, vencimiento: svcFactVencimiento })
+                                  : await mkFetch("CreateInvoice", { idcliente: id_cliente, vencimiento: svcFactVencimiento });
+                                const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+                                if (invOk) { window.alert(`✅ Factura #${inv.json?.idfactura || "—"} creada correctamente`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
+                                else window.alert("Error: " + (inv.json?.mensaje || inv.json?.message || "No se pudo crear la factura"));
+                              } catch(e) { window.alert("Error: " + e.message); }
+                              setSvcFactCreando(false);
+                            }}
+                            style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactVencimiento ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                            {svcFactCreando ? "Creando..." : "✓ Crear factura"}
+                          </button>
+                          <button onClick={() => { setSvcNuevoOpen(null); setSvcNuevoCreado(null); }}
+                            style={{ padding:"10px 16px", background:"#fff", color:"#6b7280", border:"1px solid #d1d5db", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                            Omitir
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : svcNuevoLoading ? (
                     <div style={{ textAlign: "center", color: "#16a34a", fontSize: 13, padding: "20px 0" }}>Cargando datos de Mikrowisp...</div>
                   ) : !svcNuevoCliId ? (
                     <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "12px 16px", color: "#dc2626", fontSize: 13 }}>
@@ -18932,23 +18969,6 @@ export default function App() {
                           value={svcNuevoForm.coordenadas}
                           onChange={e => setSvcNuevoForm(f => ({...f, coordenadas: e.target.value}))}
                           style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
-                      </div>
-                      {/* Crear primera factura */}
-                      <div style={{ background:"#fff", border:"1.5px solid #86efac", borderRadius:10, padding:"14px 16px" }}>
-                        <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, fontWeight:700, color:"#15803d" }}>
-                          <input type="checkbox" checked={svcNuevoForm.crearFactura}
-                            onChange={e => setSvcNuevoForm(f => ({...f, crearFactura: e.target.checked}))}
-                            style={{ width:16, height:16, cursor:"pointer" }} />
-                          Crear primera factura automáticamente
-                        </label>
-                        {svcNuevoForm.crearFactura && (
-                          <div style={{ marginTop:10 }}>
-                            <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha de vencimiento *</label>
-                            <input type="date" value={svcNuevoForm.vencimientoFactura}
-                              onChange={e => setSvcNuevoForm(f => ({...f, vencimientoFactura: e.target.value}))}
-                              style={{ padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12 }} />
-                          </div>
-                        )}
                       </div>
                       {/* Botones */}
                       <div style={{ display:"flex", gap:10 }}>
