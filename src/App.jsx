@@ -1922,6 +1922,13 @@ export default function App() {
   const [clientesSyncError, setClientesSyncError] = useState("");
   // ── MikroWisp sync ──
   const [mkwPanelAbierto, setMkwPanelAbierto] = useState(false);
+  // Agregar servicio Mikrowisp
+  const [svcNuevoOpen,      setSvcNuevoOpen]      = useState(null);
+  const [svcNuevoCliId,     setSvcNuevoCliId]      = useState(null);
+  const [svcNuevoPerfiles,  setSvcNuevoPerfiles]   = useState([]);
+  const [svcNuevoLoading,   setSvcNuevoLoading]    = useState(false);
+  const [svcNuevoGuardando, setSvcNuevoGuardando]  = useState(false);
+  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", costo:"", userppp:"", passppp:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
   const [mkwResultado, setMkwResultado] = useState(null);
@@ -3103,6 +3110,70 @@ export default function App() {
     } finally {
       setMikrowispLoading((p) => ({ ...p, [id]: false }));
     }
+  };
+
+  // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
+  const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo || ""));
+
+  const abrirSvcNuevo = async (cli) => {
+    const nodoInicial = String(cli.nodo || "Nod_01");
+    setSvcNuevoOpen(cli.id);
+    setSvcNuevoCliId(null);
+    setSvcNuevoPerfiles([]);
+    setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"", userppp:"", passppp:"",
+      fecha_instalacion: new Date().toISOString().split("T")[0],
+      coordenadas: cli.coordenadas || "", crearFactura: false, vencimientoFactura:"" });
+    setSvcNuevoLoading(true);
+    const dni = String(cli.dni || "").replace(/\D/g, "");
+    const esDim = esDimNodo(nodoInicial);
+    const [cliRes, perfRes] = await Promise.all([
+      esDim ? mkFetchNod04("GetClientsDetails", { cedula: dni }) : mkFetch("GetClientsDetails", { cedula: dni }),
+      esDim ? mkFetchNod04("GetPerfiles", {}) : mkFetch("GetPerfiles", {}),
+    ]);
+    const datos = cliRes.json?.datos?.[0] || cliRes.json?.data?.[0];
+    if (datos?.id) setSvcNuevoCliId(datos.id);
+    const lista = perfRes.json?.datos || perfRes.json?.perfiles || (Array.isArray(perfRes.json) ? perfRes.json : []);
+    setSvcNuevoPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
+    setSvcNuevoLoading(false);
+  };
+
+  const guardarSvcNuevo = async () => {
+    if (!svcNuevoCliId) return window.alert("No se encontró el ID del cliente en Mikrowisp. Verifica que esté registrado.");
+    if (!svcNuevoForm.id_perfil) return window.alert("Selecciona un plan.");
+    setSvcNuevoGuardando(true);
+    const esDim = esDimNodo(svcNuevoForm.nodo);
+    const nodoNum = parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
+    const payload = {
+      id_cliente: svcNuevoCliId,
+      id_router:  nodoNum,
+      id_perfil:  Number(svcNuevoForm.id_perfil),
+    };
+    if (svcNuevoForm.userppp)           payload.userppp            = svcNuevoForm.userppp;
+    if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
+    if (svcNuevoForm.costo)             payload.costo              = svcNuevoForm.costo;
+    if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas;
+    if (svcNuevoForm.fecha_instalacion) payload.fecha_instalacion  = svcNuevoForm.fecha_instalacion;
+    try {
+      const res = esDim ? await mkFetchNod04("NewService", payload) : await mkFetch("NewService", payload);
+      const ok = res.json?.estado === "exito" || String(res.json?.code) === "200" || res.ok;
+      if (!ok) throw new Error(res.json?.mensaje || res.json?.message || `HTTP ${res.status}`);
+
+      if (svcNuevoForm.crearFactura && svcNuevoForm.vencimientoFactura) {
+        const inv = esDim
+          ? await mkFetchNod04("CreateInvoice", { idcliente: svcNuevoCliId, vencimiento: svcNuevoForm.vencimientoFactura })
+          : await mkFetch("CreateInvoice", { idcliente: svcNuevoCliId, vencimiento: svcNuevoForm.vencimientoFactura });
+        const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
+        window.alert(invOk
+          ? `✅ Servicio creado y factura #${inv.json?.idfactura || "—"} generada correctamente`
+          : `✅ Servicio creado, pero no se pudo crear factura: ${inv.json?.mensaje || ""}`);
+      } else {
+        window.alert("✅ Servicio agregado correctamente a Mikrowisp");
+      }
+      setSvcNuevoOpen(null);
+    } catch(e) {
+      window.alert("Error: " + (e?.message || String(e)));
+    }
+    setSvcNuevoGuardando(false);
   };
 
   // ── MikroWisp: consulta por cédula y guarda en mikrowisp_clientes ──
@@ -18653,6 +18724,10 @@ export default function App() {
                     <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
+                  <button onClick={() => svcNuevoOpen === cli.id ? setSvcNuevoOpen(null) : abrirSvcNuevo(cli)}
+                    style={{ padding: "8px 15px", background: svcNuevoOpen === cli.id ? "#0f172a" : "#f0fdf4", border: `1.5px solid ${svcNuevoOpen === cli.id ? "#0f172a" : "#86efac"}`, borderRadius: 10, color: svcNuevoOpen === cli.id ? "#fff" : "#16a34a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    🌐 {svcNuevoOpen === cli.id ? "Cerrar" : "Agregar Servicio"}
+                  </button>
                   {MIKROWISP_NODOS.includes(String(cli.nodo || "")) && (() => {
                     const id = String(cli.id || cli.dni || "");
                     const yaAgregado = cli.en_mikrowisp || mikrowisp_ok[id];
@@ -18698,6 +18773,118 @@ export default function App() {
 
               {clienteMikrotikAccionInfo && (
                 <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 12, padding: "11px 16px", color: "#1e3a8a", fontSize: 13, fontWeight: 600 }}>{clienteMikrotikAccionInfo}</div>
+              )}
+
+              {/* ── Panel: Agregar Servicio Mikrowisp ── */}
+              {svcNuevoOpen === cli.id && (
+                <div style={{ background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 16, padding: "20px 24px" }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "#15803d", marginBottom: 4 }}>🌐 Agregar Servicio a Mikrowisp</div>
+                  <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 16 }}>Para: <strong>{cli.nombre}</strong> · DNI {cli.dni}</div>
+
+                  {svcNuevoLoading ? (
+                    <div style={{ textAlign: "center", color: "#16a34a", fontSize: 13, padding: "20px 0" }}>Cargando datos de Mikrowisp...</div>
+                  ) : !svcNuevoCliId ? (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "12px 16px", color: "#dc2626", fontSize: 13 }}>
+                      ⚠ No se encontró el cliente en Mikrowisp. Primero agrégalo con el botón <strong>"Mikrowisp +"</strong>.
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {/* Grid de campos */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        {/* Nodo */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Nodo / Router</label>
+                          <select value={svcNuevoForm.nodo}
+                            onChange={e => setSvcNuevoForm(p => ({...p, nodo: e.target.value, id_perfil:"", costo:""}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                            {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                        {/* Plan */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Plan *</label>
+                          <select value={svcNuevoForm.id_perfil}
+                            onChange={e => {
+                              const pid = e.target.value;
+                              const plan = svcNuevoPerfiles.find(p => String(p.id) === pid);
+                              setSvcNuevoForm(f => ({...f, id_perfil: pid, costo: plan ? plan.costo : f.costo}));
+                            }}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                            <option value="">— Seleccionar —</option>
+                            {svcNuevoPerfiles.map(p => <option key={p.id} value={p.id}>{p.plan} — S/{p.costo}</option>)}
+                          </select>
+                        </div>
+                        {/* Costo */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Costo (S/)</label>
+                          <input type="number" step="0.01" placeholder="Auto del plan"
+                            value={svcNuevoForm.costo}
+                            onChange={e => setSvcNuevoForm(f => ({...f, costo: e.target.value}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                        </div>
+                        {/* Fecha instalación */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Fecha instalación</label>
+                          <input type="date" value={svcNuevoForm.fecha_instalacion}
+                            onChange={e => setSvcNuevoForm(f => ({...f, fecha_instalacion: e.target.value}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                        </div>
+                        {/* PPPoE usuario */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Usuario PPPoE <span style={{fontWeight:400}}>(opcional)</span></label>
+                          <input type="text" placeholder="Auto-generado"
+                            value={svcNuevoForm.userppp}
+                            onChange={e => setSvcNuevoForm(f => ({...f, userppp: e.target.value}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
+                        </div>
+                        {/* PPPoE contraseña */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Contraseña PPPoE <span style={{fontWeight:400}}>(opcional)</span></label>
+                          <input type="text" placeholder="Auto-generada"
+                            value={svcNuevoForm.passppp}
+                            onChange={e => setSvcNuevoForm(f => ({...f, passppp: e.target.value}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
+                        </div>
+                      </div>
+                      {/* Coordenadas */}
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Coordenadas</label>
+                        <input type="text" placeholder="-16.438490, -71.598208"
+                          value={svcNuevoForm.coordenadas}
+                          onChange={e => setSvcNuevoForm(f => ({...f, coordenadas: e.target.value}))}
+                          style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, fontFamily:"monospace", boxSizing:"border-box" }} />
+                      </div>
+                      {/* Crear primera factura */}
+                      <div style={{ background:"#fff", border:"1.5px solid #86efac", borderRadius:10, padding:"14px 16px" }}>
+                        <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, fontWeight:700, color:"#15803d" }}>
+                          <input type="checkbox" checked={svcNuevoForm.crearFactura}
+                            onChange={e => setSvcNuevoForm(f => ({...f, crearFactura: e.target.checked}))}
+                            style={{ width:16, height:16, cursor:"pointer" }} />
+                          Crear primera factura automáticamente
+                        </label>
+                        {svcNuevoForm.crearFactura && (
+                          <div style={{ marginTop:10 }}>
+                            <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha de vencimiento *</label>
+                            <input type="date" value={svcNuevoForm.vencimientoFactura}
+                              onChange={e => setSvcNuevoForm(f => ({...f, vencimientoFactura: e.target.value}))}
+                              style={{ padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12 }} />
+                          </div>
+                        )}
+                      </div>
+                      {/* Botones */}
+                      <div style={{ display:"flex", gap:10 }}>
+                        <button onClick={guardarSvcNuevo} disabled={svcNuevoGuardando || !svcNuevoForm.id_perfil}
+                          style={{ flex:1, padding:"10px 16px", background: svcNuevoGuardando || !svcNuevoForm.id_perfil ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                          {svcNuevoGuardando ? "Guardando..." : "✓ Agregar Servicio"}
+                        </button>
+                        <button onClick={() => setSvcNuevoOpen(null)}
+                          style={{ padding:"10px 16px", background:"#fff", color:"#6b7280", border:"1px solid #d1d5db", borderRadius:10, fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ── Señal ONU — Nod_06 SSH ── */}
