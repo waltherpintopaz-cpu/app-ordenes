@@ -3194,9 +3194,15 @@ export default function App() {
     if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas;
     if (svcNuevoForm.fecha_instalacion) payload.fecha_instalacion  = svcNuevoForm.fecha_instalacion;
     try {
-      const res = esDim ? await mkFetchNod04("NewService", payload) : await mkFetch("NewService", payload);
-      const ok = res.json?.estado === "exito" || String(res.json?.code) === "200" || res.ok;
-      if (!ok) throw new Error(res.json?.mensaje || res.json?.message || `HTTP ${res.status}`);
+      const svcRes = await fetch(N8N_PROXY_SVC, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "NewService", payload }),
+      });
+      const svcJson = await svcRes.json().catch(() => ({}));
+      const svcData = svcJson?.data ?? svcJson;
+      const ok = svcData?.estado === "exito" || String(svcData?.code) === "200" || svcRes.ok;
+      if (!ok) throw new Error(svcData?.mensaje || svcData?.message || `HTTP ${svcRes.status}`);
 
       // Servicio creado — pasar a paso 2: crear factura
       setSvcNuevoCreado({ id_cliente: svcNuevoCliId, esDim, nodoNum });
