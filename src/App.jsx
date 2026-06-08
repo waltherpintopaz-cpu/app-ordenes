@@ -3191,7 +3191,7 @@ export default function App() {
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
     if (svcNuevoForm.costo)             payload.costo              = svcNuevoForm.costo;
     if (svcNuevoForm.ip)                payload.ipv4               = [svcNuevoForm.ip];
-    if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas.replace(/\s/g, "");
+    if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas;
     if (svcNuevoForm.fecha_instalacion) payload.fecha_instalacion  = svcNuevoForm.fecha_instalacion;
     try {
       const svcRes = await fetch(N8N_PROXY_SVC, {
@@ -3203,6 +3203,29 @@ export default function App() {
       const svcData = svcJson?.data ?? svcJson;
       const ok = svcData?.estado === "exito" || String(svcData?.code) === "200" || svcRes.ok;
       if (!ok) throw new Error(svcData?.mensaje || svcData?.message || `HTTP ${svcRes.status}`);
+
+      // Si hay coordenadas, actualizarlas via EditService (NewService no las guarda)
+      if (svcNuevoForm.coordenadas) {
+        try {
+          const cliRes2 = esDim
+            ? await mkFetchNod04("GetClientsDetails", { idcliente: svcNuevoCliId })
+            : await mkFetch("GetClientsDetails", { idcliente: svcNuevoCliId });
+          const svcObj = cliRes2.json?.datos?.[0]?.servicios?.[0] || cliRes2.json?.data?.[0]?.servicios?.[0];
+          if (svcObj?.id) {
+            await fetch(N8N_PROXY_SVC, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "EditService", payload: {
+                id_servicio: svcObj.id,
+                id_router:   nodoNum,
+                id_perfil:   Number(svcNuevoForm.id_perfil),
+                id_red_ipv4: Number(svcNuevoForm.id_red_ipv4),
+                coordenadas: svcNuevoForm.coordenadas,
+              }}),
+            }).catch(() => {});
+          }
+        } catch { /* silencioso — coordenadas no críticas */ }
+      }
 
       // Servicio creado — pasar a paso 2: crear factura
       setSvcNuevoCreado({ id_cliente: svcNuevoCliId, esDim, nodoNum });
