@@ -3177,13 +3177,26 @@ export default function App() {
 
   const abrirMkwWizard = async (cli) => {
     const wid = String(cli.id || cli.dni || "");
-    const s1done = cli.en_mikrowisp || !!mikrowisp_ok[wid];
     setMkwWizardCli(cli);
     setMkwWizardOpen(cli.id);
     setMkwWizardSvcDone(false);
     setMkwWizardFactDone(false);
-    if (!s1done) { setMkwWizardStep(1); }
-    else { setMkwWizardStep(2); await abrirSvcNuevo(cli); }
+    setMkwWizardStep(1);
+    // Verificar primero estado local (sesión o campo DB)
+    const s1local = cli.en_mikrowisp || !!mikrowisp_ok[wid];
+    if (s1local) { setMkwWizardStep(2); await abrirSvcNuevo(cli); return; }
+    // Si no hay certeza local, consultar API para evitar duplicar
+    try {
+      const dni = String(cli.dni || "").replace(/\D/g, "");
+      const esDim = esDimNodo(cli.nodo);
+      const res = esDim ? await mkFetchNod04("GetClientsDetails", { cedula: dni }) : await mkFetch("GetClientsDetails", { cedula: dni });
+      const datos = res.json?.datos?.[0] || res.json?.data?.[0];
+      if (datos?.id) {
+        setMikrowispOk(prev => ({ ...prev, [wid]: true }));
+        setMkwWizardStep(2);
+        await abrirSvcNuevo(cli);
+      }
+    } catch { /* si falla, mostrar paso 1 */ }
   };
 
   const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
