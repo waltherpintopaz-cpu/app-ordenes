@@ -3139,13 +3139,7 @@ export default function App() {
           await (esNod04
             ? mkFetchNod04("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } })
             : mkFetch("UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } }));
-          const nombre = String(cliente.nombre || "").trim();
-          const msgSMS = `BIENVENIDA ${nombre} ${dni} ${dni}`;
-          const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 }[String(cliente.nodo||"")] ?? 1;
-          await fetch(N8N_PROXY_SVC, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nodo: esNod04 ? 4 : nodoNum, accion: "NewSMS", payload: { idcliente: nuevoId, mensaje: msgSMS } })
-          });
+          // SMS bienvenida se envía manualmente desde el botón en el paso 4 del wizard
         }
       } catch { /* no crítico */ }
       setMikrowispOk((p) => ({ ...p, [id]: true }));
@@ -19379,6 +19373,9 @@ export default function App() {
                         {/* STEP 4 */}
                         {mkwWizardStep===4 && (() => {
                           const done=stepsStatus[3], cargando=mkwCliLoading[wid];
+                          const mkwCliId = svcNuevoCliId || factPanelCliId;
+                          const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 }[String(cli.nodo||"")] ?? 1;
+                          const esDimCli = esDimNodo(cli.nodo);
                           return (
                             <div style={{ display:"grid", gap:16 }}>
                               <div style={{ fontSize:13, color:"#64748b", lineHeight:1.6 }}>Sincroniza los datos del cliente (nombre, DNI, dirección) entre el sistema y Mikrowisp.</div>
@@ -19391,6 +19388,21 @@ export default function App() {
                                 <button onClick={()=>void mkwSincronizarCliente(cli)} disabled={cargando}
                                   style={{ padding:"12px 20px", background:cargando?"#9ca3af":"#0369a1", border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:cargando?"wait":"pointer" }}>
                                   {cargando?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}
+                                </button>
+                              )}
+                              {/* Botón SMS Bienvenida */}
+                              {mkwCliId && (
+                                <button onClick={async () => {
+                                  try {
+                                    const dni = String(cli.dni||"").replace(/\D/g,"");
+                                    const msg = `BIENVENIDA ${String(cli.nombre||"").trim()} ${dni} ${dni}`;
+                                    await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
+                                      body: JSON.stringify({ nodo: esDimCli?4:nodoNum, accion:"NewSMS", payload:{ idcliente: mkwCliId, mensaje: msg } }) });
+                                    window.alert("✅ SMS de bienvenida enviado");
+                                  } catch { window.alert("Error al enviar SMS"); }
+                                }}
+                                style={{ padding:"12px 20px", background:"#7c3aed", border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                                  💬 Enviar SMS Bienvenida
                                 </button>
                               )}
                               <button onClick={cerrarWizard}
