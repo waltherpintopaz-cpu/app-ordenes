@@ -1930,6 +1930,8 @@ export default function App() {
   const [svcNuevoGuardando, setSvcNuevoGuardando]  = useState(false);
   const [svcNuevoIpLoading,  setSvcNuevoIpLoading]  = useState(false);
   const [svcNuevoRedes,      setSvcNuevoRedes]      = useState([]);
+  const [svcNuevoPlantillas, setSvcNuevoPlantillas] = useState([]);
+  const [svcNuevoPlantillaId,setSvcNuevoPlantillaId]= useState(2); // Prepago por defecto
   const [svcNuevoCreado,     setSvcNuevoCreado]     = useState(null); // { id_cliente, esDim, nodoNum } tras éxito
   const [svcFactVencimiento, setSvcFactVencimiento] = useState("");
   const [svcFactMonto,       setSvcFactMonto]       = useState("");
@@ -3224,14 +3226,17 @@ export default function App() {
     const esDim = esDimNodo(nodo);
     const nodoNum = NODO_ROUTER_MAP_SVC[nodo] ?? 1;
     try {
-      const [perfRes, redesRes] = await Promise.all([
+      const [perfRes, redesRes, plantRes] = await Promise.all([
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetPerfiles", payload:{} }) }),
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetRedesIpv4", payload:{ id_router: nodoNum } }) }),
+        fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetPlantillasFacturacion", payload:{} }) }),
       ]);
       const pj = await perfRes.json().catch(() => ({}));
       const rj = await redesRes.json().catch(() => ({}));
+      const plj = await plantRes.json().catch(() => ({}));
 
       const pd = pj?.data ?? pj;
       const lista = pd?.datos || pd?.perfiles || (Array.isArray(pd) ? pd : []);
@@ -3240,8 +3245,11 @@ export default function App() {
       const rd = rj?.data ?? rj;
       const redes = rd?.datos || (Array.isArray(rd) ? rd : []);
       setSvcNuevoRedes(redes);
-      // Auto-seleccionar el último rango
       if (redes.length) setSvcNuevoForm(f => ({...f, id_red_ipv4: String(redes[redes.length - 1].id)}));
+
+      const pld = plj?.data ?? plj;
+      const plantillas = pld?.plantillas || (Array.isArray(pld) ? pld : []);
+      setSvcNuevoPlantillas(plantillas);
     } catch { setSvcNuevoPerfiles([]); setSvcNuevoRedes([]); }
   };
 
@@ -3299,6 +3307,7 @@ export default function App() {
       id_router:    nodoNum,
       id_perfil:    Number(svcNuevoForm.id_perfil),
       id_red_ipv4:  Number(svcNuevoForm.id_red_ipv4),
+      id_plantilla: svcNuevoPlantillaId || 2,
     };
     if (svcNuevoForm.userppp)           payload.userppp            = svcNuevoForm.userppp;
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
@@ -19088,6 +19097,22 @@ export default function App() {
                                     {svcNuevoRedes.map(r=><option key={r.id} value={r.id}>{r.red} ({r.disponibles??'?'} disp.)</option>)}
                                   </select>
                                 </div>
+                                {svcNuevoPlantillas.length > 0 && (
+                                  <div style={{ gridColumn:"1/-1" }}>
+                                    <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Plantilla de facturación *</label>
+                                    <select value={svcNuevoPlantillaId} onChange={e=>setSvcNuevoPlantillaId(Number(e.target.value))}
+                                      style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                                      {svcNuevoPlantillas.map(p => {
+                                        const cfg = p.datos?.config || {};
+                                        return (
+                                          <option key={p.id} value={p.id}>
+                                            {p.nombre} — Día pago: {cfg.diapago} · Corte: {cfg.corteautomatico} días · {cfg.tipopago==="0"?"Prepago":"Postpago"}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                  </div>
+                                )}
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Fecha instalación</label>
                                   <input type="date" value={svcNuevoForm.fecha_instalacion} onChange={e=>setSvcNuevoForm(f=>({...f,fecha_instalacion:e.target.value}))}
