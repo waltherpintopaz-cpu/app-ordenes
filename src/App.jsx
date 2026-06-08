@@ -3185,7 +3185,7 @@ export default function App() {
           body: JSON.stringify({ nodo: nodoNum, accion: "GetInvoices", payload: { idcliente: datos.id } })
         });
         const j = await r.json().catch(() => ({}));
-        const facts = j?.data?.facturas || j?.data?.datos || j?.data || [];
+        const facts = j?.data?.facturas || j?.facturas || j?.data?.datos || j?.data || [];
         setMkwWizardFacturas(Array.isArray(facts) ? facts : []);
       } catch { setMkwWizardFacturas([]); }
       setMkwWizardFacturasLoad(false);
@@ -19160,16 +19160,30 @@ export default function App() {
                             <div style={{ marginBottom:14 }}>
                               <div style={{ fontSize:11, fontWeight:800, color:"#7c3aed", marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>Facturas existentes</div>
                               <div style={{ display:"grid", gap:5 }}>
-                                {mkwWizardFacturas.slice(0,5).map((f,i) => {
-                                  const pagada = String(f.estado||f.status||"").toLowerCase().includes("pagad") || String(f.estado||"").toLowerCase().includes("paid");
+                                {mkwWizardFacturas.slice(0,6).map((f,i) => {
+                                  const pagada = String(f.estado||"").toLowerCase().includes("pagad");
+                                  const bg = pagada ? "#f0fdf4" : "#fef9c3";
+                                  const bor = pagada ? "#86efac" : "#fde047";
+                                  const tx = pagada ? "#15803d" : "#854d0e";
                                   return (
-                                    <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", background: pagada?"#f0fdf4":"#fef9c3", border:`1px solid ${pagada?"#86efac":"#fde047"}`, borderRadius:8, fontSize:12 }}>
-                                      <div>
-                                        <span style={{ fontWeight:700, color: pagada?"#15803d":"#854d0e" }}>#{f.idfactura||f.id}</span>
-                                        <span style={{ color:"#64748b", marginLeft:6 }}>{f.vencimiento||f.fecha_vencimiento||""}</span>
-                                        {f.descripcion && <span style={{ color:"#94a3b8", marginLeft:6, fontSize:10 }}>{String(f.descripcion).slice(0,30)}</span>}
+                                    <div key={i} style={{ background:bg, border:`1px solid ${bor}`, borderRadius:10, padding:"10px 12px", fontSize:12 }}>
+                                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                          <span style={{ fontWeight:800, color:tx }}>#{f.id}</span>
+                                          <span style={{ fontSize:10, fontWeight:700, background: pagada?"#dcfce7":"#fef08a", color:tx, padding:"1px 7px", borderRadius:99 }}>{pagada?"✓ Pagado":"⏳ Pendiente"}</span>
+                                          {f.tipo_factura && <span style={{ fontSize:10, color:"#64748b", background:"#f1f5f9", padding:"1px 6px", borderRadius:99 }}>{f.tipo_factura}</span>}
+                                        </div>
+                                        <span style={{ fontWeight:800, fontSize:13, color:tx }}>{f.total2||`S/${f.total}`}</span>
                                       </div>
-                                      <span style={{ fontWeight:800, color: pagada?"#16a34a":"#92400e" }}>S/{f.total||f.monto||"—"}</span>
+                                      <div style={{ display:"flex", gap:12, fontSize:11, color:"#64748b" }}>
+                                        <span>Vence: <strong>{f.vencimiento}</strong></span>
+                                        {pagada && f.fechapago && f.fechapago !== "0000-00-00" && <span>Pagó: <strong>{f.fechapago}</strong></span>}
+                                        {pagada && f.formapago && <span>{f.formapago}</span>}
+                                      </div>
+                                      {f.urlpdf && (
+                                        <a href={f.urlpdf} target="_blank" rel="noreferrer"
+                                          style={{ fontSize:10, color:"#2563eb", textDecoration:"none", marginTop:4, display:"inline-block" }}>📄 Ver PDF</a>
+                                      )}
                                     </div>
                                   );
                                 })}
