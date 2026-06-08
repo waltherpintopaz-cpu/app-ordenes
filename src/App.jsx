@@ -1948,6 +1948,7 @@ export default function App() {
   const [factPanelCliId,    setFactPanelCliId]    = useState(null); // id Mikrowisp
   const [factPanelLoading,  setFactPanelLoading]  = useState(false);
   const [factPanelEsDim,    setFactPanelEsDim]    = useState(false);
+  const [factPanelNodo,     setFactPanelNodo]     = useState(1);
   const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
@@ -3140,12 +3141,15 @@ export default function App() {
     setFactPanelCliId(null);
     setFactPanelLoading(true);
     setFactPanelEsDim(esDimNodo(cli.nodo));
+    const nodoMap = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
+    setFactPanelNodo(nodoMap[cli.nodo] ?? 1);
     // Reset estados factura
     setSvcFactStep(1); setSvcFactMonto("");
     setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
     const fechaInst = cli.fechaRegistro ? String(cli.fechaRegistro).split("T")[0] : new Date().toISOString().split("T")[0];
+    const hoy = new Date().toISOString().split("T")[0];
     setSvcFactF1Monto(String(cli.precioPlan || ""));
-    setSvcFactF1Vence(fechaInst);
+    setSvcFactF1Vence(fechaInst >= hoy ? fechaInst : hoy);
     setSvcFactF2FechaInst(fechaInst);
     setSvcFactF2PrecPlan(String(cli.precioPlan || ""));
     // Próximo vencimiento: día 2 del siguiente mes
@@ -18960,13 +18964,16 @@ export default function App() {
                                 onClick={async () => {
                                   setSvcFactCreando(true);
                                   try {
-                                    const inv = factPanelEsDim
-                                      ? await mkFetchNod04("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence })
-                                      : await mkFetch("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
-                                    const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                    if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
-                                    if (svcFactF1Pagada && inv.json?.idfactura) {
-                                      await (factPanelEsDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(inv.json.idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
+                                    const mkN8n = async (accion, payload) => {
+                                      const r = await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nodo: factPanelNodo, accion, payload }) });
+                                      const j = await r.json().catch(()=>({})); return j?.data ?? j;
+                                    };
+                                    const invData = await mkN8n("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
+                                    const inv = { json: invData };
+                                    const invOk = invData?.estado === "exito" || invData?.idfactura;
+                                    if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                    if (svcFactF1Pagada && invData?.idfactura) {
+                                      await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(invData.idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
                                     }
                                     window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
                                     setSvcFactStep(2);
@@ -19035,12 +19042,14 @@ export default function App() {
                                   onClick={async () => {
                                     setSvcFactCreando(true);
                                     try {
-                                      const inv = factPanelEsDim
-                                        ? await mkFetchNod04("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF2Vence })
-                                        : await mkFetch("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF2Vence });
-                                      const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                      if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.idfactura} creada`); setFactPanelOpen(null); }
-                                      else window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear"));
+                                      const mkN8n2 = async (accion, payload) => {
+                                        const r = await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nodo: factPanelNodo, accion, payload }) });
+                                        const j = await r.json().catch(()=>({})); return j?.data ?? j;
+                                      };
+                                      const invData2 = await mkN8n2("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF2Vence });
+                                      const invOk = invData2?.estado === "exito" || invData2?.idfactura;
+                                      if (invOk) { window.alert(`✅ Factura prorrateo #${invData2?.idfactura} creada`); setFactPanelOpen(null); }
+                                      else window.alert("Error: " + (invData2?.mensaje || invData2?.message || "No se pudo crear"));
                                     } catch(e) { window.alert("Error: " + e.message); }
                                     setSvcFactCreando(false);
                                   }}
