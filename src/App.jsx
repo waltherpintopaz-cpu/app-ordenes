@@ -18949,7 +18949,7 @@ export default function App() {
                             inicio.setMonth(inicio.getMonth() - 1);
                             diasPeriodo = Math.round((venceDate - inicio) / 86400000);
                             if (precPlan > 0 && diasPeriodo > 0)
-                              montoAuto = (precPlan * diasServicio / diasPeriodo).toFixed(2);
+                              montoAuto = String(Math.round(precPlan * diasServicio / diasPeriodo));
                           }
                           return (
                             <div style={{ display:"grid", gap:10 }}>
