@@ -1938,6 +1938,7 @@ export default function App() {
   const [svcFactF1Monto,     setSvcFactF1Monto]     = useState("");
   const [svcFactF1Vence,     setSvcFactF1Vence]     = useState("");
   const [svcFactF1Pagada,    setSvcFactF1Pagada]    = useState(true);
+  const [svcFactF1Pasarela,  setSvcFactF1Pasarela]  = useState("Efectivo Oficina/Sucursal");
   const [svcFactF2Vence,     setSvcFactF2Vence]     = useState("");
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
@@ -3164,7 +3165,7 @@ export default function App() {
     setSvcNuevoPerfiles([]);
     setSvcNuevoCreado(null);
     setSvcFactStep(1);
-    setSvcFactF1Monto(""); setSvcFactF1Vence(""); setSvcFactF1Pagada(true);
+    setSvcFactF1Monto(""); setSvcFactF1Vence(""); setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
     setSvcFactF2Vence(""); setSvcFactF2FechaInst(""); setSvcFactF2PrecPlan("");
     setSvcFactMonto(""); setSvcFactVencimiento("");
     setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"",
@@ -18896,6 +18897,17 @@ export default function App() {
                               <input type="checkbox" checked={svcFactF1Pagada} onChange={e => setSvcFactF1Pagada(e.target.checked)} style={{ width:15, height:15 }} />
                               Registrar como pagada automáticamente
                             </label>
+                            {svcFactF1Pagada && (
+                              <div>
+                                <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Forma de pago *</label>
+                                <select value={svcFactF1Pasarela} onChange={e => setSvcFactF1Pasarela(e.target.value)}
+                                  style={{ width:"100%", padding:"9px 12px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
+                                  {["Efectivo Oficina/Sucursal","Depósito bancario","Transferencia Bancaria","Yape","Aplicaciones bancarias","Walter Pinto","Americanet"].map(p =>
+                                    <option key={p}>{p}</option>
+                                  )}
+                                </select>
+                              </div>
+                            )}
                             <div style={{ display:"flex", gap:8 }}>
                               <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto}
                                 onClick={async () => {
@@ -18907,7 +18919,7 @@ export default function App() {
                                     const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
                                     if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
                                     if (svcFactF1Pagada && inv.json?.idfactura) {
-                                      await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(inv.json.idfactura,10), pasarela:"Efectivo Oficina/Sucursal", cantidad: parseFloat(svcFactF1Monto) });
+                                      await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(inv.json.idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
                                     }
                                     window.alert(`✅ Factura #${inv.json?.idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
                                     setSvcFactStep(2);
