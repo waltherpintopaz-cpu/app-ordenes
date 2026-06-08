@@ -3191,7 +3191,7 @@ export default function App() {
     if (svcNuevoForm.passppp)           payload.passppp            = svcNuevoForm.passppp;
     if (svcNuevoForm.costo)             payload.costo              = svcNuevoForm.costo;
     if (svcNuevoForm.ip)                payload.ipv4               = [svcNuevoForm.ip];
-    if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas;
+    if (svcNuevoForm.coordenadas)       payload.coordenadas        = svcNuevoForm.coordenadas.replace(/\s/g, "");
     if (svcNuevoForm.fecha_instalacion) payload.fecha_instalacion  = svcNuevoForm.fecha_instalacion;
     try {
       const svcRes = await fetch(N8N_PROXY_SVC, {
