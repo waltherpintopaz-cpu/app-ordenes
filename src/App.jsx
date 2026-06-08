@@ -3116,10 +3116,20 @@ export default function App() {
   const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo || ""));
 
   const cargarPerfilesSvcNuevo = async (nodo) => {
+    const N8N_PROXY = "https://n8n.americanet.space/webhook/sidebar-proxy";
     const esDim = esDimNodo(nodo);
-    const perfRes = esDim ? await mkFetchNod04("GetPerfiles", {}) : await mkFetch("GetPerfiles", {});
-    const lista = perfRes.json?.datos || perfRes.json?.perfiles || (Array.isArray(perfRes.json) ? perfRes.json : []);
-    setSvcNuevoPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
+    const nodoNum = ({ "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 })[nodo] ?? 1;
+    try {
+      const res = await fetch(N8N_PROXY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "GetPerfiles", payload: {} }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const data = json?.data ?? json;
+      const lista = data?.datos || data?.perfiles || (Array.isArray(data) ? data : []);
+      setSvcNuevoPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
+    } catch { setSvcNuevoPerfiles([]); }
   };
 
   const abrirSvcNuevo = async (cli) => {
@@ -3131,19 +3141,17 @@ export default function App() {
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
       ip:       "",
-      fecha_instalacion: new Date().toISOString().split("T")[0],
+      fecha_instalacion: cli.fechaRegistro ? String(cli.fechaRegistro).split("T")[0] : new Date().toISOString().split("T")[0],
       coordenadas: cli.coordenadas || "", crearFactura: false, vencimientoFactura:"" });
     setSvcNuevoLoading(true);
     const dni = String(cli.dni || "").replace(/\D/g, "");
     const esDim = esDimNodo(nodoInicial);
-    const [cliRes, perfRes] = await Promise.all([
+    const [cliRes] = await Promise.all([
       esDim ? mkFetchNod04("GetClientsDetails", { cedula: dni }) : mkFetch("GetClientsDetails", { cedula: dni }),
-      esDim ? mkFetchNod04("GetPerfiles", {}) : mkFetch("GetPerfiles", {}),
+      cargarPerfilesSvcNuevo(nodoInicial),
     ]);
     const datos = cliRes.json?.datos?.[0] || cliRes.json?.data?.[0];
     if (datos?.id) setSvcNuevoCliId(datos.id);
-    const lista = perfRes.json?.datos || perfRes.json?.perfiles || (Array.isArray(perfRes.json) ? perfRes.json : []);
-    setSvcNuevoPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
     setSvcNuevoLoading(false);
   };
 
