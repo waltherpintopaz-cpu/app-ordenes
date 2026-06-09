@@ -3291,6 +3291,7 @@ export default function App() {
     const nodoInicial = String(cli.nodo || "Nod_01");
     setSvcNuevoOpen(cli.id);
     setSvcNuevoCliId(null);
+    setSvcNuevoGuardando(false);
     setSvcNuevoPerfiles([]);
     setSvcNuevoCreado(null);
     setSvcFactStep(1);
@@ -3331,11 +3332,11 @@ export default function App() {
   const guardarSvcNuevo = async () => {
     if (!svcNuevoCliId) return window.alert("No se encontró el ID del cliente en Mikrowisp. Verifica que esté registrado.");
     if (!svcNuevoForm.id_perfil) return window.alert("Selecciona un plan.");
+    if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     setSvcNuevoGuardando(true);
     const esDim = esDimNodo(svcNuevoForm.nodo);
     const NODO_ROUTER_ID = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
     const nodoNum = NODO_ROUTER_ID[svcNuevoForm.nodo] ?? parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
-    if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     const payload = {
       id_cliente:   svcNuevoCliId,
       id_router:    nodoNum,
