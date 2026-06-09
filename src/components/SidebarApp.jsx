@@ -343,11 +343,12 @@ export default function SidebarApp() {
   const [historialLoad, setHistorialLoad] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
   // ── Mini-wizard Mikrowisp (sidebar) ──────────────────────────────────────
-  const [mwOpen,        setMwOpen]        = useState(false);
-  const [mwBusqVal,     setMwBusqVal]     = useState("");
-  const [mwBusqFecha,   setMwBusqFecha]   = useState("");
-  const [mwBusqLoad,    setMwBusqLoad]    = useState(false);
-  const [mwResultados,  setMwResultados]  = useState([]);   // lista cuando busca por fecha
+  const [mwOpen,         setMwOpen]         = useState(false);
+  const [mwBusqVal,      setMwBusqVal]      = useState("");
+  const [mwBusqDesde,    setMwBusqDesde]    = useState("");
+  const [mwBusqHasta,    setMwBusqHasta]    = useState("");
+  const [mwBusqLoad,     setMwBusqLoad]     = useState(false);
+  const [mwResultados,   setMwResultados]   = useState([]);
   const [mwCliSupa,     setMwCliSupa]     = useState(null);   // cliente encontrado en Supabase
   const [mwStep,        setMwStep]        = useState(0);      // 0=buscar 1=agregar 2=servicio 3=ok
   const [mwAgregando,   setMwAgregando]   = useState(false);
@@ -884,28 +885,27 @@ export default function SidebarApp() {
 
   async function mwBuscarEnClientes() {
     const q = mwBusqVal.trim();
-    const fecha = mwBusqFecha.trim();
-    if (!q && !fecha) return setMwMsg("Ingresa DNI, nombre o fecha.");
-    setMwBusqLoad(true); setMwCliSupa(null); setMwResultados([]); setMwMsg(""); setMwStep(0);
+    const desde = mwBusqDesde.trim();
+    const hasta = mwBusqHasta.trim();
+    if (!q && !desde && !hasta) return setMwMsg("Ingresa DNI, nombre o rango de fechas.");
+    setMwBusqLoad(true); setMwCliSupa(null); setMwResultados([]); setMwMsg("");
     try {
       let query = supabase.from("clientes")
         .select("id,nombre,dni,celular,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
+        .in("nodo", MW_NODOS_OK)
+        .or("en_mikrowisp.is.null,en_mikrowisp.eq.false")
         .order("fecha_registro", { ascending: false })
-        .limit(fecha && !q ? 20 : 1);
+        .limit(50);
       if (q) {
         const isNum = /^\d+$/.test(q);
         query = isNum ? query.ilike("dni", `%${q}%`) : query.ilike("nombre", `%${q}%`);
       }
-      if (fecha) {
-        query = query.gte("fecha_registro", fecha).lte("fecha_registro", fecha + "T23:59:59");
-      }
+      if (desde) query = query.gte("fecha_registro", desde);
+      if (hasta) query = query.lte("fecha_registro", hasta + "T23:59:59");
       const { data } = await query;
-      if (!data?.length) { setMwMsg("No encontrado en base de clientes."); }
-      else if (data.length === 1) {
-        mwSeleccionarCliente(data[0]);
-      } else {
-        setMwResultados(data);
-      }
+      if (!data?.length) { setMwMsg("Sin pendientes para los filtros aplicados."); }
+      else if (data.length === 1 && q) { mwSeleccionarCliente(data[0]); }
+      else { setMwResultados(data); }
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwBusqLoad(false);
   }
@@ -992,7 +992,7 @@ export default function SidebarApp() {
   }
 
   function mwReset() {
-    setMwOpen(false); setMwBusqVal(""); setMwBusqFecha(""); setMwCliSupa(null); setMwResultados([]); setMwStep(0);
+    setMwOpen(false); setMwBusqVal(""); setMwBusqDesde(""); setMwBusqHasta(""); setMwCliSupa(null); setMwResultados([]); setMwStep(0);
     setMwAgregando(false); setMwMkwId(null); setMwPerfiles([]); setMwRedes([]);
     setMwPlantillas([]); setMwCreandoSvc(false); setMwSvcOk(false); setMwMsg("");
     setMwForm({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"" });
@@ -1692,31 +1692,48 @@ export default function SidebarApp() {
                 {/* PASO 0 — Buscar */}
                 {mwStep===0 && (
                   <div style={{ display:"grid", gap:8 }}>
-                    <div style={{ fontSize:11, color:"#92400e" }}>Busca por DNI, nombre o fecha de registro.</div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      <input style={{ ...S.input, flex:1, fontSize:12 }} placeholder="DNI o nombre..."
-                        value={mwBusqVal} onChange={e=>setMwBusqVal(e.target.value)}
-                        onKeyDown={e=>e.key==="Enter" && mwBuscarEnClientes()} />
+                    <div style={{ fontSize:11, color:"#92400e" }}>
+                      Pendientes MW — Nod_01 · Nod_03 · Nod_04 · sin registrar
                     </div>
-                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                      <input type="date" style={{ ...S.input, flex:1, fontSize:12 }}
-                        value={mwBusqFecha} onChange={e=>setMwBusqFecha(e.target.value)} />
-                      <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqFecha)}
-                        style={{ ...S.btnSm(T.blue), padding:"8px 14px", opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqFecha))?0.5:1, whiteSpace:"nowrap" }}>
-                        {mwBusqLoad?"...":"Buscar"}
-                      </button>
+                    {/* DNI / nombre */}
+                    <input style={{ ...S.input, fontSize:12 }} placeholder="DNI o nombre (opcional)..."
+                      value={mwBusqVal} onChange={e=>setMwBusqVal(e.target.value)}
+                      onKeyDown={e=>e.key==="Enter" && mwBuscarEnClientes()} />
+                    {/* Rango fechas */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div>
+                        <label style={{ ...S.label }}>Desde</label>
+                        <input type="date" style={{ ...S.input, fontSize:12 }}
+                          value={mwBusqDesde} onChange={e=>setMwBusqDesde(e.target.value)} />
+                      </div>
+                      <div>
+                        <label style={{ ...S.label }}>Hasta</label>
+                        <input type="date" style={{ ...S.input, fontSize:12 }}
+                          value={mwBusqHasta} onChange={e=>setMwBusqHasta(e.target.value)} />
+                      </div>
                     </div>
-                    {/* Lista de resultados cuando busca por fecha */}
+                    <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta)}
+                      style={{ ...S.btn(T.blue), opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta))?0.5:1 }}>
+                      {mwBusqLoad?"Buscando...":"🔍 Buscar pendientes"}
+                    </button>
+                    {/* Lista resultados */}
                     {mwResultados.length > 0 && (
                       <div style={{ border:`1px solid #fcd34d`, borderRadius:6, overflow:"hidden" }}>
+                        <div style={{ padding:"6px 10px", background:"#fffbeb", borderBottom:`1px solid #fcd34d`, fontSize:10, fontWeight:700, color:"#92400e" }}>
+                          {mwResultados.length} pendiente{mwResultados.length!==1?"s":""} — click para seleccionar
+                        </div>
                         {mwResultados.map((c, i) => (
                           <div key={c.id||c.dni} onClick={() => mwSeleccionarCliente(c)}
                             style={{ padding:"8px 10px", cursor:"pointer", background: i%2===0?"#fff":"#fffbeb",
-                              borderBottom: i<mwResultados.length-1?`1px solid #fcd34d`:"none" }}>
-                            <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
-                            <div style={{ fontSize:11, color:"#64748b" }}>
-                              DNI {c.dni} · {c.nodo} · {String(c.fecha_registro||"").split("T")[0]}
+                              borderBottom: i<mwResultados.length-1?`1px solid #fde68a`:"none",
+                              display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <div>
+                              <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
+                              <div style={{ fontSize:10, color:"#64748b", marginTop:1 }}>
+                                DNI {c.dni} · <span style={{ color:"#0369a1", fontWeight:600 }}>{c.nodo}</span> · {String(c.fecha_registro||"").split("T")[0]}
+                              </div>
                             </div>
+                            <span style={{ fontSize:10, color:"#d97706", fontWeight:700 }}>Setup →</span>
                           </div>
                         ))}
                       </div>
