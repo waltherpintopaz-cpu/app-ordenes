@@ -1977,6 +1977,10 @@ export default function App() {
   const [mkwLimpiezaInfo, setMkwLimpiezaInfo] = useState("");
   const [mkwCliLoading, setMkwCliLoading] = useState({});   // { [clienteId]: bool }
   const [mkwCliOk, setMkwCliOk] = useState({});             // { [clienteId]: bool }
+  const [mkwPendientesOpen, setMkwPendientesOpen]     = useState(false);
+  const [mkwPendientesDni,  setMkwPendientesDni]      = useState("");
+  const [mkwPendientesFechaDesde, setMkwPendientesFechaDesde] = useState("");
+  const [mkwPendientesFechaHasta, setMkwPendientesFechaHasta] = useState("");
   const [modalIptv, setModalIptv]       = useState(null);  // cliente objeto
   const [iptvForm, setIptvForm]         = useState({ usuario: "", perfil: "", notas: "" });
   const [iptvSaving, setIptvSaving]     = useState(false);
@@ -18249,6 +18253,10 @@ export default function App() {
                             style={{ width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#0369a1", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
                             <span>📱</span> {mkwPanelAbierto ? "Cerrar panel MikroWisp" : "Panel MikroWisp"}
                           </button>
+                          <button onClick={() => { setMkwPendientesOpen(v => !v); setAbonadosToolsOpen(false); }}
+                            style={{ width: "100%", padding: "10px 16px", background: "none", border: "none", textAlign: "left", fontSize: 13, color: "#d97706", fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span>🚀</span> {mkwPendientesOpen ? "Cerrar Pendientes MW" : "Pendientes Mikrowisp"}
+                          </button>
                         </div>
                       )}
                     </div>
@@ -18422,6 +18430,108 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* ── Panel Pendientes Mikrowisp ── */}
+              {mkwPendientesOpen && (() => {
+                const pendientes = clientes.filter(c => {
+                  const nodoOk = MIKROWISP_NODOS.includes(String(c.nodo || ""));
+                  const noAgregado = !c.en_mikrowisp && !mikrowisp_ok[String(c.id || c.dni || "")] && !mkwCliOk[String(c.id || c.dni || "")];
+                  const tieneDni = String(c.dni || "").trim().length > 0;
+                  if (!nodoOk || !noAgregado || !tieneDni) return false;
+                  if (mkwPendientesDni.trim()) {
+                    const q = mkwPendientesDni.trim().toLowerCase();
+                    if (!String(c.dni || "").toLowerCase().includes(q) && !String(c.nombre || "").toLowerCase().includes(q)) return false;
+                  }
+                  if (mkwPendientesFechaDesde) {
+                    const fecha = String(c.fechaRegistro || "").split("T")[0];
+                    if (fecha < mkwPendientesFechaDesde) return false;
+                  }
+                  if (mkwPendientesFechaHasta) {
+                    const fecha = String(c.fechaRegistro || "").split("T")[0];
+                    if (fecha > mkwPendientesFechaHasta) return false;
+                  }
+                  return true;
+                });
+                return (
+                  <div style={{ background: "#fffbeb", border: "1.5px solid #fcd34d", borderRadius: 14, padding: "18px 20px", marginBottom: 18 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+                      <div>
+                        <span style={{ fontWeight: 800, fontSize: 14, color: "#92400e" }}>🚀 Pendientes Mikrowisp</span>
+                        <span style={{ marginLeft: 10, background: "#f59e0b", color: "#fff", borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{pendientes.length}</span>
+                        <p style={{ margin: "3px 0 0", fontSize: 11, color: "#78350f" }}>Clientes con nodo MW habilitado que aún no están en Mikrowisp</p>
+                      </div>
+                      <button onClick={() => setMkwPendientesOpen(false)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#94a3b8" }}>✕</button>
+                    </div>
+
+                    {/* Filtros */}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                      <input
+                        value={mkwPendientesDni}
+                        onChange={e => setMkwPendientesDni(e.target.value)}
+                        placeholder="🔍 Buscar por DNI o nombre..."
+                        style={{ flex: "1 1 200px", padding: "8px 12px", border: "1.5px solid #fcd34d", borderRadius: 9, fontSize: 12, outline: "none", background: "#fff" }}
+                      />
+                      <input type="date" value={mkwPendientesFechaDesde} onChange={e => setMkwPendientesFechaDesde(e.target.value)}
+                        style={{ padding: "8px 10px", border: "1.5px solid #fcd34d", borderRadius: 9, fontSize: 12, outline: "none", background: "#fff" }} />
+                      <input type="date" value={mkwPendientesFechaHasta} onChange={e => setMkwPendientesFechaHasta(e.target.value)}
+                        style={{ padding: "8px 10px", border: "1.5px solid #fcd34d", borderRadius: 9, fontSize: 12, outline: "none", background: "#fff" }} />
+                      {(mkwPendientesDni || mkwPendientesFechaDesde || mkwPendientesFechaHasta) && (
+                        <button onClick={() => { setMkwPendientesDni(""); setMkwPendientesFechaDesde(""); setMkwPendientesFechaHasta(""); }}
+                          style={{ padding: "8px 12px", background: "#fff", border: "1.5px solid #fcd34d", borderRadius: 9, fontSize: 12, fontWeight: 600, color: "#92400e", cursor: "pointer" }}>
+                          Limpiar
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Tabla */}
+                    {pendientes.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "24px 0", color: "#92400e", fontSize: 13, fontWeight: 600 }}>
+                        {clientes.filter(c => MIKROWISP_NODOS.includes(String(c.nodo || "")) && !c.en_mikrowisp && String(c.dni || "").trim()).length === 0
+                          ? "✅ Todos los clientes MW ya están registrados en Mikrowisp"
+                          : "Sin resultados para los filtros aplicados"}
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "2px solid #fcd34d" }}>
+                              {["Cliente", "DNI", "Nodo", "Plan · S/", "Fecha registro", ""].map(h => (
+                                <th key={h} style={{ padding: "7px 10px", textAlign: "left", fontWeight: 700, color: "#78350f", whiteSpace: "nowrap" }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pendientes.slice(0, 50).map(c => (
+                              <tr key={c.id || c.dni} style={{ borderBottom: "1px solid #fef3c7" }}>
+                                <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nombre || "—"}</td>
+                                <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#475569" }}>{c.dni || "—"}</td>
+                                <td style={{ padding: "8px 10px" }}>
+                                  <span style={{ background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{c.nodo}</span>
+                                </td>
+                                <td style={{ padding: "8px 10px", color: "#475569" }}>
+                                  {c.velocidad || "—"} {c.precioPlan ? `· S/${c.precioPlan}` : ""}
+                                </td>
+                                <td style={{ padding: "8px 10px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                                  {c.fechaRegistro ? String(c.fechaRegistro).split("T")[0] : "—"}
+                                </td>
+                                <td style={{ padding: "8px 10px" }}>
+                                  <button onClick={() => void abrirMkwWizard(c)}
+                                    style={{ padding: "6px 14px", background: "#f59e0b", border: "none", borderRadius: 8, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    Setup 🚀
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {pendientes.length > 50 && (
+                          <p style={{ margin: "10px 0 0", fontSize: 11, color: "#92400e", textAlign: "center" }}>Mostrando 50 de {pendientes.length} — usa los filtros para acotar</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── Búsqueda + filtros estado ── */}
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 16 }}>
