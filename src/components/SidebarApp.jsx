@@ -360,6 +360,24 @@ export default function SidebarApp() {
   const [mwCreandoSvc,  setMwCreandoSvc]  = useState(false);
   const [mwSvcOk,       setMwSvcOk]       = useState(false);
   const [mwMsg,         setMwMsg]         = useState("");
+  // Paso 3 — Facturas
+  const [mwFactSub,     setMwFactSub]     = useState(1);   // 1=pago inst, 2=prorrateo
+  const [mwFactModo,    setMwFactModo]    = useState("normal"); // normal | libre
+  const [mwFactMonto,   setMwFactMonto]   = useState("");
+  const [mwFactVence,   setMwFactVence]   = useState("");
+  const [mwFactPagada,  setMwFactPagada]  = useState(true);
+  const [mwFactPasarela,setMwFactPasarela]= useState("Efectivo Oficina/Sucursal");
+  const [mwFactDesc,    setMwFactDesc]    = useState("");
+  const [mwFactCreando, setMwFactCreando] = useState(false);
+  const [mwFactDone,    setMwFactDone]    = useState(false);
+  const [mwProrrFecha,  setMwProrrFecha]  = useState("");
+  const [mwProrrVence,  setMwProrrVence]  = useState("");
+  const [mwProrrPrec,   setMwProrrPrec]   = useState("");
+  const [mwProrrMonto,  setMwProrrMonto]  = useState("");
+  // Paso 4 — Sync
+  const [mwSyncLoad,    setMwSyncLoad]    = useState(false);
+  const [mwSyncDone,    setMwSyncDone]    = useState(false);
+  const [mwSmsSent,     setMwSmsSent]     = useState(false);
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -986,9 +1004,118 @@ export default function SidebarApp() {
       const ok = res?.estado==="exito" || String(res?.code)==="200" || res?.id;
       if (!ok) throw new Error(res?.mensaje || res?.message || "Error al crear servicio");
       if (mwPlantillas.length) await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillas[0].id }).catch(()=>{});
+      // Pre-llenar facturas
+      const fechaInst = mwForm.fecha_instalacion || new Date().toISOString().split("T")[0];
+      setMwFactVence(fechaInst);
+      setMwFactMonto(mwForm.costo || String(mwCliSupa?.precio_plan || ""));
       setMwSvcOk(true); setMwStep(3);
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwCreandoSvc(false);
+  }
+
+  async function mwCrearFactura() {
+    if (!mwMkwId) return setMwMsg("Sin ID de cliente MW.");
+    if (!mwFactMonto || !mwFactVence) return setMwMsg("Ingresa monto y fecha de vencimiento.");
+    if (mwFactModo === "libre" && !mwFactDesc) return setMwMsg("Ingresa una descripción para la factura.");
+    setMwFactCreando(true); setMwMsg("");
+    try {
+      const nodo = mwCliSupa?.nodo || "Nod_01";
+      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const esDim = mwEsDim(nodo);
+      const n = esDim ? 5 : nodoNum;
+      let idfactura;
+      if (mwFactModo === "libre") {
+        const d = await mkwProxy(n, "CreateInvoiceLibre", { id_cliente: mwMkwId, fecha_vencimiento: mwFactVence, items: [{ descripcion: mwFactDesc, cantidad: 1, precio: parseFloat(mwFactMonto), impuesto: 18 }] });
+        if (!(d?.code === "200" || d?.factura_id)) throw new Error(d?.mensaje || "No se pudo crear la factura");
+        idfactura = d?.factura_id;
+      } else {
+        const d = await mkwProxy(n, "CreateInvoice", { idcliente: mwMkwId, vencimiento: mwFactVence });
+        if (!(d?.estado === "exito" || d?.idfactura)) throw new Error(d?.mensaje || "No se pudo crear la factura");
+        idfactura = d?.idfactura;
+      }
+      if (mwFactPagada && idfactura) {
+        await mkwProxy(n, "PaidInvoice", { idcliente: mwMkwId, idfactura: parseInt(idfactura, 10), pasarela: mwFactPasarela, cantidad: parseFloat(mwFactMonto) });
+      }
+      setMwFactDone(true);
+      setMwFactSub(2);
+      // Pre-llenar prorrateo
+      const fechaInst = mwForm.fecha_instalacion || new Date().toISOString().split("T")[0];
+      setMwProrrFecha(fechaInst);
+      setMwProrrPrec(mwForm.costo || String(mwCliSupa?.precio_plan || ""));
+      const instDate = new Date(fechaInst + "T00:00:00");
+      let proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 1, 2);
+      if (Math.round((proxVence - instDate) / 86400000) < 10) proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 2, 2);
+      setMwProrrVence(proxVence.toISOString().split("T")[0]);
+    } catch(e) { setMwMsg("Error: " + e.message); }
+    setMwFactCreando(false);
+  }
+
+  async function mwCrearProrrateo() {
+    if (!mwMkwId || !mwProrrVence) return setMwMsg("Falta fecha de próximo vencimiento.");
+    const montoFinal = parseFloat(mwProrrMonto) || (() => {
+      const instDate = new Date((mwProrrFecha || mwForm.fecha_instalacion || new Date().toISOString().split("T")[0]) + "T00:00:00");
+      const venceDate = new Date(mwProrrVence + "T00:00:00");
+      const prec = parseFloat(mwProrrPrec) || 0;
+      if (!prec || venceDate <= instDate) return 0;
+      const dias = Math.round((venceDate - instDate) / 86400000);
+      const inicio = new Date(venceDate); inicio.setMonth(inicio.getMonth() - 1);
+      const periodo = Math.round((venceDate - inicio) / 86400000);
+      return periodo > 0 ? Math.round(prec * dias / periodo) : 0;
+    })();
+    if (!montoFinal) return setMwMsg("No se pudo calcular el monto.");
+    setMwFactCreando(true); setMwMsg("");
+    try {
+      const nodo = mwCliSupa?.nodo || "Nod_01";
+      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const esDim = mwEsDim(nodo);
+      const n = esDim ? 5 : nodoNum;
+      const desc = mwCliSupa?.velocidad ? `Prorrateo Plan ${mwCliSupa.velocidad}` : "Prorrateo servicio internet";
+      const d = await mkwProxy(n, "CreateInvoiceLibre", { id_cliente: mwMkwId, fecha_vencimiento: mwProrrVence, items: [{ descripcion: desc, cantidad: 1, precio: montoFinal, impuesto: 18 }] });
+      if (!(d?.code === "200" || d?.factura_id)) throw new Error(d?.mensaje || "No se pudo crear el prorrateo");
+      setMwStep(4);
+    } catch(e) { setMwMsg("Error: " + e.message); }
+    setMwFactCreando(false);
+  }
+
+  async function mwSincronizar() {
+    if (!mwMkwId || !mwCliSupa) return;
+    setMwSyncLoad(true); setMwMsg("");
+    try {
+      const nodo = mwCliSupa.nodo || "Nod_01";
+      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const esDim = mwEsDim(nodo);
+      const n = esDim ? 5 : nodoNum;
+      const datos = await mkwProxy(n, "GetClientsDetails", { idcliente: mwMkwId });
+      const d = datos?.datos?.[0] || datos?.data?.[0] || datos;
+      if (d?.id) {
+        const nodoServicio = d.servicios?.[0]?.nodo ?? (esDim ? 5 : null);
+        const nodoNum2 = nodoServicio !== null ? Number(nodoServicio) : null;
+        const movil = String(d.movil || "").trim();
+        const row = { mikrowisp_id: d.id, nombre: d.nombre, cedula: d.cedula, telefonos: movil, estado: d.estado, nodo: nodoNum2 };
+        let q = supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", d.id);
+        if (nodoNum2 !== null) q = q.eq("nodo", nodoNum2); else q = q.is("nodo", null);
+        const { data: prev } = await q.maybeSingle();
+        if (prev && !movil && prev.telefonos) row.telefonos = prev.telefonos;
+        await supabase.from("mikrowisp_clientes").upsert([row], { onConflict: nodoNum2 !== null ? "mikrowisp_id,nodo" : "mikrowisp_id" });
+        if (mwCliSupa.id) await supabase.from("clientes").update({ en_mikrowisp: true, mikrowisp_sync_ok: true }).eq("id", mwCliSupa.id);
+      }
+      setMwSyncDone(true);
+    } catch(e) { setMwMsg("Error: " + e.message); }
+    setMwSyncLoad(false);
+  }
+
+  async function mwEnviarSms() {
+    if (!mwMkwId || !mwCliSupa) return;
+    try {
+      const nodo = mwCliSupa.nodo || "Nod_01";
+      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const esDim = mwEsDim(nodo);
+      const n = esDim ? 5 : nodoNum;
+      const dni = String(mwCliSupa.dni || "").replace(/\D/g, "");
+      const msg = `BIENVENIDA ${String(mwCliSupa.nombre || "").trim()} ${dni} ${dni}`;
+      await mkwProxy(n, "NewSMS", { idcliente: mwMkwId, mensaje: msg });
+      setMwSmsSent(true);
+    } catch(e) { setMwMsg("Error SMS: " + e.message); }
   }
 
   function mwReset() {
@@ -996,6 +1123,10 @@ export default function SidebarApp() {
     setMwAgregando(false); setMwMkwId(null); setMwPerfiles([]); setMwRedes([]);
     setMwPlantillas([]); setMwCreandoSvc(false); setMwSvcOk(false); setMwMsg("");
     setMwForm({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"" });
+    setMwFactSub(1); setMwFactModo("normal"); setMwFactMonto(""); setMwFactVence(""); setMwFactPagada(true);
+    setMwFactDesc(""); setMwFactCreando(false); setMwFactDone(false);
+    setMwProrrFecha(""); setMwProrrVence(""); setMwProrrPrec(""); setMwProrrMonto("");
+    setMwSyncLoad(false); setMwSyncDone(false); setMwSmsSent(false);
   }
 
   async function buscarPorDni() {
@@ -1677,12 +1808,12 @@ export default function SidebarApp() {
           {mwOpen && (
             <div style={{ border:`1.5px solid #fcd34d`, borderRadius:8, overflow:"hidden", marginBottom:8 }}>
               {/* Header pasos */}
-              <div style={{ background:"#fffbeb", padding:"8px 12px", borderBottom:`1px solid #fcd34d`, display:"flex", gap:4 }}>
-                {["Buscar","Agregar","Servicio","✓"].map((s,i) => (
-                  <div key={i} style={{ flex:1, textAlign:"center", fontSize:10, fontWeight:700,
+              <div style={{ background:"#fffbeb", padding:"8px 12px", borderBottom:`1px solid #fcd34d`, display:"flex", gap:2 }}>
+                {["Buscar","Agregar","Servicio","Facturas","Sync"].map((s,i) => (
+                  <div key={i} style={{ flex:1, textAlign:"center", fontSize:9, fontWeight:700,
                     color: mwStep===i?"#d97706": mwStep>i?"#16a34a":"#94a3b8",
                     borderBottom:`2px solid ${mwStep===i?"#d97706":mwStep>i?"#16a34a":"transparent"}`, paddingBottom:4 }}>
-                    {mwStep>i?"✓ ":""}{s}
+                    {mwStep>i?"✓":""}{s}
                   </div>
                 ))}
               </div>
@@ -1823,13 +1954,148 @@ export default function SidebarApp() {
                   </div>
                 )}
 
-                {/* PASO 3 — Éxito */}
-                {mwStep===3 && (
-                  <div style={{ display:"grid", gap:10, textAlign:"center" }}>
-                    <div style={{ fontSize:32 }}>🎉</div>
-                    <div style={{ fontWeight:800, fontSize:13, color:"#15803d" }}>Servicio creado correctamente</div>
-                    <div style={{ fontSize:11, color:"#475569" }}>Cliente {mwCliSupa?.nombre} agregado a Mikrowisp con servicio activo.</div>
-                    <button onClick={mwReset} style={{ ...S.btnOut, textAlign:"center" }}>Cerrar</button>
+                {/* PASO 3 — Facturas */}
+                {mwStep===3 && (() => {
+                  const c = "#7c3aed", bo = "#d8b4fe";
+                  const empresa = mwEsDim(mwCliSupa?.nodo) ? "dimfiber" : "americanet";
+                  const pasarelas = PASARELAS[empresa] || PASARELAS.americanet;
+                  // Cálculo prorrateo
+                  const instDate = mwProrrFecha ? new Date(mwProrrFecha + "T00:00:00") : null;
+                  const venceDate = mwProrrVence ? new Date(mwProrrVence + "T00:00:00") : null;
+                  const prec = parseFloat(mwProrrPrec) || 0;
+                  let diasSvc = 0, diasPer = 0, montoAuto = "";
+                  if (instDate && venceDate && venceDate > instDate) {
+                    diasSvc = Math.round((venceDate - instDate) / 86400000);
+                    const ini = new Date(venceDate); ini.setMonth(ini.getMonth() - 1);
+                    diasPer = Math.round((venceDate - ini) / 86400000);
+                    if (prec > 0 && diasPer > 0) montoAuto = String(Math.round(prec * diasSvc / diasPer));
+                  }
+                  return (
+                    <div style={{ display:"grid", gap:8 }}>
+                      {/* Sub-tabs */}
+                      <div style={{ display:"flex", gap:4 }}>
+                        {[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(
+                          <button key={s} onClick={()=>setMwFactSub(s)}
+                            style={{ flex:1, padding:"6px", borderRadius:6, border:"none", fontSize:10, fontWeight:700, cursor:"pointer",
+                              background: mwFactSub===s?c:"#f5f3ff", color: mwFactSub===s?"#fff":c }}>
+                            {mwFactDone && s===1 ? "✓ "+l : l}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Sub-paso 1: Pago instalación */}
+                      {mwFactSub===1 && (
+                        <div style={{ display:"grid", gap:8 }}>
+                          <div style={{ display:"flex", gap:4 }}>
+                            {[{m:"normal",l:"📄 Normal"},{m:"libre",l:"🎁 Libre/Promo"}].map(({m,l})=>(
+                              <button key={m} onClick={()=>setMwFactModo(m)}
+                                style={{ flex:1, padding:"5px", borderRadius:5, border:"none", fontSize:10, fontWeight:700, cursor:"pointer",
+                                  background: mwFactModo===m?c:"#f5f3ff", color: mwFactModo===m?"#fff":c }}>{l}
+                              </button>
+                            ))}
+                          </div>
+                          {mwFactModo==="libre" && (
+                            <input style={{...S.input,fontSize:12}} placeholder="Ej: Instalación Plan 100Mbps"
+                              value={mwFactDesc} onChange={e=>setMwFactDesc(e.target.value)} />
+                          )}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                            <div>
+                              <label style={S.label}>Monto S/ *</label>
+                              <input type="number" step="0.01" style={{...S.input,fontSize:12}} placeholder="50.00"
+                                value={mwFactMonto} onChange={e=>setMwFactMonto(e.target.value)} />
+                            </div>
+                            <div>
+                              <label style={S.label}>Vencimiento *</label>
+                              <input type="date" style={{...S.input,fontSize:12}}
+                                value={mwFactVence} onChange={e=>setMwFactVence(e.target.value)} />
+                            </div>
+                          </div>
+                          <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", fontSize:12, fontWeight:600, color:c }}>
+                            <input type="checkbox" checked={mwFactPagada} onChange={e=>setMwFactPagada(e.target.checked)} style={{ width:14, height:14 }} />
+                            Registrar como pagada
+                          </label>
+                          {mwFactPagada && (
+                            <select style={{...S.select,fontSize:12}} value={mwFactPasarela} onChange={e=>setMwFactPasarela(e.target.value)}>
+                              {pasarelas.map(p=><option key={p}>{p}</option>)}
+                            </select>
+                          )}
+                          <div style={{ display:"flex", gap:6 }}>
+                            <button onClick={mwCrearFactura} disabled={mwFactCreando||!mwFactMonto||!mwFactVence||(mwFactModo==="libre"&&!mwFactDesc)}
+                              style={{ ...S.btn(c), flex:1, opacity:(mwFactCreando||!mwFactMonto||!mwFactVence)?0.5:1 }}>
+                              {mwFactCreando?"Creando...":"✓ Crear y continuar →"}
+                            </button>
+                            <button onClick={()=>{setMwFactDone(true);setMwFactSub(2);setMwProrrFecha(mwForm.fecha_instalacion);setMwProrrPrec(mwForm.costo||String(mwCliSupa?.precio_plan||""));}}
+                              style={{ ...S.btnOut }}>Omitir</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-paso 2: Prorrateo */}
+                      {mwFactSub===2 && (
+                        <div style={{ display:"grid", gap:8 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                            <div>
+                              <label style={S.label}>F. Instalación</label>
+                              <input type="date" style={{...S.input,fontSize:11}} value={mwProrrFecha} onChange={e=>setMwProrrFecha(e.target.value)} />
+                            </div>
+                            <div>
+                              <label style={S.label}>Próx. Vence *</label>
+                              <input type="date" style={{...S.input,fontSize:11}} value={mwProrrVence} onChange={e=>setMwProrrVence(e.target.value)} />
+                            </div>
+                            <div>
+                              <label style={S.label}>Precio S/</label>
+                              <input type="number" step="0.01" style={{...S.input,fontSize:11}} value={mwProrrPrec} onChange={e=>setMwProrrPrec(e.target.value)} />
+                            </div>
+                          </div>
+                          {montoAuto && (
+                            <div style={{ background:"#f5f3ff", border:`1px solid ${bo}`, borderRadius:6, padding:"8px 10px", fontSize:11, color:c, fontWeight:700 }}>
+                              S/{prec.toFixed(2)} × {diasSvc}d / {diasPer}d = <span style={{ fontSize:14 }}>S/{montoAuto}</span>
+                            </div>
+                          )}
+                          <div>
+                            <label style={S.label}>Monto prorrateo S/ <span style={{fontWeight:400,textTransform:"none"}}>(editable)</span></label>
+                            <input type="number" step="0.01" style={{...S.input,fontSize:12}} placeholder={montoAuto||"Auto-calculado"}
+                              value={mwProrrMonto} onChange={e=>setMwProrrMonto(e.target.value)} />
+                          </div>
+                          <div style={{ display:"flex", gap:6 }}>
+                            <button onClick={mwCrearProrrateo} disabled={mwFactCreando||!mwProrrVence||!(parseFloat(mwProrrMonto||montoAuto)>0)}
+                              style={{ ...S.btn(c), flex:1, opacity:(mwFactCreando||!mwProrrVence)?0.5:1 }}>
+                              {mwFactCreando?"Creando...":"✓ Crear prorrateo →"}
+                            </button>
+                            <button onClick={()=>setMwStep(4)} style={{ ...S.btnOut }}>Omitir</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                    </div>
+                  );
+                })()}
+
+                {/* PASO 4 — Sync */}
+                {mwStep===4 && (
+                  <div style={{ display:"grid", gap:10 }}>
+                    <div style={{ fontSize:11, color:"#64748b" }}>Sincroniza los datos del cliente entre Supabase y Mikrowisp para que n8n los use.</div>
+                    {mwSyncDone ? (
+                      <div style={{ background:"#fff7ed", border:"1.5px solid #fdba74", borderRadius:8, padding:"12px", display:"flex", alignItems:"center", gap:10 }}>
+                        <span style={{ fontSize:22 }}>✅</span>
+                        <div style={{ fontWeight:800, fontSize:12, color:"#c2410c" }}>Sincronizado correctamente</div>
+                      </div>
+                    ) : (
+                      <button onClick={mwSincronizar} disabled={mwSyncLoad}
+                        style={{ ...S.btn("#0369a1"), opacity:mwSyncLoad?0.6:1 }}>
+                        {mwSyncLoad?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}
+                      </button>
+                    )}
+                    <button onClick={mwEnviarSms} disabled={mwSmsSent}
+                      style={{ ...S.btn("#7c3aed"), opacity:mwSmsSent?0.6:1 }}>
+                      {mwSmsSent?"✓ SMS enviado":"💬 Enviar SMS Bienvenida"}
+                    </button>
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                    <button onClick={mwReset}
+                      style={{ ...S.btn(mwSyncDone?"#16a34a":"#6b7280") }}>
+                      {mwSyncDone?"✅ Finalizar":"Cerrar"}
+                    </button>
                   </div>
                 )}
 
