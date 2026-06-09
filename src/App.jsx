@@ -19247,7 +19247,7 @@ export default function App() {
                                   await abrirFactPanel(cli);
                                   setMkwWizardStep(3);
                                 }
-                              }} disabled={svcNuevoGuardando||!svcNuevoForm.id_perfil||!svcNuevoForm.id_red_ipv4}
+                              }} type="button" disabled={svcNuevoGuardando||!svcNuevoForm.id_perfil||!svcNuevoForm.id_red_ipv4}
                                 style={{ padding:"11px 18px", background:svcNuevoGuardando||!svcNuevoForm.id_perfil||!svcNuevoForm.id_red_ipv4?"#9ca3af":"#16a34a", border:"none", borderRadius:10, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {svcNuevoGuardando?"Creando servicio...":"✓ Crear Servicio"}
                               </button>
