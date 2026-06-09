@@ -345,7 +345,9 @@ export default function SidebarApp() {
   // ── Mini-wizard Mikrowisp (sidebar) ──────────────────────────────────────
   const [mwOpen,        setMwOpen]        = useState(false);
   const [mwBusqVal,     setMwBusqVal]     = useState("");
+  const [mwBusqFecha,   setMwBusqFecha]   = useState("");
   const [mwBusqLoad,    setMwBusqLoad]    = useState(false);
+  const [mwResultados,  setMwResultados]  = useState([]);   // lista cuando busca por fecha
   const [mwCliSupa,     setMwCliSupa]     = useState(null);   // cliente encontrado en Supabase
   const [mwStep,        setMwStep]        = useState(0);      // 0=buscar 1=agregar 2=servicio 3=ok
   const [mwAgregando,   setMwAgregando]   = useState(false);
@@ -882,24 +884,39 @@ export default function SidebarApp() {
 
   async function mwBuscarEnClientes() {
     const q = mwBusqVal.trim();
-    if (q.length < 2) return;
-    setMwBusqLoad(true); setMwCliSupa(null); setMwMsg(""); setMwStep(0);
+    const fecha = mwBusqFecha.trim();
+    if (!q && !fecha) return setMwMsg("Ingresa DNI, nombre o fecha.");
+    setMwBusqLoad(true); setMwCliSupa(null); setMwResultados([]); setMwMsg(""); setMwStep(0);
     try {
-      const isNum = /^\d+$/.test(q);
-      let query = supabase.from("clientes").select("id,nombre,dni,celular,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp").limit(1);
-      query = isNum ? query.ilike("dni", `%${q}%`) : query.ilike("nombre", `%${q}%`);
+      let query = supabase.from("clientes")
+        .select("id,nombre,dni,celular,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
+        .order("fecha_registro", { ascending: false })
+        .limit(fecha && !q ? 20 : 1);
+      if (q) {
+        const isNum = /^\d+$/.test(q);
+        query = isNum ? query.ilike("dni", `%${q}%`) : query.ilike("nombre", `%${q}%`);
+      }
+      if (fecha) {
+        query = query.gte("fecha_registro", fecha).lte("fecha_registro", fecha + "T23:59:59");
+      }
       const { data } = await query;
       if (!data?.length) { setMwMsg("No encontrado en base de clientes."); }
-      else {
-        const c = data[0];
-        setMwCliSupa(c);
-        setMwForm({ id_perfil:"", id_red_ipv4:"", userppp: c.usuario_nodo||"", passppp: c.password_usuario||"",
-          costo: String(c.precio_plan||""), fecha_instalacion: c.fecha_registro ? String(c.fecha_registro).split("T")[0] : new Date().toISOString().split("T")[0],
-          coordenadas: c.ubicacion||"" });
-        setMwStep(1);
+      else if (data.length === 1) {
+        mwSeleccionarCliente(data[0]);
+      } else {
+        setMwResultados(data);
       }
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwBusqLoad(false);
+  }
+
+  function mwSeleccionarCliente(c) {
+    setMwCliSupa(c);
+    setMwResultados([]);
+    setMwForm({ id_perfil:"", id_red_ipv4:"", userppp: c.usuario_nodo||"", passppp: c.password_usuario||"",
+      costo: String(c.precio_plan||""), fecha_instalacion: c.fecha_registro ? String(c.fecha_registro).split("T")[0] : new Date().toISOString().split("T")[0],
+      coordenadas: c.ubicacion||"" });
+    setMwStep(1);
   }
 
   async function mwAgregarMkw() {
@@ -975,7 +992,7 @@ export default function SidebarApp() {
   }
 
   function mwReset() {
-    setMwOpen(false); setMwBusqVal(""); setMwCliSupa(null); setMwStep(0);
+    setMwOpen(false); setMwBusqVal(""); setMwBusqFecha(""); setMwCliSupa(null); setMwResultados([]); setMwStep(0);
     setMwAgregando(false); setMwMkwId(null); setMwPerfiles([]); setMwRedes([]);
     setMwPlantillas([]); setMwCreandoSvc(false); setMwSvcOk(false); setMwMsg("");
     setMwForm({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"" });
@@ -1675,16 +1692,35 @@ export default function SidebarApp() {
                 {/* PASO 0 — Buscar */}
                 {mwStep===0 && (
                   <div style={{ display:"grid", gap:8 }}>
-                    <div style={{ fontSize:11, color:"#92400e" }}>Busca el cliente en la base de Supabase por DNI o nombre.</div>
+                    <div style={{ fontSize:11, color:"#92400e" }}>Busca por DNI, nombre o fecha de registro.</div>
                     <div style={{ display:"flex", gap:6 }}>
                       <input style={{ ...S.input, flex:1, fontSize:12 }} placeholder="DNI o nombre..."
                         value={mwBusqVal} onChange={e=>setMwBusqVal(e.target.value)}
                         onKeyDown={e=>e.key==="Enter" && mwBuscarEnClientes()} />
-                      <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||mwBusqVal.trim().length<2}
-                        style={{ ...S.btnSm(T.blue), padding:"8px 14px", opacity:(mwBusqLoad||mwBusqVal.trim().length<2)?0.5:1 }}>
+                    </div>
+                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                      <input type="date" style={{ ...S.input, flex:1, fontSize:12 }}
+                        value={mwBusqFecha} onChange={e=>setMwBusqFecha(e.target.value)} />
+                      <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqFecha)}
+                        style={{ ...S.btnSm(T.blue), padding:"8px 14px", opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqFecha))?0.5:1, whiteSpace:"nowrap" }}>
                         {mwBusqLoad?"...":"Buscar"}
                       </button>
                     </div>
+                    {/* Lista de resultados cuando busca por fecha */}
+                    {mwResultados.length > 0 && (
+                      <div style={{ border:`1px solid #fcd34d`, borderRadius:6, overflow:"hidden" }}>
+                        {mwResultados.map((c, i) => (
+                          <div key={c.id||c.dni} onClick={() => mwSeleccionarCliente(c)}
+                            style={{ padding:"8px 10px", cursor:"pointer", background: i%2===0?"#fff":"#fffbeb",
+                              borderBottom: i<mwResultados.length-1?`1px solid #fcd34d`:"none" }}>
+                            <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
+                            <div style={{ fontSize:11, color:"#64748b" }}>
+                              DNI {c.dni} · {c.nodo} · {String(c.fecha_registro||"").split("T")[0]}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
                   </div>
                 )}
