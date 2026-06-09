@@ -3253,7 +3253,7 @@ export default function App() {
     } catch { setMkwWizardStep(1); /* si API falla, mostrar paso 1 */ }
   };
 
-  const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
+  const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
   const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
 
   const cargarPerfilesSvcNuevo = async (nodo) => {
@@ -3333,7 +3333,7 @@ export default function App() {
     if (!svcNuevoForm.id_perfil) return window.alert("Selecciona un plan.");
     setSvcNuevoGuardando(true);
     const esDim = esDimNodo(svcNuevoForm.nodo);
-    const NODO_ROUTER_ID = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
+    const NODO_ROUTER_ID = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
     const nodoNum = NODO_ROUTER_ID[svcNuevoForm.nodo] ?? parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
     if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     const payload = {
