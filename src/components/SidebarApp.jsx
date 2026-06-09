@@ -342,6 +342,21 @@ export default function SidebarApp() {
   const [liquidacionesCliente,setLiquidacionesCliente] = useState([]);
   const [historialLoad, setHistorialLoad] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+  // ── Mini-wizard Mikrowisp (sidebar) ──────────────────────────────────────
+  const [mwOpen,        setMwOpen]        = useState(false);
+  const [mwBusqVal,     setMwBusqVal]     = useState("");
+  const [mwBusqLoad,    setMwBusqLoad]    = useState(false);
+  const [mwCliSupa,     setMwCliSupa]     = useState(null);   // cliente encontrado en Supabase
+  const [mwStep,        setMwStep]        = useState(0);      // 0=buscar 1=agregar 2=servicio 3=ok
+  const [mwAgregando,   setMwAgregando]   = useState(false);
+  const [mwMkwId,       setMwMkwId]       = useState(null);
+  const [mwPerfiles,    setMwPerfiles]    = useState([]);
+  const [mwRedes,       setMwRedes]       = useState([]);
+  const [mwPlantillas,  setMwPlantillas]  = useState([]);
+  const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"" });
+  const [mwCreandoSvc,  setMwCreandoSvc]  = useState(false);
+  const [mwSvcOk,       setMwSvcOk]       = useState(false);
+  const [mwMsg,         setMwMsg]         = useState("");
 
   // ── Escuchar mensaje de Chatwoot ──────────────────────────────────────────
   useEffect(() => {
@@ -860,6 +875,112 @@ export default function SidebarApp() {
   }
 
   // ── Búsqueda flexible por DNI o nombre ──────────────────────────────────
+  // ── MW wizard helpers ─────────────────────────────────────────────────────
+  const MW_NODO_MAP  = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
+  const MW_NODOS_OK  = ["Nod_01","Nod_03","Nod_04"];
+  const mwEsDim = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo||""));
+
+  async function mwBuscarEnClientes() {
+    const q = mwBusqVal.trim();
+    if (q.length < 2) return;
+    setMwBusqLoad(true); setMwCliSupa(null); setMwMsg(""); setMwStep(0);
+    try {
+      const isNum = /^\d+$/.test(q);
+      let query = supabase.from("clientes").select("id,nombre,dni,celular,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp").limit(1);
+      query = isNum ? query.ilike("dni", `%${q}%`) : query.ilike("nombre", `%${q}%`);
+      const { data } = await query;
+      if (!data?.length) { setMwMsg("No encontrado en base de clientes."); }
+      else {
+        const c = data[0];
+        setMwCliSupa(c);
+        setMwForm({ id_perfil:"", id_red_ipv4:"", userppp: c.usuario_nodo||"", passppp: c.password_usuario||"",
+          costo: String(c.precio_plan||""), fecha_instalacion: c.fecha_registro ? String(c.fecha_registro).split("T")[0] : new Date().toISOString().split("T")[0],
+          coordenadas: c.ubicacion||"" });
+        setMwStep(1);
+      }
+    } catch(e) { setMwMsg("Error: " + e.message); }
+    setMwBusqLoad(false);
+  }
+
+  async function mwAgregarMkw() {
+    if (!mwCliSupa) return;
+    const dni = String(mwCliSupa.dni||"").replace(/\D/g,"");
+    if (!dni) return setMwMsg("El cliente no tiene DNI.");
+    setMwAgregando(true); setMwMsg("");
+    try {
+      const nodoNum = MW_NODO_MAP[mwCliSupa.nodo] ?? 1;
+      const esDim = mwEsDim(mwCliSupa.nodo);
+      const check = await mkwProxy(esDim?5:nodoNum, "GetClientsDetails", { cedula: dni });
+      const existe = check?.datos?.[0]?.id || check?.data?.[0]?.id;
+      if (existe) {
+        setMwMkwId(existe);
+        await mwCargarPerfiles(mwCliSupa.nodo, existe);
+        setMwStep(2);
+        return;
+      }
+      const add = await mkwProxy(esDim?5:nodoNum, "NewUser", {
+        nombre: String(mwCliSupa.nombre||"").trim(), cedula: dni,
+        correo: "", movil: String(mwCliSupa.celular||"").trim(),
+        direccion_principal: "", codigo: dni,
+      });
+      const nuevoId = add?.idcliente || add?.id_cliente || add?.id || add?.datos?.id;
+      if (!nuevoId) throw new Error(add?.mensaje || "Sin ID de respuesta");
+      await mkwProxy(esDim?5:nodoNum, "UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } });
+      setMwMkwId(nuevoId);
+      if (mwCliSupa.id) supabase.from("clientes").update({ en_mikrowisp: true }).eq("id", mwCliSupa.id).then(()=>{});
+      await mwCargarPerfiles(mwCliSupa.nodo, nuevoId);
+      setMwStep(2);
+    } catch(e) { setMwMsg("Error: " + e.message); }
+    setMwAgregando(false);
+  }
+
+  async function mwCargarPerfiles(nodo, mkwId) {
+    const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+    const esDim = mwEsDim(nodo);
+    const n = esDim ? 5 : nodoNum;
+    const [pR, rR, plR] = await Promise.all([
+      mkwProxy(n, "GetPerfiles", {}),
+      mkwProxy(n, "GetRedesIpv4", { id_router: nodoNum }),
+      mkwProxy(n, "GetPlantillasFacturacion", {}),
+    ]);
+    const perfs = (pR?.datos || pR?.perfiles || (Array.isArray(pR)?pR:[])).filter(p=>p.estado==="ACTIVADO");
+    const redes = rR?.datos || (Array.isArray(rR)?rR:[]);
+    const plants = plR?.plantillas || (Array.isArray(plR)?plR:[]);
+    setMwPerfiles(perfs); setMwRedes(redes); setMwPlantillas(plants);
+    if (redes.length) setMwForm(f=>({...f, id_red_ipv4: String(redes[redes.length-1].id)}));
+    setMwMkwId(mkwId);
+  }
+
+  async function mwCrearServicio() {
+    if (!mwMkwId || !mwForm.id_perfil || !mwForm.id_red_ipv4) return setMwMsg("Selecciona plan y rango IPv4.");
+    setMwCreandoSvc(true); setMwMsg("");
+    try {
+      const nodo = mwCliSupa?.nodo || "Nod_01";
+      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const esDim = mwEsDim(nodo);
+      const n = esDim ? 5 : nodoNum;
+      const payload = { id_cliente: mwMkwId, id_router: nodoNum, id_perfil: Number(mwForm.id_perfil), id_red_ipv4: Number(mwForm.id_red_ipv4) };
+      if (mwForm.userppp)           payload.userppp           = mwForm.userppp;
+      if (mwForm.passppp)           payload.passppp           = mwForm.passppp;
+      if (mwForm.costo)             payload.costo             = Number(mwForm.costo);
+      if (mwForm.coordenadas)       payload.coordenadas       = mwForm.coordenadas;
+      if (mwForm.fecha_instalacion) payload.fecha_instalacion = mwForm.fecha_instalacion;
+      const res = await mkwProxy(n, "NewService", payload);
+      const ok = res?.estado==="exito" || String(res?.code)==="200" || res?.id;
+      if (!ok) throw new Error(res?.mensaje || res?.message || "Error al crear servicio");
+      if (mwPlantillas.length) await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillas[0].id }).catch(()=>{});
+      setMwSvcOk(true); setMwStep(3);
+    } catch(e) { setMwMsg("Error: " + e.message); }
+    setMwCreandoSvc(false);
+  }
+
+  function mwReset() {
+    setMwOpen(false); setMwBusqVal(""); setMwCliSupa(null); setMwStep(0);
+    setMwAgregando(false); setMwMkwId(null); setMwPerfiles([]); setMwRedes([]);
+    setMwPlantillas([]); setMwCreandoSvc(false); setMwSvcOk(false); setMwMsg("");
+    setMwForm({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"" });
+  }
+
   async function buscarPorDni() {
     const q = dniBusq.trim();
     if (q.length < 2) return notify("Ingresa DNI o nombre", false);
@@ -1526,6 +1647,140 @@ export default function SidebarApp() {
                   {agregando ? "Guardando..." : `Agregar ${contact.phone_number} a este cliente`}
                 </button>
               )}
+            </div>
+          )}
+
+          {/* ── Mini-wizard Mikrowisp ── */}
+          <div style={S.divider} />
+          <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
+            style={{ ...S.btn(mwOpen?"#6b7280":"#d97706"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
+            🚀 {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
+          </button>
+
+          {mwOpen && (
+            <div style={{ border:`1.5px solid #fcd34d`, borderRadius:8, overflow:"hidden", marginBottom:8 }}>
+              {/* Header pasos */}
+              <div style={{ background:"#fffbeb", padding:"8px 12px", borderBottom:`1px solid #fcd34d`, display:"flex", gap:4 }}>
+                {["Buscar","Agregar","Servicio","✓"].map((s,i) => (
+                  <div key={i} style={{ flex:1, textAlign:"center", fontSize:10, fontWeight:700,
+                    color: mwStep===i?"#d97706": mwStep>i?"#16a34a":"#94a3b8",
+                    borderBottom:`2px solid ${mwStep===i?"#d97706":mwStep>i?"#16a34a":"transparent"}`, paddingBottom:4 }}>
+                    {mwStep>i?"✓ ":""}{s}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ padding:"12px" }}>
+
+                {/* PASO 0 — Buscar */}
+                {mwStep===0 && (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <div style={{ fontSize:11, color:"#92400e" }}>Busca el cliente en la base de Supabase por DNI o nombre.</div>
+                    <div style={{ display:"flex", gap:6 }}>
+                      <input style={{ ...S.input, flex:1, fontSize:12 }} placeholder="DNI o nombre..."
+                        value={mwBusqVal} onChange={e=>setMwBusqVal(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter" && mwBuscarEnClientes()} />
+                      <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||mwBusqVal.trim().length<2}
+                        style={{ ...S.btnSm(T.blue), padding:"8px 14px", opacity:(mwBusqLoad||mwBusqVal.trim().length<2)?0.5:1 }}>
+                        {mwBusqLoad?"...":"Buscar"}
+                      </button>
+                    </div>
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+
+                {/* PASO 1 — Confirmar cliente y agregar a MW */}
+                {mwStep===1 && mwCliSupa && (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <div style={{ background:"#f0f9ff", border:`1px solid #bae6fd`, borderRadius:6, padding:"10px 12px" }}>
+                      <div style={{ fontWeight:800, fontSize:13, color:"#0f172a", marginBottom:4 }}>{mwCliSupa.nombre}</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"3px 12px", fontSize:11, color:"#475569" }}>
+                        <span>DNI: <strong>{mwCliSupa.dni}</strong></span>
+                        <span>Nodo: <strong>{mwCliSupa.nodo}</strong></span>
+                        <span>Plan: <strong>{mwCliSupa.velocidad||"—"}</strong></span>
+                        <span>S/: <strong>{mwCliSupa.precio_plan||"—"}</strong></span>
+                        {mwCliSupa.celular && <span style={{gridColumn:"1/-1"}}>Tel: <strong>{mwCliSupa.celular}</strong></span>}
+                      </div>
+                    </div>
+                    {!MW_NODOS_OK.includes(String(mwCliSupa.nodo||"")) && (
+                      <div style={{ background:"#fef9c3", border:`1px solid #fde047`, borderRadius:6, padding:"8px 10px", fontSize:11, color:"#854d0e", fontWeight:600 }}>
+                        ⚠ Nodo {mwCliSupa.nodo} no habilitado para Mikrowisp (solo Nod_01, Nod_03, Nod_04).
+                      </div>
+                    )}
+                    {MW_NODOS_OK.includes(String(mwCliSupa.nodo||"")) && (
+                      <button onClick={mwAgregarMkw} disabled={mwAgregando}
+                        style={{ ...S.btn("#f59e0b"), opacity:mwAgregando?0.6:1 }}>
+                        {mwAgregando?"Agregando...":"➕ Agregar a Mikrowisp"}
+                      </button>
+                    )}
+                    <button onClick={()=>{setMwStep(0);setMwCliSupa(null);setMwMsg("");}}
+                      style={{ ...S.btnOut, textAlign:"center" }}>← Volver</button>
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+
+                {/* PASO 2 — Crear servicio */}
+                {mwStep===2 && (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#16a34a" }}>✓ Cliente en Mikrowisp (ID: {mwMkwId})</div>
+                    <div>
+                      <label style={{ ...S.label }}>Plan *</label>
+                      <select style={S.select} value={mwForm.id_perfil} onChange={e=>{
+                        const pid=e.target.value; const pl=mwPerfiles.find(p=>String(p.id)===pid);
+                        setMwForm(f=>({...f,id_perfil:pid,costo:pl?String(pl.costo):f.costo}));
+                      }}>
+                        <option value="">— Seleccionar plan —</option>
+                        {mwPerfiles.map(p=><option key={p.id} value={p.id}>{p.plan} — S/{p.costo}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>Rango IPv4 *</label>
+                      <select style={S.select} value={mwForm.id_red_ipv4} onChange={e=>setMwForm(f=>({...f,id_red_ipv4:e.target.value}))}>
+                        <option value="">— Seleccionar rango —</option>
+                        {mwRedes.map(r=><option key={r.id} value={r.id}>{r.red} ({r.disponibles??'?'} disp.)</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div>
+                        <label style={{ ...S.label }}>Usuario PPP</label>
+                        <input style={{...S.input,fontSize:12}} value={mwForm.userppp} onChange={e=>setMwForm(f=>({...f,userppp:e.target.value}))} />
+                      </div>
+                      <div>
+                        <label style={{ ...S.label }}>Contraseña PPP</label>
+                        <input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} />
+                      </div>
+                      <div>
+                        <label style={{ ...S.label }}>Costo mensual S/</label>
+                        <input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} />
+                      </div>
+                      <div>
+                        <label style={{ ...S.label }}>Fecha instalación</label>
+                        <input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>Coordenadas <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
+                      <input style={{...S.input,fontSize:11,fontFamily:"monospace"}} placeholder="-16.438490, -71.598208" value={mwForm.coordenadas} onChange={e=>setMwForm(f=>({...f,coordenadas:e.target.value}))} />
+                    </div>
+                    <button onClick={mwCrearServicio} disabled={mwCreandoSvc||!mwForm.id_perfil||!mwForm.id_red_ipv4}
+                      style={{ ...S.btn("#16a34a"), opacity:(mwCreandoSvc||!mwForm.id_perfil||!mwForm.id_red_ipv4)?0.5:1 }}>
+                      {mwCreandoSvc?"Creando servicio...":"✓ Crear Servicio"}
+                    </button>
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+
+                {/* PASO 3 — Éxito */}
+                {mwStep===3 && (
+                  <div style={{ display:"grid", gap:10, textAlign:"center" }}>
+                    <div style={{ fontSize:32 }}>🎉</div>
+                    <div style={{ fontWeight:800, fontSize:13, color:"#15803d" }}>Servicio creado correctamente</div>
+                    <div style={{ fontSize:11, color:"#475569" }}>Cliente {mwCliSupa?.nombre} agregado a Mikrowisp con servicio activo.</div>
+                    <button onClick={mwReset} style={{ ...S.btnOut, textAlign:"center" }}>Cerrar</button>
+                  </div>
+                )}
+
+              </div>
             </div>
           )}
 
