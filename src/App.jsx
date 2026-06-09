@@ -3192,7 +3192,7 @@ export default function App() {
       setFactPanelCliId(datos.id);
       // Cargar facturas existentes para el wizard
       try {
-        const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 }[cli.nodo] ?? 1;
+        const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 }[cli.nodo] ?? 1;
         setMkwWizardFacturasLoad(true);
         setMkwWizardFacturas([]);
         const r = await fetch("https://n8n.americanet.space/webhook/sidebar-proxy", {
