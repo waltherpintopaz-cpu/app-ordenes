@@ -320,7 +320,7 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", snOnu:"", cajaNap:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
@@ -1467,8 +1467,8 @@ export default function SidebarApp() {
         caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
         descripcion:    ordenForm.descripcion || "",
-        solicitar_pago: "NO",
-        monto_cobrar:   0,
+        solicitar_pago: ordenForm.solicitarPago || "SI",
+        monto_cobrar:   ordenForm.solicitarPago === "SI" ? (parseFloat(ordenForm.montoCobrar) || 0) : 0,
         autor_orden:    ordenForm.autorOrden || agente,
         tecnico:        ordenForm.tecnico,
         fecha_creacion: new Date().toISOString(),
@@ -2167,6 +2167,8 @@ export default function SidebarApp() {
                     {fila("Fecha", inp("fechaActuacion","",  "date"))}
                     {fila("Hora", horaPicker())}
                     {fila("Prioridad", sel("prioridad", ["Normal","Alta","Urgente"]))}
+                    {fila("Cobrar", sel("solicitarPago", ["SI","NO"], e => setOrdenForm(p => ({...p, solicitarPago:e.target.value, montoCobrar: e.target.value==="NO"?"":p.montoCobrar}))))}
+                    {ordenForm.solicitarPago === "SI" && fila("Monto S/", inp("montoCobrar", "0.00", "number"))}
                   </div>
 
                   <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
@@ -3321,6 +3323,28 @@ export default function SidebarApp() {
                     </select>
                   </div>
                 </div>
+                {/* Solicitar pago */}
+                <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                  <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Cobrar</div>
+                  <div>
+                    <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                      value={ordenForm.solicitarPago} onChange={e => setOrdenForm(p => ({...p, solicitarPago:e.target.value, montoCobrar: e.target.value==="NO" ? "" : p.montoCobrar}))}>
+                      <option value="SI">SI</option>
+                      <option value="NO">NO</option>
+                    </select>
+                  </div>
+                </div>
+                {/* Monto a cobrar */}
+                {ordenForm.solicitarPago === "SI" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Monto S/</div>
+                    <div>
+                      <input type="number" step="0.01" placeholder="0.00"
+                        style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }}
+                        value={ordenForm.montoCobrar} onChange={e => setOrdenForm(p => ({...p, montoCobrar:e.target.value}))} />
+                    </div>
+                  </div>
+                )}
                 {/* Campos solo para instalación */}
                 {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && (<>
                   {/* Nodo — seleccionable para instalaciones */}
