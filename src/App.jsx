@@ -3376,6 +3376,7 @@ export default function App() {
                 id_perfil:   Number(svcNuevoForm.id_perfil),
                 id_red_ipv4: Number(svcNuevoForm.id_red_ipv4),
                 coordenadas: svcNuevoForm.coordenadas,
+                ...(svcNuevoForm.costo ? { costo: Number(svcNuevoForm.costo) } : {}),
               }}),
             }).catch(() => {});
           }
