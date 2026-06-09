@@ -1447,7 +1447,7 @@ export default function SidebarApp() {
         empresa:        empresaOrden,
         codigo,
         generar_usuario: esInstalacion ? "SI" : "NO",
-        orden_tipo:     cliente ? "ORDEN DE SERVICIO" : ordenForm.ordenTipo,
+        orden_tipo:     ordenForm.ordenTipo || "ORDEN DE SERVICIO",
         tipo_actuacion: ordenForm.tipoActuacion,
         fecha_actuacion: ordenForm.fechaActuacion,
         hora:           ordenForm.hora || null,
