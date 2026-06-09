@@ -1113,8 +1113,14 @@ export default function SidebarApp() {
       const n = esDim ? 5 : nodoNum;
       const dni = String(mwCliSupa.dni || "").replace(/\D/g, "");
       const msg = `BIENVENIDA ${String(mwCliSupa.nombre || "").trim()} ${dni} ${dni}`;
-      await mkwProxy(n, "NewSMS", { idcliente: mwMkwId, mensaje: msg });
-      setMwSmsSent(true);
+      const res = await mkwProxy(n, "NewSMS", { idcliente: mwMkwId, mensaje: msg });
+      const ok = res?.estado === "exito" || res?.success === true || String(res?.code) === "200" || res?.id;
+      if (ok) {
+        setMwSmsSent(true);
+        setMwMsg("✓ SMS enviado correctamente");
+      } else {
+        setMwMsg("⚠ Respuesta inesperada: " + (res?.mensaje || res?.message || JSON.stringify(res)));
+      }
     } catch(e) { setMwMsg("Error SMS: " + e.message); }
   }
 
@@ -2091,7 +2097,7 @@ export default function SidebarApp() {
                       style={{ ...S.btn("#7c3aed"), opacity:mwSmsSent?0.6:1 }}>
                       {mwSmsSent?"✓ SMS enviado":"💬 Enviar SMS Bienvenida"}
                     </button>
-                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                    {mwMsg && <div style={{ fontSize:11, color:mwMsg.startsWith("✓")? T.green : T.red, fontWeight:600 }}>{mwMsg}</div>}
                     <button onClick={mwReset}
                       style={{ ...S.btn(mwSyncDone?"#16a34a":"#6b7280") }}>
                       {mwSyncDone?"✅ Finalizar":"Cerrar"}
