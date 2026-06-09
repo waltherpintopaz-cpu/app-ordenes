@@ -3220,6 +3220,9 @@ export default function App() {
     setMkwWizardFactDone(false);
     setMkwWizardLiq([]);
     setMkwWizardStep(1);
+    // Asegurar que el wizard se renderiza: navegar al detalle del cliente
+    setClienteSeleccionado(cli);
+    setVistaActiva("detalleCliente");
     // Cargar liquidaciones del cliente
     try {
       setMkwWizardLiqLoad(true);
