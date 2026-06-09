@@ -3239,6 +3239,11 @@ export default function App() {
       if (datos?.id) {
         // Existe en Mikrowisp → paso 2
         setMikrowispOk(prev => ({ ...prev, [wid]: true }));
+        if (isSupabaseConfigured && cli.id && !cli.en_mikrowisp) {
+          supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cli.id).then(() =>
+            setClientes(prev => prev.map(c => c.id === cli.id ? { ...c, en_mikrowisp: true } : c))
+          );
+        }
         setSvcNuevoGuardando(false);
         setMkwWizardStep(2);
         await abrirSvcNuevo(cli);
@@ -18713,12 +18718,13 @@ export default function App() {
                                   {/* Badge MW — visible si es nodo MikroWisp y admin, o gestor con acceso a ese nodo */}
                                   {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                     const id = String(cliente.id || cliente.dni || "");
-                                    const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
-                                    const cargando = mikrowisp_loading[id];
                                     const sincOk = mkwCliOk[id];
+                                    const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id] || sincOk;
+                                    const cargando = mikrowisp_loading[id];
                                     if (!yaAgregado && !cargando) return null;
                                     return (
-                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", height: 30, background: cargando ? "#f8fafc" : sincOk ? "#f97316" : "#f0fdf4", color: cargando ? "#94a3b8" : sincOk ? "#fff" : "#16a34a", border: sincOk ? "none" : "1px solid #86efac", borderRadius: 7, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", boxShadow: sincOk ? "0 1px 4px rgba(249,115,22,0.4)" : "none" }}>
+                                      <span onClick={!cargando ? () => void abrirMkwWizard(cliente) : undefined}
+                                        style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "0 8px", height: 30, background: cargando ? "#f8fafc" : sincOk ? "#f97316" : "#f0fdf4", color: cargando ? "#94a3b8" : sincOk ? "#fff" : "#16a34a", border: sincOk ? "none" : "1px solid #86efac", borderRadius: 7, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", boxShadow: sincOk ? "0 1px 4px rgba(249,115,22,0.4)" : "none", cursor: cargando ? "default" : "pointer" }}>
                                         {cargando ? "⏳" : sincOk ? "✓ MW ↕" : "✓ MW"}
                                       </span>
                                     );
@@ -18750,13 +18756,13 @@ export default function App() {
                                           )}
                                           {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                             const id = String(cliente.id || cliente.dni || "");
-                                            const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id];
-                                            const cargando = mikrowisp_loading[id];
                                             const sincOk = mkwCliOk[id];
+                                            const yaAgregado = cliente.en_mikrowisp || mikrowisp_ok[id] || sincOk;
+                                            const cargando = mikrowisp_loading[id];
                                             return (
                                               <button onClick={() => { if (!yaAgregado && !cargando) { void agregarClienteMikrowisp(cliente); setAbonadosMenuClienteId(null); } }} disabled={cargando || yaAgregado}
-                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#0369a1", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
-                                                <span>{yaAgregado ? "✓" : "+"}</span>
+                                                style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: yaAgregado ? "#16a34a" : "#d97706", fontWeight: 600, cursor: yaAgregado ? "default" : "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                                <span>{yaAgregado ? "✓" : "➕"}</span>
                                                 {cargando ? "Procesando..." : yaAgregado ? "En MikroWisp" : "Agregar a MikroWisp"}
                                                 {sincOk && <span style={{ marginLeft: "auto", background: "#f97316", color: "#fff", borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 800 }}>✓ sync</span>}
                                               </button>
