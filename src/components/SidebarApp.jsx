@@ -1425,6 +1425,21 @@ export default function SidebarApp() {
     } catch { /* silencioso */ }
   }
 
+  // ── WhatsApp al cliente tras crear orden ─────────────────────────────────
+  async function sendWhatsAppOrden(payload) {
+    const phone = contact?.phone_number;
+    if (!phone) return;
+    const nombre = String(payload.nombre || "").split(",")[0].split(" ")[0];
+    const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
+    const fecha = payload.fecha_actuacion ? new Date(payload.fecha_actuacion + "T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric"}) : "";
+    const texto = `📋 *NUEVA ORDEN DE SERVICIO*\n\nHola ${nombreFmt}, se ha generado una orden para tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}${payload.descripcion ? `\n*Detalle:* ${payload.descripcion}` : ""}\n\nGracias por confiar en nosotros. 💙`;
+    await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: texto, account_id: acctId || "1" } }),
+    }).catch(() => {});
+  }
+
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
@@ -3201,12 +3216,12 @@ export default function SidebarApp() {
               {/* Botones rápidos de tipo */}
               <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
                 {[
-                  { label:"🔧 Incidencia",    tipo:"Incidencia Internet",         orden:"INCIDENCIA" },
-                  { label:"📡 Instalación",   tipo:"Instalacion Internet",         orden:"ORDEN DE SERVICIO" },
-                  { label:"📺 Cable",         tipo:"Instalacion Internet y Cable", orden:"ORDEN DE SERVICIO" },
-                  { label:"📦 Recuperación",  tipo:"Recojo de equipo",             orden:"RECUPERACION DE EQUIPO" },
-                ].map(({ label, tipo, orden:ot }) => (
-                  <button key={tipo} onClick={() => setOrdenForm(p=>({...p, tipoActuacion:tipo, ordenTipo:ot }))}
+                  { label:"🔧 Incidencia",    tipo:"Incidencia Internet",         orden:"INCIDENCIA",           cobrar:"NO" },
+                  { label:"📡 Instalación",   tipo:"Instalacion Internet",         orden:"ORDEN DE SERVICIO",    cobrar:"SI" },
+                  { label:"📺 Cable",         tipo:"Instalacion Internet y Cable", orden:"ORDEN DE SERVICIO",    cobrar:"SI" },
+                  { label:"📦 Recuperación",  tipo:"Recojo de equipo",             orden:"RECUPERACION DE EQUIPO", cobrar:"NO" },
+                ].map(({ label, tipo, orden:ot, cobrar }) => (
+                  <button key={tipo} onClick={() => setOrdenForm(p=>({...p, tipoActuacion:tipo, ordenTipo:ot, solicitarPago:cobrar, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar }))}
                     style={{ ...S.btnSm(ordenForm.tipoActuacion===tipo ? T.blue : "#e5e7eb"),
                       color: ordenForm.tipoActuacion===tipo ? "#fff" : T.slate,
                       borderRadius:20, padding:"5px 12px", fontSize:11, fontFamily:"inherit" }}>
@@ -3255,7 +3270,12 @@ export default function SidebarApp() {
                           "Visita Tecnica":               "ORDEN DE SERVICIO",
                           "Recojo de equipo":             "RECUPERACION DE EQUIPO",
                         };
-                        setOrdenForm(p => ({...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo }));
+                        const cobrarMap = {
+                          "Instalacion Internet": "SI", "Instalacion Internet y Cable": "SI", "Instalacion TV": "SI",
+                          "Incidencia Internet": "NO", "Mantenimiento": "NO", "Visita Tecnica": "NO", "Recojo de equipo": "NO",
+                        };
+                        const cobrar = cobrarMap[ta] ?? p.solicitarPago;
+                        setOrdenForm(p => ({...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo, solicitarPago: cobrar, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar }));
                       }}>
                       <option>Incidencia Internet</option>
                       <option>Instalacion Internet</option>
