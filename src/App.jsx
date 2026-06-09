@@ -3165,7 +3165,7 @@ export default function App() {
     setFactPanelCliId(null);
     setFactPanelLoading(true);
     setFactPanelEsDim(esDimNodo(cli.nodo));
-    const nodoMap = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 };
+    const nodoMap = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
     setFactPanelNodo(nodoMap[cli.nodo] ?? 1);
     // Reset estados factura
     setSvcFactStep(1); setSvcFactMonto("");
@@ -3262,11 +3262,11 @@ export default function App() {
     try {
       const [perfRes, redesRes, plantRes] = await Promise.all([
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetPerfiles", payload:{} }) }),
+          body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion:"GetPerfiles", payload:{} }) }),
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetRedesIpv4", payload:{ id_router: nodoNum } }) }),
+          body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion:"GetRedesIpv4", payload:{ id_router: nodoNum } }) }),
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion:"GetPlantillasFacturacion", payload:{} }) }),
+          body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion:"GetPlantillasFacturacion", payload:{} }) }),
       ]);
       const pj = await perfRes.json().catch(() => ({}));
       const rj = await redesRes.json().catch(() => ({}));
@@ -3352,7 +3352,7 @@ export default function App() {
       const svcRes = await fetch(N8N_PROXY_SVC, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "NewService", payload }),
+        body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion: "NewService", payload }),
       });
       const svcJson = await svcRes.json().catch(() => ({}));
       const svcData = svcJson?.data ?? svcJson;
@@ -3370,7 +3370,7 @@ export default function App() {
             await fetch(N8N_PROXY_SVC, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "EditService", payload: {
+              body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion: "EditService", payload: {
                 id_servicio: svcObj.id,
                 id_router:   nodoNum,
                 id_perfil:   Number(svcNuevoForm.id_perfil),
@@ -3387,7 +3387,7 @@ export default function App() {
       try {
         await fetch(N8N_PROXY_SVC, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nodo: esDim ? 4 : nodoNum, accion: "ChangeFacturacionConfig", payload: { id_cliente: svcNuevoCliId, id_plantilla: svcNuevoPlantillaId || 2 } })
+          body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion: "ChangeFacturacionConfig", payload: { id_cliente: svcNuevoCliId, id_plantilla: svcNuevoPlantillaId || 2 } })
         });
       } catch { /* no crítico */ }
 
@@ -19427,7 +19427,7 @@ export default function App() {
                         {mkwWizardStep===4 && (() => {
                           const done=stepsStatus[3], cargando=mkwCliLoading[wid];
                           const mkwCliId = svcNuevoCliId || factPanelCliId;
-                          const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":6, "Nod_06":11 }[String(cli.nodo||"")] ?? 1;
+                          const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 }[String(cli.nodo||"")] ?? 1;
                           const esDimCli = esDimNodo(cli.nodo);
                           return (
                             <div style={{ display:"grid", gap:16 }}>
