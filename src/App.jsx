@@ -3239,6 +3239,7 @@ export default function App() {
       if (datos?.id) {
         // Existe en Mikrowisp → paso 2
         setMikrowispOk(prev => ({ ...prev, [wid]: true }));
+        setSvcNuevoGuardando(false);
         setMkwWizardStep(2);
         await abrirSvcNuevo(cli);
       } else {
@@ -3406,6 +3407,7 @@ export default function App() {
         setMkwWizardStep(3);
       }
       setSvcFactVencimiento("");
+      setSvcNuevoGuardando(false);
       return true;
     } catch(e) {
       window.alert("Error: " + (e?.message || String(e)));
