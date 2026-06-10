@@ -2167,6 +2167,8 @@ export default function App() {
   const [eqRptHasta, setEqRptHasta] = useState(() =>
     new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" })
   );
+  const [eqRptNodos, setEqRptNodos] = useState([]);
+  const [eqRptNodosShow, setEqRptNodosShow] = useState(false);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -12218,6 +12220,7 @@ export default function App() {
       ? liquidaciones
           .filter((liq) => fechaDentroDeRango(liq.fechaLiquidacionISO || liq.fechaLiquidacion, eqRptDesde, eqRptHasta))
           .filter((liq) => eqRptTecnico === "TODOS" || String(liq.liquidacion?.tecnicoLiquida || liq.tecnico || "") === eqRptTecnico)
+          .filter((liq) => eqRptNodos.length === 0 || eqRptNodos.some((n) => normalizeNodoKey(n) === normalizeNodoKey(liq.nodo)))
           .flatMap((liq) => (Array.isArray(liq.liquidacion?.equipos) ? liq.liquidacion.equipos : []).map((e) => ({
             marca: e.marca || "",
             modelo: e.modelo || "",
@@ -12235,6 +12238,7 @@ export default function App() {
       ? equiposCatalogo.filter((eq) => {
           if (eq.estado !== "asignado") return false;
           if (eqRptTecnico !== "TODOS" && eq.tecnicoAsignado !== eqRptTecnico) return false;
+          if (eqRptNodos.length > 0 && !eqRptNodos.some((n) => normalizeNodoKey(n) === normalizeNodoKey(eq.almacenNombre))) return false;
           return true;
         }).map((eq) => ({ ...eq, fechaLiquidacion: "" }))
       : [];
@@ -12348,6 +12352,7 @@ export default function App() {
   </div>
   <div class="info-bar">
     <div class="info-item"><span class="info-label">Periodo liquidados</span><span class="info-value">${escHtml(eqRptDesde)} — ${escHtml(eqRptHasta)}</span></div>
+    <div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(eqRptNodos.length === 0 ? "Todos" : eqRptNodos.join(", "))}</span></div>
     <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(eqRptTecnico === "TODOS" ? "Todos" : eqRptTecnico)}</span></div>
     <div class="info-item"><span class="info-label">Estado</span><span class="info-value">${eqRptEstado === "TODOS" ? "Asignado + Liquidado" : eqRptEstado === "asignado" ? "Asignado (sin liquidar)" : "Liquidado"}</span></div>
     <div class="info-item"><span class="info-label">Total equipos</span><span class="info-value">${equiposFiltrados.length}</span></div>
@@ -17374,6 +17379,33 @@ export default function App() {
                   <input type="date" value={eqRptHasta} onChange={(e) => setEqRptHasta(e.target.value)}
                     style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
                 </div>
+                {/* Multi-select nodos */}
+                <div style={{ position: "relative" }}>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Nodo</label>
+                  <button type="button" onClick={() => setEqRptNodosShow((s) => !s)}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 13, cursor: "pointer", minWidth: 160, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                    <span style={{ color: eqRptNodos.length === 0 ? "#94a3b8" : "#1e293b" }}>
+                      {eqRptNodos.length === 0 ? "Todos" : eqRptNodos.length === 1 ? eqRptNodos[0] : `${eqRptNodos.length} nodos`}
+                    </span>
+                    <span style={{ fontSize: 10 }}>▼</span>
+                  </button>
+                  {eqRptNodosShow && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 100, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, boxShadow: "0 4px 16px #0002", minWidth: 160 }}>
+                      {eqRptNodos.length > 0 && (
+                        <div onClick={() => { setEqRptNodos([]); setEqRptNodosShow(false); }}
+                          style={{ padding: "8px 14px", fontSize: 12, color: "#dc2626", cursor: "pointer", borderBottom: "1px solid #f3f4f6" }}>✕ Limpiar</div>
+                      )}
+                      {NODOS_BASE_WEB.map((nodo) => (
+                        <div key={nodo} onClick={() => setEqRptNodos((prev) => prev.includes(nodo) ? prev.filter((x) => x !== nodo) : [...prev, nodo])}
+                          style={{ padding: "8px 14px", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: eqRptNodos.includes(nodo) ? "#eff6ff" : "#fff" }}>
+                          <input type="checkbox" readOnly checked={eqRptNodos.includes(nodo)} style={{ accentColor: "#2563eb" }} />
+                          {nodo}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Técnico</label>
                   <select value={eqRptTecnico} onChange={(e) => setEqRptTecnico(e.target.value)}
@@ -17405,10 +17437,15 @@ export default function App() {
                   ? liquidaciones
                       .filter((liq) => fechaDentroDeRango(liq.fechaLiquidacionISO || liq.fechaLiquidacion, eqRptDesde, eqRptHasta))
                       .filter((liq) => eqRptTecnico === "TODOS" || String(liq.liquidacion?.tecnicoLiquida || liq.tecnico || "") === eqRptTecnico)
+                      .filter((liq) => eqRptNodos.length === 0 || eqRptNodos.some((n) => normalizeNodoKey(n) === normalizeNodoKey(liq.nodo)))
                       .flatMap((liq) => (Array.isArray(liq.liquidacion?.equipos) ? liq.liquidacion.equipos : []).map(() => ({ estado: "liquidado", precioUnitario: 0 })))
                   : [];
                 const eqsAsig = (eqRptEstado === "TODOS" || eqRptEstado === "asignado")
-                  ? equiposCatalogo.filter((eq) => eq.estado === "asignado" && (eqRptTecnico === "TODOS" || eq.tecnicoAsignado === eqRptTecnico))
+                  ? equiposCatalogo.filter((eq) =>
+                      eq.estado === "asignado" &&
+                      (eqRptTecnico === "TODOS" || eq.tecnicoAsignado === eqRptTecnico) &&
+                      (eqRptNodos.length === 0 || eqRptNodos.some((n) => normalizeNodoKey(n) === normalizeNodoKey(eq.almacenNombre)))
+                    )
                   : [];
                 const filtrados = [...eqsAsig, ...eqsLiq];
                 const sinLiquidar = filtrados.filter((e) => e.estado === "asignado").length;
