@@ -464,9 +464,7 @@ function sugerirPasswordPorNodo(nodo = "") {
 }
 
 function todayIsoLocal() {
-  const now = new Date();
-  const tzOffsetMs = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 }
 
 // Convierte "17:00" → "5:00 PM"  |  "07:30" → "7:30 AM"
@@ -772,12 +770,11 @@ function deserializeLiquidacionFromSupabase(row = {}) {
     fechaLiquidacionISO: (() => {
       const raw = row.fecha_liquidacion || row.updated_at || row.created_at || "";
       if (!raw) return "";
-      const d = new Date(raw);
-      if (isNaN(d.getTime())) return "";
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
+      try {
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return "";
+        return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+      } catch { return ""; }
     })(),
     tipoActuacion: String(row.tipo_actuacion || "").trim(),
     dni: String(row.dni || "").trim(),
@@ -928,13 +925,27 @@ function formatFechaFlexible(value = "") {
   }
   const iso = new Date(raw);
   if (!Number.isNaN(iso.getTime())) {
-    const d = iso;
-    const dia = String(d.getDate()).padStart(2, "0");
-    const mes = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][d.getMonth()];
-    const anio = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
-    return `${dia} ${mes}. ${anio}, ${hh}:${mm}`;
+    try {
+      // Usar America/Lima explícitamente para que no dependa del timezone del navegador
+      const fmt = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Lima",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false,
+      });
+      const p = {};
+      fmt.formatToParts(iso).forEach(({ type, value }) => { p[type] = value; });
+      const meses = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+      const mes = meses[Number(p.month) - 1] || p.month;
+      return `${p.day} ${mes}. ${p.year}, ${p.hour}:${p.minute}`;
+    } catch {
+      const d = iso;
+      const dia = String(d.getDate()).padStart(2, "0");
+      const mes = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"][d.getMonth()];
+      const anio = d.getFullYear();
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return `${dia} ${mes}. ${anio}, ${hh}:${mm}`;
+    }
   }
   return raw;
 }
@@ -19240,7 +19251,7 @@ export default function App() {
                                       {l.tipo_actuacion && <span>{l.tipo_actuacion}</span>}
                                       {l.medio_pago && <span>· {l.medio_pago}</span>}
                                       {l.tecnico_liquida && <span>· {l.tecnico_liquida}</span>}
-                                      {l.fecha_liquidacion && <span>· {String(l.fecha_liquidacion).split("T")[0]}</span>}
+                                      {l.fecha_liquidacion && <span>· {(() => { try { return new Date(l.fecha_liquidacion).toLocaleDateString("en-CA", { timeZone: "America/Lima" }); } catch { return String(l.fecha_liquidacion).slice(0,10); } })()}</span>}
                                     </div>
                                   </div>
                                 );

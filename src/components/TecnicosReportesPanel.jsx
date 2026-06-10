@@ -16,6 +16,15 @@ const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
 
 const pct = (a, b) => (b === 0 ? 0 : Math.round((a / b) * 100));
 
+// Peru es UTC-5 sin DST. Convierte una fecha Peru "YYYY-MM-DD" a rangos UTC para queries timestamptz.
+const peruDateToUtcStart = (ymd) => `${ymd}T05:00:00.000Z`;
+const peruDateToUtcEnd   = (ymd) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth()+1).padStart(2,"0")}-${String(next.getUTCDate()).padStart(2,"0")}T05:00:00.000Z`;
+};
+const peruYmd = (iso) => { try { return new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Lima" }); } catch { return ""; } };
+
 // Render markdown-like text to styled JSX
 function RenderAnalisis({ text }) {
   if (!text) return null;
@@ -85,8 +94,8 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   const [loadingIA, setLoadingIA]     = useState(false);
   const [tecnicoDetalle, setTecnicoDetalle] = useState(null);
 
-  const hoy    = new Date().toISOString().split("T")[0];
-  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const hoy    = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 
   const [fechaDesde, setFechaDesde]       = useState(hace30);
   const [fechaHasta, setFechaHasta]       = useState(hoy);
@@ -115,8 +124,8 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       supabase
         .from("liquidaciones")
         .select("id,tecnico_liquida,nodo,fecha_liquidacion")
-        .gte("fecha_liquidacion", fechaDesde)
-        .lte("fecha_liquidacion", fechaHasta)
+        .gte("fecha_liquidacion", peruDateToUtcStart(fechaDesde))
+        .lt("fecha_liquidacion",  peruDateToUtcEnd(fechaHasta))
         .limit(10000),
     ]);
     if (resOrdenes.error) setError(resOrdenes.error.message);
@@ -144,7 +153,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   }), [ordenes, filtroNodos, filtroTecnicos]);
 
   const dropFiltrado = useMemo(() => dropData.filter(d => {
-    const fechaReg = String(d.fecha || "").slice(0, 10);
+    const fechaReg = peruYmd(d.fecha);
     if (fechaReg && (fechaReg < fechaDesde || fechaReg > fechaHasta)) return false;
     if (filtroNodos.length > 0    && !filtroNodos.includes(d.nodo))      return false;
     if (filtroTecnicos.length > 0 && !filtroTecnicos.includes(d.tecnico)) return false;

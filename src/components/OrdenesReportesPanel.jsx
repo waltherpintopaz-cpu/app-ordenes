@@ -78,8 +78,8 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
   const [analisisIA, setAnalisisIA] = useState("");
   const [loadingIA, setLoadingIA] = useState(false);
 
-  const hoy = new Date().toISOString().split("T")[0];
-  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const hoy = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 
   const [fechaDesde, setFechaDesde] = useState(hace30);
   const [fechaHasta, setFechaHasta] = useState(hoy);

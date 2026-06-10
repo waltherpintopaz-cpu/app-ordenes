@@ -2677,7 +2677,7 @@ export default function SidebarApp() {
                           <span style={{ fontFamily:"monospace", fontWeight:700, fontSize:11, color:T.navy }}>{l.codigo||"—"}</span>
                           {l.monto_cobrado > 0 && <span style={{ fontWeight:700, fontSize:11, color:T.green }}>S/ {Number(l.monto_cobrado).toFixed(2)}</span>}
                         </div>
-                        <div style={{ fontSize:11, color:T.muted }}>{l.tipo_actuacion} · {l.tecnico_liquida||"—"} · {(l.fecha_liquidacion||"").slice(0,10)}</div>
+                        <div style={{ fontSize:11, color:T.muted }}>{l.tipo_actuacion} · {l.tecnico_liquida||"—"} · {l.fecha_liquidacion ? (() => { try { return new Date(l.fecha_liquidacion).toLocaleDateString("en-CA", { timeZone: "America/Lima" }); } catch { return String(l.fecha_liquidacion).slice(0,10); } })() : "—"}</div>
                         {l.resultado_final && <div style={{ fontSize:10, color:T.green, marginTop:2, fontWeight:600 }}>{l.resultado_final}</div>}
                       </div>
                     ))}
