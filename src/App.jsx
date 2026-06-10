@@ -12389,123 +12389,237 @@ export default function App() {
       const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
       const accentColor = esDim ? "#0f3460" : "#1a3a6b";
 
-      // 1. Stock actual
-      let stockQ = supabase.from("materiales_asignados_tecnicos")
-        .select("tecnico,material_nombre,cantidad_asignada,cantidad_disponible,unidad")
-        .order("tecnico", { ascending: true });
-      if (matRptTecnico !== "TODOS") stockQ = stockQ.eq("tecnico", matRptTecnico);
-      const { data: stockData } = await stockQ;
-
-      // 2. Movimientos del período (usa T05 para Lima UTC-5)
       const desdeTs = `${matRptDesde}T05:00:00.000Z`;
       const hastaTs = (() => {
         const [y, m, d] = matRptHasta.split("-").map(Number);
         const next = new Date(Date.UTC(y, m - 1, d + 1));
         return `${next.getUTCFullYear()}-${String(next.getUTCMonth()+1).padStart(2,"0")}-${String(next.getUTCDate()).padStart(2,"0")}T05:00:00.000Z`;
       })();
-      let movQ = supabase.from("inventario_movimientos")
-        .select("created_at,movimiento,motivo,item_nombre,cantidad,unidad,tecnico,nodo")
+
+      // ── FUENTE 1: Stock disponible actual ──────────────────────────────
+      let stockQ = supabase.from("materiales_asignados_tecnicos")
+        .select("tecnico,material_nombre,cantidad_disponible,unidad")
+        .order("tecnico", { ascending: true });
+      if (matRptTecnico !== "TODOS") stockQ = stockQ.eq("tecnico", matRptTecnico);
+      const { data: stockData } = await stockQ;
+
+      // ── FUENTE 2: Consumo real en trabajos (liquidacion_materiales + liquidaciones) ──
+      let liqQ = supabase.from("liquidaciones")
+        .select("id,tecnico,tecnico_liquida")
+        .gte("fecha_liquidacion", desdeTs)
+        .lt("fecha_liquidacion", hastaTs)
+        .limit(5000);
+      if (matRptTecnico !== "TODOS") liqQ = liqQ.or(`tecnico.eq.${matRptTecnico},tecnico_liquida.eq.${matRptTecnico}`);
+      const { data: liqData } = await liqQ;
+      const liqIds = (liqData || []).map((l) => l.id);
+      const liqTecMap = Object.fromEntries((liqData || []).map((l) => [l.id, l.tecnico_liquida || l.tecnico || ""]));
+
+      let liqMatsData = [];
+      if (liqIds.length > 0) {
+        const chunks = [];
+        for (let i = 0; i < liqIds.length; i += 200) chunks.push(liqIds.slice(i, i + 200));
+        for (const chunk of chunks) {
+          const { data } = await supabase.from("liquidacion_materiales")
+            .select("liquidacion_id,material,cantidad,unidad")
+            .in("liquidacion_id", chunk);
+          liqMatsData.push(...(data || []));
+        }
+      }
+
+      // ── FUENTE 3: Reposiciones recibidas (inventario_movimientos, solo asignaciones) ──
+      let repQ = supabase.from("inventario_movimientos")
+        .select("created_at,item_nombre,cantidad,unidad,tecnico,nodo")
         .eq("tipo_item", "material")
+        .ilike("motivo", "%asignac%")
         .gte("created_at", desdeTs)
         .lt("created_at", hastaTs)
         .order("created_at", { ascending: false })
         .limit(3000);
-      if (matRptTecnico !== "TODOS") movQ = movQ.eq("tecnico", matRptTecnico);
-      const { data: movData } = await movQ;
+      if (matRptTecnico !== "TODOS") repQ = repQ.eq("tecnico", matRptTecnico);
+      const { data: repData } = await repQ;
 
-      // Agrupar por técnico
+      // ── Agrupar por técnico ────────────────────────────────────────────
       const stockByTec = new Map();
       for (const r of (stockData || [])) {
         const tec = r.tecnico || "Sin asignar";
         if (!stockByTec.has(tec)) stockByTec.set(tec, []);
         stockByTec.get(tec).push(r);
       }
-      const movByTec = new Map();
-      for (const r of (movData || [])) {
-        const tec = r.tecnico || "Sin asignar";
-        if (!movByTec.has(tec)) movByTec.set(tec, []);
-        movByTec.get(tec).push(r);
+
+      // Consumo: agrupar por técnico → material → suma cantidades + conteo trabajos
+      const consumoByTec = new Map();
+      for (const m of liqMatsData) {
+        const tec = liqTecMap[m.liquidacion_id] || "Sin asignar";
+        if (!consumoByTec.has(tec)) consumoByTec.set(tec, new Map());
+        const matKey = `${String(m.material||"").trim()}|${String(m.unidad||"unidad")}`;
+        const prev = consumoByTec.get(tec).get(matKey) || { material: m.material, unidad: m.unidad, cantidad: 0, trabajos: 0 };
+        prev.cantidad += Number(m.cantidad || 0);
+        prev.trabajos++;
+        consumoByTec.get(tec).set(matKey, prev);
       }
-      const allTecs = [...new Set([...stockByTec.keys(), ...movByTec.keys()])].sort();
+
+      // Reposiciones: agrupar por técnico → material → suma cantidades
+      const repByTec = new Map();
+      for (const r of (repData || [])) {
+        const tec = r.tecnico || "Sin asignar";
+        if (!repByTec.has(tec)) repByTec.set(tec, []);
+        repByTec.get(tec).push(r);
+      }
+
+      const allTecs = [...new Set([
+        ...stockByTec.keys(),
+        ...consumoByTec.keys(),
+        ...repByTec.keys(),
+      ])].sort();
 
       const thS = "padding:7px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-align:left";
+      const fmtFecha = (iso) => {
+        const dt = new Date(iso || "");
+        return isNaN(dt.getTime()) ? "-" : dt.toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"numeric", timeZone:"America/Lima" });
+      };
 
       let sections = "";
       for (const tec of allTecs) {
-        const stock = stockByTec.get(tec) || [];
-        const movs  = movByTec.get(tec)  || [];
+        const stock   = stockByTec.get(tec)   || [];
+        const consumo = consumoByTec.get(tec)  ? [...consumoByTec.get(tec).values()] : [];
+        const reps    = repByTec.get(tec)      || [];
 
-        const stockRows = stock.map((r, i) => {
-          const asig = Number(r.cantidad_asignada  || 0);
-          const disp = Number(r.cantidad_disponible || 0);
-          const cons = Math.max(0, asig - disp);
+        // Resumen cruzado por material
+        const allMats = [...new Set([
+          ...stock.map((r) => String(r.material_nombre||"").trim()),
+          ...consumo.map((r) => String(r.material||"").trim()),
+          ...reps.map((r) => String(r.item_nombre||"").trim()),
+        ])].filter(Boolean).sort();
+
+        const resumenRows = allMats.map((mat, i) => {
+          const s = stock.find((r) => String(r.material_nombre||"").trim() === mat);
+          const c = consumo.find((r) => String(r.material||"").trim() === mat);
+          const recibido = reps.filter((r) => String(r.item_nombre||"").trim() === mat).reduce((sum, r) => sum + Number(r.cantidad||0), 0);
+          const usado    = c?.cantidad || 0;
+          const disp     = Number(s?.cantidad_disponible || 0);
+          const unidad   = s?.unidad || c?.unidad || reps.find((r) => String(r.item_nombre||"").trim() === mat)?.unidad || "";
+          const balance  = recibido - usado;
           const bg = i % 2 === 0 ? "#fff" : "#f8fafc";
-          const dispColor = disp === 0 ? "#dc2626" : disp < asig * 0.2 ? "#d97706" : "#16a34a";
+          const dispColor = disp === 0 ? "#dc2626" : "#16a34a";
+          const balColor  = balance < 0 ? "#dc2626" : balance === 0 ? "#374151" : "#059669";
+          return `<tr style="background:${bg}">
+            <td style="padding:6px 10px;font-weight:600">${escHtml(mat)}</td>
+            <td style="padding:6px 8px;text-align:center;color:#6b7280;font-size:10px">${escHtml(unidad)}</td>
+            <td style="padding:6px 8px;text-align:right;color:#0369a1;font-weight:700">${recibido || "-"}</td>
+            <td style="padding:6px 8px;text-align:right;color:#d97706;font-weight:700">${usado || "-"}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:800;color:${dispColor}">${disp}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${balColor}">${balance > 0 ? "+"+balance : balance}</td>
+          </tr>`;
+        }).join("");
+
+        // Sección 1: Stock disponible
+        const stockRows = stock.map((r, i) => {
+          const disp = Number(r.cantidad_disponible || 0);
+          const bg = i % 2 === 0 ? "#fff" : "#f8fafc";
+          const dispColor = disp === 0 ? "#dc2626" : "#16a34a";
           return `<tr style="background:${bg}">
             <td style="padding:6px 10px">${escHtml(r.material_nombre || "-")}</td>
             <td style="padding:6px 8px;text-align:center;color:#6b7280;font-size:10px">${escHtml(r.unidad || "-")}</td>
-            <td style="padding:6px 8px;text-align:right">${asig}</td>
-            <td style="padding:6px 8px;text-align:right;color:#d97706;font-weight:600">${cons}</td>
             <td style="padding:6px 8px;text-align:right;font-weight:800;color:${dispColor}">${disp}</td>
           </tr>`;
         }).join("");
 
-        const movRows = movs.map((r, i) => {
+        // Sección 2: Consumo en trabajos
+        const consumoRows = consumo.sort((a,b) => b.cantidad - a.cantidad).map((r, i) => {
           const bg = i % 2 === 0 ? "#fff" : "#f8fafc";
-          const dt = new Date(r.created_at || "");
-          const fechaStr = isNaN(dt.getTime()) ? "-" : dt.toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"numeric", timeZone:"America/Lima" });
-          const movNorm = String(r.movimiento || "").toLowerCase();
-          const esEntrada = movNorm.includes("ingreso") || movNorm.includes("entrada") || movNorm.includes("devolucion");
-          const movColor = esEntrada ? "#059669" : "#dc2626";
-          const signo = esEntrada ? "+" : "−";
           return `<tr style="background:${bg}">
-            <td style="padding:6px 8px;font-size:10px;color:#374151;white-space:nowrap">${fechaStr}</td>
+            <td style="padding:6px 10px">${escHtml(r.material || "-")}</td>
+            <td style="padding:6px 8px;text-align:center;color:#6b7280;font-size:10px">${escHtml(r.unidad || "-")}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:#d97706">${Number(r.cantidad||0).toLocaleString()}</td>
+            <td style="padding:6px 8px;text-align:right;color:#6b7280">${r.trabajos}</td>
+          </tr>`;
+        }).join("");
+
+        // Sección 3: Reposiciones
+        const repRows = reps.map((r, i) => {
+          const bg = i % 2 === 0 ? "#fff" : "#f8fafc";
+          return `<tr style="background:${bg}">
+            <td style="padding:6px 8px;font-size:10px;color:#374151;white-space:nowrap">${fmtFecha(r.created_at)}</td>
             <td style="padding:6px 10px">${escHtml(r.item_nombre || "-")}</td>
-            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${movColor}">${signo}${Number(r.cantidad||0)} ${escHtml(r.unidad||"")}</td>
-            <td style="padding:6px 8px;font-size:10px;color:#374151">${escHtml(r.movimiento || "-")}</td>
-            <td style="padding:6px 8px;font-size:10px;color:#6b7280">${escHtml(r.motivo || "-")}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:#059669">+${Number(r.cantidad||0)} ${escHtml(r.unidad||"")}</td>
             <td style="padding:6px 8px;font-size:10px;color:#6b7280">${escHtml(r.nodo || "-")}</td>
           </tr>`;
         }).join("");
 
         sections += `
-        <div style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="margin-bottom:28px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
           <div style="background:${accentColor};color:#fff;padding:10px 16px;font-weight:800;font-size:14px">${escHtml(tec)}</div>
-          ${stock.length > 0 ? `
+
+          ${allMats.length > 0 ? `
           <div>
+            <div style="background:#1e293b;color:#fff;padding:6px 16px;font-size:11px;font-weight:800;border-bottom:1px solid #334155">
+              📊 RESUMEN — ${allMats.length} materiales
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#f8fafc">
+                <th style="${thS}">Material</th>
+                <th style="${thS};text-align:center">Unidad</th>
+                <th style="${thS};text-align:right;color:#0369a1">Recibido (período)</th>
+                <th style="${thS};text-align:right;color:#d97706">Usado en trabajos</th>
+                <th style="${thS};text-align:right">Stock actual</th>
+                <th style="${thS};text-align:right">Balance</th>
+              </tr></thead>
+              <tbody>${resumenRows}</tbody>
+            </table>
+          </div>` : ""}
+
+          ${stock.length > 0 ? `
+          <div style="border-top:1px solid #e2e8f0">
             <div style="background:#f0f9ff;padding:6px 16px;font-size:11px;font-weight:800;color:#0369a1;border-bottom:1px solid #bae6fd">
-              📦 STOCK ACTUAL — ${stock.length} materiales
+              📦 STOCK DISPONIBLE AHORA — ${stock.length} materiales
             </div>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <thead><tr style="background:#f0f9ff">
                 <th style="${thS}">Material</th>
                 <th style="${thS};text-align:center">Unidad</th>
-                <th style="${thS};text-align:right">Asignado</th>
-                <th style="${thS};text-align:right">Consumido</th>
                 <th style="${thS};text-align:right">Disponible</th>
               </tr></thead>
               <tbody>${stockRows}</tbody>
             </table>
           </div>` : ""}
-          ${movs.length > 0 ? `
-          <div style="${stock.length > 0 ? "border-top:1px solid #e2e8f0" : ""}">
-            <div style="background:#faf5ff;padding:6px 16px;font-size:11px;font-weight:800;color:#6d28d9;border-bottom:1px solid #e9d5ff">
-              🔄 MOVIMIENTOS DEL PERÍODO — ${movs.length}
+
+          ${consumo.length > 0 ? `
+          <div style="border-top:1px solid #e2e8f0">
+            <div style="background:#fff7ed;padding:6px 16px;font-size:11px;font-weight:800;color:#c2410c;border-bottom:1px solid #fed7aa">
+              🔧 CONSUMIDO EN TRABAJOS (${matRptDesde} — ${matRptHasta}) — ${liqIds.length} liquidaciones
             </div>
             <table style="width:100%;border-collapse:collapse;font-size:11px">
-              <thead><tr style="background:#faf5ff">
-                <th style="${thS};width:72px">Fecha</th>
+              <thead><tr style="background:#fff7ed">
+                <th style="${thS}">Material</th>
+                <th style="${thS};text-align:center">Unidad</th>
+                <th style="${thS};text-align:right">Total usado</th>
+                <th style="${thS};text-align:right"># Trabajos</th>
+              </tr></thead>
+              <tbody>${consumoRows}</tbody>
+            </table>
+          </div>` : ""}
+
+          ${reps.length > 0 ? `
+          <div style="border-top:1px solid #e2e8f0">
+            <div style="background:#f0fdf4;padding:6px 16px;font-size:11px;font-weight:800;color:#166534;border-bottom:1px solid #bbf7d0">
+              📥 REPOSICIONES RECIBIDAS (${matRptDesde} — ${matRptHasta}) — ${reps.length} entregas
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#f0fdf4">
+                <th style="${thS};width:80px">Fecha</th>
                 <th style="${thS}">Material</th>
                 <th style="${thS};text-align:right">Cantidad</th>
-                <th style="${thS}">Tipo</th>
-                <th style="${thS}">Motivo</th>
                 <th style="${thS}">Nodo</th>
               </tr></thead>
-              <tbody>${movRows}</tbody>
+              <tbody>${repRows}</tbody>
             </table>
           </div>` : ""}
         </div>`;
       }
+
+      const totalLiqsCount = liqIds.length;
+      const totalRepCount  = (repData||[]).length;
+      const totalStockMats = (stockData||[]).length;
 
       const html = `<!doctype html>
 <html>
@@ -12538,9 +12652,10 @@ export default function App() {
   </div>
   <div class="info-bar">
     <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(matRptTecnico === "TODOS" ? "Todos" : matRptTecnico)}</span></div>
-    <div class="info-item"><span class="info-label">Periodo movimientos</span><span class="info-value">${escHtml(matRptDesde)} — ${escHtml(matRptHasta)}</span></div>
-    <div class="info-item"><span class="info-label">Stock actual</span><span class="info-value">${(stockData||[]).length} registros</span></div>
-    <div class="info-item"><span class="info-label">Movimientos</span><span class="info-value">${(movData||[]).length}</span></div>
+    <div class="info-item"><span class="info-label">Período</span><span class="info-value">${escHtml(matRptDesde)} — ${escHtml(matRptHasta)}</span></div>
+    <div class="info-item"><span class="info-label">Stock actual</span><span class="info-value">${totalStockMats} materiales</span></div>
+    <div class="info-item"><span class="info-label">Liquidaciones</span><span class="info-value">${totalLiqsCount}</span></div>
+    <div class="info-item"><span class="info-label">Reposiciones</span><span class="info-value">${totalRepCount}</span></div>
   </div>
   ${allTecs.length === 0
     ? `<p style="color:#9ca3af;text-align:center;padding:40px 0">Sin datos para los filtros seleccionados.</p>`
