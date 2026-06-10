@@ -2169,6 +2169,15 @@ export default function App() {
   );
   const [eqRptNodos, setEqRptNodos] = useState([]);
   const [eqRptNodosShow, setEqRptNodosShow] = useState(false);
+  const [matRptDesde, setMatRptDesde] = useState(() => {
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  });
+  const [matRptHasta, setMatRptHasta] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" })
+  );
+  const [matRptTecnico, setMatRptTecnico] = useState("TODOS");
+  const [matRptLoading, setMatRptLoading] = useState(false);
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -12372,6 +12381,184 @@ export default function App() {
     imprimirHtmlMismaPestana(html);
   };
 
+  const imprimirReporteMaterialesTecnico = async () => {
+    setMatRptLoading(true);
+    try {
+      const empresa = String(usuarioSesion?.empresa || "Americanet");
+      const esDim = empresa.toLowerCase().includes("dim");
+      const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
+      const accentColor = esDim ? "#0f3460" : "#1a3a6b";
+
+      // 1. Stock actual
+      let stockQ = supabase.from("materiales_asignados_tecnicos")
+        .select("tecnico,material_nombre,cantidad_asignada,cantidad_disponible,unidad")
+        .order("tecnico", { ascending: true });
+      if (matRptTecnico !== "TODOS") stockQ = stockQ.eq("tecnico", matRptTecnico);
+      const { data: stockData } = await stockQ;
+
+      // 2. Movimientos del período (usa T05 para Lima UTC-5)
+      const desdeTs = `${matRptDesde}T05:00:00.000Z`;
+      const hastaTs = (() => {
+        const [y, m, d] = matRptHasta.split("-").map(Number);
+        const next = new Date(Date.UTC(y, m - 1, d + 1));
+        return `${next.getUTCFullYear()}-${String(next.getUTCMonth()+1).padStart(2,"0")}-${String(next.getUTCDate()).padStart(2,"0")}T05:00:00.000Z`;
+      })();
+      let movQ = supabase.from("inventario_movimientos")
+        .select("created_at,movimiento,motivo,item_nombre,cantidad,unidad,tecnico,nodo")
+        .eq("tipo_item", "material")
+        .gte("created_at", desdeTs)
+        .lt("created_at", hastaTs)
+        .order("created_at", { ascending: false })
+        .limit(3000);
+      if (matRptTecnico !== "TODOS") movQ = movQ.eq("tecnico", matRptTecnico);
+      const { data: movData } = await movQ;
+
+      // Agrupar por técnico
+      const stockByTec = new Map();
+      for (const r of (stockData || [])) {
+        const tec = r.tecnico || "Sin asignar";
+        if (!stockByTec.has(tec)) stockByTec.set(tec, []);
+        stockByTec.get(tec).push(r);
+      }
+      const movByTec = new Map();
+      for (const r of (movData || [])) {
+        const tec = r.tecnico || "Sin asignar";
+        if (!movByTec.has(tec)) movByTec.set(tec, []);
+        movByTec.get(tec).push(r);
+      }
+      const allTecs = [...new Set([...stockByTec.keys(), ...movByTec.keys()])].sort();
+
+      const thS = "padding:7px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-align:left";
+
+      let sections = "";
+      for (const tec of allTecs) {
+        const stock = stockByTec.get(tec) || [];
+        const movs  = movByTec.get(tec)  || [];
+
+        const stockRows = stock.map((r, i) => {
+          const asig = Number(r.cantidad_asignada  || 0);
+          const disp = Number(r.cantidad_disponible || 0);
+          const cons = Math.max(0, asig - disp);
+          const bg = i % 2 === 0 ? "#fff" : "#f8fafc";
+          const dispColor = disp === 0 ? "#dc2626" : disp < asig * 0.2 ? "#d97706" : "#16a34a";
+          return `<tr style="background:${bg}">
+            <td style="padding:6px 10px">${escHtml(r.material_nombre || "-")}</td>
+            <td style="padding:6px 8px;text-align:center;color:#6b7280;font-size:10px">${escHtml(r.unidad || "-")}</td>
+            <td style="padding:6px 8px;text-align:right">${asig}</td>
+            <td style="padding:6px 8px;text-align:right;color:#d97706;font-weight:600">${cons}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:800;color:${dispColor}">${disp}</td>
+          </tr>`;
+        }).join("");
+
+        const movRows = movs.map((r, i) => {
+          const bg = i % 2 === 0 ? "#fff" : "#f8fafc";
+          const dt = new Date(r.created_at || "");
+          const fechaStr = isNaN(dt.getTime()) ? "-" : dt.toLocaleDateString("es-PE", { day:"2-digit", month:"2-digit", year:"numeric", timeZone:"America/Lima" });
+          const movNorm = String(r.movimiento || "").toLowerCase();
+          const esEntrada = movNorm.includes("ingreso") || movNorm.includes("entrada") || movNorm.includes("devolucion");
+          const movColor = esEntrada ? "#059669" : "#dc2626";
+          const signo = esEntrada ? "+" : "−";
+          return `<tr style="background:${bg}">
+            <td style="padding:6px 8px;font-size:10px;color:#374151;white-space:nowrap">${fechaStr}</td>
+            <td style="padding:6px 10px">${escHtml(r.item_nombre || "-")}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700;color:${movColor}">${signo}${Number(r.cantidad||0)} ${escHtml(r.unidad||"")}</td>
+            <td style="padding:6px 8px;font-size:10px;color:#374151">${escHtml(r.movimiento || "-")}</td>
+            <td style="padding:6px 8px;font-size:10px;color:#6b7280">${escHtml(r.motivo || "-")}</td>
+            <td style="padding:6px 8px;font-size:10px;color:#6b7280">${escHtml(r.nodo || "-")}</td>
+          </tr>`;
+        }).join("");
+
+        sections += `
+        <div style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+          <div style="background:${accentColor};color:#fff;padding:10px 16px;font-weight:800;font-size:14px">${escHtml(tec)}</div>
+          ${stock.length > 0 ? `
+          <div>
+            <div style="background:#f0f9ff;padding:6px 16px;font-size:11px;font-weight:800;color:#0369a1;border-bottom:1px solid #bae6fd">
+              📦 STOCK ACTUAL — ${stock.length} materiales
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#f0f9ff">
+                <th style="${thS}">Material</th>
+                <th style="${thS};text-align:center">Unidad</th>
+                <th style="${thS};text-align:right">Asignado</th>
+                <th style="${thS};text-align:right">Consumido</th>
+                <th style="${thS};text-align:right">Disponible</th>
+              </tr></thead>
+              <tbody>${stockRows}</tbody>
+            </table>
+          </div>` : ""}
+          ${movs.length > 0 ? `
+          <div style="${stock.length > 0 ? "border-top:1px solid #e2e8f0" : ""}">
+            <div style="background:#faf5ff;padding:6px 16px;font-size:11px;font-weight:800;color:#6d28d9;border-bottom:1px solid #e9d5ff">
+              🔄 MOVIMIENTOS DEL PERÍODO — ${movs.length}
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead><tr style="background:#faf5ff">
+                <th style="${thS};width:72px">Fecha</th>
+                <th style="${thS}">Material</th>
+                <th style="${thS};text-align:right">Cantidad</th>
+                <th style="${thS}">Tipo</th>
+                <th style="${thS}">Motivo</th>
+                <th style="${thS}">Nodo</th>
+              </tr></thead>
+              <tbody>${movRows}</tbody>
+            </table>
+          </div>` : ""}
+        </div>`;
+      }
+
+      const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Materiales por técnico</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff;padding:28px;font-size:12px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid ${accentColor}}
+    .header-left img{height:48px;object-fit:contain}
+    .header-right{text-align:right}
+    .doc-title{font-size:18px;font-weight:700;color:${accentColor};margin-bottom:4px}
+    .doc-sub{font-size:11px;color:#6b7280}
+    .info-bar{display:flex;gap:16px;background:#f1f5f9;border-radius:8px;padding:10px 14px;margin-bottom:20px;flex-wrap:wrap}
+    .info-item{display:flex;flex-direction:column;gap:2px}
+    .info-label{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+    .info-value{font-size:13px;color:#1e293b;font-weight:700}
+    .footer{margin-top:16px;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:8px}
+    @media print{body{padding:14px}}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left"><img src="${logoSrc}" alt="${escHtml(empresa)}"/></div>
+    <div class="header-right">
+      <div class="doc-title">Materiales por Técnico</div>
+      <div class="doc-sub">Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+    </div>
+  </div>
+  <div class="info-bar">
+    <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(matRptTecnico === "TODOS" ? "Todos" : matRptTecnico)}</span></div>
+    <div class="info-item"><span class="info-label">Periodo movimientos</span><span class="info-value">${escHtml(matRptDesde)} — ${escHtml(matRptHasta)}</span></div>
+    <div class="info-item"><span class="info-label">Stock actual</span><span class="info-value">${(stockData||[]).length} registros</span></div>
+    <div class="info-item"><span class="info-label">Movimientos</span><span class="info-value">${(movData||[]).length}</span></div>
+  </div>
+  ${allTecs.length === 0
+    ? `<p style="color:#9ca3af;text-align:center;padding:40px 0">Sin datos para los filtros seleccionados.</p>`
+    : sections}
+  <div class="footer">
+    <span>${escHtml(empresa)} — Reporte de materiales por técnico</span>
+    <span>${escHtml(new Date().toLocaleDateString("es-PE"))}</span>
+  </div>
+</body>
+</html>`;
+      imprimirHtmlMismaPestana(html);
+    } catch (e) {
+      alert("Error al generar reporte: " + (e?.message || String(e)));
+    } finally {
+      setMatRptLoading(false);
+    }
+  };
+
   const imprimirDetalleMateriales = () => {
     const totalGeneral = reporteDetalleMateriales.reduce((a, ord) => a + ord.costoTotal, 0);
     const rows = reporteDetalleMateriales.map((ord) =>
@@ -17472,6 +17659,47 @@ export default function App() {
                   </div>
                 );
               })()}
+            </div>
+
+            {/* ── Reporte materiales por técnico ── */}
+            <div style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ ...sectionTitleStyle, marginTop: 0, marginBottom: 4 }}>Materiales por técnico</h3>
+                  <div style={{ fontSize: 12, color: "#6b7280" }}>Stock actual + movimientos del período por técnico.</div>
+                </div>
+                <button type="button" disabled={matRptLoading}
+                  style={{ background: matRptLoading ? "#94a3b8" : "#0369a1", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: matRptLoading ? "not-allowed" : "pointer" }}
+                  onClick={() => void imprimirReporteMaterialesTecnico()}>
+                  {matRptLoading ? "⏳ Generando..." : "PDF materiales"}
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Desde</label>
+                  <input type="date" value={matRptDesde} onChange={(e) => setMatRptDesde(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Hasta</label>
+                  <input type="date" value={matRptHasta} onChange={(e) => setMatRptHasta(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Técnico</label>
+                  <select value={matRptTecnico} onChange={(e) => setMatRptTecnico(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, minWidth: 200 }}>
+                    <option value="TODOS">Todos</option>
+                    {[...new Set(liquidaciones.map((l) => String(l.liquidacion?.tecnicoLiquida || l.tecnico || "")).filter(Boolean))].sort().map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, background: "#f8fafc", borderRadius: 6, padding: "6px 10px", border: "1px solid #e5e7eb" }}>
+                ℹ️ <strong>Stock actual</strong>: refleja el estado en este momento (sin filtro de fecha). <strong>Movimientos</strong>: filtrados por el período seleccionado.
+              </div>
             </div>
 
           </div>
