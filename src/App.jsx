@@ -12219,15 +12219,14 @@ export default function App() {
           .filter((liq) => fechaDentroDeRango(liq.fechaLiquidacionISO || liq.fechaLiquidacion, eqRptDesde, eqRptHasta))
           .filter((liq) => eqRptTecnico === "TODOS" || String(liq.liquidacion?.tecnicoLiquida || liq.tecnico || "") === eqRptTecnico)
           .flatMap((liq) => (Array.isArray(liq.liquidacion?.equipos) ? liq.liquidacion.equipos : []).map((e) => ({
-            tipo: e.tipo || "-",
             marca: e.marca || "",
             modelo: e.modelo || "",
             codigoQR: e.codigo || "",
             serialMac: e.serial || "",
-            precioUnitario: e.precioUnitario || 0,
             estado: "liquidado",
             tecnicoAsignado: liq.liquidacion?.tecnicoLiquida || liq.tecnico || "",
             fechaLiquidacion: String(liq.fechaLiquidacionISO || liq.fechaLiquidacion || "").slice(0, 10),
+            usuarioPppoe: liq.usuarioNodo || "",
           })))
       : [];
 
@@ -12257,12 +12256,12 @@ export default function App() {
       })() : "-";
       return `<tr style="background:${bg}">
         <td style="padding:6px 8px;color:#9ca3af;text-align:center">${i + 1}</td>
-        <td style="padding:6px 8px;font-weight:600">${escHtml(e.tipo || "-")}</td>
         <td style="padding:6px 8px">${escHtml([e.marca, e.modelo].filter(Boolean).join(" ") || "-")}</td>
         <td style="padding:6px 8px;font-family:monospace;font-size:10px;color:#374151">${escHtml(e.codigoQR || "-")}</td>
         <td style="padding:6px 8px;font-family:monospace;font-size:10px;color:#374151">${escHtml(e.serialMac || "-")}</td>
-        <td style="padding:6px 8px;text-align:right;font-weight:600">S/ ${Number(e.precioUnitario || 0).toFixed(2)}</td>
-        ${showFecha ? `<td style="padding:6px 8px;font-size:10px;color:#374151;text-align:center">${fechaCorta}</td>` : ""}
+        ${showFecha ? `
+        <td style="padding:6px 8px;font-family:monospace;font-size:10px;color:#0369a1;font-weight:600">${escHtml(e.usuarioPppoe || "-")}</td>
+        <td style="padding:6px 8px;font-size:10px;color:#374151;text-align:center">${fechaCorta}</td>` : ""}
       </tr>`;
     }).join("");
 
@@ -12287,9 +12286,9 @@ export default function App() {
           <table style="width:100%;border-collapse:collapse;font-size:11px">
             <thead><tr style="background:#fffbeb">
               <th style="${thStyle};width:28px;text-align:center">#</th>
-              <th style="${thStyle}">Tipo</th><th style="${thStyle}">Marca / Modelo</th>
-              <th style="${thStyle}">Código QR</th><th style="${thStyle}">Serial / MAC</th>
-              <th style="${thStyle};text-align:right">Precio</th>
+              <th style="${thStyle}">Marca / Modelo</th>
+              <th style="${thStyle}">Código QR</th>
+              <th style="${thStyle}">Serial / MAC</th>
             </tr></thead>
             <tbody>${makeRows(asignados, false)}</tbody>
           </table>
@@ -12302,9 +12301,10 @@ export default function App() {
           <table style="width:100%;border-collapse:collapse;font-size:11px">
             <thead><tr style="background:#f0fdf4">
               <th style="${thStyle};width:28px;text-align:center">#</th>
-              <th style="${thStyle}">Tipo</th><th style="${thStyle}">Marca / Modelo</th>
-              <th style="${thStyle}">Código QR</th><th style="${thStyle}">Serial / MAC</th>
-              <th style="${thStyle};text-align:right">Precio</th>
+              <th style="${thStyle}">Marca / Modelo</th>
+              <th style="${thStyle}">Código QR</th>
+              <th style="${thStyle}">Serial / MAC</th>
+              <th style="${thStyle}">Usuario PPPoE</th>
               <th style="${thStyle};text-align:center">Fecha liq.</th>
             </tr></thead>
             <tbody>${makeRows(liquidados, true)}</tbody>
