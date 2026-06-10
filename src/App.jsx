@@ -11923,7 +11923,8 @@ export default function App() {
       const esRecuperacion = tipo.includes("recup");
       eqs.forEach((e) => {
         const desc = [e?.tipo, e?.marca, e?.modelo].filter(Boolean).join(" ");
-        eqDetalle += `${escHtml(desc || "Equipo")}<br/>`;
+        const codigoQrLabel = e?.codigo ? `<span style="font-size:10px;color:#6b7280;font-family:monospace">QR: ${escHtml(e.codigo)}</span><br/>` : "";
+        eqDetalle += `${escHtml(desc || "Equipo")}<br/>${codigoQrLabel}`;
         if (esRecuperacion) return; // equipo recuperado, no se vende
         const eqKey = `${e?.tipo||""}||${e?.marca||""}||${e?.modelo||""}`;
         const precioBase = reporteConfigPrecioBaseEq[eqKey] !== undefined ? reporteConfigPrecioBaseEq[eqKey] : Number(e?.precioUnitario ?? 0);
