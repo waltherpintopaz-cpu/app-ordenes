@@ -2160,6 +2160,13 @@ export default function App() {
   const [reporteConfigGuardadoOk, setReporteConfigGuardadoOk] = useState(false);
   const [eqRptTecnico, setEqRptTecnico] = useState("TODOS");
   const [eqRptEstado, setEqRptEstado] = useState("TODOS");
+  const [eqRptDesde, setEqRptDesde] = useState(() => {
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  });
+  const [eqRptHasta, setEqRptHasta] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" })
+  );
   const [credencialesLogin, setCredencialesLogin] = useState({ username: "", password: "" });
   const [errorLogin, setErrorLogin] = useState("");
 
@@ -12206,11 +12213,34 @@ export default function App() {
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = esDim ? "#0f3460" : "#1a3a6b";
 
-    const equiposFiltrados = equiposCatalogo.filter((eq) => {
-      if (eqRptTecnico !== "TODOS" && eq.tecnicoAsignado !== eqRptTecnico) return false;
-      if (eqRptEstado !== "TODOS") return eq.estado === eqRptEstado;
-      return eq.estado === "asignado" || eq.estado === "liquidado";
-    });
+    // Equipos liquidados: desde liquidaciones ya cargadas, filtradas por fecha
+    const eqsLiquidados = (eqRptEstado === "TODOS" || eqRptEstado === "liquidado")
+      ? liquidaciones
+          .filter((liq) => fechaDentroDeRango(liq.fechaLiquidacionISO || liq.fechaLiquidacion, eqRptDesde, eqRptHasta))
+          .filter((liq) => eqRptTecnico === "TODOS" || String(liq.liquidacion?.tecnicoLiquida || liq.tecnico || "") === eqRptTecnico)
+          .flatMap((liq) => (Array.isArray(liq.liquidacion?.equipos) ? liq.liquidacion.equipos : []).map((e) => ({
+            tipo: e.tipo || "-",
+            marca: e.marca || "",
+            modelo: e.modelo || "",
+            codigoQR: e.codigo || "",
+            serialMac: e.serial || "",
+            precioUnitario: e.precioUnitario || 0,
+            estado: "liquidado",
+            tecnicoAsignado: liq.liquidacion?.tecnicoLiquida || liq.tecnico || "",
+            fechaLiquidacion: String(liq.fechaLiquidacionISO || liq.fechaLiquidacion || "").slice(0, 10),
+          })))
+      : [];
+
+    // Equipos asignados: desde catálogo (no tienen campo fecha de asignación)
+    const eqsAsignados = (eqRptEstado === "TODOS" || eqRptEstado === "asignado")
+      ? equiposCatalogo.filter((eq) => {
+          if (eq.estado !== "asignado") return false;
+          if (eqRptTecnico !== "TODOS" && eq.tecnicoAsignado !== eqRptTecnico) return false;
+          return true;
+        }).map((eq) => ({ ...eq, fechaLiquidacion: "" }))
+      : [];
+
+    const equiposFiltrados = [...eqsAsignados, ...eqsLiquidados];
 
     const byTecnico = new Map();
     for (const eq of equiposFiltrados) {
@@ -12219,8 +12249,12 @@ export default function App() {
       byTecnico.get(tec).push(eq);
     }
 
-    const makeRows = (list) => list.map((e, i) => {
+    const makeRows = (list, showFecha = false) => list.map((e, i) => {
       const bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+      const fechaCorta = e.fechaLiquidacion ? (() => {
+        const [y, m, d] = String(e.fechaLiquidacion).slice(0, 10).split("-");
+        return `${d}/${m}/${y}`;
+      })() : "-";
       return `<tr style="background:${bg}">
         <td style="padding:6px 8px;color:#9ca3af;text-align:center">${i + 1}</td>
         <td style="padding:6px 8px;font-weight:600">${escHtml(e.tipo || "-")}</td>
@@ -12228,6 +12262,7 @@ export default function App() {
         <td style="padding:6px 8px;font-family:monospace;font-size:10px;color:#374151">${escHtml(e.codigoQR || "-")}</td>
         <td style="padding:6px 8px;font-family:monospace;font-size:10px;color:#374151">${escHtml(e.serialMac || "-")}</td>
         <td style="padding:6px 8px;text-align:right;font-weight:600">S/ ${Number(e.precioUnitario || 0).toFixed(2)}</td>
+        ${showFecha ? `<td style="padding:6px 8px;font-size:10px;color:#374151;text-align:center">${fechaCorta}</td>` : ""}
       </tr>`;
     }).join("");
 
@@ -12256,7 +12291,7 @@ export default function App() {
               <th style="${thStyle}">Código QR</th><th style="${thStyle}">Serial / MAC</th>
               <th style="${thStyle};text-align:right">Precio</th>
             </tr></thead>
-            <tbody>${makeRows(asignados)}</tbody>
+            <tbody>${makeRows(asignados, false)}</tbody>
           </table>
         </div>` : ""}
         ${liquidados.length > 0 ? `
@@ -12270,8 +12305,9 @@ export default function App() {
               <th style="${thStyle}">Tipo</th><th style="${thStyle}">Marca / Modelo</th>
               <th style="${thStyle}">Código QR</th><th style="${thStyle}">Serial / MAC</th>
               <th style="${thStyle};text-align:right">Precio</th>
+              <th style="${thStyle};text-align:center">Fecha liq.</th>
             </tr></thead>
-            <tbody>${makeRows(liquidados)}</tbody>
+            <tbody>${makeRows(liquidados, true)}</tbody>
           </table>
         </div>` : ""}
       </div>`;
@@ -12311,6 +12347,7 @@ export default function App() {
     </div>
   </div>
   <div class="info-bar">
+    <div class="info-item"><span class="info-label">Periodo liquidados</span><span class="info-value">${escHtml(eqRptDesde)} — ${escHtml(eqRptHasta)}</span></div>
     <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(eqRptTecnico === "TODOS" ? "Todos" : eqRptTecnico)}</span></div>
     <div class="info-item"><span class="info-label">Estado</span><span class="info-value">${eqRptEstado === "TODOS" ? "Asignado + Liquidado" : eqRptEstado === "asignado" ? "Asignado (sin liquidar)" : "Liquidado"}</span></div>
     <div class="info-item"><span class="info-label">Total equipos</span><span class="info-value">${equiposFiltrados.length}</span></div>
@@ -17328,6 +17365,16 @@ export default function App() {
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", marginBottom: 16 }}>
                 <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Desde</label>
+                  <input type="date" value={eqRptDesde} onChange={(e) => setEqRptDesde(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Hasta</label>
+                  <input type="date" value={eqRptHasta} onChange={(e) => setEqRptHasta(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
+                </div>
+                <div>
                   <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Técnico</label>
                   <select value={eqRptTecnico} onChange={(e) => setEqRptTecnico(e.target.value)}
                     style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, minWidth: 200 }}>
@@ -17348,14 +17395,22 @@ export default function App() {
                   </select>
                 </div>
               </div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 14, background: "#f8fafc", borderRadius: 6, padding: "6px 10px", border: "1px solid #e5e7eb" }}>
+                ℹ️ El filtro de fechas aplica a equipos <strong>liquidados</strong> (por fecha de liquidación). Los equipos <strong>asignados sin liquidar</strong> se muestran todos independientemente de las fechas.
+              </div>
 
               {/* KPIs rápidos */}
               {(() => {
-                const filtrados = equiposCatalogo.filter((eq) => {
-                  if (eqRptTecnico !== "TODOS" && eq.tecnicoAsignado !== eqRptTecnico) return false;
-                  if (eqRptEstado !== "TODOS") return eq.estado === eqRptEstado;
-                  return eq.estado === "asignado" || eq.estado === "liquidado";
-                });
+                const eqsLiq = (eqRptEstado === "TODOS" || eqRptEstado === "liquidado")
+                  ? liquidaciones
+                      .filter((liq) => fechaDentroDeRango(liq.fechaLiquidacionISO || liq.fechaLiquidacion, eqRptDesde, eqRptHasta))
+                      .filter((liq) => eqRptTecnico === "TODOS" || String(liq.liquidacion?.tecnicoLiquida || liq.tecnico || "") === eqRptTecnico)
+                      .flatMap((liq) => (Array.isArray(liq.liquidacion?.equipos) ? liq.liquidacion.equipos : []).map(() => ({ estado: "liquidado", precioUnitario: 0 })))
+                  : [];
+                const eqsAsig = (eqRptEstado === "TODOS" || eqRptEstado === "asignado")
+                  ? equiposCatalogo.filter((eq) => eq.estado === "asignado" && (eqRptTecnico === "TODOS" || eq.tecnicoAsignado === eqRptTecnico))
+                  : [];
+                const filtrados = [...eqsAsig, ...eqsLiq];
                 const sinLiquidar = filtrados.filter((e) => e.estado === "asignado").length;
                 const liquidados  = filtrados.filter((e) => e.estado === "liquidado").length;
                 const valor = filtrados.reduce((s, e) => s + Number(e.precioUnitario || 0), 0);
