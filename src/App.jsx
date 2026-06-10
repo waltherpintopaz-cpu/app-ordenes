@@ -466,6 +466,7 @@ function sugerirPasswordPorNodo(nodo = "") {
 function todayIsoLocal() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 }
+const nowPeruTs = () => new Date().toLocaleString("sv-SE", { timeZone: "America/Lima" }).replace(" ", "T");
 
 // Convierte "17:00" → "5:00 PM"  |  "07:30" → "7:30 AM"
 function formatHora12(hora24) {
@@ -768,13 +769,9 @@ function deserializeLiquidacionFromSupabase(row = {}) {
     ordenOriginalId: row.orden_original_id ?? null,
     fechaLiquidacion: formatFechaFlexible(row.fecha_liquidacion || row.updated_at || row.created_at || ""),
     fechaLiquidacionISO: (() => {
-      const raw = row.fecha_liquidacion || row.updated_at || row.created_at || "";
-      if (!raw) return "";
-      try {
-        const d = new Date(raw);
-        if (isNaN(d.getTime())) return "";
-        return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
-      } catch { return ""; }
+      const raw = String(row.fecha_liquidacion || row.updated_at || row.created_at || "").trim();
+      const ymd = raw.slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : "";
     })(),
     tipoActuacion: String(row.tipo_actuacion || "").trim(),
     dni: String(row.dni || "").trim(),
@@ -9663,7 +9660,7 @@ export default function App() {
         sn_onu_liquidacion: String(liquidacion.snOnu || ""),
         parametro: String(liquidacion.parametro || ""),
         estado: "Liquidada",
-        fecha_liquidacion: new Date().toISOString(),
+        fecha_liquidacion: nowPeruTs(),
       };
 
       const liquidacionId = await _upsertLiquidacion(payload, codigoOrden);
@@ -10008,7 +10005,7 @@ export default function App() {
             codigo:            r.orden_codigo,
             codigo_orden:      r.orden_codigo,
             tipo_actuacion:    "RECUPERACION DE EQUIPO",
-            fecha_liquidacion: r.fecha_ejecucion || new Date().toISOString(),
+            fecha_liquidacion: r.fecha_ejecucion || nowPeruTs(),
             tecnico_liquida:   r.tecnico_ejecuta || "",
             tecnico:           r.tecnico_ejecuta || "",
             resultado_final:   r.resultado || "Completada",
@@ -19251,7 +19248,7 @@ export default function App() {
                                       {l.tipo_actuacion && <span>{l.tipo_actuacion}</span>}
                                       {l.medio_pago && <span>· {l.medio_pago}</span>}
                                       {l.tecnico_liquida && <span>· {l.tecnico_liquida}</span>}
-                                      {l.fecha_liquidacion && <span>· {(() => { try { return new Date(l.fecha_liquidacion).toLocaleDateString("en-CA", { timeZone: "America/Lima" }); } catch { return String(l.fecha_liquidacion).slice(0,10); } })()}</span>}
+                                      {l.fecha_liquidacion && <span>· {String(l.fecha_liquidacion).slice(0,10)}</span>}
                                     </div>
                                   </div>
                                 );
@@ -20711,7 +20708,7 @@ export default function App() {
                         <div style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11, color: "#64748b" }}>
                           <span>Tipo: {liq.tipo_actuacion || "—"}</span>
                           <span>Técnico: {liq.tecnico_liquida || "—"}</span>
-                          {liq.fecha_liquidacion && <span>{new Date(liq.fecha_liquidacion).toLocaleDateString("es-PE")}</span>}
+                          {liq.fecha_liquidacion && <span>{String(liq.fecha_liquidacion).slice(0,10)}</span>}
                         </div>
                       </div>
                     ))}
