@@ -3493,9 +3493,12 @@ export default function App() {
     // Nod_04: agregar prefijo 51 a todos los números que no lo tengan
     const movil = esNod04 ? normalizarTelefonos51(movilRaw) : movilRaw;
     const nodoServicio = d.servicios?.[0]?.nodo ?? null;
-    // Si es Nod_04 DimFiber y no tiene nodo de servicios, usar 5 como default para evitar
-    // colisión de mikrowisp_id con Americanet (ambos sistemas tienen IDs independientes)
-    const nodo = nodoServicio ?? (esNod04 ? 5 : null);
+    // Fallback numérico por etiqueta de nodo — evita que nodo quede null cuando Mikrowisp
+    // no devuelve servicios. Sin esto, dos clientes con mismo mikrowisp_id de distintos
+    // sistemas (Americanet vs DimFiber) quedan en nodo=null y se mezclan sus teléfonos.
+    const NODO_LABEL_FALLBACK = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 3, "Nod_04": 5, "Nod_06": 11 };
+    const nodoFallback = NODO_LABEL_FALLBACK[String(d._nodo || "").trim()] ?? (esNod04 ? 5 : null);
+    const nodo = nodoServicio ?? nodoFallback;
     let telefonos = movil;
     const nodoNum = nodo !== null ? Number(nodo) : null;
     if (!sobreescribir) {
@@ -3577,7 +3580,7 @@ export default function App() {
     if (!mkwResultado) return;
     setMkwBuscando(true);
     try {
-      const { ok, msg } = await mkwUpsert([mkwResultado]);
+      const { ok, msg } = await mkwUpsert([mkwResultado], { sobreescribir: true });
       if (ok) { setMkwResultado(null); setMkwCedula(""); setMkwError("✓ Guardado correctamente"); }
       else setMkwError(msg);
     } catch (e) { setMkwError(e.message); }
@@ -3593,11 +3596,11 @@ export default function App() {
     setMkwCliOk((p) => ({ ...p, [cid]: false }));
     try {
       const datos = await mkwConsultarCedula(dni, nodo);
-      const { ok, msg } = await mkwUpsert(datos);
+      const { ok, msg } = await mkwUpsert(datos, { sobreescribir: true });
       if (ok) {
         // Asegurar que codigo = DNI (contraseña portal)
         try {
-          const mkwId = datos?.id || datos?.idcliente;
+          const mkwId = datos?.[0]?.id || datos?.[0]?.idcliente;
           if (mkwId) {
             const esDim = esDimNodo(nodo);
             esDim

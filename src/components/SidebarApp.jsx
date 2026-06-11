@@ -1088,15 +1088,18 @@ export default function SidebarApp() {
       const datos = await mkwProxy(n, "GetClientsDetails", { idcliente: mwMkwId });
       const d = datos?.datos?.[0] || datos?.data?.[0] || datos;
       if (d?.id) {
-        const nodoServicio = d.servicios?.[0]?.nodo ?? (esDim ? 5 : null);
-        const nodoNum2 = nodoServicio !== null ? Number(nodoServicio) : null;
+        const nodoServicio = d.servicios?.[0]?.nodo ?? null;
+        // Fallback desde MW_NODO_MAP para nunca guardar nodo=null — evita mezcla de teléfonos
+        // entre clientes de distintos sistemas que comparten el mismo mikrowisp_id
+        const nodoFallback = esDim ? 5 : (MW_NODO_MAP[nodo] ?? null);
+        const nodoNum2 = nodoServicio !== null ? Number(nodoServicio) : (nodoFallback !== null ? Number(nodoFallback) : null);
         const movil = String(d.movil || "").trim();
         const row = { mikrowisp_id: d.id, nombre: d.nombre, cedula: d.cedula, telefonos: movil, estado: d.estado, nodo: nodoNum2 };
         let q = supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", d.id);
         if (nodoNum2 !== null) q = q.eq("nodo", nodoNum2); else q = q.is("nodo", null);
         const { data: prev } = await q.maybeSingle();
         if (prev && !movil && prev.telefonos) row.telefonos = prev.telefonos;
-        await supabase.from("mikrowisp_clientes").upsert([row], { onConflict: nodoNum2 !== null ? "mikrowisp_id,nodo" : "mikrowisp_id" });
+        await supabase.from("mikrowisp_clientes").upsert([row], { onConflict: "mikrowisp_id,nodo" });
         if (mwCliSupa.id) await supabase.from("clientes").update({ en_mikrowisp: true, mikrowisp_sync_ok: true }).eq("id", mwCliSupa.id);
       }
       setMwSyncDone(true);
