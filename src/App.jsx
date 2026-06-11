@@ -2169,6 +2169,15 @@ export default function App() {
   );
   const [eqRptNodos, setEqRptNodos] = useState([]);
   const [eqRptNodosShow, setEqRptNodosShow] = useState(false);
+  const [fichaRptTecnico, setFichaRptTecnico] = useState("TODOS");
+  const [fichaRptDesde, setFichaRptDesde] = useState(() => {
+    const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
+  });
+  const [fichaRptHasta, setFichaRptHasta] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" })
+  );
+  const [fichaRptLoading, setFichaRptLoading] = useState(false);
   const [matRptDesde, setMatRptDesde] = useState(() => {
     const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     return d.toLocaleDateString("en-CA", { timeZone: "America/Lima" });
@@ -12381,6 +12390,387 @@ export default function App() {
     imprimirHtmlMismaPestana(html);
   };
 
+  const imprimirFichaTecnico = async () => {
+    setFichaRptLoading(true);
+    try {
+      const empresa   = String(usuarioSesion?.empresa || "Americanet");
+      const esDim     = empresa.toLowerCase().includes("dim");
+      const logoSrc   = esDim ? logoDimB64 : logoAmericanetB64;
+      const accentColor = esDim ? "#0f3460" : "#1a3a6b";
+      const mostrarCosto = reporteConfigMostrarCosto;
+      const mostrarVenta = reporteConfigMostrarVenta;
+
+      const desdeTs = `${fichaRptDesde}T05:00:00.000Z`;
+      const hastaTs = (() => {
+        const [y, m, d] = fichaRptHasta.split("-").map(Number);
+        const next = new Date(Date.UTC(y, m - 1, d + 1));
+        return `${next.getUTCFullYear()}-${String(next.getUTCMonth()+1).padStart(2,"0")}-${String(next.getUTCDate()).padStart(2,"0")}T05:00:00.000Z`;
+      })();
+
+      // ── Q1: Movimientos equipos asignados en período ──────────────
+      let q1 = supabase.from("inventario_movimientos")
+        .select("created_at,item_nombre,referencia,costo_unitario,tecnico")
+        .eq("tipo_item","equipo").ilike("motivo","%asignac%")
+        .gte("created_at",desdeTs).lt("created_at",hastaTs).limit(2000);
+      if (fichaRptTecnico !== "TODOS") q1 = q1.eq("tecnico", fichaRptTecnico);
+      const { data: eqMovData } = await q1;
+
+      // Enriquecer equipos con tipo/marca/modelo desde catálogo
+      const refs = [...new Set((eqMovData||[]).map(r => String(r.referencia||"").trim()).filter(Boolean))];
+      const eqCatMap = {};
+      for (let i = 0; i < refs.length; i += 100) {
+        const { data } = await supabase.from("equipos_catalogo")
+          .select("codigo_qr,tipo,marca,modelo,precio_unitario,estado,tecnico_asignado")
+          .in("codigo_qr", refs.slice(i, i+100));
+        for (const r of (data||[])) eqCatMap[String(r.codigo_qr||"").trim()] = r;
+      }
+
+      // ── Q2: Equipos actualmente en custodia ───────────────────────
+      let q2 = supabase.from("equipos_catalogo")
+        .select("codigo_qr,tipo,marca,modelo,precio_unitario,tecnico_asignado")
+        .eq("estado","asignado");
+      if (fichaRptTecnico !== "TODOS") q2 = q2.eq("tecnico_asignado", fichaRptTecnico);
+      const { data: custData } = await q2;
+
+      // ── Q3: Liquidaciones del período ─────────────────────────────
+      let q3 = supabase.from("liquidaciones")
+        .select("id,tecnico,tecnico_liquida,fecha_liquidacion")
+        .gte("fecha_liquidacion",desdeTs).lt("fecha_liquidacion",hastaTs).limit(5000);
+      if (fichaRptTecnico !== "TODOS") q3 = q3.or(`tecnico.eq.${fichaRptTecnico},tecnico_liquida.eq.${fichaRptTecnico}`);
+      const { data: liqData } = await q3;
+      const liqIds    = (liqData||[]).map(l => l.id);
+      const liqTecMap = Object.fromEntries((liqData||[]).map(l => [l.id, {
+        tec:   l.tecnico_liquida || l.tecnico || "",
+        fecha: String(l.fecha_liquidacion||"").slice(0,10),
+      }]));
+
+      // Equipos liquidados
+      const liqEqsData = [];
+      for (let i = 0; i < liqIds.length; i += 200) {
+        const { data } = await supabase.from("liquidacion_equipos")
+          .select("liquidacion_id,tipo,marca,modelo,codigo,precio_unitario")
+          .in("liquidacion_id", liqIds.slice(i, i+200));
+        liqEqsData.push(...(data||[]));
+      }
+
+      // ── Q4: Movimientos materiales asignados en período ───────────
+      let q4 = supabase.from("inventario_movimientos")
+        .select("item_nombre,cantidad,unidad,costo_unitario,tecnico")
+        .eq("tipo_item","material").ilike("motivo","%asignac%")
+        .gte("created_at",desdeTs).lt("created_at",hastaTs).limit(3000);
+      if (fichaRptTecnico !== "TODOS") q4 = q4.eq("tecnico", fichaRptTecnico);
+      const { data: matMovData } = await q4;
+
+      // ── Q5: Materiales usados en trabajos ─────────────────────────
+      const liqMatsData = [];
+      for (let i = 0; i < liqIds.length; i += 200) {
+        const { data } = await supabase.from("liquidacion_materiales")
+          .select("liquidacion_id,material,cantidad,unidad")
+          .in("liquidacion_id", liqIds.slice(i, i+200));
+        liqMatsData.push(...(data||[]));
+      }
+      // Costo unitario de materiales desde catálogo
+      const matNames = [...new Set(liqMatsData.map(m => String(m.material||"").trim()).filter(Boolean))];
+      const matCostoMap = {};
+      if (matNames.length > 0) {
+        const {data} = await supabase.from("materiales_catalogo")
+          .select("nombre,costo_unitario").in("nombre", matNames);
+        for (const r of (data||[])) matCostoMap[String(r.nombre||"").trim()] = Number(r.costo_unitario||0);
+      }
+
+      // ── Helpers de precio ─────────────────────────────────────────
+      const eqVenta = (tipo, marca, modelo, costoBase) => {
+        const key = `${tipo||""}||${marca||""}||${modelo||""}`;
+        const base   = reporteConfigPrecioBaseEq[key]  !== undefined ? reporteConfigPrecioBaseEq[key]  : Number(costoBase||0);
+        const margen = reporteConfigMargenPorEq[key]   !== undefined ? reporteConfigMargenPorEq[key]   : Number(reporteConfigMargenEquipos||0);
+        return base * (1 + margen/100);
+      };
+      const matVenta = (nombre, costoBase) => {
+        const base   = reporteConfigPrecioBaseMat[nombre] !== undefined ? reporteConfigPrecioBaseMat[nombre] : Number(costoBase||0);
+        const margen = reporteConfigMargenPorMat?.[nombre] !== undefined ? reporteConfigMargenPorMat[nombre]  : Number(reporteConfigMargenGlobal||0);
+        return base * (1 + margen/100);
+      };
+      const S = (v) => `S/ ${Number(v||0).toFixed(2)}`;
+      const fmtF = (iso) => {
+        const [y,m,d] = String(iso||"").slice(0,10).split("-");
+        return (y&&m&&d) ? `${d}/${m}/${y}` : "-";
+      };
+
+      // ── Agrupar por técnico ───────────────────────────────────────
+      const allTecs = [...new Set([
+        ...(eqMovData||[]).map(r => r.tecnico||""),
+        ...(custData||[]).map(r => r.tecnico_asignado||""),
+        ...liqEqsData.map(r => liqTecMap[r.liquidacion_id]?.tec||""),
+        ...(matMovData||[]).map(r => r.tecnico||""),
+        ...liqMatsData.map(r => liqTecMap[r.liquidacion_id]?.tec||""),
+      ].filter(Boolean))].sort();
+
+      const thS = "padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-align:left";
+      const thR = thS + ";text-align:right";
+
+      let sections = "";
+      let grandEqCosto=0, grandEqVenta=0, grandEqLiqCosto=0, grandEqLiqVenta=0;
+      let grandMatCosto=0, grandMatVenta=0, grandMatUsadoCosto=0, grandMatUsadoVenta=0;
+
+      for (const tec of allTecs) {
+        // Equipos asignados en período
+        const eqAsig = (eqMovData||[]).filter(r => r.tecnico === tec).map(r => {
+          const cat  = eqCatMap[String(r.referencia||"").trim()];
+          const tipo = cat?.tipo||""; const marca = cat?.marca||""; const modelo = cat?.modelo||"";
+          const costo  = Number(r.costo_unitario||cat?.precio_unitario||0);
+          const venta  = eqVenta(tipo, marca, modelo, costo);
+          return { ref: r.referencia, nombre: r.item_nombre, tipo, marca, modelo, costo, venta, fecha: fmtF(r.created_at) };
+        });
+
+        // Equipos en custodia ahora
+        const eqCust = (custData||[]).filter(r => r.tecnico_asignado === tec).map(r => {
+          const costo = Number(r.precio_unitario||0);
+          const venta = eqVenta(r.tipo||"", r.marca||"", r.modelo||"", costo);
+          return { ref: r.codigo_qr, nombre: `${r.tipo||""} ${r.marca||""} ${r.modelo||""}`.trim(), costo, venta };
+        });
+
+        // Equipos liquidados en período
+        const eqLiq = liqEqsData.filter(r => liqTecMap[r.liquidacion_id]?.tec === tec).map(r => {
+          const costo = Number(r.precio_unitario||0);
+          const venta = eqVenta(r.tipo||"", r.marca||"", r.modelo||"", costo);
+          return { ref: r.codigo, nombre: `${r.tipo||""} ${r.marca||""} ${r.modelo||""}`.trim(), costo, venta, fecha: fmtF(liqTecMap[r.liquidacion_id]?.fecha) };
+        });
+
+        // Materiales asignados (agrupados)
+        const matAsigMap = new Map();
+        for (const r of (matMovData||[]).filter(x => x.tecnico === tec)) {
+          const k = `${String(r.item_nombre||"").trim()}|${r.unidad||"unidad"}`;
+          const prev = matAsigMap.get(k) || { nombre: r.item_nombre, unidad: r.unidad, cantidad: 0, costoUnit: Number(r.costo_unitario||0) };
+          prev.cantidad += Number(r.cantidad||0);
+          matAsigMap.set(k, prev);
+        }
+        const matAsig = [...matAsigMap.values()].map(r => {
+          const costo = r.costoUnit * r.cantidad;
+          const venta = matVenta(r.nombre, r.costoUnit) * r.cantidad;
+          return { ...r, costo, venta };
+        });
+
+        // Materiales usados (agrupados)
+        const matUsadoMap = new Map();
+        for (const r of liqMatsData.filter(x => liqTecMap[x.liquidacion_id]?.tec === tec)) {
+          const k = `${String(r.material||"").trim()}|${r.unidad||"unidad"}`;
+          const costoUnit = matCostoMap[String(r.material||"").trim()] || 0;
+          const prev = matUsadoMap.get(k) || { nombre: r.material, unidad: r.unidad, cantidad: 0, costoUnit };
+          prev.cantidad += Number(r.cantidad||0);
+          matUsadoMap.set(k, prev);
+        }
+        const matUsado = [...matUsadoMap.values()].map(r => {
+          const costo = r.costoUnit * r.cantidad;
+          const venta = matVenta(r.nombre, r.costoUnit) * r.cantidad;
+          return { ...r, costo, venta };
+        });
+
+        // Totales del técnico
+        const sumEqAsigCosto  = eqAsig.reduce((s,r) => s+r.costo, 0);
+        const sumEqAsigVenta  = eqAsig.reduce((s,r) => s+r.venta, 0);
+        const sumEqLiqCosto   = eqLiq.reduce((s,r)  => s+r.costo, 0);
+        const sumEqLiqVenta   = eqLiq.reduce((s,r)  => s+r.venta, 0);
+        const sumEqCustCosto  = eqCust.reduce((s,r) => s+r.costo, 0);
+        const sumEqCustVenta  = eqCust.reduce((s,r) => s+r.venta, 0);
+        const sumMatAsigCosto = matAsig.reduce((s,r) => s+r.costo, 0);
+        const sumMatAsigVenta = matAsig.reduce((s,r) => s+r.venta, 0);
+        const sumMatUsadoCosto= matUsado.reduce((s,r) => s+r.costo, 0);
+        const sumMatUsadoVenta= matUsado.reduce((s,r) => s+r.venta, 0);
+
+        grandEqCosto      += sumEqAsigCosto;  grandEqVenta      += sumEqAsigVenta;
+        grandEqLiqCosto   += sumEqLiqCosto;   grandEqLiqVenta   += sumEqLiqVenta;
+        grandMatCosto     += sumMatAsigCosto; grandMatVenta     += sumMatAsigVenta;
+        grandMatUsadoCosto+= sumMatUsadoCosto;grandMatUsadoVenta+= sumMatUsadoVenta;
+
+        const kpiBlock = (label, count, costo, venta, bg, border, color) => `
+          <div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:12px 16px;min-width:130px;flex:1">
+            <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;margin-bottom:6px">${label}</div>
+            <div style="font-size:22px;font-weight:800;color:#1e293b">${count}</div>
+            ${mostrarCosto ? `<div style="font-size:11px;color:#6b7280;margin-top:3px">Costo: <b style="color:#374151">${S(costo)}</b></div>` : ""}
+            ${mostrarVenta ? `<div style="font-size:12px;font-weight:700;color:#15803d;margin-top:2px">Venta: ${S(venta)}</div>` : ""}
+          </div>`;
+
+        const eqRows = (list, color) => list.map((r,i) => `
+          <tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+            <td style="padding:6px 8px;font-family:monospace;font-size:10px;color:#374151">${escHtml(r.ref||"-")}</td>
+            <td style="padding:6px 10px">${escHtml(r.nombre||"-")}</td>
+            <td style="padding:6px 8px;text-align:center;font-size:10px;color:#6b7280">${r.fecha||"-"}</td>
+            ${mostrarCosto ? `<td style="padding:6px 8px;text-align:right;color:#374151">${S(r.costo)}</td>` : ""}
+            ${mostrarVenta ? `<td style="padding:6px 8px;text-align:right;font-weight:700;color:${color}">${S(r.venta)}</td>` : ""}
+          </tr>`).join("");
+
+        const matRows = (list, color) => list.sort((a,b)=>b.costo-a.costo).map((r,i) => `
+          <tr style="background:${i%2===0?"#fff":"#f8fafc"}">
+            <td style="padding:6px 10px">${escHtml(r.nombre||"-")}</td>
+            <td style="padding:6px 8px;text-align:right;color:#374151">${Number(r.cantidad).toLocaleString()} ${escHtml(r.unidad||"")}</td>
+            ${mostrarCosto ? `<td style="padding:6px 8px;text-align:right;color:#374151">${S(r.costo)}</td>` : ""}
+            ${mostrarVenta ? `<td style="padding:6px 8px;text-align:right;font-weight:700;color:${color}">${S(r.venta)}</td>` : ""}
+          </tr>`).join("");
+
+        const eqThead = `<tr style="background:#f8fafc">
+          <th style="${thS};width:110px">Código QR</th>
+          <th style="${thS}">Equipo</th>
+          <th style="${thS};text-align:center">Fecha</th>
+          ${mostrarCosto ? `<th style="${thR}">Costo</th>` : ""}
+          ${mostrarVenta ? `<th style="${thR}">Venta</th>` : ""}
+        </tr>`;
+        const matThead = `<tr style="background:#f8fafc">
+          <th style="${thS}">Material</th>
+          <th style="${thR}">Cantidad</th>
+          ${mostrarCosto ? `<th style="${thR}">Costo total</th>` : ""}
+          ${mostrarVenta ? `<th style="${thR}">Venta total</th>` : ""}
+        </tr>`;
+        const totalRow = (label, costo, venta, color) => `
+          <tr>
+            <td colspan="2" style="padding:8px 10px;font-weight:700;text-align:right;color:#374151">${label}</td>
+            ${mostrarCosto ? `<td style="padding:8px 10px;text-align:right;font-weight:700;color:#374151">${S(costo)}</td>` : ""}
+            ${mostrarVenta ? `<td style="padding:8px 10px;text-align:right;font-weight:800;font-size:13px;color:${color}">${S(venta)}</td>` : ""}
+          </tr>`;
+
+        sections += `
+        <div style="margin-bottom:28px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;page-break-inside:avoid">
+          <div style="background:${accentColor};color:#fff;padding:12px 18px;font-weight:800;font-size:15px">${escHtml(tec)}</div>
+
+          <!-- KPIs -->
+          <div style="display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0">
+            ${kpiBlock("Equipos asignados", eqAsig.length, sumEqAsigCosto, sumEqAsigVenta, "#eff6ff","#bfdbfe","#1d4ed8")}
+            ${kpiBlock("Equipos liquidados", eqLiq.length, sumEqLiqCosto, sumEqLiqVenta, "#f0fdf4","#bbf7d0","#16a34a")}
+            ${kpiBlock("En custodia ahora", eqCust.length, sumEqCustCosto, sumEqCustVenta, "#fffbeb","#fde68a","#d97706")}
+            ${kpiBlock("Materiales asignados", matAsig.length+" tipos", sumMatAsigCosto, sumMatAsigVenta, "#f5f3ff","#ddd6fe","#7c3aed")}
+            ${kpiBlock("Materiales usados", matUsado.length+" tipos", sumMatUsadoCosto, sumMatUsadoVenta, "#fff7ed","#fed7aa","#c2410c")}
+          </div>
+
+          ${eqAsig.length > 0 ? `
+          <div style="border-bottom:1px solid #e2e8f0">
+            <div style="background:#eff6ff;padding:6px 16px;font-size:11px;font-weight:800;color:#1d4ed8;border-bottom:1px solid #bfdbfe">
+              📦 EQUIPOS ASIGNADOS EN PERÍODO — ${eqAsig.length}
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>${eqThead}</thead>
+              <tbody>${eqRows(eqAsig,"#1d4ed8")}</tbody>
+              <tfoot><tr style="background:#eff6ff;border-top:2px solid #bfdbfe">${totalRow("Subtotal equipos asignados:", sumEqAsigCosto, sumEqAsigVenta,"#1d4ed8")}</tr></tfoot>
+            </table>
+          </div>` : ""}
+
+          ${eqLiq.length > 0 ? `
+          <div style="border-bottom:1px solid #e2e8f0">
+            <div style="background:#f0fdf4;padding:6px 16px;font-size:11px;font-weight:800;color:#166534;border-bottom:1px solid #bbf7d0">
+              ✅ EQUIPOS LIQUIDADOS EN PERÍODO — ${eqLiq.length}
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>${eqThead}</thead>
+              <tbody>${eqRows(eqLiq,"#16a34a")}</tbody>
+              <tfoot><tr style="background:#f0fdf4;border-top:2px solid #bbf7d0">${totalRow("Subtotal equipos liquidados:", sumEqLiqCosto, sumEqLiqVenta,"#16a34a")}</tr></tfoot>
+            </table>
+          </div>` : ""}
+
+          ${matAsig.length > 0 ? `
+          <div style="border-bottom:1px solid #e2e8f0">
+            <div style="background:#f5f3ff;padding:6px 16px;font-size:11px;font-weight:800;color:#6d28d9;border-bottom:1px solid #ddd6fe">
+              🔩 MATERIALES ASIGNADOS EN PERÍODO — ${matAsig.length} tipos
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>${matThead}</thead>
+              <tbody>${matRows(matAsig,"#6d28d9")}</tbody>
+              <tfoot><tr style="background:#f5f3ff;border-top:2px solid #ddd6fe">${totalRow("Subtotal materiales asignados:", sumMatAsigCosto, sumMatAsigVenta,"#6d28d9")}</tr></tfoot>
+            </table>
+          </div>` : ""}
+
+          ${matUsado.length > 0 ? `
+          <div>
+            <div style="background:#fff7ed;padding:6px 16px;font-size:11px;font-weight:800;color:#c2410c;border-bottom:1px solid #fed7aa">
+              🔧 MATERIALES USADOS EN TRABAJOS — ${matUsado.length} tipos
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead>${matThead}</thead>
+              <tbody>${matRows(matUsado,"#c2410c")}</tbody>
+              <tfoot><tr style="background:#fff7ed;border-top:2px solid #fed7aa">${totalRow("Subtotal materiales usados:", sumMatUsadoCosto, sumMatUsadoVenta,"#c2410c")}</tr></tfoot>
+            </table>
+          </div>` : ""}
+
+          <!-- Total general del técnico -->
+          <div style="background:#1e293b;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+            <span style="font-weight:700;font-size:13px">TOTAL GENERAL — ${escHtml(tec)}</span>
+            <div style="display:flex;gap:24px;flex-wrap:wrap">
+              ${mostrarCosto ? `<span style="font-size:12px;color:#94a3b8">Costo asignado: <b style="color:#e2e8f0">${S(sumEqAsigCosto+sumMatAsigCosto)}</b></span>` : ""}
+              ${mostrarVenta ? `<span style="font-size:14px;font-weight:800;color:#34d399">Venta asignada: ${S(sumEqAsigVenta+sumMatAsigVenta)}</span>` : ""}
+              ${mostrarVenta ? `<span style="font-size:14px;font-weight:800;color:#86efac">Liquidado: ${S(sumEqLiqVenta+sumMatUsadoVenta)}</span>` : ""}
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // ── Resumen global (si hay varios técnicos) ───────────────────
+      const resumenGlobal = allTecs.length > 1 ? `
+      <div style="margin-top:8px;border:2px solid ${accentColor};border-radius:12px;overflow:hidden">
+        <div style="background:${accentColor};color:#fff;padding:10px 18px;font-weight:800;font-size:14px">RESUMEN GLOBAL — ${allTecs.length} técnicos</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f1f5f9">
+            <th style="${thS}">Concepto</th>
+            ${mostrarCosto ? `<th style="${thR}">Costo total</th>` : ""}
+            ${mostrarVenta ? `<th style="${thR}">Venta total</th>` : ""}
+          </tr></thead>
+          <tbody>
+            <tr style="background:#eff6ff"><td style="padding:8px 10px;font-weight:600;color:#1d4ed8">📦 Equipos asignados</td>${mostrarCosto?`<td style="padding:8px 10px;text-align:right">${S(grandEqCosto)}</td>`:""}${mostrarVenta?`<td style="padding:8px 10px;text-align:right;font-weight:700;color:#1d4ed8">${S(grandEqVenta)}</td>`:""}</tr>
+            <tr style="background:#f0fdf4"><td style="padding:8px 10px;font-weight:600;color:#16a34a">✅ Equipos liquidados</td>${mostrarCosto?`<td style="padding:8px 10px;text-align:right">${S(grandEqLiqCosto)}</td>`:""}${mostrarVenta?`<td style="padding:8px 10px;text-align:right;font-weight:700;color:#16a34a">${S(grandEqLiqVenta)}</td>`:""}</tr>
+            <tr style="background:#f5f3ff"><td style="padding:8px 10px;font-weight:600;color:#6d28d9">🔩 Materiales asignados</td>${mostrarCosto?`<td style="padding:8px 10px;text-align:right">${S(grandMatCosto)}</td>`:""}${mostrarVenta?`<td style="padding:8px 10px;text-align:right;font-weight:700;color:#6d28d9">${S(grandMatVenta)}</td>`:""}</tr>
+            <tr style="background:#fff7ed"><td style="padding:8px 10px;font-weight:600;color:#c2410c">🔧 Materiales usados</td>${mostrarCosto?`<td style="padding:8px 10px;text-align:right">${S(grandMatUsadoCosto)}</td>`:""}${mostrarVenta?`<td style="padding:8px 10px;text-align:right;font-weight:700;color:#c2410c">${S(grandMatUsadoVenta)}</td>`:""}</tr>
+          </tbody>
+          <tfoot><tr style="background:#1e293b;color:#fff">
+            <td style="padding:10px;font-weight:800">TOTAL GENERAL</td>
+            ${mostrarCosto?`<td style="padding:10px;text-align:right;font-weight:800">${S(grandEqCosto+grandMatCosto)}</td>`:""}
+            ${mostrarVenta?`<td style="padding:10px;text-align:right;font-weight:800;color:#34d399;font-size:14px">${S(grandEqVenta+grandMatVenta)}</td>`:""}
+          </tr></tfoot>
+        </table>
+      </div>` : "";
+
+      const html = `<!doctype html>
+<html><head>
+  <meta charset="utf-8"/>
+  <title>Ficha de control por técnico</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff;padding:28px;font-size:12px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid ${accentColor}}
+    .header-left img{height:48px;object-fit:contain}
+    .doc-title{font-size:18px;font-weight:700;color:${accentColor};margin-bottom:4px}
+    .doc-sub{font-size:11px;color:#6b7280}
+    .info-bar{display:flex;gap:16px;background:#f1f5f9;border-radius:8px;padding:10px 14px;margin-bottom:20px;flex-wrap:wrap}
+    .info-item{display:flex;flex-direction:column;gap:2px}
+    .info-label{font-size:10px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+    .info-value{font-size:13px;color:#1e293b;font-weight:700}
+    .footer{margin-top:16px;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:8px}
+    @media print{body{padding:14px}div{page-break-inside:avoid}}
+  </style>
+</head><body>
+  <div class="header">
+    <div class="header-left"><img src="${logoSrc}" alt="${escHtml(empresa)}"/></div>
+    <div class="header-right">
+      <div class="doc-title">Ficha de Control por Técnico</div>
+      <div class="doc-sub">Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</div>
+    </div>
+  </div>
+  <div class="info-bar">
+    <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(fichaRptTecnico==="TODOS"?"Todos":fichaRptTecnico)}</span></div>
+    <div class="info-item"><span class="info-label">Período</span><span class="info-value">${escHtml(fichaRptDesde)} — ${escHtml(fichaRptHasta)}</span></div>
+    <div class="info-item"><span class="info-label">Precios</span><span class="info-value">${mostrarCosto&&mostrarVenta?"Costo + Venta":mostrarVenta?"Solo venta":"Solo costo"}</span></div>
+  </div>
+  ${allTecs.length===0
+    ? `<p style="color:#9ca3af;text-align:center;padding:40px">Sin datos para los filtros seleccionados.</p>`
+    : sections + resumenGlobal}
+  <div class="footer">
+    <span>${escHtml(empresa)} — Ficha de control por técnico</span>
+    <span>${escHtml(new Date().toLocaleDateString("es-PE"))}</span>
+  </div>
+</body></html>`;
+      imprimirHtmlMismaPestana(html);
+    } catch(e) {
+      alert("Error al generar ficha: " + (e?.message||String(e)));
+    } finally {
+      setFichaRptLoading(false);
+    }
+  };
+
   const imprimirReporteMaterialesTecnico = async () => {
     setMatRptLoading(true);
     try {
@@ -17814,6 +18204,48 @@ export default function App() {
               </div>
               <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, background: "#f8fafc", borderRadius: 6, padding: "6px 10px", border: "1px solid #e5e7eb" }}>
                 ℹ️ <strong>Stock actual</strong>: refleja el estado en este momento (sin filtro de fecha). <strong>Movimientos</strong>: filtrados por el período seleccionado.
+              </div>
+            </div>
+
+            {/* ── Ficha de control por técnico ── */}
+            <div style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ ...sectionTitleStyle, marginTop: 0, marginBottom: 4 }}>Ficha de control por técnico</h3>
+                  <div style={{ fontSize: 12, color: "#6b7280" }}>
+                    Equipos y materiales asignados vs liquidados con totales en dinero. Usa la misma configuración de precios del reporte general.
+                  </div>
+                </div>
+                <button type="button" disabled={fichaRptLoading}
+                  style={{ background: fichaRptLoading ? "#94a3b8" : "#1e293b", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: fichaRptLoading ? "not-allowed" : "pointer" }}
+                  onClick={() => void imprimirFichaTecnico()}>
+                  {fichaRptLoading ? "⏳ Generando..." : "PDF ficha técnico"}
+                </button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Desde</label>
+                  <input type="date" value={fichaRptDesde} onChange={(e) => setFichaRptDesde(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Hasta</label>
+                  <input type="date" value={fichaRptHasta} onChange={(e) => setFichaRptHasta(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13 }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: "#6b7280", display: "block", marginBottom: 3 }}>Técnico</label>
+                  <select value={fichaRptTecnico} onChange={(e) => setFichaRptTecnico(e.target.value)}
+                    style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, minWidth: 200 }}>
+                    <option value="TODOS">Todos</option>
+                    {[...new Set(liquidaciones.map((l) => String(l.liquidacion?.tecnicoLiquida || l.tecnico || "")).filter(Boolean))].sort().map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 10, background: "#f8fafc", borderRadius: 6, padding: "6px 10px", border: "1px solid #e5e7eb" }}>
+                ℹ️ Los precios (costo/venta/margen) se toman de <strong>⚙ Configurar reporte</strong>. Asegúrate de tener la configuración actualizada antes de generar.
               </div>
             </div>
 
