@@ -1188,10 +1188,13 @@ export default function SidebarApp() {
         setAgregando(false); return;
       }
       const nuevoTel = telActual && telActual !== "EMPTY" ? `${telActual},${rawPhone}` : rawPhone;
-      const { error: updErr } = await supabase
+      let updQ = supabase
         .from("mikrowisp_clientes")
         .update({ telefonos: nuevoTel })
         .eq("mikrowisp_id", dniSel.mikrowisp_id);
+      if (dniSel.nodo !== null && dniSel.nodo !== undefined) updQ = updQ.eq("nodo", dniSel.nodo);
+      else updQ = updQ.is("nodo", null);
+      const { error: updErr } = await updQ;
       if (updErr) throw updErr;
       notify("✅ Número agregado");
       await verInfoCliente({ ...dniSel, telefonos: nuevoTel });
@@ -1793,9 +1796,9 @@ export default function SidebarApp() {
           {dniResultados.length > 0 && (
             <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:8 }}>
               {dniResultados.map((row, idx) => {
-                const sel = dniSel?.mikrowisp_id === row.mikrowisp_id;
+                const sel = dniSel?.mikrowisp_id === row.mikrowisp_id && dniSel?.nodo === row.nodo;
                 return (
-                  <div key={row.mikrowisp_id} onClick={() => setDniSel(sel ? null : row)}
+                  <div key={`${row.mikrowisp_id}-${row.nodo}`} onClick={() => setDniSel(sel ? null : row)}
                     style={{ background: sel ? T.accent : idx % 2 === 0 ? "#fff" : T.bg,
                       borderBottom: idx < dniResultados.length - 1 ? `1px solid ${T.border}` : "none",
                       padding:"8px 12px", cursor:"pointer",
