@@ -9,6 +9,16 @@ const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
 const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
+const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+const MKW_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
+async function mkwDirect(esDim, endpoint, body) {
+  const base = DIAGNO_BASE || "";
+  const url = esDim ? `${base}/api/mikrowisp-nod04/${endpoint}` : `${base}/api/mikrowisp/${endpoint}`;
+  const token = esDim ? MKW_NOD04_TOKEN : MKW_TOKEN;
+  const res = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token, ...body }) });
+  const json = await res.json().catch(()=>({}));
+  return json;
+}
 const ESTADOS_IGNORAR = ["pagado","PAGADO","paid","anulado","ANULADO","cancelled","canceled"];
 // ─── Tokens por agente ───────────────────────────────────────────────────────
 const AGENTES = {
@@ -942,25 +952,36 @@ export default function SidebarApp() {
     const dni = String(mwCliSupa.dni||"").replace(/\D/g,"");
     if (!dni) return setMwMsg("El cliente no tiene DNI.");
     setMwAgregando(true); setMwMsg("");
+    const extraerId = (r) =>
+      r?.datos?.[0]?.id || r?.data?.[0]?.id ||
+      r?.idcliente || r?.id_cliente || r?.id ||
+      r?.datos?.id || r?.data?.id;
     try {
-      const nodoNum = MW_NODO_MAP[mwCliSupa.nodo] ?? 1;
       const esDim = mwEsDim(mwCliSupa.nodo);
-      const check = await mkwProxy(esDim?5:nodoNum, "GetClientsDetails", { cedula: dni });
-      const existe = check?.datos?.[0]?.id || check?.data?.[0]?.id;
+      // Verificar si ya existe (igual que App.jsx: directo al backend diagno)
+      const check = await mkwDirect(esDim, "GetClientsDetails", { cedula: dni });
+      const existe = extraerId(check);
       if (existe) {
         setMwMkwId(existe);
         await mwCargarPerfiles(mwCliSupa.nodo, existe);
         setMwStep(2);
         return;
       }
-      const add = await mkwProxy(esDim?5:nodoNum, "NewUser", {
+      // Crear cliente nuevo
+      const add = await mkwDirect(esDim, "NewUser", {
         nombre: String(mwCliSupa.nombre||"").trim(), cedula: dni,
         correo: "", movil: String(mwCliSupa.celular||"").trim(),
         direccion_principal: "", codigo: dni,
       });
-      const nuevoId = add?.idcliente || add?.id_cliente || add?.id || add?.datos?.id;
-      if (!nuevoId) throw new Error(add?.mensaje || "Sin ID de respuesta");
-      await mkwProxy(esDim?5:nodoNum, "UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } });
+      if (add?.estado === "error") throw new Error(add?.mensaje || "Error Mikrowisp");
+      let nuevoId = extraerId(add);
+      // Si no devuelve ID, re-buscar (cliente ya existía)
+      if (!nuevoId) {
+        const retry = await mkwDirect(esDim, "GetClientsDetails", { cedula: dni });
+        nuevoId = extraerId(retry);
+      }
+      if (!nuevoId) throw new Error(add?.mensaje || add?.message || "Sin ID de respuesta");
+      await mkwDirect(esDim, "UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } });
       setMwMkwId(nuevoId);
       if (mwCliSupa.id) supabase.from("clientes").update({ en_mikrowisp: true }).eq("id", mwCliSupa.id).then(()=>{});
       await mwCargarPerfiles(mwCliSupa.nodo, nuevoId);
