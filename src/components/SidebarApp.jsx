@@ -367,7 +367,8 @@ export default function SidebarApp() {
   const [mwPerfiles,    setMwPerfiles]    = useState([]);
   const [mwRedes,       setMwRedes]       = useState([]);
   const [mwPlantillas,  setMwPlantillas]  = useState([]);
-  const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"" });
+  const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"", ip:"" });
+  const [mwIpLoad,      setMwIpLoad]      = useState(false);
   const [mwCreandoSvc,  setMwCreandoSvc]  = useState(false);
   const [mwSvcOk,       setMwSvcOk]       = useState(false);
   const [mwMsg,         setMwMsg]         = useState("");
@@ -1009,6 +1010,24 @@ export default function SidebarApp() {
     setMwMkwId(mkwId);
   }
 
+  async function mwBuscarIpMikrotik() {
+    const pppuser = mwForm.userppp;
+    if (!pppuser) return;
+    const nodo = mwCliSupa?.nodo || "Nod_01";
+    setMwIpLoad(true);
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo, userPppoe: pppuser, dni: "", cliente: "" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const ip = json?.mikrotik?.ip || "";
+      if (ip) setMwForm(f => ({ ...f, ip }));
+      else setMwMsg("No se encontró IP activa en MikroTik para este usuario.");
+    } catch { setMwMsg("Error al consultar MikroTik."); }
+    setMwIpLoad(false);
+  }
+
   async function mwCrearServicio() {
     if (!mwMkwId || !mwForm.id_perfil || !mwForm.id_red_ipv4) return setMwMsg("Selecciona plan y rango IPv4.");
     setMwCreandoSvc(true); setMwMsg("");
@@ -1021,6 +1040,7 @@ export default function SidebarApp() {
       if (mwForm.userppp)           payload.userppp           = mwForm.userppp;
       if (mwForm.passppp)           payload.passppp           = mwForm.passppp;
       if (mwForm.costo)             payload.costo             = Number(mwForm.costo);
+      if (mwForm.ip)                payload.ip                = mwForm.ip;
       if (mwForm.coordenadas)       payload.coordenadas       = mwForm.coordenadas;
       if (mwForm.fecha_instalacion) payload.fecha_instalacion = mwForm.fecha_instalacion;
       const res = await mkwProxy(n, "NewService", payload);
@@ -1994,6 +2014,23 @@ export default function SidebarApp() {
                       <div>
                         <label style={{ ...S.label }}>Fecha instalación</label>
                         <input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>IP asignada <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
+                      <div style={{ display:"flex", gap:6 }}>
+                        <input style={{...S.input,fontSize:12,fontFamily:"monospace",flex:1}} placeholder="192.168.x.x" value={mwForm.ip} onChange={e=>setMwForm(f=>({...f,ip:e.target.value}))} />
+                        <button onClick={mwBuscarIpMikrotik} disabled={mwIpLoad||!mwForm.userppp}
+                          style={{ padding:"8px 10px", background:mwIpLoad?"#d1fae5":"#f0fdf4", border:"1.5px solid #86efac", borderRadius:8, fontSize:11, fontWeight:700, color:"#15803d", cursor:"pointer", whiteSpace:"nowrap", opacity:(!mwForm.userppp)?0.5:1 }}>
+                          {mwIpLoad?"...":"🔍 IP MikroTik"}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>IP asignada <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
+                      <div style={{ display:"flex", gap:6 }}>
+                        <input style={{...S.input,fontSize:12,fontFamily:"monospace",flex:1}} placeholder="192.168.x.x" value={mwForm.ip} onChange={e=>setMwForm(f=>({...f,ip:e.target.value}))} />
+                        <button onClick={mwBuscarIpMikrotik} disabled={mwIpLoad||!mwForm.userppp} style={{padding:"8px 10px",background:mwIpLoad?"#d1fae5":"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,fontWeight:700,color:"#15803d",cursor:"pointer",whiteSpace:"nowrap",opacity:(!mwForm.userppp)?0.5:1}}>{mwIpLoad?"...":"🔍 IP MikroTik"}</button>
                       </div>
                     </div>
                     <div>
@@ -3693,6 +3730,13 @@ export default function SidebarApp() {
                       <div><label style={{ ...S.label }}>Contraseña PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Costo mensual S/</label><input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Fecha instalación</label><input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} /></div>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>IP asignada <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
+                      <div style={{ display:"flex", gap:6 }}>
+                        <input style={{...S.input,fontSize:12,fontFamily:"monospace",flex:1}} placeholder="192.168.x.x" value={mwForm.ip} onChange={e=>setMwForm(f=>({...f,ip:e.target.value}))} />
+                        <button onClick={mwBuscarIpMikrotik} disabled={mwIpLoad||!mwForm.userppp} style={{padding:"8px 10px",background:mwIpLoad?"#d1fae5":"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,fontWeight:700,color:"#15803d",cursor:"pointer",whiteSpace:"nowrap",opacity:(!mwForm.userppp)?0.5:1}}>{mwIpLoad?"...":"🔍 IP MikroTik"}</button>
+                      </div>
                     </div>
                     <div>
                       <label style={{ ...S.label }}>Coordenadas <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
