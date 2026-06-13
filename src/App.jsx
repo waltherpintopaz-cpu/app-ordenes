@@ -19,6 +19,7 @@ import MkwEstadoPanel from "./components/MkwEstadoPanel";
 import WisproPanel from "./components/WisproPanel";
 import NapPanel from "./components/NapPanel";
 import RecordatoriosPanel from "./components/RecordatoriosPanel";
+import ReclamacionesPanel from "./components/ReclamacionesPanel";
 import FinanzasPanel from "./components/FinanzasPanel";
 import { isSupabaseConfigured, supabase } from "./supabaseClient";
 import LogsPanel from "./components/LogsPanel";
@@ -195,6 +196,7 @@ const MENU_VISTAS_WEB = [
   { key: "nap", label: "Cajas NAP" },
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "recordatorios", label: "Recordatorios" },
+  { key: "reclamaciones", label: "Libro de Reclamos" },
   { key: "logs", label: "Logs" },
   { key: "monitorSenales", label: "Monitor Señales", gestoraVisible: true },
   { key: "noc", label: "NOC Equipos DIM" },
@@ -277,6 +279,7 @@ const MENU_LUCIDE_ICONS = {
   monitorSenales:      Signal,
   logs:                ScrollText,
   recordatorios:       Bell,
+  reclamaciones:       ScrollText,
   iptv:                Tv,
   finanzas:            BarChart2,
   bot:                 Cpu,
@@ -20066,6 +20069,10 @@ export default function App() {
 
         {vistaActiva === "recordatorios" && (
           <RecordatoriosPanel sessionUser={usuarioSesion} />
+        )}
+
+        {vistaActiva === "reclamaciones" && (
+          <ReclamacionesPanel />
         )}
 
         {vistaActiva === "logs" && esAdminSesion && (
