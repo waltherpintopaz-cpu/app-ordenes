@@ -358,6 +358,7 @@ export default function SidebarApp() {
   const [mwBusqDesde,    setMwBusqDesde]    = useState("");
   const [mwBusqHasta,    setMwBusqHasta]    = useState("");
   const [mwBusqLoad,     setMwBusqLoad]     = useState(false);
+  const [mwBusqEliminados, setMwBusqEliminados] = useState(false);
   const [mwResultados,   setMwResultados]   = useState([]);
   const [mwCliSupa,     setMwCliSupa]     = useState(null);   // cliente encontrado en Supabase
   const [mwStep,        setMwStep]        = useState(0);      // 0=buscar 1=agregar 2=servicio 3=ok
@@ -921,9 +922,10 @@ export default function SidebarApp() {
       let query = supabase.from("clientes")
         .select("id,nombre,dni,celular,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
         .in("nodo", MW_NODOS_OK)
-        .or("en_mikrowisp.is.null,en_mikrowisp.eq.false")
         .order("fecha_registro", { ascending: false })
         .limit(50);
+      if (!mwBusqEliminados) query = query.or("en_mikrowisp.is.null,en_mikrowisp.eq.false");
+      else query = query.eq("en_mikrowisp", true);
       if (q) {
         const isNum = /^\d+$/.test(q);
         query = isNum ? query.ilike("dni", `%${q}%`) : query.ilike("nombre", `%${q}%`);
@@ -1891,15 +1893,19 @@ export default function SidebarApp() {
                           value={mwBusqHasta} onChange={e=>setMwBusqHasta(e.target.value)} />
                       </div>
                     </div>
+                    <button onClick={() => { setMwBusqEliminados(v=>!v); setMwResultados([]); setMwMsg(""); }}
+                      style={{ ...S.btnOut, fontSize:11, color: mwBusqEliminados?"#dc2626":"#92400e", borderColor: mwBusqEliminados?"#fca5a5":"#fcd34d", background: mwBusqEliminados?"#fff5f5":"#fffbeb" }}>
+                      {mwBusqEliminados ? "✕ Ocultar eliminados" : "🗑 Ver eliminados de MW"}
+                    </button>
                     <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta)}
-                      style={{ ...S.btn(T.blue), opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta))?0.5:1 }}>
-                      {mwBusqLoad?"Buscando...":"🔍 Buscar pendientes"}
+                      style={{ ...S.btn(mwBusqEliminados?"#dc2626":T.blue), opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta))?0.5:1 }}>
+                      {mwBusqLoad?"Buscando...": mwBusqEliminados?"🔍 Buscar eliminados":"🔍 Buscar pendientes"}
                     </button>
                     {/* Lista resultados */}
                     {mwResultados.length > 0 && (
-                      <div style={{ border:`1px solid #fcd34d`, borderRadius:6, overflow:"hidden" }}>
-                        <div style={{ padding:"6px 10px", background:"#fffbeb", borderBottom:`1px solid #fcd34d`, fontSize:10, fontWeight:700, color:"#92400e" }}>
-                          {mwResultados.length} pendiente{mwResultados.length!==1?"s":""} — click para seleccionar
+                      <div style={{ border:`1px solid ${mwBusqEliminados?"#fca5a5":"#fcd34d"}`, borderRadius:6, overflow:"hidden" }}>
+                        <div style={{ padding:"6px 10px", background: mwBusqEliminados?"#fff5f5":"#fffbeb", borderBottom:`1px solid ${mwBusqEliminados?"#fca5a5":"#fcd34d"}`, fontSize:10, fontWeight:700, color: mwBusqEliminados?"#dc2626":"#92400e" }}>
+                          {mwResultados.length} {mwBusqEliminados?"eliminado":"pendiente"}{mwResultados.length!==1?"s":""} — click para seleccionar
                         </div>
                         {mwResultados.map((c, i) => (
                           <div key={c.id||c.dni} onClick={() => mwSeleccionarCliente(c)}
@@ -3607,19 +3613,23 @@ export default function SidebarApp() {
                       <div><label style={S.label}>Desde</label><input type="date" style={{ ...S.input, fontSize:12 }} value={mwBusqDesde} onChange={e=>setMwBusqDesde(e.target.value)} /></div>
                       <div><label style={S.label}>Hasta</label><input type="date" style={{ ...S.input, fontSize:12 }} value={mwBusqHasta} onChange={e=>setMwBusqHasta(e.target.value)} /></div>
                     </div>
+                    <button onClick={() => { setMwBusqEliminados(v=>!v); setMwResultados([]); setMwMsg(""); }}
+                      style={{ ...S.btnOut, fontSize:11, color: mwBusqEliminados?"#dc2626":"#92400e", borderColor: mwBusqEliminados?"#fca5a5":"#fcd34d", background: mwBusqEliminados?"#fff5f5":"#fffbeb" }}>
+                      {mwBusqEliminados ? "✕ Ocultar eliminados" : "🗑 Ver eliminados de MW"}
+                    </button>
                     <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta)}
-                      style={{ ...S.btn(T.blue), opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta))?0.5:1 }}>
-                      {mwBusqLoad?"Buscando...":"🔍 Buscar pendientes"}
+                      style={{ ...S.btn(mwBusqEliminados?"#dc2626":T.blue), opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta))?0.5:1 }}>
+                      {mwBusqLoad?"Buscando...": mwBusqEliminados?"🔍 Buscar eliminados":"🔍 Buscar pendientes"}
                     </button>
                     {mwResultados.length > 0 && (
-                      <div style={{ border:`1px solid #fcd34d`, borderRadius:6, overflow:"hidden" }}>
-                        <div style={{ padding:"6px 10px", background:"#fffbeb", borderBottom:`1px solid #fcd34d`, fontSize:10, fontWeight:700, color:"#92400e" }}>
-                          {mwResultados.length} pendiente{mwResultados.length!==1?"s":""} — click para seleccionar
+                      <div style={{ border:`1px solid ${mwBusqEliminados?"#fca5a5":"#fcd34d"}`, borderRadius:6, overflow:"hidden" }}>
+                        <div style={{ padding:"6px 10px", background: mwBusqEliminados?"#fff5f5":"#fffbeb", borderBottom:`1px solid ${mwBusqEliminados?"#fca5a5":"#fcd34d"}`, fontSize:10, fontWeight:700, color: mwBusqEliminados?"#dc2626":"#92400e" }}>
+                          {mwResultados.length} {mwBusqEliminados?"eliminado":"pendiente"}{mwResultados.length!==1?"s":""} — click para seleccionar
                         </div>
                         {mwResultados.map((c, i) => (
                           <div key={c.id||c.dni} onClick={() => mwSeleccionarCliente(c)}
-                            style={{ padding:"8px 10px", cursor:"pointer", background: i%2===0?"#fff":"#fffbeb",
-                              borderBottom: i<mwResultados.length-1?`1px solid #fde68a`:"none",
+                            style={{ padding:"8px 10px", cursor:"pointer", background: i%2===0?"#fff": mwBusqEliminados?"#fff5f5":"#fffbeb",
+                              borderBottom: i<mwResultados.length-1?`1px solid ${mwBusqEliminados?"#fecaca":"#fde68a"}`:"none",
                               display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                             <div>
                               <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
