@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
+const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
+const BASE_URL  = window.location.origin;
+
 const ESTADOS = [
   { key: "pendiente",   label: "Pendiente",   color: "#D97706", bg: "#FFFBEB", border: "#FDE68A" },
   { key: "en_proceso",  label: "En proceso",  color: "#2563EB", bg: "#EFF6FF", border: "#BFDBFE" },
@@ -73,15 +76,45 @@ export default function ReclamacionesPanel() {
   async function guardarRespuesta(id) {
     if (!respuesta.trim()) return notify("Escribe una respuesta primero", false);
     setGuardando(true);
+    const ahora = new Date().toISOString();
     const { error } = await supabase
       .from("libro_reclamaciones")
-      .update({ respuesta: respuesta.trim(), estado: "resuelto", fecha_respuesta: new Date().toISOString() })
+      .update({ respuesta: respuesta.trim(), estado: "resuelto", fecha_respuesta: ahora })
       .eq("id", id);
-    if (error) { notify("Error: " + error.message, false); }
-    else {
-      notify("Respuesta guardada y marcado como resuelto");
-      setDetalle(d => d ? { ...d, respuesta: respuesta.trim(), estado: "resuelto" } : null);
-      setLista(l => l.map(r => r.id === id ? { ...r, respuesta: respuesta.trim(), estado: "resuelto" } : r));
+    if (error) { notify("Error: " + error.message, false); setGuardando(false); return; }
+
+    notify("Respuesta guardada — enviando WhatsApp...");
+    setDetalle(d => d ? { ...d, respuesta: respuesta.trim(), estado: "resuelto", fecha_respuesta: ahora } : null);
+    setLista(l => l.map(r => r.id === id ? { ...r, respuesta: respuesta.trim(), estado: "resuelto", fecha_respuesta: ahora } : r));
+
+    // Enviar WhatsApp al cliente
+    if (detalle?.telefono) {
+      const trackingLink = `${BASE_URL}/libro-reclamaciones?codigo=${detalle.codigo}`;
+      const nombreFmt = detalle.nombres
+        ? detalle.nombres.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+        : "cliente";
+      const texto =
+        `Estimado/a *${nombreFmt}*, le informamos que su *${detalle.tipo === "reclamo" ? "Reclamo" : "Queja"}* ha sido atendido.\n\n` +
+        `📋 *Código:* ${detalle.codigo}\n` +
+        `✅ *Estado:* Resuelto\n\n` +
+        `*Respuesta de Americanet:*\n${respuesta.trim()}\n\n` +
+        `Puede ver su constancia completa y descargarla en PDF aquí:\n🔗 ${trackingLink}\n\n` +
+        `Si no está conforme puede acudir a INDECOPI: 224-7777\n\n` +
+        `Atentamente,\n*Americanet Fiber Solution S.A.C.*`;
+
+      try {
+        await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accion: "ChatwootMessage",
+            payload: { phone: detalle.telefono, message: texto, account_id: "1" },
+          }),
+        });
+        notify("✅ Respuesta guardada y WhatsApp enviado al cliente");
+      } catch {
+        notify("Respuesta guardada (WhatsApp no pudo enviarse)", false);
+      }
     }
     setGuardando(false);
   }
