@@ -3669,6 +3669,97 @@ export default function SidebarApp() {
                     {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
                   </div>
                 )}
+
+                {/* PASO 2 — Crear servicio */}
+                {mwStep===2 && (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#16a34a" }}>✓ Cliente en Mikrowisp (ID: {mwMkwId})</div>
+                    <div>
+                      <label style={{ ...S.label }}>Plan *</label>
+                      <select style={S.select} value={mwForm.id_perfil} onChange={e=>{ const pid=e.target.value; const pl=mwPerfiles.find(p=>String(p.id)===pid); setMwForm(f=>({...f,id_perfil:pid,costo:pl?String(pl.costo):f.costo})); }}>
+                        <option value="">— Seleccionar plan —</option>
+                        {mwPerfiles.map(p=><option key={p.id} value={p.id}>{p.plan} — S/{p.costo}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>Rango IPv4 *</label>
+                      <select style={S.select} value={mwForm.id_red_ipv4} onChange={e=>setMwForm(f=>({...f,id_red_ipv4:e.target.value}))}>
+                        <option value="">— Seleccionar rango —</option>
+                        {mwRedes.map(r=><option key={r.id} value={r.id}>{r.red} ({r.disponibles??'?'} disp.)</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div><label style={{ ...S.label }}>Usuario PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.userppp} onChange={e=>setMwForm(f=>({...f,userppp:e.target.value}))} /></div>
+                      <div><label style={{ ...S.label }}>Contraseña PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} /></div>
+                      <div><label style={{ ...S.label }}>Costo mensual S/</label><input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} /></div>
+                      <div><label style={{ ...S.label }}>Fecha instalación</label><input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} /></div>
+                    </div>
+                    <div>
+                      <label style={{ ...S.label }}>Coordenadas <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
+                      <input style={{...S.input,fontSize:11,fontFamily:"monospace"}} placeholder="-16.438490, -71.598208" value={mwForm.coordenadas} onChange={e=>setMwForm(f=>({...f,coordenadas:e.target.value}))} />
+                    </div>
+                    <button onClick={mwCrearServicio} disabled={mwCreandoSvc||!mwForm.id_perfil||!mwForm.id_red_ipv4}
+                      style={{ ...S.btn("#16a34a"), opacity:(mwCreandoSvc||!mwForm.id_perfil||!mwForm.id_red_ipv4)?0.5:1 }}>
+                      {mwCreandoSvc?"Creando servicio...":"✓ Crear Servicio"}
+                    </button>
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+
+                {/* PASO 3 — Facturas */}
+                {mwStep===3 && (() => {
+                  const c="#7c3aed", bo="#d8b4fe";
+                  const empresa=mwEsDim(mwCliSupa?.nodo)?"dimfiber":"americanet";
+                  const pasarelas=PASARELAS[empresa]||PASARELAS.americanet;
+                  const instDate=mwProrrFecha?new Date(mwProrrFecha+"T00:00:00"):null;
+                  const venceDate=mwProrrVence?new Date(mwProrrVence+"T00:00:00"):null;
+                  const prec=parseFloat(mwProrrPrec)||0;
+                  let diasSvc=0,diasPer=0,montoAuto="";
+                  if(instDate&&venceDate&&venceDate>instDate){diasSvc=Math.round((venceDate-instDate)/86400000);const ini=new Date(venceDate);ini.setMonth(ini.getMonth()-1);diasPer=Math.round((venceDate-ini)/86400000);if(prec>0&&diasPer>0)montoAuto=String(Math.round(prec*diasSvc/diasPer));}
+                  return(<div style={{display:"grid",gap:8}}>
+                    <div style={{display:"flex",gap:4}}>{[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(<button key={s} onClick={()=>setMwFactSub(s)} style={{flex:1,padding:"6px",borderRadius:6,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",background:mwFactSub===s?c:"#f5f3ff",color:mwFactSub===s?"#fff":c}}>{mwFactDone&&s===1?"✓ "+l:l}</button>))}</div>
+                    {mwFactSub===1&&(<div style={{display:"grid",gap:8}}>
+                      <div style={{display:"flex",gap:4}}>{[{m:"normal",l:"📄 Normal"},{m:"libre",l:"🎁 Libre/Promo"}].map(({m,l})=>(<button key={m} onClick={()=>setMwFactModo(m)} style={{flex:1,padding:"5px",borderRadius:5,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",background:mwFactModo===m?c:"#f5f3ff",color:mwFactModo===m?"#fff":c}}>{l}</button>))}</div>
+                      {mwFactModo==="libre"&&<input style={{...S.input,fontSize:12}} placeholder="Ej: Instalación Plan 100Mbps" value={mwFactDesc} onChange={e=>setMwFactDesc(e.target.value)} />}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        <div><label style={S.label}>Monto S/ *</label><input type="number" step="0.01" style={{...S.input,fontSize:12}} placeholder="50.00" value={mwFactMonto} onChange={e=>setMwFactMonto(e.target.value)} /></div>
+                        <div><label style={S.label}>Vencimiento *</label><input type="date" style={{...S.input,fontSize:12}} value={mwFactVence} onChange={e=>setMwFactVence(e.target.value)} /></div>
+                      </div>
+                      <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:600,color:c}}><input type="checkbox" checked={mwFactPagada} onChange={e=>setMwFactPagada(e.target.checked)} style={{width:14,height:14}} />Registrar como pagada</label>
+                      {mwFactPagada&&<select style={{...S.select,fontSize:12}} value={mwFactPasarela} onChange={e=>setMwFactPasarela(e.target.value)}>{pasarelas.map(p=><option key={p}>{p}</option>)}</select>}
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={mwCrearFactura} disabled={mwFactCreando||!mwFactMonto||!mwFactVence||(mwFactModo==="libre"&&!mwFactDesc)} style={{...S.btn(c),flex:1,opacity:(mwFactCreando||!mwFactMonto||!mwFactVence)?0.5:1}}>{mwFactCreando?"Creando...":"✓ Crear y continuar →"}</button>
+                        <button onClick={()=>{setMwFactDone(true);setMwFactSub(2);setMwProrrFecha(mwForm.fecha_instalacion);setMwProrrPrec(mwForm.costo||String(mwCliSupa?.precio_plan||""));}} style={{...S.btnOut}}>Omitir</button>
+                      </div>
+                    </div>)}
+                    {mwFactSub===2&&(<div style={{display:"grid",gap:8}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                        <div><label style={S.label}>F. Instalación</label><input type="date" style={{...S.input,fontSize:11}} value={mwProrrFecha} onChange={e=>setMwProrrFecha(e.target.value)} /></div>
+                        <div><label style={S.label}>Próx. Vence *</label><input type="date" style={{...S.input,fontSize:11}} value={mwProrrVence} onChange={e=>setMwProrrVence(e.target.value)} /></div>
+                        <div><label style={S.label}>Precio S/</label><input type="number" step="0.01" style={{...S.input,fontSize:11}} value={mwProrrPrec} onChange={e=>setMwProrrPrec(e.target.value)} /></div>
+                      </div>
+                      {montoAuto&&<div style={{background:"#f5f3ff",border:`1px solid ${bo}`,borderRadius:6,padding:"8px 10px",fontSize:11,color:c,fontWeight:700}}>S/{prec.toFixed(2)} × {diasSvc}d / {diasPer}d = <span style={{fontSize:14}}>S/{montoAuto}</span></div>}
+                      <div><label style={S.label}>Monto prorrateo S/ <span style={{fontWeight:400,textTransform:"none"}}>(editable)</span></label><input type="number" step="0.01" style={{...S.input,fontSize:12}} placeholder={montoAuto||"Auto-calculado"} value={mwProrrMonto} onChange={e=>setMwProrrMonto(e.target.value)} /></div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={mwCrearProrrateo} disabled={mwFactCreando||!mwProrrVence||!(parseFloat(mwProrrMonto||montoAuto)>0)} style={{...S.btn(c),flex:1,opacity:(mwFactCreando||!mwProrrVence)?0.5:1}}>{mwFactCreando?"Creando...":"✓ Crear prorrateo →"}</button>
+                        <button onClick={()=>setMwStep(4)} style={{...S.btnOut}}>Omitir</button>
+                      </div>
+                    </div>)}
+                    {mwMsg&&<div style={{fontSize:11,color:T.red,fontWeight:600}}>{mwMsg}</div>}
+                  </div>);
+                })()}
+
+                {/* PASO 4 — Sync */}
+                {mwStep===4 && (
+                  <div style={{ display:"grid", gap:10 }}>
+                    <div style={{ fontSize:11, color:"#64748b" }}>Sincroniza los datos del cliente entre Supabase y Mikrowisp para que n8n los use.</div>
+                    {mwSyncDone?(<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:8,padding:"12px",display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>✅</span><div style={{fontWeight:800,fontSize:12,color:"#c2410c"}}>Sincronizado correctamente</div></div>):(<button onClick={mwSincronizar} disabled={mwSyncLoad} style={{...S.btn("#0369a1"),opacity:mwSyncLoad?0.6:1}}>{mwSyncLoad?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}</button>)}
+                    <button onClick={mwEnviarSms} disabled={mwSmsSent} style={{...S.btn("#7c3aed"),opacity:mwSmsSent?0.6:1}}>{mwSmsSent?"✓ SMS enviado":"💬 Enviar SMS Bienvenida"}</button>
+                    {mwMsg&&<div style={{fontSize:11,color:mwMsg.startsWith("✓")?T.green:T.red,fontWeight:600}}>{mwMsg}</div>}
+                    <button onClick={mwReset} style={{...S.btn(mwSyncDone?"#16a34a":"#6b7280")}}>{mwSyncDone?"✅ Finalizar":"Cerrar"}</button>
+                  </div>
+                )}
+
               </div>
             </div>
           )}
