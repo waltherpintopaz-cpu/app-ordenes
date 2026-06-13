@@ -1992,6 +1992,7 @@ export default function App() {
   const [mkwPendientesDni,  setMkwPendientesDni]      = useState("");
   const [mkwPendientesFechaDesde, setMkwPendientesFechaDesde] = useState("");
   const [mkwPendientesFechaHasta, setMkwPendientesFechaHasta] = useState("");
+  const [mkwMostrarEliminados, setMkwMostrarEliminados] = useState(false);
   const [modalIptv, setModalIptv]       = useState(null);  // cliente objeto
   const [iptvForm, setIptvForm]         = useState({ usuario: "", perfil: "", notas: "" });
   const [iptvSaving, setIptvSaving]     = useState(false);
@@ -19560,9 +19561,11 @@ export default function App() {
               {mkwPendientesOpen && (() => {
                 const pendientes = clientes.filter(c => {
                   const nodoOk = MIKROWISP_NODOS.includes(String(c.nodo || ""));
-                  const noAgregado = !c.en_mikrowisp && !mikrowisp_ok[String(c.id || c.dni || "")] && !mkwCliOk[String(c.id || c.dni || "")];
                   const tieneDni = String(c.dni || "").trim().length > 0;
-                  if (!nodoOk || !noAgregado || !tieneDni) return false;
+                  if (!nodoOk || !tieneDni) return false;
+                  const noAgregado = !c.en_mikrowisp && !mikrowisp_ok[String(c.id || c.dni || "")] && !mkwCliOk[String(c.id || c.dni || "")];
+                  const eliminado  = mkwMostrarEliminados && c.en_mikrowisp;
+                  if (!noAgregado && !eliminado) return false;
                   if (mkwPendientesDni.trim()) {
                     const q = mkwPendientesDni.trim().toLowerCase();
                     if (!String(c.dni || "").toLowerCase().includes(q) && !String(c.nombre || "").toLowerCase().includes(q)) return false;
@@ -19606,6 +19609,10 @@ export default function App() {
                           Limpiar
                         </button>
                       )}
+                      <button onClick={() => setMkwMostrarEliminados(v => !v)}
+                        style={{ padding: "8px 12px", background: mkwMostrarEliminados ? "#fef2f2" : "#fff", border: `1.5px solid ${mkwMostrarEliminados ? "#fca5a5" : "#fcd34d"}`, borderRadius: 9, fontSize: 12, fontWeight: 600, color: mkwMostrarEliminados ? "#dc2626" : "#92400e", cursor: "pointer", whiteSpace: "nowrap" }}>
+                        {mkwMostrarEliminados ? "✕ Ocultar eliminados" : "🗑 Ver eliminados de MW"}
+                      </button>
                     </div>
 
                     {/* Tabla */}
@@ -19626,9 +19633,14 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {pendientes.slice(0, 50).map(c => (
-                              <tr key={c.id || c.dni} style={{ borderBottom: "1px solid #fef3c7" }}>
-                                <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nombre || "—"}</td>
+                            {pendientes.slice(0, 50).map(c => {
+                              const esEliminado = c.en_mikrowisp;
+                              return (
+                              <tr key={c.id || c.dni} style={{ borderBottom: "1px solid #fef3c7", background: esEliminado ? "#fff5f5" : undefined }}>
+                                <td style={{ padding: "8px 10px", fontWeight: 600, color: "#0f172a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {c.nombre || "—"}
+                                  {esEliminado && <span style={{ marginLeft: 6, fontSize: 10, background: "#fecaca", color: "#dc2626", borderRadius: 4, padding: "1px 5px", fontWeight: 700 }}>eliminado</span>}
+                                </td>
                                 <td style={{ padding: "8px 10px", fontFamily: "monospace", color: "#475569" }}>{c.dni || "—"}</td>
                                 <td style={{ padding: "8px 10px" }}>
                                   <span style={{ background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 700 }}>{c.nodo}</span>
@@ -19641,12 +19653,13 @@ export default function App() {
                                 </td>
                                 <td style={{ padding: "8px 10px" }}>
                                   <button onClick={() => void abrirMkwWizard(c)}
-                                    style={{ padding: "6px 14px", background: "#f59e0b", border: "none", borderRadius: 8, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                    Setup 🚀
+                                    style={{ padding: "6px 14px", background: esEliminado ? "#dc2626" : "#f59e0b", border: "none", borderRadius: 8, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    {esEliminado ? "Re-agregar 🔄" : "Setup 🚀"}
                                   </button>
                                 </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                         {pendientes.length > 50 && (
