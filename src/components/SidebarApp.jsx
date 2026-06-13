@@ -983,9 +983,13 @@ export default function SidebarApp() {
       }
       // Crear cliente nuevo
       const add = await mkwDirect(esDim, "NewUser", {
-        nombre: String(mwCliSupa.nombre||"").trim(), cedula: dni,
-        correo: "", movil: String(mwCliSupa.celular||"").trim(),
-        direccion_principal: "", codigo: dni,
+        nombre:               String(mwCliSupa.nombre||"").trim(),
+        cedula:               dni,
+        correo:               String(mwCliSupa.email||"").trim(),
+        telefono:             "",
+        movil:                String(mwCliSupa.celular||"").trim(),
+        direccion_principal:  String(mwCliSupa.direccion||"").trim(),
+        codigo:               dni,
       });
       if (add?.estado === "error") throw new Error(add?.mensaje || "Error Mikrowisp");
       let nuevoId = extraerId(add);
