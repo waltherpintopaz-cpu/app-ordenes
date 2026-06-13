@@ -2127,6 +2127,7 @@ export default function App() {
     const guardado = Number(localStorage.getItem("sessionIdleMinutes") || 30);
     return Number.isFinite(guardado) ? guardado : 30;
   });
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 900 : true);
   const [mostrarMenuSesion, setMostrarMenuSesion] = useState(false);
   const [cambiandoClave, setCambiandoClave] = useState(false);
   const [cambioClaveForm, setCambioClaveForm] = useState({ actual: "", nueva: "", confirmar: "" });
@@ -13473,6 +13474,8 @@ export default function App() {
 
   const isMobile = typeof window !== "undefined" ? window.innerWidth < 900 : false;
 
+  const navTo = (key) => { setVistaActiva(key); if (isMobile) setSidebarOpen(false); };
+
   const pageStyle = {
     minHeight: "100vh",
     background: "#f4f6fb",
@@ -13739,9 +13742,10 @@ export default function App() {
     minHeight: "100vh",
     background: "#f5f6fb",
     display: "grid",
-    gridTemplateColumns: isMobile ? "1fr" : "250px 1fr",
+    gridTemplateColumns: isMobile ? "1fr" : (sidebarOpen ? "250px 1fr" : "0px 1fr"),
     gridTemplateRows: "64px 1fr",
     gridTemplateAreas: isMobile ? `"topbar" "content"` : `"sidebar topbar" "sidebar content"`,
+    transition: "grid-template-columns 0.28s ease",
   };
 
   const topbarStyle = {
@@ -13784,14 +13788,32 @@ export default function App() {
     gap: "12px",
   };
 
-  const sidebarStyle = {
+  const sidebarStyle = isMobile ? {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "260px",
+    height: "100vh",
+    background: "#ffffff",
+    color: "#69728a",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 200,
+    transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
+    transition: "transform 0.28s ease",
+    boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.18)" : "none",
+    overflowY: "auto",
+  } : {
     gridArea: "sidebar",
     background: "#ffffff",
     color: "#69728a",
     borderRight: "none",
-    display: isMobile ? "none" : "flex",
+    display: "flex",
     flexDirection: "column",
     minHeight: "100vh",
+    overflow: "hidden",
+    width: sidebarOpen ? "250px" : "0px",
+    transition: "width 0.28s ease",
   };
 
   const sidebarHeaderStyle = {
@@ -14042,6 +14064,12 @@ export default function App() {
 
   return (
     <div style={appShellStyle}>
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 199 }}
+        />
+      )}
       <aside style={sidebarStyle}>
         <div style={sidebarHeaderStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
@@ -14076,7 +14104,7 @@ export default function App() {
                     key={`side-${item.key}`}
                     type="button"
                     style={sideHistorialAppsheetButtonStyle(isHistorialAppsheetActive)}
-                    onClick={() => setVistaActiva(item.key)}
+                    onClick={() => navTo(item.key)}
                   >
                     <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
@@ -14128,7 +14156,7 @@ export default function App() {
                     key={`side-${item.key}`}
                     type="button"
                     style={sideHistorialAppsheetButtonStyle(isReportesActive)}
-                    onClick={() => setVistaActiva("reportes")}
+                    onClick={() => navTo("reportes")}
                   >
                     <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
@@ -14170,7 +14198,7 @@ export default function App() {
                     key={`side-${item.key}`}
                     type="button"
                     style={sideHistorialAppsheetButtonStyle(isBotActive)}
-                    onClick={() => setVistaActiva("bot")}
+                    onClick={() => navTo("bot")}
                   >
                     <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
@@ -14208,7 +14236,7 @@ export default function App() {
 
             return (
               <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "2px" }}>
-                <button key={`side-${item.key}`} type="button" style={sideMenuButton(vistaActiva === item.key)} onClick={() => setVistaActiva(item.key)}>
+                <button key={`side-${item.key}`} type="button" style={sideMenuButton(vistaActiva === item.key)} onClick={() => navTo(item.key)}>
                   <span style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-start" }}>
                     {renderSidebarIcon(item.key, vistaActiva === item.key)}
                     <span>{item.label}</span>
@@ -14221,6 +14249,16 @@ export default function App() {
       </aside>
 
       <header style={topbarStyle}>
+        <button
+          type="button"
+          onClick={() => setSidebarOpen((v) => !v)}
+          style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", padding: "8px 10px", cursor: "pointer", display: "flex", flexDirection: "column", gap: "4px", marginRight: "auto" }}
+          title={sidebarOpen ? "Cerrar menú" : "Abrir menú"}
+        >
+          <span style={{ display: "block", width: "18px", height: "2px", background: "#fff", borderRadius: "2px", transition: "transform 0.2s, opacity 0.2s", transform: sidebarOpen ? "rotate(45deg) translate(4px, 4px)" : "none" }} />
+          <span style={{ display: "block", width: "18px", height: "2px", background: "#fff", borderRadius: "2px", transition: "opacity 0.2s", opacity: sidebarOpen ? 0 : 1 }} />
+          <span style={{ display: "block", width: "18px", height: "2px", background: "#fff", borderRadius: "2px", transition: "transform 0.2s, opacity 0.2s", transform: sidebarOpen ? "rotate(-45deg) translate(4px, -4px)" : "none" }} />
+        </button>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <div style={{ position: "relative" }} ref={sessionMenuRef}>
             <button type="button" onClick={() => setMostrarMenuSesion((prev) => !prev)} style={sessionMenuButtonStyle}>

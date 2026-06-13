@@ -3557,6 +3557,92 @@ export default function SidebarApp() {
           </div>
         )}
 
+        {/* ══ SETUP MIKROWISP ══ */}
+        <div style={{ padding:"8px 8px 0" }}>
+          <div style={S.divider} />
+          <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
+            style={{ ...S.btn(mwOpen?"#6b7280":"#d97706"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
+            🚀 {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
+          </button>
+          {mwOpen && (
+            <div style={{ border:`1.5px solid #fcd34d`, borderRadius:8, overflow:"hidden", marginBottom:8 }}>
+              <div style={{ background:"#fffbeb", padding:"8px 12px", borderBottom:`1px solid #fcd34d`, display:"flex", gap:2 }}>
+                {["Buscar","Agregar","Servicio","Facturas","Sync"].map((s,i) => (
+                  <div key={i} style={{ flex:1, textAlign:"center", fontSize:9, fontWeight:700,
+                    color: mwStep===i?"#d97706": mwStep>i?"#16a34a":"#94a3b8",
+                    borderBottom:`2px solid ${mwStep===i?"#d97706":mwStep>i?"#16a34a":"transparent"}`, paddingBottom:4 }}>
+                    {mwStep>i?"✓":""}{s}
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding:"12px" }}>
+                {mwStep===0 && (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <div style={{ fontSize:11, color:"#92400e" }}>Pendientes MW — Nod_01 · Nod_03 · Nod_04 · sin registrar</div>
+                    <input style={{ ...S.input, fontSize:12 }} placeholder="DNI o nombre (opcional)..."
+                      value={mwBusqVal} onChange={e=>setMwBusqVal(e.target.value)}
+                      onKeyDown={e=>e.key==="Enter" && mwBuscarEnClientes()} />
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div><label style={S.label}>Desde</label><input type="date" style={{ ...S.input, fontSize:12 }} value={mwBusqDesde} onChange={e=>setMwBusqDesde(e.target.value)} /></div>
+                      <div><label style={S.label}>Hasta</label><input type="date" style={{ ...S.input, fontSize:12 }} value={mwBusqHasta} onChange={e=>setMwBusqHasta(e.target.value)} /></div>
+                    </div>
+                    <button onClick={mwBuscarEnClientes} disabled={mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta)}
+                      style={{ ...S.btn(T.blue), opacity:(mwBusqLoad||(!mwBusqVal.trim()&&!mwBusqDesde&&!mwBusqHasta))?0.5:1 }}>
+                      {mwBusqLoad?"Buscando...":"🔍 Buscar pendientes"}
+                    </button>
+                    {mwResultados.length > 0 && (
+                      <div style={{ border:`1px solid #fcd34d`, borderRadius:6, overflow:"hidden" }}>
+                        <div style={{ padding:"6px 10px", background:"#fffbeb", borderBottom:`1px solid #fcd34d`, fontSize:10, fontWeight:700, color:"#92400e" }}>
+                          {mwResultados.length} pendiente{mwResultados.length!==1?"s":""} — click para seleccionar
+                        </div>
+                        {mwResultados.map((c, i) => (
+                          <div key={c.id||c.dni} onClick={() => mwSeleccionarCliente(c)}
+                            style={{ padding:"8px 10px", cursor:"pointer", background: i%2===0?"#fff":"#fffbeb",
+                              borderBottom: i<mwResultados.length-1?`1px solid #fde68a`:"none",
+                              display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <div>
+                              <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
+                              <div style={{ fontSize:10, color:"#64748b", marginTop:1 }}>DNI {c.dni} · <span style={{ color:"#0369a1", fontWeight:600 }}>{c.nodo}</span> · {String(c.fecha_registro||"").split("T")[0]}</div>
+                            </div>
+                            <span style={{ fontSize:10, color:"#d97706", fontWeight:700 }}>Setup →</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+                {mwStep===1 && mwCliSupa && (
+                  <div style={{ display:"grid", gap:8 }}>
+                    <div style={{ background:"#f0f9ff", border:`1px solid #bae6fd`, borderRadius:6, padding:"10px 12px" }}>
+                      <div style={{ fontWeight:800, fontSize:13, color:"#0f172a", marginBottom:4 }}>{mwCliSupa.nombre}</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"3px 12px", fontSize:11, color:"#475569" }}>
+                        <span>DNI: <strong>{mwCliSupa.dni}</strong></span>
+                        <span>Nodo: <strong>{mwCliSupa.nodo}</strong></span>
+                        <span>Plan: <strong>{mwCliSupa.velocidad||"—"}</strong></span>
+                        <span>S/: <strong>{mwCliSupa.precio_plan||"—"}</strong></span>
+                        {mwCliSupa.celular && <span style={{gridColumn:"1/-1"}}>Tel: <strong>{mwCliSupa.celular}</strong></span>}
+                      </div>
+                    </div>
+                    {!MW_NODOS_OK.includes(String(mwCliSupa.nodo||"")) && (
+                      <div style={{ background:"#fef9c3", border:`1px solid #fde047`, borderRadius:6, padding:"8px 10px", fontSize:11, color:"#854d0e", fontWeight:600 }}>
+                        ⚠ Nodo {mwCliSupa.nodo} no habilitado para Mikrowisp (solo Nod_01, Nod_03, Nod_04).
+                      </div>
+                    )}
+                    {MW_NODOS_OK.includes(String(mwCliSupa.nodo||"")) && (
+                      <button onClick={mwAgregarMkw} disabled={mwAgregando} style={{ ...S.btn("#f59e0b"), opacity:mwAgregando?0.6:1 }}>
+                        {mwAgregando?"Agregando...":"➕ Agregar a Mikrowisp"}
+                      </button>
+                    )}
+                    <button onClick={()=>{setMwStep(0);setMwCliSupa(null);setMwMsg("");}} style={{ ...S.btnOut, textAlign:"center" }}>← Volver</button>
+                    {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ══ FOOTER ══ */}
         <div style={{ textAlign:"center", padding:"8px 0 14px" }}>
           <a href={`${cliente.empresa==="dimfiber"?"http://app.dimfiber.com":"https://americanet.club"}/index.php?r=clientes/view&id=${cliente.mikrowisp_id}`}
