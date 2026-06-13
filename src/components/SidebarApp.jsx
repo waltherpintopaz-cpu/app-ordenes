@@ -367,6 +367,7 @@ export default function SidebarApp() {
   const [mwPerfiles,    setMwPerfiles]    = useState([]);
   const [mwRedes,       setMwRedes]       = useState([]);
   const [mwPlantillas,  setMwPlantillas]  = useState([]);
+  const [mwPlantillaId, setMwPlantillaId] = useState(2);
   const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"", ip:"" });
   const [mwIpLoad,      setMwIpLoad]      = useState(false);
   const [mwWizardLiq,   setMwWizardLiq]   = useState([]);
@@ -1016,6 +1017,7 @@ export default function SidebarApp() {
     const redes = rR?.datos || (Array.isArray(rR)?rR:[]);
     const plants = plR?.plantillas || (Array.isArray(plR)?plR:[]);
     setMwPerfiles(perfs); setMwRedes(redes); setMwPlantillas(plants);
+    if (plants.length) setMwPlantillaId(plants[0].id);
     if (redes.length) setMwForm(f=>({...f, id_red_ipv4: String(redes[redes.length-1].id)}));
     setMwMkwId(mkwId);
   }
@@ -1073,7 +1075,7 @@ export default function SidebarApp() {
           }
         } catch { /* coordenadas no críticas */ }
       }
-      if (mwPlantillas.length) await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillas[0].id }).catch(()=>{});
+      await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillaId || 2 }).catch(()=>{});
       // Pre-llenar facturas
       const fechaInst = mwForm.fecha_instalacion || new Date().toISOString().split("T")[0];
       setMwFactVence(fechaInst);
@@ -2054,7 +2056,26 @@ export default function SidebarApp() {
                         {mwRedes.map(r=><option key={r.id} value={r.id}>{r.red} ({r.disponibles??'?'} disp.)</option>)}
                       </select>
                     </div>
+                    {mwPlantillas.length > 0 && (
+                      <div>
+                        <label style={{ ...S.label }}>Plantilla de facturación *</label>
+                        <select style={S.select} value={mwPlantillaId} onChange={e=>setMwPlantillaId(Number(e.target.value))}>
+                          {mwPlantillas.map(p => {
+                            const cfg = p.datos?.config || {};
+                            return <option key={p.id} value={p.id}>{p.nombre} — Día pago: {cfg.diapago} · Corte: {cfg.corteautomatico} días · {cfg.tipopago==="0"?"Prepago":"Postpago"}</option>;
+                          })}
+                        </select>
+                      </div>
+                    )}
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div>
+                        <label style={{ ...S.label }}>Fecha instalación</label>
+                        <input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} />
+                      </div>
+                      <div>
+                        <label style={{ ...S.label }}>Costo mensual S/</label>
+                        <input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} />
+                      </div>
                       <div>
                         <label style={{ ...S.label }}>Usuario PPP</label>
                         <input style={{...S.input,fontSize:12}} value={mwForm.userppp} onChange={e=>setMwForm(f=>({...f,userppp:e.target.value}))} />
@@ -2062,14 +2083,6 @@ export default function SidebarApp() {
                       <div>
                         <label style={{ ...S.label }}>Contraseña PPP</label>
                         <input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} />
-                      </div>
-                      <div>
-                        <label style={{ ...S.label }}>Costo mensual S/</label>
-                        <input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} />
-                      </div>
-                      <div>
-                        <label style={{ ...S.label }}>Fecha instalación</label>
-                        <input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} />
                       </div>
                     </div>
                     <div>
@@ -2080,13 +2093,6 @@ export default function SidebarApp() {
                           style={{ padding:"8px 10px", background:mwIpLoad?"#d1fae5":"#f0fdf4", border:"1.5px solid #86efac", borderRadius:8, fontSize:11, fontWeight:700, color:"#15803d", cursor:"pointer", whiteSpace:"nowrap", opacity:(!mwForm.userppp)?0.5:1 }}>
                           {mwIpLoad?"...":"🔍 IP MikroTik"}
                         </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ ...S.label }}>IP asignada <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
-                      <div style={{ display:"flex", gap:6 }}>
-                        <input style={{...S.input,fontSize:12,fontFamily:"monospace",flex:1}} placeholder="192.168.x.x" value={mwForm.ip} onChange={e=>setMwForm(f=>({...f,ip:e.target.value}))} />
-                        <button onClick={mwBuscarIpMikrotik} disabled={mwIpLoad||!mwForm.userppp} style={{padding:"8px 10px",background:mwIpLoad?"#d1fae5":"#f0fdf4",border:"1.5px solid #86efac",borderRadius:8,fontSize:11,fontWeight:700,color:"#15803d",cursor:"pointer",whiteSpace:"nowrap",opacity:(!mwForm.userppp)?0.5:1}}>{mwIpLoad?"...":"🔍 IP MikroTik"}</button>
                       </div>
                     </div>
                     <div>
@@ -3810,11 +3816,22 @@ export default function SidebarApp() {
                         {mwRedes.map(r=><option key={r.id} value={r.id}>{r.red} ({r.disponibles??'?'} disp.)</option>)}
                       </select>
                     </div>
+                    {mwPlantillas.length > 0 && (
+                      <div>
+                        <label style={{ ...S.label }}>Plantilla de facturación *</label>
+                        <select style={S.select} value={mwPlantillaId} onChange={e=>setMwPlantillaId(Number(e.target.value))}>
+                          {mwPlantillas.map(p => {
+                            const cfg = p.datos?.config || {};
+                            return <option key={p.id} value={p.id}>{p.nombre} — Día pago: {cfg.diapago} · Corte: {cfg.corteautomatico} días · {cfg.tipopago==="0"?"Prepago":"Postpago"}</option>;
+                          })}
+                        </select>
+                      </div>
+                    )}
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div><label style={{ ...S.label }}>Fecha instalación</label><input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} /></div>
+                      <div><label style={{ ...S.label }}>Costo mensual S/</label><input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Usuario PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.userppp} onChange={e=>setMwForm(f=>({...f,userppp:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Contraseña PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} /></div>
-                      <div><label style={{ ...S.label }}>Costo mensual S/</label><input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} /></div>
-                      <div><label style={{ ...S.label }}>Fecha instalación</label><input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} /></div>
                     </div>
                     <div>
                       <label style={{ ...S.label }}>IP asignada <span style={{fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
