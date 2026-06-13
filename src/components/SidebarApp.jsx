@@ -1050,7 +1050,7 @@ export default function SidebarApp() {
       if (mwForm.userppp)           payload.userppp           = mwForm.userppp;
       if (mwForm.passppp)           payload.passppp           = mwForm.passppp;
       if (mwForm.costo)             payload.costo             = Number(mwForm.costo);
-      if (mwForm.ip)                payload.ip                = mwForm.ip;
+      if (mwForm.ip)                payload.ipv4              = [mwForm.ip];
       if (mwForm.coordenadas)       payload.coordenadas       = mwForm.coordenadas;
       if (mwForm.fecha_instalacion) payload.fecha_instalacion = mwForm.fecha_instalacion;
       const res = await mkwProxy(n, "NewService", payload);
