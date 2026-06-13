@@ -6,12 +6,17 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import SidebarApp from "./components/SidebarApp.jsx";
+import LibroReclamacionesPage from "./components/LibroReclamacionesPage.jsx";
 import "./App.css";
 
-const isSidebar = window.location.pathname === "/sidebar";
+const path = window.location.pathname;
+const isSidebar = path === "/sidebar";
+const isLibroReclamaciones = path === "/libro-reclamaciones";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    {isSidebar ? <SidebarApp /> : <App />}
+    {isSidebar ? <SidebarApp />
+      : isLibroReclamaciones ? <LibroReclamacionesPage />
+      : <App />}
   </React.StrictMode>
 );
