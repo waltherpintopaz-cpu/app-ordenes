@@ -369,6 +369,7 @@ export default function SidebarApp() {
   const [mwPlantillas,  setMwPlantillas]  = useState([]);
   const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"", ip:"" });
   const [mwIpLoad,      setMwIpLoad]      = useState(false);
+  const [mwWizardLiq,   setMwWizardLiq]   = useState([]);
   const [mwCreandoSvc,  setMwCreandoSvc]  = useState(false);
   const [mwSvcOk,       setMwSvcOk]       = useState(false);
   const [mwMsg,         setMwMsg]         = useState("");
@@ -944,10 +945,19 @@ export default function SidebarApp() {
   function mwSeleccionarCliente(c) {
     setMwCliSupa(c);
     setMwResultados([]);
+    setMwWizardLiq([]);
     setMwForm({ id_perfil:"", id_red_ipv4:"", userppp: c.usuario_nodo||"", passppp: c.password_usuario||"",
       costo: String(c.precio_plan||""), fecha_instalacion: c.fecha_registro ? String(c.fecha_registro).split("T")[0] : new Date().toISOString().split("T")[0],
-      coordenadas: c.ubicacion||"" });
+      coordenadas: c.ubicacion||"", ip:"" });
     setMwStep(1);
+    // Cargar liquidaciones del cliente
+    const dni = String(c.dni||"").replace(/\D/g,"");
+    if (dni) {
+      supabase.from("liquidaciones")
+        .select("codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,monto_cobrado,medio_pago,cobro_realizado")
+        .eq("dni", dni).order("fecha_liquidacion", { ascending: false }).limit(5)
+        .then(({ data }) => setMwWizardLiq(data || []));
+    }
   }
 
   async function mwAgregarMkw() {
@@ -1974,6 +1984,35 @@ export default function SidebarApp() {
                     <button onClick={()=>{setMwStep(0);setMwCliSupa(null);setMwMsg("");}}
                       style={{ ...S.btnOut, textAlign:"center" }}>← Volver</button>
                     {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+
+                {/* Panel liquidaciones — visible en pasos 2 y 3 */}
+                {(mwStep===2 || mwStep===3) && mwWizardLiq.length > 0 && (
+                  <div style={{ background:"#f5f3ff", border:"1.5px solid #d8b4fe", borderRadius:10, padding:"10px 14px", marginBottom:4 }}>
+                    <div style={{ fontSize:10, fontWeight:800, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
+                    <div style={{ display:"grid", gap:6 }}>
+                      {mwWizardLiq.map((l,i) => {
+                        const cobrado = l.cobro_realizado===true || l.cobro_realizado==="SI" || l.cobro_realizado===1;
+                        return (
+                          <div key={i} style={{ background:"#fff", border:`1px solid ${cobrado?"#86efac":"#fde047"}`, borderRadius:8, padding:"8px 10px" }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                              <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                <span style={{ fontWeight:800, fontSize:12, color:"#7c3aed" }}>{l.codigo}</span>
+                                <span style={{ fontSize:10, background: cobrado?"#dcfce7":"#fef9c3", color: cobrado?"#15803d":"#854d0e", padding:"1px 6px", borderRadius:99, fontWeight:700 }}>{cobrado?"✓ Cobrado":"Pendiente"}</span>
+                              </div>
+                              {l.monto_cobrado && <span style={{ fontWeight:800, fontSize:12, color: cobrado?"#16a34a":"#92400e" }}>S/{l.monto_cobrado}</span>}
+                            </div>
+                            <div style={{ fontSize:11, color:"#64748b", marginTop:3, display:"flex", gap:8, flexWrap:"wrap" }}>
+                              {l.tipo_actuacion && <span>{l.tipo_actuacion}</span>}
+                              {l.medio_pago && <span>· {l.medio_pago}</span>}
+                              {l.tecnico_liquida && <span>· {l.tecnico_liquida}</span>}
+                              {l.fecha_liquidacion && <span>· {String(l.fecha_liquidacion).slice(0,10)}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -3704,6 +3743,35 @@ export default function SidebarApp() {
                     )}
                     <button onClick={()=>{setMwStep(0);setMwCliSupa(null);setMwMsg("");}} style={{ ...S.btnOut, textAlign:"center" }}>← Volver</button>
                     {mwMsg && <div style={{ fontSize:11, color:T.red, fontWeight:600 }}>{mwMsg}</div>}
+                  </div>
+                )}
+
+                {/* Panel liquidaciones — visible en pasos 2 y 3 (instancia cliente encontrado) */}
+                {(mwStep===2 || mwStep===3) && mwWizardLiq.length > 0 && (
+                  <div style={{ background:"#f5f3ff", border:"1.5px solid #d8b4fe", borderRadius:10, padding:"10px 14px", marginBottom:4 }}>
+                    <div style={{ fontSize:10, fontWeight:800, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
+                    <div style={{ display:"grid", gap:6 }}>
+                      {mwWizardLiq.map((l,i) => {
+                        const cobrado = l.cobro_realizado===true || l.cobro_realizado==="SI" || l.cobro_realizado===1;
+                        return (
+                          <div key={i} style={{ background:"#fff", border:`1px solid ${cobrado?"#86efac":"#fde047"}`, borderRadius:8, padding:"8px 10px" }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                              <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                <span style={{ fontWeight:800, fontSize:12, color:"#7c3aed" }}>{l.codigo}</span>
+                                <span style={{ fontSize:10, background: cobrado?"#dcfce7":"#fef9c3", color: cobrado?"#15803d":"#854d0e", padding:"1px 6px", borderRadius:99, fontWeight:700 }}>{cobrado?"✓ Cobrado":"Pendiente"}</span>
+                              </div>
+                              {l.monto_cobrado && <span style={{ fontWeight:800, fontSize:12, color: cobrado?"#16a34a":"#92400e" }}>S/{l.monto_cobrado}</span>}
+                            </div>
+                            <div style={{ fontSize:11, color:"#64748b", marginTop:3, display:"flex", gap:8, flexWrap:"wrap" }}>
+                              {l.tipo_actuacion && <span>{l.tipo_actuacion}</span>}
+                              {l.medio_pago && <span>· {l.medio_pago}</span>}
+                              {l.tecnico_liquida && <span>· {l.tecnico_liquida}</span>}
+                              {l.fecha_liquidacion && <span>· {String(l.fecha_liquidacion).slice(0,10)}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
