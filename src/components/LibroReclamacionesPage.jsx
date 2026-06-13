@@ -133,7 +133,24 @@ function generarPDF(r) {
   doc.save(`Reclamo-${r.codigo}.pdf`);
 }
 
-const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
+// ── Envío WhatsApp via Evolution API (misma config que el resto del sistema) ──
+async function enviarWhatsApp(telefono, mensaje) {
+  const { data: cfg } = await supabase
+    .from("whatsapp_config")
+    .select("base_url,api_key,instance_name,habilitado")
+    .eq("empresa", "Americanet")
+    .maybeSingle();
+  if (!cfg?.habilitado || !cfg?.base_url || !cfg?.api_key || !cfg?.instance_name) return;
+  let phone = telefono.replace(/[\s\-\(\)]/g, "");
+  if (phone.startsWith("+")) phone = phone.slice(1);
+  if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+  const url = `${cfg.base_url.replace(/\/$/, "")}/message/sendText/${cfg.instance_name}`;
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: cfg.api_key },
+    body: JSON.stringify({ number: phone, text: mensaje }),
+  }).catch(() => {});
+}
 
 // ── COMPONENTE PRINCIPAL ───────────────────────────────────────────────────────
 export default function LibroReclamacionesPage() {
@@ -207,14 +224,7 @@ export default function LibroReclamacionesPage() {
         `🔍 *Consulta aquí el estado:*\n${trackingLink}\n\n` +
         `Daremos respuesta en un máximo de *30 días calendario*.\n\n` +
         `Atentamente,\n*Americanet Fiber Solution S.A.C.*`;
-      fetch(PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accion: "ChatwootMessage",
-          payload: { phone: form.telefono.trim(), message: textoWA, account_id: "1" },
-        }),
-      }).catch(() => {});
+      enviarWhatsApp(form.telefono.trim(), textoWA);
 
       setEnviado({ codigo: codigoNuevo, tipo: form.tipo });
       setForm(CAMPOS_VACIOS);

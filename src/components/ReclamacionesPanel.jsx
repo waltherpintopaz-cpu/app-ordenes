@@ -1,8 +1,25 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
-const BASE_URL  = window.location.origin;
+const BASE_URL = window.location.origin;
+
+async function enviarWhatsApp(supabaseClient, telefono, mensaje) {
+  const { data: cfg } = await supabaseClient
+    .from("whatsapp_config")
+    .select("base_url,api_key,instance_name,habilitado")
+    .eq("empresa", "Americanet")
+    .maybeSingle();
+  if (!cfg?.habilitado || !cfg?.base_url || !cfg?.api_key || !cfg?.instance_name) return;
+  let phone = telefono.replace(/[\s\-\(\)]/g, "");
+  if (phone.startsWith("+")) phone = phone.slice(1);
+  if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+  const url = `${cfg.base_url.replace(/\/$/, "")}/message/sendText/${cfg.instance_name}`;
+  await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: cfg.api_key },
+    body: JSON.stringify({ number: phone, text: mensaje }),
+  });
+}
 
 const ESTADOS = [
   { key: "pendiente",   label: "Pendiente",   color: "#D97706", bg: "#FFFBEB", border: "#FDE68A" },
@@ -103,14 +120,7 @@ export default function ReclamacionesPanel() {
         `Atentamente,\n*Americanet Fiber Solution S.A.C.*`;
 
       try {
-        await fetch(PROXY_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            accion: "ChatwootMessage",
-            payload: { phone: detalle.telefono, message: texto, account_id: "1" },
-          }),
-        });
+        await enviarWhatsApp(supabase, detalle.telefono, texto);
         notify("✅ Respuesta guardada y WhatsApp enviado al cliente");
       } catch {
         notify("Respuesta guardada (WhatsApp no pudo enviarse)", false);
