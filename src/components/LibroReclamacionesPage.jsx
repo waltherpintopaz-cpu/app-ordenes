@@ -95,7 +95,7 @@ function generarPDF(r) {
     ["Tipo",            r.tipo === "reclamo" ? "RECLAMO" : "QUEJA"],
     ["Estado",          est.label],
     ["Fecha registro",  fmtFecha(r.fecha_registro)],
-    ["Días transcurridos", diasTranscurridos(r.fecha_registro) + " de 30 días hábiles"],
+    ["Días transcurridos", diasTranscurridos(r.fecha_registro) + " de 15 días calendario"],
     ...(r.fecha_respuesta ? [["Fecha respuesta", fmtFecha(r.fecha_respuesta)]] : []),
   ]);
 
@@ -222,7 +222,7 @@ export default function LibroReclamacionesPage() {
         `📋 *Código de seguimiento:*\n${codigoNuevo}\n\n` +
         `Guarda este mensaje, lo necesitarás para consultar el estado de tu ${form.tipo}.\n\n` +
         `🔍 *Consulta aquí el estado:*\n${trackingLink}\n\n` +
-        `Daremos respuesta en un máximo de *30 días calendario*.\n\n` +
+        `Daremos respuesta en un máximo de *15 días calendario*.\n\n` +
         `Atentamente,\n*Americanet Fiber Solution S.A.C.*`;
       enviarWhatsApp(form.telefono.trim(), textoWA);
 
@@ -290,7 +290,7 @@ export default function LibroReclamacionesPage() {
           <div style={{ background: "#EFF6FF", padding: "8px 20px", borderBottom: "1px solid #D9E3F8" }}>
             <p style={{ fontSize: 11, color: "#374151", lineHeight: 1.7, margin: 0 }}>
               <strong style={{ color: "#003DA5" }}>Base legal:</strong> Ley N° 29571 · D.S. N° 011-2011-PCM · D.S. N° 058-2017-PCM.
-              Plazo de respuesta: <strong>30 días calendario</strong>.
+              Plazo de respuesta: <strong>15 días calendario</strong>.
             </p>
           </div>
 
@@ -320,7 +320,7 @@ export default function LibroReclamacionesPage() {
                   <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 22, color: "#003DA5", marginTop: 2 }}>{enviado.codigo}</div>
                 </div>
                 <p style={{ fontSize: 13, color: "#6B7280", lineHeight: 1.7, marginBottom: 20 }}>
-                  Recibirás respuesta en máximo <strong>30 días calendario</strong>.<br/>
+                  Recibirás respuesta en máximo <strong>15 días calendario</strong>.<br/>
                   Guarda tu código para hacer seguimiento.
                 </p>
                 <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
@@ -455,8 +455,8 @@ export default function LibroReclamacionesPage() {
               {resultado && (() => {
                 const est = ESTADOS[resultado.estado] || ESTADOS.pendiente;
                 const dias = diasTranscurridos(resultado.fecha_registro);
-                const diasRestantes = Math.max(0, 30 - dias);
-                const pct = Math.min(100, Math.round((dias / 30) * 100));
+                const diasRestantes = Math.max(0, 15 - dias);
+                const pct = Math.min(100, Math.round((dias / 15) * 100));
 
                 return (
                   <div>
@@ -474,7 +474,7 @@ export default function LibroReclamacionesPage() {
                       </div>
                       {/* Barra de tiempo */}
                       <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 5 }}>
-                        Día {dias} de 30 · {diasRestantes > 0 ? `${diasRestantes} días restantes` : "Plazo vencido"}
+                        Día {dias} de 15 · {diasRestantes > 0 ? `${diasRestantes} días restantes` : "Plazo vencido"}
                       </div>
                       <div style={{ background: "#E5E7EB", borderRadius: 4, height: 6, overflow: "hidden" }}>
                         <div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? "#DC2626" : pct > 70 ? "#D97706" : "#003DA5", borderRadius: 4, transition: "width .5s" }} />
@@ -515,7 +515,7 @@ export default function LibroReclamacionesPage() {
                       </>
                     ) : (
                       <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#92400E", marginBottom: 16 }}>
-                        Tu {resultado.tipo} está siendo revisado. Recibirás respuesta en un máximo de <strong>30 días calendario</strong>.
+                        Tu {resultado.tipo} está siendo revisado. Recibirás respuesta en un máximo de <strong>15 días calendario</strong>.
                       </div>
                     )}
 
