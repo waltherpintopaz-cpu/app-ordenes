@@ -1056,6 +1056,23 @@ export default function SidebarApp() {
       const res = await mkwProxy(n, "NewService", payload);
       const ok = res?.estado==="exito" || String(res?.code)==="200" || res?.id;
       if (!ok) throw new Error(res?.mensaje || res?.message || "Error al crear servicio");
+      // NewService no guarda coordenadas — usar EditService para actualizarlas
+      if (mwForm.coordenadas) {
+        try {
+          const cliDet = await mkwProxy(n, "GetClientsDetails", { idcliente: mwMkwId });
+          const svcObj = cliDet?.datos?.[0]?.servicios?.[0] || cliDet?.data?.[0]?.servicios?.[0];
+          if (svcObj?.id) {
+            await mkwProxy(n, "EditService", {
+              id_servicio: svcObj.id,
+              id_router:   nodoNum,
+              id_perfil:   Number(mwForm.id_perfil),
+              id_red_ipv4: Number(mwForm.id_red_ipv4),
+              coordenadas: mwForm.coordenadas,
+              ...(mwForm.costo ? { costo: Number(mwForm.costo) } : {}),
+            }).catch(()=>{});
+          }
+        } catch { /* coordenadas no críticas */ }
+      }
       if (mwPlantillas.length) await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillas[0].id }).catch(()=>{});
       // Pre-llenar facturas
       const fechaInst = mwForm.fecha_instalacion || new Date().toISOString().split("T")[0];
