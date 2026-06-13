@@ -133,6 +133,8 @@ function generarPDF(r) {
   doc.save(`Reclamo-${r.codigo}.pdf`);
 }
 
+const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
+
 // ── COMPONENTE PRINCIPAL ───────────────────────────────────────────────────────
 export default function LibroReclamacionesPage() {
   const params = new URLSearchParams(window.location.search);
@@ -194,6 +196,26 @@ export default function LibroReclamacionesPage() {
         fecha_registro:   new Date().toISOString(),
       }]);
       if (error) throw new Error(error.message);
+
+      // WhatsApp de confirmación con código de seguimiento
+      const trackingLink = `${window.location.origin}/libro-reclamaciones?codigo=${codigoNuevo}`;
+      const nombreFmt = form.nombres.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+      const textoWA =
+        `Hola *${nombreFmt}*, hemos recibido tu *${form.tipo === "reclamo" ? "Reclamo" : "Queja"}* correctamente.\n\n` +
+        `📋 *Código de seguimiento:*\n${codigoNuevo}\n\n` +
+        `Guarda este mensaje, lo necesitarás para consultar el estado de tu ${form.tipo}.\n\n` +
+        `🔍 *Consulta aquí el estado:*\n${trackingLink}\n\n` +
+        `Daremos respuesta en un máximo de *30 días calendario*.\n\n` +
+        `Atentamente,\n*Americanet Fiber Solution S.A.C.*`;
+      fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accion: "ChatwootMessage",
+          payload: { phone: form.telefono.trim(), message: textoWA, account_id: "1" },
+        }),
+      }).catch(() => {});
+
       setEnviado({ codigo: codigoNuevo, tipo: form.tipo });
       setForm(CAMPOS_VACIOS);
     } catch (err) {
