@@ -25,7 +25,7 @@ const DEFAULT = {
   mensaje_fuera_horario:
     "🕐 Gracias por contactarnos.\n\nNuestro horario de atención es:\n📅 *Lunes a Sábado: 8:00 am - 9:00 pm*\n\nTu mensaje quedó registrado y un asesor te responderá cuando estemos disponibles. 🙏",
   mensaje_espera_asesor:
-    "⏳ Un asesor revisará tu caso y te responderá en breve.\n\nNuestro horario es *Lunes a Sábado de 8:00 am a 9:00 pm*. 🙏",
+    "✅ Recibimos tu mensaje y un asesor te atenderá en breve. Puedes seguir escribiendo — todo queda registrado. 🙏\nNuestro horario es Lunes a Sábado, 8:00 am – 9:00 pm.",
   inboxes_excluidos: "DIM Ventas, Ventas Meta",
   nod06_yape_numero: "980 196 764",
   nod06_yape_titular: "Gustavo Ramírez",
