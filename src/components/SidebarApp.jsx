@@ -519,6 +519,14 @@ export default function SidebarApp() {
     setTimeout(() => setMsg(null), 4000);
   }
 
+  function copiarAlPortapapeles(valor, etiqueta = "Valor") {
+    if (!valor) return;
+    navigator.clipboard.writeText(String(valor)).then(
+      () => notify(`${etiqueta} copiado: ${valor}`, true),
+      () => notify("No se pudo copiar", false)
+    );
+  }
+
   function resetEstado() {
     setCliente(null); setDetalle(null); setFacturas([]);
     setAnalisis(null); setImgFile(null); setImgPrev(null);
@@ -2037,7 +2045,7 @@ export default function SidebarApp() {
                     <div style={{ background:"#f0f9ff", border:`1px solid #bae6fd`, borderRadius:6, padding:"10px 12px" }}>
                       <div style={{ fontWeight:800, fontSize:13, color:"#0f172a", marginBottom:4 }}>{mwCliSupa.nombre}</div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"3px 12px", fontSize:11, color:"#475569" }}>
-                        <span>DNI: <strong>{mwCliSupa.dni}</strong></span>
+                        <span onClick={() => copiarAlPortapapeles(mwCliSupa.dni, "DNI")} title="Click para copiar DNI" style={{ cursor:"pointer" }}>DNI: <strong>{mwCliSupa.dni}</strong></span>
                         <span>Nodo: <strong>{mwCliSupa.nodo}</strong></span>
                         <span>Plan: <strong>{mwCliSupa.velocidad||"—"}</strong></span>
                         <span>S/: <strong>{mwCliSupa.precio_plan||"—"}</strong></span>
@@ -2589,7 +2597,13 @@ export default function SidebarApp() {
                     {cliente.empresa === "dimfiber" ? "DimFiber" : "Americanet"}
                   </strong>
                 </span>
-                {cliente.cedula && <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>DNI <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.cedula}</strong></span>}
+                {cliente.cedula && (
+                  <span
+                    onClick={() => copiarAlPortapapeles(cliente.cedula, "DNI")}
+                    title="Click para copiar DNI"
+                    style={{ fontSize:11, color:"rgba(255,255,255,0.55)", cursor:"pointer" }}
+                  >DNI <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.cedula}</strong></span>
+                )}
               </div>
             </div>
             <button onClick={() => buscarCliente(contact?.phone_number || "")}
@@ -2629,7 +2643,11 @@ export default function SidebarApp() {
               {svc.ip && (
                 <div>
                   <div style={S.label}>IP activa</div>
-                  <div style={{ fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12 }}>{svc.ip}</div>
+                  <div
+                    onClick={() => copiarAlPortapapeles(svc.ip, "IP")}
+                    title="Click para copiar IP"
+                    style={{ fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12, cursor:"pointer" }}
+                  >{svc.ip}</div>
                 </div>
               )}
               {svc.pppuser && (
@@ -3812,7 +3830,7 @@ export default function SidebarApp() {
                     <div style={{ background:"#f0f9ff", border:`1px solid #bae6fd`, borderRadius:6, padding:"10px 12px" }}>
                       <div style={{ fontWeight:800, fontSize:13, color:"#0f172a", marginBottom:4 }}>{mwCliSupa.nombre}</div>
                       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"3px 12px", fontSize:11, color:"#475569" }}>
-                        <span>DNI: <strong>{mwCliSupa.dni}</strong></span>
+                        <span onClick={() => copiarAlPortapapeles(mwCliSupa.dni, "DNI")} title="Click para copiar DNI" style={{ cursor:"pointer" }}>DNI: <strong>{mwCliSupa.dni}</strong></span>
                         <span>Nodo: <strong>{mwCliSupa.nodo}</strong></span>
                         <span>Plan: <strong>{mwCliSupa.velocidad||"—"}</strong></span>
                         <span>S/: <strong>{mwCliSupa.precio_plan||"—"}</strong></span>
