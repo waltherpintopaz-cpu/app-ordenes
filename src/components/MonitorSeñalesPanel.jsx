@@ -3,10 +3,10 @@ import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { requestSmartOlt, SMART_OLT_TOKEN } from "../app/useSmartOltSenal";
 
-const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API     || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
-const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "https://amnet-huawei-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
-const HUAWEI_NODOS    = new Set(["Nod_01", "Nod_02", "Nod_03"]);
+const OLT_SSH_API      = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const SMARTOLT_NODOS   = new Set(["Nod_01", "Nod_02", "Nod_03"]);
 
 function nivelSenal(rx) {
   if (rx == null || isNaN(rx)) return "sin_datos";
@@ -171,11 +171,28 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
     setRefreshing(p=>({...p,[cli.id]:true}));
     try{
       let json={};
-      if(HUAWEI_NODOS.has(cli.nodo)){
-        // Huawei MA5800 — señal via huawei-signal.js
-        json=await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`).then(r=>r.json()).catch(()=>({}));
+      if(SMARTOLT_NODOS.has(cli.nodo)){
+        // Nod_01/02/03 — OLT vía SmartOLT API
+        const { status, json: sJson } = await requestSmartOlt({
+          path: `/api/smartolt/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`,
+          token: SMART_OLT_TOKEN,
+          context: "SmartOLT señal",
+        }).catch(() => ({ status: 0, json: {} }));
+        if (status >= 200 && status < 300 && sJson?.status === true) {
+          const base =
+            (sJson?.full_status_json && typeof sJson.full_status_json === "object" ? sJson.full_status_json : null) ||
+            (sJson?.response?.full_status_json && typeof sJson.response.full_status_json === "object" ? sJson.response.full_status_json : null) ||
+            (Array.isArray(sJson?.response) ? sJson.response[0] : null) ||
+            (sJson?.response && typeof sJson.response === "object" ? sJson.response : null) ||
+            sJson;
+          const rxRaw = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"];
+          const txRaw = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"];
+          const rxPower = parseFloat(String(rxRaw ?? ""));
+          const txPower = parseFloat(String(txRaw ?? ""));
+          if (!isNaN(rxPower)) json = { ok: true, rxPower, txPower: isNaN(txPower) ? null : txPower };
+        }
       } else {
-        // VSOL / resto de nodos
+        // Nod_04/05/06 — VSOL vía SSH API
         const params=new URLSearchParams({sn});
         if(cli.vlan) params.set("vlan",String(cli.vlan));
         if(cli.nodo) params.set("nodo",String(cli.nodo));

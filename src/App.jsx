@@ -4265,19 +4265,6 @@ export default function App() {
     try {
       const sn = String(cli.snOnu || "").trim();
       if (!sn) throw new Error("Cliente sin SN ONU.");
-      const isHuawei = HUAWEI_NODOS.includes(String(cli.nodo || ""));
-      if (isHuawei) {
-        const res = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
-        const json = await res.json().catch(() => ({}));
-        if (!json.ok) throw new Error(json.error || "Sin datos de señal Huawei");
-        const rx = json.rxPower ?? "-";
-        const tx = json.txPower ?? "-";
-        const now = new Date().toISOString();
-        setClienteSenal({ rx: String(rx), tx: String(tx), queried_at: now });
-        setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: rx, txSignal: tx, signalUpdatedAt: now } : prev);
-        await supabase.from("clientes").update({ rx_signal: rx, tx_signal: tx, signal_updated_at: now }).eq("id", cli.id);
-        return;
-      }
       if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
       const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
       const res = await fetch(url, {
@@ -4392,21 +4379,30 @@ export default function App() {
     }
   };
 
-  // Consulta señal Huawei (Nod_01/02/03) — desde fila de tabla
+  // Consulta señal SmartOLT (Nod_01/02/03) — desde fila de tabla
   const consultarSenalHuaweiTabla = async (cli) => {
     const id = cli?.id;
     if (!id) return;
     const sn = String(cli.snOnu || "").trim();
     if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
+    if (!SMART_OLT_TOKEN) { setCliSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setCliSenalLoading(p => ({ ...p, [id]: true }));
     setCliSenalError(p => ({ ...p, [id]: "" }));
+    setCliSenalData(p => ({ ...p, [id]: null }));
     try {
-      const res  = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`);
+      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
+      const res = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
       const json = await res.json().catch(() => ({}));
-      if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+      const base =
+        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+        (Array.isArray(json?.response) ? json.response[0] : null) ||
+        (json?.response && typeof json.response === "object" ? json.response : null) || json;
+      const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
+      const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
       const now = new Date().toISOString();
-      setCliSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-") } }));
-      await supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, signal_updated_at: now }).eq("id", id);
+      setCliSenalData(p => ({ ...p, [id]: { rx, tx } }));
+      if (rx !== "-") await supabase.from("clientes").update({ rx_signal: rx, tx_signal: tx, signal_updated_at: now }).eq("id", id);
     } catch (e) {
       setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
     } finally {
@@ -4457,14 +4453,7 @@ export default function App() {
     const nodo = String(item?.nodo || "");
     const now = new Date().toISOString();
     try {
-      if (HUAWEI_NODOS.includes(nodo)) {
-        // Nod_01 / 02 / 03 → Huawei API
-        const res  = await fetch(`${HUAWEI_API}/signal-huawei?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
-        const json = await res.json().catch(() => ({}));
-        if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
-        setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-"), at: now } }));
-        supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, signal_updated_at: now }).eq("sn_onu", sn).then(() => {});
-      } else if (OLT_SSH_NODOS.includes(nodo)) {
+      if (OLT_SSH_NODOS.includes(nodo)) {
         // Nod_04 / 06 → SSH API
         const params = new URLSearchParams({ sn });
         if (item.vlan) params.set("vlan", String(item.vlan));
