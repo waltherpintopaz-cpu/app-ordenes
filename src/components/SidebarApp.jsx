@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
-import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin } from "lucide-react";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send } from "lucide-react";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const CW_BASE    = "https://chat.americanet.club";
@@ -2987,6 +2987,29 @@ export default function SidebarApp() {
                                       color:"#fff", fontFamily:"inherit", opacity:deletingFact===fid?0.5:1 }}>
                                     <Trash2 size={13}/> {deletingFact===fid?"Eliminando...":"Eliminar factura"}
                                   </button>
+                                  {f.urlpdf && contact?.phone_number && (
+                                    <button onClick={async () => {
+                                        setMenuAbierto(null);
+                                        const nombreRaw = cliente?.nombre || "";
+                                        const nombreFmt = nombreRaw
+                                          ? (nombreRaw.includes(",")
+                                            ? nombreRaw.split(",").reverse().join(" ").trim()
+                                            : nombreRaw).toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+                                          : "cliente";
+                                        const texto = `Hola ${nombreFmt}, te compartimos el PDF de tu factura *#${fid}* por *S/ ${Number(f.total||0).toFixed(2)}*:\n\n📄 ${f.urlpdf}\n\nCualquier consulta estamos a tu disposición. 💙`;
+                                        await fetch(PROXY_URL, {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" } }),
+                                        }).catch(() => {});
+                                        notify("✅ PDF enviado al cliente");
+                                      }}
+                                      style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
+                                        border:"none", borderRadius:6, background:"#0369a1", cursor:"pointer", fontSize:11, fontWeight:600,
+                                        color:"#fff", fontFamily:"inherit" }}>
+                                      <Send size={13}/> Enviar PDF
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
