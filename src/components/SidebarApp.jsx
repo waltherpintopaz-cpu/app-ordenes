@@ -330,7 +330,7 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
@@ -1560,6 +1560,7 @@ export default function SidebarApp() {
         precio_plan:    ordenForm.precioPlan ? Number(ordenForm.precioPlan) : null,
         nodo:           cliente ? String(cliente.nodo) : ordenForm.nodo.trim(),
         usuario_nodo:   cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim(),
+        password_usuario: cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim(),
         sn_onu:         cliente ? (snOnu || "") : ordenForm.snOnu.trim(),
         caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
@@ -1675,9 +1676,8 @@ export default function SidebarApp() {
       const usadosClientes = (clts||[]).map(c=>c.usuario_nodo).filter(Boolean);
       const todosUsados = [...new Set([...usados,...usadosClientes])];
       setUsuariosNodo(listarUsuariosParaNodo(nodo, todosUsados, 10));
-      // Auto-sugerir password
       const pwd = NODO_PASSWORD_RULES[normalizeNodoKey(nodo)];
-      if (pwd) setOrdenForm(p=>({...p, empresa:empresaPorNodo(nodo)}));
+      setOrdenForm(p=>({ ...p, empresa: empresaPorNodo(nodo), passwordUsuario: pwd || p.passwordUsuario }));
     } catch(e) {}
   }
 
@@ -2385,6 +2385,7 @@ export default function SidebarApp() {
                         )}
                       </div>
                     )}
+                    {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
                     {fila("Caja NAP", inp("cajaNap","NAP-01"))}
                     {fila("Coordenadas",
@@ -3559,6 +3560,13 @@ export default function SidebarApp() {
                           ))}
                         </div>
                       )}
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Contraseña PPP</div>
+                    <div>
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text" placeholder="aqp0021"
+                        value={ordenForm.passwordUsuario} onChange={e => setOrdenForm(p=>({...p, passwordUsuario:e.target.value}))} />
                     </div>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
