@@ -44,7 +44,7 @@ function getToken(empresa, nombre) {
 
 const PASARELAS = {
   americanet: ["Depósito bancario","Transferencia Bancaria","Efectivo Oficina/Sucursal","Walter Pinto","Americanet"],
-  dimfiber:   ["Transferencia Bancaria","Aplicaciones bancarias","Efectivo Oficina/Sucursal","Pagos DIM","Americanet"],
+  dimfiber:   ["Pagos DIM","Transferencia Bancaria","Aplicaciones bancarias","Efectivo Oficina/Sucursal","Americanet"],
   nod06:      ["Depósito bancario","Transferencia Bancaria","Efectivo Oficina/Sucursal","Walter Pinto","Americanet"],
 };
 
