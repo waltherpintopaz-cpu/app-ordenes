@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
-import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send } from "lucide-react";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } from "lucide-react";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const CW_BASE    = "https://chat.americanet.club";
@@ -2987,6 +2987,14 @@ export default function SidebarApp() {
                                       color:"#fff", fontFamily:"inherit", opacity:deletingFact===fid?0.5:1 }}>
                                     <Trash2 size={13}/> {deletingFact===fid?"Eliminando...":"Eliminar factura"}
                                   </button>
+                                  {f.urlpdf && (
+                                    <a href={f.urlpdf} target="_blank" rel="noopener noreferrer"
+                                      style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
+                                        border:"none", borderRadius:6, background:"#059669", cursor:"pointer", fontSize:11, fontWeight:600,
+                                        color:"#fff", fontFamily:"inherit", textDecoration:"none" }}>
+                                      <FileText size={13}/> Ver PDF
+                                    </a>
+                                  )}
                                   {f.urlpdf && contact?.phone_number && (
                                     <button onClick={async () => {
                                         setMenuAbierto(null);
