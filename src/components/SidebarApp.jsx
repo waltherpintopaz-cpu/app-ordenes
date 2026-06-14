@@ -1159,34 +1159,57 @@ export default function SidebarApp() {
   async function mwSincronizar() {
     if (!mwMkwId || !mwCliSupa) return;
     setMwSyncLoad(true); setMwMsg("");
+    // Mismo NODO_LABEL_FALLBACK que App.jsx (Nod_03=3, no 10)
+    const NODO_LABEL_FALLBACK = { "Nod_01":1, "Nod_02":2, "Nod_03":3, "Nod_04":5, "Nod_06":11 };
     try {
       const nodo = mwCliSupa.nodo || "Nod_01";
-      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
       const esDim = mwEsDim(nodo);
-      const n = esDim ? 5 : nodoNum;
+      const n = esDim ? 5 : (MW_NODO_MAP[nodo] ?? 1);
       const dni = String(mwCliSupa.dni || "").replace(/\D/g, "");
-      // Empujar datos Supabase → Mikrowisp (nombre, dirección, correo, código)
+      // 1. Empujar datos Supabase → Mikrowisp (igual que App.jsx post-agregar)
       const datosUpdate = { codigo: dni };
-      if (mwCliSupa.nombre)    datosUpdate.nombre               = String(mwCliSupa.nombre).trim();
-      if (mwCliSupa.direccion) datosUpdate.direccion_principal  = String(mwCliSupa.direccion).trim();
-      if (mwCliSupa.email)     datosUpdate.correo               = String(mwCliSupa.email).trim();
+      if (mwCliSupa.nombre)    datosUpdate.nombre              = String(mwCliSupa.nombre).trim();
+      if (mwCliSupa.direccion) datosUpdate.direccion_principal = String(mwCliSupa.direccion).trim();
+      if (mwCliSupa.email)     datosUpdate.correo              = String(mwCliSupa.email).trim();
       await mkwProxy(n, "UpdateUser", { idcliente: mwMkwId, datos: datosUpdate }).catch(()=>{});
-      // Jalar datos Mikrowisp → mikrowisp_clientes en Supabase
-      const datos = await mkwProxy(n, "GetClientsDetails", { idcliente: mwMkwId });
-      const d = datos?.datos?.[0] || datos?.data?.[0] || datos;
-      if (d?.id) {
-        const nodoServicio = d.servicios?.[0]?.nodo ?? null;
-        const nodoFallback = esDim ? 5 : (MW_NODO_MAP[nodo] ?? null);
-        const nodoNum2 = nodoServicio !== null ? Number(nodoServicio) : (nodoFallback !== null ? Number(nodoFallback) : null);
-        const movil = String(d.movil || "").trim();
-        const row = { mikrowisp_id: d.id, nombre: d.nombre, cedula: d.cedula, telefonos: movil, estado: d.estado, nodo: nodoNum2 };
-        let q = supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", d.id);
-        if (nodoNum2 !== null) q = q.eq("nodo", nodoNum2); else q = q.is("nodo", null);
-        const { data: prev } = await q.maybeSingle();
-        if (prev && !movil && prev.telefonos) row.telefonos = prev.telefonos;
-        await supabase.from("mikrowisp_clientes").upsert([row], { onConflict: "mikrowisp_id,nodo" });
-        if (mwCliSupa.id) await supabase.from("clientes").update({ en_mikrowisp: true, mikrowisp_sync_ok: true }).eq("id", mwCliSupa.id);
-      }
+      // 2. Jalar datos desde Mikrowisp por cédula (igual que mkwConsultarCedula en App.jsx)
+      const resp = await mkwProxy(n, "GetClientsDetails", { cedula: dni });
+      const raw = resp?.datos?.[0] ?? resp?.data ?? resp;
+      const d = {
+        id:       raw?.idcliente ?? raw?.id ?? mwMkwId,
+        cedula:   raw?.cedula ?? dni,
+        nombre:   raw?.nombre ?? raw?.name ?? "",
+        movil:    raw?.movil ?? raw?.telefono ?? "",
+        estado:   raw?.estado ?? "",
+        servicios: raw?.servicios ?? [],
+      };
+      if (!d.id) throw new Error("Mikrowisp no devolvió idcliente");
+      // 3. Normalizar teléfono Nod_04 (prefijo 51) igual que App.jsx
+      const movilRaw = String(d.movil || "").trim();
+      const movil = esDim
+        ? movilRaw.split(",").map(t => { const s=t.trim(); return s && !s.startsWith("51") ? "51"+s : s; }).filter(Boolean).join(",")
+        : movilRaw;
+      // 4. Calcular nodo numérico con mismo fallback que App.jsx
+      const nodoServicio = d.servicios?.[0]?.nodo ?? null;
+      const nodoFallback = NODO_LABEL_FALLBACK[String(nodo).trim()] ?? null;
+      const nodoNum = nodoServicio !== null ? Number(nodoServicio) : (nodoFallback !== null ? Number(nodoFallback) : null);
+      // 5. DELETE + INSERT (evita conflictos en índices funcionales, igual que App.jsx)
+      let delQ = supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", d.id);
+      if (nodoNum !== null) delQ = delQ.eq("nodo", nodoNum); else delQ = delQ.is("nodo", null);
+      await delQ;
+      const row = {
+        mikrowisp_id: d.id,
+        cedula:       String(d.cedula || "").trim(),
+        nombre:       String(d.nombre || "").trim(),
+        telefonos:    movil,
+        estado:       String(d.estado || "").trim(),
+        nodo:         nodoNum,
+        updated_at:   new Date().toISOString(),
+        agregado_por: String(agente || "").trim() || null,
+      };
+      const { error } = await supabase.from("mikrowisp_clientes").insert(row);
+      if (error) throw new Error(error.message);
+      if (mwCliSupa.id) await supabase.from("clientes").update({ en_mikrowisp: true, mikrowisp_sync_ok: true }).eq("id", mwCliSupa.id);
       setMwSyncDone(true);
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwSyncLoad(false);
