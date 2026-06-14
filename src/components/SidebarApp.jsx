@@ -2000,6 +2000,8 @@ export default function SidebarApp() {
                         <span>Plan: <strong>{mwCliSupa.velocidad||"—"}</strong></span>
                         <span>S/: <strong>{mwCliSupa.precio_plan||"—"}</strong></span>
                         {mwCliSupa.celular && <span style={{gridColumn:"1/-1"}}>Tel: <strong>{mwCliSupa.celular}</strong></span>}
+                        {mwCliSupa.direccion && <span style={{gridColumn:"1/-1"}}>Dir: <strong>{mwCliSupa.direccion}</strong></span>}
+                        {mwCliSupa.email && <span style={{gridColumn:"1/-1"}}>Email: <strong>{mwCliSupa.email}</strong></span>}
                       </div>
                     </div>
                     {!MW_NODOS_OK.includes(String(mwCliSupa.nodo||"")) && (
@@ -3773,6 +3775,8 @@ export default function SidebarApp() {
                         <span>Plan: <strong>{mwCliSupa.velocidad||"—"}</strong></span>
                         <span>S/: <strong>{mwCliSupa.precio_plan||"—"}</strong></span>
                         {mwCliSupa.celular && <span style={{gridColumn:"1/-1"}}>Tel: <strong>{mwCliSupa.celular}</strong></span>}
+                        {mwCliSupa.direccion && <span style={{gridColumn:"1/-1"}}>Dir: <strong>{mwCliSupa.direccion}</strong></span>}
+                        {mwCliSupa.email && <span style={{gridColumn:"1/-1"}}>Email: <strong>{mwCliSupa.email}</strong></span>}
                       </div>
                     </div>
                     {!MW_NODOS_OK.includes(String(mwCliSupa.nodo||"")) && (
