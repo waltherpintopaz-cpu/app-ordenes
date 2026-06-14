@@ -923,7 +923,7 @@ export default function SidebarApp() {
     setMwBusqLoad(true); setMwCliSupa(null); setMwResultados([]); setMwMsg("");
     try {
       let query = supabase.from("clientes")
-        .select("id,nombre,dni,celular,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
+        .select("id,nombre,dni,celular,email,direccion,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
         .in("nodo", MW_NODOS_OK)
         .order("fecha_registro", { ascending: false })
         .limit(50);
