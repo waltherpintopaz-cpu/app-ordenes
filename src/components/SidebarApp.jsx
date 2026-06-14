@@ -50,6 +50,8 @@ const PASARELAS = {
 
 const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
 const empresaPorNodo = (n) => DIM_NODOS.has(String(n||"").trim().toLowerCase()) ? "DIM" : "Americanet";
+const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const NODOS_OLT_SSH = new Set(["Nod_04", "Nod_05", "Nod_06"]);
 const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"];
 
 const NODO_USUARIO_RULES = {
@@ -1354,18 +1356,35 @@ export default function SidebarApp() {
     if (!snOnu) return notify("No se encontró SN de ONU para este cliente", false);
     setSenalLoad(true);
     try {
-      const res = await fetch(PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "SmartOltSignal", sn: snOnu }),
-      });
-      const json = await res.json();
-      const base = json?.data;
-      const fullStatus = base?.full_status_json || base?.response?.full_status_json || base?.response || base;
-      const rx    = fullStatus?.["Optical status"]?.["Rx optical power(dBm)"]          || fullStatus?.["Rx optical power(dBm)"]          || "—";
-      const oltRx = fullStatus?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"]  || fullStatus?.["OLT Rx ONT optical power(dBm)"]  || "—";
-      const estado = String(base?.response_code || fullStatus?.onu_status || fullStatus?.status || "—");
-      setSenal({ rx: String(rx), oltRx: String(oltRx), estado, ts: new Date().toLocaleTimeString() });
+      const esOltSsh = NODOS_OLT_SSH.has(String(nodoReal || ""));
+      if (esOltSsh) {
+        // Nod_04/05/06 — SSH OLT API
+        const params = new URLSearchParams({ sn: snOnu });
+        if (nodoReal) params.set("nodo", nodoReal);
+        const res = await fetch(`${OLT_SSH_API}/signal?${params}`);
+        const json = await res.json().catch(() => ({}));
+        if (!json.ok) throw new Error(json.error || "No se pudo obtener señal OLT.");
+        setSenal({
+          rx: json.rxPower != null ? String(json.rxPower) : "—",
+          oltRx: json.txPower != null ? String(json.txPower) : "—",
+          estado: "—",
+          ts: new Date().toLocaleTimeString(),
+        });
+      } else {
+        // Nod_01/02/03 — SmartOLT via proxy
+        const res = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accion: "SmartOltSignal", sn: snOnu }),
+        });
+        const json = await res.json();
+        const base = json?.data;
+        const fullStatus = base?.full_status_json || base?.response?.full_status_json || base?.response || base;
+        const rx    = fullStatus?.["Optical status"]?.["Rx optical power(dBm)"]         || fullStatus?.["Rx optical power(dBm)"]         || "—";
+        const oltRx = fullStatus?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] || fullStatus?.["OLT Rx ONT optical power(dBm)"] || "—";
+        const estado = String(base?.response_code || fullStatus?.onu_status || fullStatus?.status || "—");
+        setSenal({ rx: String(rx), oltRx: String(oltRx), estado, ts: new Date().toLocaleTimeString() });
+      }
     } catch(e) {
       notify("Error consultando señal: " + e.message, false);
     }
