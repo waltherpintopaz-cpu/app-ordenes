@@ -999,7 +999,10 @@ export default function SidebarApp() {
         nuevoId = extraerId(retry);
       }
       if (!nuevoId) throw new Error(add?.mensaje || add?.message || "Sin ID de respuesta");
-      await mkwDirect(esDim, "UpdateUser", { idcliente: nuevoId, datos: { codigo: dni } });
+      const updateDatos = { codigo: dni };
+      if (mwCliSupa.direccion) updateDatos.direccion_principal = String(mwCliSupa.direccion).trim();
+      if (mwCliSupa.email)     updateDatos.correo              = String(mwCliSupa.email).trim();
+      await mkwDirect(esDim, "UpdateUser", { idcliente: nuevoId, datos: updateDatos });
       setMwMkwId(nuevoId);
       if (mwCliSupa.id) supabase.from("clientes").update({ en_mikrowisp: true }).eq("id", mwCliSupa.id).then(()=>{});
       await mwCargarPerfiles(mwCliSupa.nodo, nuevoId);
@@ -1161,12 +1164,18 @@ export default function SidebarApp() {
       const nodoNum = MW_NODO_MAP[nodo] ?? 1;
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
+      const dni = String(mwCliSupa.dni || "").replace(/\D/g, "");
+      // Empujar datos Supabase → Mikrowisp (nombre, dirección, correo, código)
+      const datosUpdate = { codigo: dni };
+      if (mwCliSupa.nombre)    datosUpdate.nombre               = String(mwCliSupa.nombre).trim();
+      if (mwCliSupa.direccion) datosUpdate.direccion_principal  = String(mwCliSupa.direccion).trim();
+      if (mwCliSupa.email)     datosUpdate.correo               = String(mwCliSupa.email).trim();
+      await mkwProxy(n, "UpdateUser", { idcliente: mwMkwId, datos: datosUpdate }).catch(()=>{});
+      // Jalar datos Mikrowisp → mikrowisp_clientes en Supabase
       const datos = await mkwProxy(n, "GetClientsDetails", { idcliente: mwMkwId });
       const d = datos?.datos?.[0] || datos?.data?.[0] || datos;
       if (d?.id) {
         const nodoServicio = d.servicios?.[0]?.nodo ?? null;
-        // Fallback desde MW_NODO_MAP para nunca guardar nodo=null — evita mezcla de teléfonos
-        // entre clientes de distintos sistemas que comparten el mismo mikrowisp_id
         const nodoFallback = esDim ? 5 : (MW_NODO_MAP[nodo] ?? null);
         const nodoNum2 = nodoServicio !== null ? Number(nodoServicio) : (nodoFallback !== null ? Number(nodoFallback) : null);
         const movil = String(d.movil || "").trim();
