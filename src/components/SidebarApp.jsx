@@ -3019,6 +3019,65 @@ export default function SidebarApp() {
                                     </button>
                                   )}
                                 </div>
+
+                                {/* ── Detalle de factura ── */}
+                                <div style={{ marginTop:10, padding:"10px 12px", background:"#f8fafc", borderRadius:6, border:"1px solid #e2e8f0" }}>
+                                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(80px, 1fr))", gap:"6px 12px", fontSize:10, color:"#475569" }}>
+                                    {f.emitido && (
+                                      <div>
+                                        <div style={{ fontWeight:700, color:"#94a3b8", textTransform:"uppercase", fontSize:9, marginBottom:2 }}>Emitido</div>
+                                        <div style={{ fontWeight:600, color:"#0f172a" }}>{f.emitido}</div>
+                                      </div>
+                                    )}
+                                    {f.tipo_factura && (
+                                      <div>
+                                        <div style={{ fontWeight:700, color:"#94a3b8", textTransform:"uppercase", fontSize:9, marginBottom:2 }}>Tipo</div>
+                                        <div style={{ fontWeight:600, color:"#0f172a" }}>{f.tipo_factura}</div>
+                                      </div>
+                                    )}
+                                    {f.subtotal2 && (
+                                      <div>
+                                        <div style={{ fontWeight:700, color:"#94a3b8", textTransform:"uppercase", fontSize:9, marginBottom:2 }}>Subtotal</div>
+                                        <div style={{ fontWeight:600, color:"#0f172a" }}>{f.subtotal2}</div>
+                                      </div>
+                                    )}
+                                    {f.impuesto2 && (
+                                      <div>
+                                        <div style={{ fontWeight:700, color:"#94a3b8", textTransform:"uppercase", fontSize:9, marginBottom:2 }}>IGV</div>
+                                        <div style={{ fontWeight:600, color:"#0f172a" }}>{f.impuesto2}</div>
+                                      </div>
+                                    )}
+                                    {f.cobrado != null && (
+                                      <div>
+                                        <div style={{ fontWeight:700, color:"#94a3b8", textTransform:"uppercase", fontSize:9, marginBottom:2 }}>Cobrado</div>
+                                        <div style={{ fontWeight:600, color: Number(f.cobrado) >= Number(f.total) ? "#16a34a" : Number(f.cobrado) > 0 ? "#d97706" : "#94a3b8" }}>
+                                          S/ {Number(f.cobrado).toFixed(2)}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Historial de pagos */}
+                                  {Array.isArray(f.operaciones) && f.operaciones.length > 0 && (
+                                    <div style={{ marginTop:10 }}>
+                                      <div style={{ fontWeight:700, color:"#94a3b8", textTransform:"uppercase", fontSize:9, marginBottom:6 }}>Pagos registrados</div>
+                                      {f.operaciones.map((op, i) => (
+                                        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                                          padding:"5px 8px", background:"#fff", borderRadius:4, border:"1px solid #e2e8f0",
+                                          marginBottom: i < f.operaciones.length - 1 ? 4 : 0, fontSize:10 }}>
+                                          <div>
+                                            <div style={{ fontWeight:600, color:"#0f172a" }}>{op.forma_pago || "—"}</div>
+                                            <div style={{ color:"#94a3b8", fontSize:9 }}>
+                                              {op.fecha_pago ? op.fecha_pago.slice(0,16).replace("T"," ") : "—"}
+                                              {op.transaccion ? ` · Ref: ${op.transaccion}` : ""}
+                                            </div>
+                                          </div>
+                                          <div style={{ fontWeight:700, color:"#16a34a", fontSize:11 }}>S/ {Number(op.cobrado||0).toFixed(2)}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           )}
