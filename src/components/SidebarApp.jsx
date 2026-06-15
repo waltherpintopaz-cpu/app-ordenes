@@ -1529,12 +1529,12 @@ export default function SidebarApp() {
     if (coords) setOrdenForm(p => ({ ...p, coordenadas: coords }));
   }, [detalle?._servicio?.coordenadas]);
 
-  // ── Auto-consultar diagnóstico al cargar cliente ──────────────────────────
+  // ── Auto-consultar diagnóstico cuando detalle (pppuser) esté disponible ──
   useEffect(() => {
-    if (!cliente) return;
+    if (!cliente || !detalle) return;
     void consultarDiagnostico();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cliente?.mikrowisp_id]);
+  }, [detalle]);
 
   // ── Auto-consultar señal ONU cuando esté disponible ──────────────────────
   useEffect(() => {
