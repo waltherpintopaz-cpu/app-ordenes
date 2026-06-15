@@ -325,6 +325,7 @@ export default function SidebarApp() {
   const [showDiag,       setShowDiag]       = useState(false);
   const [showDiagDetail, setShowDiagDetail] = useState(false);
   const [showSenalDetail,setShowSenalDetail]= useState(false);
+  const [autoLoad,       setAutoLoad]       = useState(0);
   // Agente logueado (detectado de Chatwoot o seleccionado manualmente)
   const [agente, setAgente] = useState(() => getStoredAgente());
   // Búsqueda flexible cuando teléfono no encontrado
@@ -534,7 +535,7 @@ export default function SidebarApp() {
     setAnalisis(null); setImgFile(null); setImgPrev(null);
     setProrrInfo(null); setProrrForm({ fecha: "" });
     setSnOnu(null); setNodoReal(null); setSenal(null);
-    setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false); setShowDiagDetail(false); setShowSenalDetail(false);
+    setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false); setShowDiagDetail(false); setShowSenalDetail(false); setAutoLoad(0);
     setDniResultados([]); setDniSel(null); setDniBusq("");
     setOrdenCreada(null);
     setOrdenesCliente([]); setLiquidacionesCliente([]);
@@ -590,6 +591,9 @@ export default function SidebarApp() {
       if (snRows?.[0]?.sn_onu) setSnOnu(snRows[0].sn_onu);
       if (snRows?.[0]?.nodo)   setNodoReal(snRows[0].nodo);
     }
+
+    // Señal de carga completa para auto-consulta
+    setAutoLoad(Date.now());
 
     // Cargar historial de órdenes y liquidaciones del cliente
     if (row.cedula) cargarHistorialOrdenes(row.cedula);
@@ -1529,19 +1533,13 @@ export default function SidebarApp() {
     if (coords) setOrdenForm(p => ({ ...p, coordenadas: coords }));
   }, [detalle?._servicio?.coordenadas]);
 
-  // ── Auto-consultar diagnóstico cuando detalle (pppuser) esté disponible ──
+  // ── Auto-consultar señal y diagnóstico cuando todo el cliente esté cargado
   useEffect(() => {
-    if (!cliente || !detalle) return;
+    if (!autoLoad || !cliente) return;
     void consultarDiagnostico();
+    if (snOnu) void consultarSenal();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detalle]);
-
-  // ── Auto-consultar señal ONU cuando esté disponible ──────────────────────
-  useEffect(() => {
-    if (!snOnu) return;
-    void consultarSenal();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snOnu]);
+  }, [autoLoad]);
 
   // ── WhatsApp al cliente al crear orden ───────────────────────────────────
   async function sendWhatsAppOrden(ordenData = {}) {
