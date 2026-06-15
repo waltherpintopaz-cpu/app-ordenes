@@ -1365,6 +1365,20 @@ export default function SidebarApp() {
     return T.amber;
   }
 
+  function fmtUptime(raw) {
+    if (!raw) return "—";
+    const w = parseInt(raw.match(/(\d+)w/)?.[1] || 0);
+    const d = parseInt(raw.match(/(\d+)d/)?.[1] || 0);
+    const h = parseInt(raw.match(/(\d+)h/)?.[1] || 0);
+    const m = parseInt(raw.match(/(\d+)m/)?.[1] || 0);
+    const dias = w * 7 + d;
+    const partes = [];
+    if (dias > 0) partes.push(`${dias} ${dias === 1 ? "día" : "días"}`);
+    if (h > 0)   partes.push(`${h}h`);
+    if (m > 0)   partes.push(`${m}m`);
+    return partes.length ? partes.join(", ") : "< 1m";
+  }
+
   function fmt12h(fechaStr) {
     if (!fechaStr || fechaStr === "0000-00-00" || fechaStr === "0000-00-00 00:00:00") return "—";
     const d = new Date(fechaStr.replace(" ", "T"));
@@ -2706,7 +2720,7 @@ export default function SidebarApp() {
                   const c  = diagColor(mk.estado);
                   const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
                   const resumen = isConn
-                    ? `Activo hace: ${mk.uptime||"—"}`
+                    ? `Activo hace: ${fmtUptime(mk.uptime)}`
                     : `Inactivo desde: ${fmt12h(mk.lastLoggedOut)}`;
                   return (
                     <div onClick={() => setShowDiagDetail(v => !v)}
@@ -2743,7 +2757,7 @@ export default function SidebarApp() {
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 14px" }}>
                       {[
                         ["IP", mk.ip],
-                        [isConn ? "Activo hace" : "Inactivo desde", isConn ? mk.uptime : fmt12h(mk.lastLoggedOut)],
+                        [isConn ? "Activo hace" : "Inactivo desde", isConn ? fmtUptime(mk.uptime) : fmt12h(mk.lastLoggedOut)],
                         ["Router", mk.router?.nombre],
                         ["Profile", mk.profile],
                         ["Caller-ID", mk.callerId],
@@ -2762,7 +2776,7 @@ export default function SidebarApp() {
                     {contact?.phone_number && (
                       <button onClick={async () => {
                           const texto = isConn
-                            ? `Hola ${nombreFmt}, revisamos tu servicio y está funcionando correctamente ✅\nLleva activo ${mk.uptime||"—"} sin interrupciones.`
+                            ? `Hola ${nombreFmt}, revisamos tu servicio y está funcionando correctamente ✅\nLleva activo ${fmtUptime(mk.uptime)} sin interrupciones.`
                             : `Hola ${nombreFmt}, revisamos tu servicio y detectamos que no está conectado desde las ${fmt12h(mk.lastLoggedOut)}. Estamos revisando la situación. 🔧`;
                           await fetch(PROXY_URL, {
                             method:"POST", headers:{"Content-Type":"application/json"},
