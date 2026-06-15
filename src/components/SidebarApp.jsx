@@ -2763,11 +2763,9 @@ export default function SidebarApp() {
                     )}
                     {contact?.phone_number && (
                       <button onClick={async () => {
-                          const estado  = isConn ? "✅ *Conectado*" : "⚠️ *Desconectado*";
-                          const detalle = isConn
-                            ? `Activo hace: *${mk.uptime||"—"}*`
-                            : `Inactivo desde: *${fmt12h(mk.lastLoggedOut)}*`;
-                          const texto = `Hola ${nombreFmt}, te informamos el estado actual de tu servicio:\n\n${estado}\n${detalle}\n\nCualquier consulta estamos a tu disposición. 💙`;
+                          const texto = isConn
+                            ? `Hola ${nombreFmt}, revisamos tu servicio y está funcionando correctamente ✅\nLleva activo ${mk.uptime||"—"} sin interrupciones.`
+                            : `Hola ${nombreFmt}, revisamos tu servicio y detectamos que no está conectado desde las ${fmt12h(mk.lastLoggedOut)}. Estamos revisando la situación. 🔧`;
                           await fetch(PROXY_URL, {
                             method:"POST", headers:{"Content-Type":"application/json"},
                             body: JSON.stringify({ accion:"ChatwootMessage", payload:{ phone: contact.phone_number, message: texto, account_id: acctId||"1" } }),
