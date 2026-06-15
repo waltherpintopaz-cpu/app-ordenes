@@ -2765,8 +2765,8 @@ export default function SidebarApp() {
                       <button onClick={async () => {
                           const estado  = isConn ? "✅ *Conectado*" : "⚠️ *Desconectado*";
                           const detalle = isConn
-                            ? `Activo hace: *${mk.uptime||"—"}*\nRouter: ${mk.router?.nombre||"—"}`
-                            : `Inactivo desde: *${fmt12h(mk.lastLoggedOut)}*\nRouter: ${mk.router?.nombre||"—"}`;
+                            ? `Activo hace: *${mk.uptime||"—"}*`
+                            : `Inactivo desde: *${fmt12h(mk.lastLoggedOut)}*`;
                           const texto = `Hola ${nombreFmt}, te informamos el estado actual de tu servicio:\n\n${estado}\n${detalle}\n\nCualquier consulta estamos a tu disposición. 💙`;
                           await fetch(PROXY_URL, {
                             method:"POST", headers:{"Content-Type":"application/json"},
