@@ -1361,6 +1361,20 @@ export default function SidebarApp() {
     return T.amber;
   }
 
+  function fmt12h(fechaStr) {
+    if (!fechaStr || fechaStr === "0000-00-00" || fechaStr === "0000-00-00 00:00:00") return "—";
+    const d = new Date(fechaStr.replace(" ", "T"));
+    if (isNaN(d)) return fechaStr;
+    const meses = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    const mes  = meses[d.getMonth()];
+    const dia  = d.getDate();
+    let h      = d.getHours();
+    const min  = String(d.getMinutes()).padStart(2,"0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${mes} ${dia}, ${h}:${min} ${ampm}`;
+  }
+
   // ── Consultar señal ONU ───────────────────────────────────────────────────
   async function consultarSenal() {
     if (!snOnu) return notify("No se encontró SN de ONU para este cliente", false);
@@ -2693,7 +2707,9 @@ export default function SidebarApp() {
                   const mk = diagResult.mikrotik || {};
                   const c  = diagColor(mk.estado);
                   const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
-                  const resumen = isConn ? `Uptime: ${mk.uptime||"—"}` : `Último logout: ${mk.lastLoggedOut||"—"}`;
+                  const resumen = isConn
+                    ? `Activo hace: ${mk.uptime||"—"}`
+                    : `Inactivo desde: ${fmt12h(mk.lastLoggedOut)}`;
                   return (
                     <div onClick={() => setShowDiagDetail(v => !v)}
                       style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer",
@@ -2721,12 +2737,18 @@ export default function SidebarApp() {
                 const mk = diagResult.mikrotik || {};
                 const c = diagColor(mk.estado);
                 const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
+                const nombreFmt = (cliente?.nombre||"")
+                  .split(",").reverse().join(" ").trim()
+                  .toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase()) || "cliente";
                 return (
                   <div style={{ marginTop:8, background: isConn ? T.greenLt : T.redLt, border:`1px solid ${c}40`, borderRadius:5, padding:"10px 12px" }}>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 14px" }}>
                       {[
-                        ["IP", mk.ip], ["Uptime", mk.uptime], ["Router", mk.router?.nombre],
-                        ["Profile", mk.profile], ["Caller-ID", mk.callerId], ["Último logout", mk.lastLoggedOut],
+                        ["IP", mk.ip],
+                        [isConn ? "Activo hace" : "Inactivo desde", isConn ? mk.uptime : fmt12h(mk.lastLoggedOut)],
+                        ["Router", mk.router?.nombre],
+                        ["Profile", mk.profile],
+                        ["Caller-ID", mk.callerId],
                       ].filter(([,v]) => v).map(([lbl, val]) => (
                         <div key={lbl}>
                           <div style={S.label}>{lbl}</div>
@@ -2734,9 +2756,30 @@ export default function SidebarApp() {
                         </div>
                       ))}
                     </div>
-                    {mk.disabled && <div style={{ marginTop:6, background:"#fef3c7", borderRadius:4, padding:"4px 8px", fontSize:11, color:"#92400e", fontWeight:600 }}>
-                      Usuario deshabilitado en MikroTik
-                    </div>}
+                    {mk.disabled && (
+                      <div style={{ marginTop:6, background:"#fef3c7", borderRadius:4, padding:"4px 8px", fontSize:11, color:"#92400e", fontWeight:600 }}>
+                        Usuario deshabilitado en MikroTik
+                      </div>
+                    )}
+                    {contact?.phone_number && (
+                      <button onClick={async () => {
+                          const estado  = isConn ? "✅ *Conectado*" : "⚠️ *Desconectado*";
+                          const detalle = isConn
+                            ? `Activo hace: *${mk.uptime||"—"}*\nRouter: ${mk.router?.nombre||"—"}`
+                            : `Inactivo desde: *${fmt12h(mk.lastLoggedOut)}*\nRouter: ${mk.router?.nombre||"—"}`;
+                          const texto = `Hola ${nombreFmt}, te informamos el estado actual de tu servicio:\n\n${estado}\n${detalle}\n\nCualquier consulta estamos a tu disposición. 💙`;
+                          await fetch(PROXY_URL, {
+                            method:"POST", headers:{"Content-Type":"application/json"},
+                            body: JSON.stringify({ accion:"ChatwootMessage", payload:{ phone: contact.phone_number, message: texto, account_id: acctId||"1" } }),
+                          }).catch(()=>{});
+                          notify("✅ Diagnóstico enviado al cliente");
+                        }}
+                        style={{ display:"flex", alignItems:"center", gap:6, marginTop:10, padding:"7px 12px",
+                          border:"none", borderRadius:6, background:"#0369a1", cursor:"pointer", fontSize:11,
+                          fontWeight:600, color:"#fff", fontFamily:"inherit" }}>
+                        <Send size={13}/> Enviar al cliente
+                      </button>
+                    )}
                   </div>
                 );
               })()}
