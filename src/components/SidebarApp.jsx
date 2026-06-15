@@ -319,10 +319,12 @@ export default function SidebarApp() {
   const [debugMsgs,  setDebugMsgs] = useState([]);
   const isDebug = window.location.search.includes("debug");
   // Diagnóstico MikroTik
-  const [diagLoad,   setDiagLoad]   = useState(false);
-  const [diagResult, setDiagResult] = useState(null);
-  const [diagError,  setDiagError]  = useState(null);
-  const [showDiag,   setShowDiag]   = useState(false);
+  const [diagLoad,       setDiagLoad]       = useState(false);
+  const [diagResult,     setDiagResult]     = useState(null);
+  const [diagError,      setDiagError]      = useState(null);
+  const [showDiag,       setShowDiag]       = useState(false);
+  const [showDiagDetail, setShowDiagDetail] = useState(false);
+  const [showSenalDetail,setShowSenalDetail]= useState(false);
   // Agente logueado (detectado de Chatwoot o seleccionado manualmente)
   const [agente, setAgente] = useState(() => getStoredAgente());
   // Búsqueda flexible cuando teléfono no encontrado
@@ -532,7 +534,7 @@ export default function SidebarApp() {
     setAnalisis(null); setImgFile(null); setImgPrev(null);
     setProrrInfo(null); setProrrForm({ fecha: "" });
     setSnOnu(null); setNodoReal(null); setSenal(null);
-    setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false);
+    setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false); setShowDiagDetail(false); setShowSenalDetail(false);
     setDniResultados([]); setDniSel(null); setDniBusq("");
     setOrdenCreada(null);
     setOrdenesCliente([]); setLiquidacionesCliente([]);
@@ -1512,6 +1514,20 @@ export default function SidebarApp() {
     const coords = detalle?._servicio?.coordenadas;
     if (coords) setOrdenForm(p => ({ ...p, coordenadas: coords }));
   }, [detalle?._servicio?.coordenadas]);
+
+  // ── Auto-consultar diagnóstico al cargar cliente ──────────────────────────
+  useEffect(() => {
+    if (!cliente) return;
+    void consultarDiagnostico();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente?.mikrowisp_id]);
+
+  // ── Auto-consultar señal ONU cuando esté disponible ──────────────────────
+  useEffect(() => {
+    if (!snOnu) return;
+    void consultarSenal();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snOnu]);
 
   // ── WhatsApp al cliente al crear orden ───────────────────────────────────
   async function sendWhatsAppOrden(ordenData = {}) {
@@ -2666,32 +2682,47 @@ export default function SidebarApp() {
 
             {/* Diagnóstico MikroTik */}
             <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: showDiag ? 8 : 0 }}>
-                <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Diagnóstico MikroTik</span>
+              {/* Fila compacta siempre visible */}
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>MikroTik</span>
+                {diagLoad && <span style={{ fontSize:10, color:T.muted }}>Consultando...</span>}
+                {!diagLoad && diagError && (
+                  <span style={{ fontSize:10, color:T.red, flex:1 }}>Sin respuesta</span>
+                )}
+                {!diagLoad && diagResult && (() => {
+                  const mk = diagResult.mikrotik || {};
+                  const c  = diagColor(mk.estado);
+                  const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
+                  const resumen = isConn ? `Uptime: ${mk.uptime||"—"}` : `Último logout: ${mk.lastLoggedOut||"—"}`;
+                  return (
+                    <div onClick={() => setShowDiagDetail(v => !v)}
+                      style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer",
+                        background: isConn ? T.greenLt : T.redLt, borderRadius:5, padding:"5px 8px",
+                        border:`1px solid ${c}40` }}>
+                      <div style={{ position:"relative", width:8, height:8, flexShrink:0 }}>
+                        <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
+                        {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
+                      </div>
+                      <span style={{ fontWeight:700, fontSize:11, color:c }}>{isConn ? "Conectado" : "Desconectado"}</span>
+                      <span style={{ fontSize:10, color:T.muted, flex:1 }}>{resumen}</span>
+                      <span style={{ fontSize:10, color:T.muted }}>{showDiagDetail ? "▲" : "▼"}</span>
+                    </div>
+                  );
+                })()}
                 <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-action"
-                  style={{ ...S.btnSm("#ea580c"), opacity:diagLoad?0.6:1, fontSize:10 }}>
-                  {diagLoad ? "Consultando..." : "Diagnosticar"}
+                  title="Refrescar diagnóstico"
+                  style={{ ...S.btnSm("#ea580c"), opacity:diagLoad?0.6:1, fontSize:10, flexShrink:0, padding:"4px 7px" }}>
+                  <RefreshCw size={11}/>
                 </button>
               </div>
-              {showDiag && !diagLoad && diagError && (
-                <div style={{ background:T.redLt, border:`1px solid #fecaca`, borderRadius:5, padding:"8px 10px", fontSize:11, color:T.red }}>
-                  {diagError}
-                </div>
-              )}
-              {showDiag && !diagLoad && diagResult && (() => {
+
+              {/* Detalle expandible */}
+              {showDiagDetail && !diagLoad && diagResult && (() => {
                 const mk = diagResult.mikrotik || {};
                 const c = diagColor(mk.estado);
                 const isConn = ["connected","conectado"].includes((mk.estado||"").toLowerCase());
                 return (
-                  <div style={{ background: isConn ? T.greenLt : T.redLt, border:`1px solid ${c}40`, borderRadius:5, padding:"10px 12px" }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
-                      <div style={{ position:"relative", width:9, height:9, flexShrink:0 }}>
-                        <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
-                        {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
-                      </div>
-                      <div style={{ fontWeight:700, fontSize:12, color:c }}>{isConn ? "Conectado" : "Desconectado"}</div>
-                      <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{mk.origen||"MikroTik"}</span>
-                    </div>
+                  <div style={{ marginTop:8, background: isConn ? T.greenLt : T.redLt, border:`1px solid ${c}40`, borderRadius:5, padding:"10px 12px" }}>
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 14px" }}>
                       {[
                         ["IP", mk.ip], ["Uptime", mk.uptime], ["Router", mk.router?.nombre],
@@ -2721,34 +2752,55 @@ export default function SidebarApp() {
             {/* Señal ONU */}
             {snOnu && (
               <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>
-                    Señal ONU · <span style={{ fontFamily:"monospace", fontSize:10 }}>{snOnu}</span>
-                  </span>
+                {/* Fila compacta */}
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Señal</span>
+                  {senalLoad && <span style={{ fontSize:10, color:T.muted }}>Leyendo...</span>}
+                  {!senalLoad && senal && (() => {
+                    const c   = senalColor(senal.rx);
+                    const lbl = senalLabel(senal.rx);
+                    return (
+                      <div onClick={() => setShowSenalDetail(v => !v)}
+                        style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer",
+                          background:"#fff", borderRadius:5, padding:"5px 8px", border:`1px solid ${c}40` }}>
+                        <span style={{ fontWeight:700, fontSize:12, color:c, fontFamily:"monospace" }}>{senal.rx} dBm</span>
+                        <span style={{ fontSize:10, fontWeight:600, color:c }}>{lbl}</span>
+                        <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{showSenalDetail ? "▲" : "▼"}</span>
+                      </div>
+                    );
+                  })()}
+                  {!senalLoad && !senal && <span style={{ fontSize:10, color:T.muted }}>—</span>}
                   <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-action"
-                    style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10 }}>
-                    {senalLoad ? "Leyendo..." : "Consultar señal"}
+                    title="Refrescar señal"
+                    style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10, flexShrink:0, padding:"4px 7px" }}>
+                    <RefreshCw size={11}/>
                   </button>
                 </div>
-                {senal && (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-                    {[["Rx ONU", senal.rx],["Rx OLT", senal.oltRx]].map(([lbl,val]) => {
-                      const c = senalColor(val);
-                      const pct = Math.min(100, Math.max(0, ((parseFloat(val)||0)+35)/15*100));
-                      return (
-                        <div key={lbl} style={{ background:"#fff", borderRadius:5, padding:"8px 10px", border:`1px solid ${T.border}` }}>
-                          <div style={S.label}>{lbl}</div>
-                          <div style={{ fontWeight:700, fontSize:16, color:c, lineHeight:1 }}>{val} <span style={{ fontSize:10 }}>dBm</span></div>
-                          <div style={{ background:T.bg, borderRadius:3, height:4, overflow:"hidden", margin:"5px 0 3px" }}>
-                            <div style={{ height:"100%", width:`${pct}%`, background:c, borderRadius:3 }} />
+
+                {/* Detalle expandible */}
+                {showSenalDetail && senal && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      {[["Rx ONU", senal.rx],["Rx OLT", senal.oltRx]].map(([lbl,val]) => {
+                        const c = senalColor(val);
+                        const pct = Math.min(100, Math.max(0, ((parseFloat(val)||0)+35)/15*100));
+                        return (
+                          <div key={lbl} style={{ background:"#fff", borderRadius:5, padding:"8px 10px", border:`1px solid ${T.border}` }}>
+                            <div style={S.label}>{lbl}</div>
+                            <div style={{ fontWeight:700, fontSize:16, color:c, lineHeight:1 }}>{val} <span style={{ fontSize:10 }}>dBm</span></div>
+                            <div style={{ background:T.bg, borderRadius:3, height:4, overflow:"hidden", margin:"5px 0 3px" }}>
+                              <div style={{ height:"100%", width:`${pct}%`, background:c, borderRadius:3 }} />
+                            </div>
+                            <div style={{ fontSize:10, fontWeight:600, color:c }}>{senalLabel(val)}</div>
                           </div>
-                          <div style={{ fontSize:10, fontWeight:600, color:c }}>{senalLabel(val)}</div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:4 }}>
+                      SN: {snOnu} · {senal.ts}
+                    </div>
                   </div>
                 )}
-                {senal && <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:4 }}>Actualizado {senal.ts}</div>}
               </div>
             )}
           </div>
