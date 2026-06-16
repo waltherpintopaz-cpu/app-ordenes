@@ -1528,17 +1528,19 @@ export default function SidebarApp() {
   }
 
   async function guardarNota(dni) {
-    if (!notaNueva.trim() || !dni) return;
+    const dniLimpio = String(dni || "").replace(/\D/g,"");
+    if (!notaNueva.trim() || !dniLimpio) {
+      alert("Sin DNI del cliente: " + (dniLimpio || "vacío"));
+      return;
+    }
     setNotaGuardando(true);
     const { data, error } = await supabase.from("notas_clientes").insert([{
-      dni:    String(dni).replace(/\D/g,""),
+      dni:    dniLimpio,
       nota:   notaNueva.trim(),
       autor:  agente || "—",
     }]).select("id,nota,autor,created_at").single();
-    if (!error && data) {
-      setNotasCliente(prev => [data, ...prev]);
-      setNotaNueva("");
-    }
+    if (error) { alert("Error al guardar nota: " + error.message); }
+    else if (data) { setNotasCliente(prev => [data, ...prev]); setNotaNueva(""); }
     setNotaGuardando(false);
   }
 
