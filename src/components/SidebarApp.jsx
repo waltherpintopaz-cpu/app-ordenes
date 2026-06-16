@@ -357,6 +357,10 @@ export default function SidebarApp() {
   const [liquidacionesCliente,setLiquidacionesCliente] = useState([]);
   const [historialLoad, setHistorialLoad] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+  const [notasCliente,  setNotasCliente]  = useState([]);
+  const [showNotas,     setShowNotas]     = useState(false);
+  const [notaNueva,     setNotaNueva]     = useState("");
+  const [notaGuardando, setNotaGuardando] = useState(false);
   // ── Mini-wizard Mikrowisp (sidebar) ──────────────────────────────────────
   const [mwOpen,         setMwOpen]         = useState(false);
   const [mwBusqVal,      setMwBusqVal]      = useState("");
@@ -596,7 +600,7 @@ export default function SidebarApp() {
     setAutoLoad(Date.now());
 
     // Cargar historial de órdenes y liquidaciones del cliente
-    if (row.cedula) cargarHistorialOrdenes(row.cedula);
+    if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); }
   }
 
   // ── Buscar cliente por teléfono ───────────────────────────────────────────
@@ -1514,6 +1518,35 @@ export default function SidebarApp() {
   }
 
   // ── Historial de órdenes y liquidaciones del cliente ─────────────────────
+  async function cargarNotas(dni) {
+    if (!dni) return;
+    const { data } = await supabase.from("notas_clientes")
+      .select("id,nota,autor,created_at")
+      .eq("dni", String(dni).replace(/\D/g,""))
+      .order("created_at", { ascending: false }).limit(20);
+    setNotasCliente(data || []);
+  }
+
+  async function guardarNota(dni) {
+    if (!notaNueva.trim() || !dni) return;
+    setNotaGuardando(true);
+    const { data, error } = await supabase.from("notas_clientes").insert([{
+      dni:    String(dni).replace(/\D/g,""),
+      nota:   notaNueva.trim(),
+      autor:  agente || "—",
+    }]).select("id,nota,autor,created_at").single();
+    if (!error && data) {
+      setNotasCliente(prev => [data, ...prev]);
+      setNotaNueva("");
+    }
+    setNotaGuardando(false);
+  }
+
+  async function eliminarNota(id) {
+    await supabase.from("notas_clientes").delete().eq("id", id);
+    setNotasCliente(prev => prev.filter(n => n.id !== id));
+  }
+
   async function cargarHistorialOrdenes(cedula) {
     if (!cedula) return;
     setHistorialLoad(true);
@@ -4187,6 +4220,58 @@ export default function SidebarApp() {
                 )}
 
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* ══ NOTAS DEL CLIENTE ══ */}
+        <div style={{ padding:"6px 8px 0" }}>
+          <button onClick={() => setShowNotas(v => !v)}
+            style={{ width:"100%", background: showNotas ? T.accent : T.bg,
+              border:`1px solid ${T.border}`, borderRadius:5, padding:"7px 12px",
+              display:"flex", alignItems:"center", justifyContent:"space-between",
+              cursor:"pointer", fontFamily:"inherit" }}>
+            <span style={{ fontSize:11, fontWeight:700, color:"#7c3aed" }}>
+              📝 Notas del cliente {notasCliente.length > 0 && <span style={{ background:"#7c3aed", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, marginLeft:4 }}>{notasCliente.length}</span>}
+            </span>
+            <span style={{ fontSize:12, color:T.muted, fontWeight:700 }}>{showNotas ? "▲ Ocultar" : "▼ Ver"}</span>
+          </button>
+          {showNotas && (
+            <div style={{ background:"#faf5ff", border:`1px solid #e9d5ff`, borderRadius:"0 0 6px 6px", padding:"10px 10px 8px" }}>
+              {/* Formulario nueva nota */}
+              <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                <textarea
+                  placeholder="Agregar nota..."
+                  value={notaNueva}
+                  onChange={e => setNotaNueva(e.target.value)}
+                  rows={2}
+                  style={{ flex:1, padding:"7px 9px", border:"1.5px solid #d8b4fe", borderRadius:6, fontSize:12, fontFamily:"inherit", resize:"vertical", outline:"none" }}
+                />
+                <button onClick={() => guardarNota(cliente.cedula || detalle?.cedula)}
+                  disabled={notaGuardando || !notaNueva.trim()}
+                  style={{ padding:"0 12px", background: notaNueva.trim() ? "#7c3aed" : "#e9d5ff", color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor: notaNueva.trim() ? "pointer" : "default", alignSelf:"stretch" }}>
+                  {notaGuardando ? "..." : "✓"}
+                </button>
+              </div>
+              {/* Lista de notas */}
+              {notasCliente.length === 0 ? (
+                <div style={{ fontSize:11, color:T.muted, textAlign:"center", padding:"6px 0" }}>Sin notas registradas</div>
+              ) : (
+                <div style={{ display:"grid", gap:6 }}>
+                  {notasCliente.map(n => (
+                    <div key={n.id} style={{ background:"#fff", border:"1px solid #e9d5ff", borderRadius:6, padding:"8px 10px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                        <div style={{ fontSize:10, color:"#7c3aed", fontWeight:700 }}>
+                          {n.autor} · {new Date(n.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"short",year:"numeric"})} {new Date(n.created_at).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+                        </div>
+                        <button onClick={() => eliminarNota(n.id)}
+                          style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"#dc2626", padding:"0 2px", lineHeight:1 }}>✕</button>
+                      </div>
+                      <div style={{ fontSize:12, color:"#1e293b", lineHeight:1.5, whiteSpace:"pre-wrap" }}>{n.nota}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
