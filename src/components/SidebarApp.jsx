@@ -1654,7 +1654,10 @@ export default function SidebarApp() {
     const nombre = String(payload.nombre || "").split(",")[0].split(" ")[0];
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
     const fecha = payload.fecha_actuacion ? new Date(payload.fecha_actuacion + "T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric"}) : "";
-    const texto = `📋 *NUEVA ORDEN DE SERVICIO*\n\nHola ${nombreFmt}, se ha generado una orden para tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}${payload.descripcion ? `\n*Detalle:* ${payload.descripcion}` : ""}\n\nGracias por confiar en nosotros. 💙`;
+    const esInstalacion = /instal/i.test(payload.tipo_actuacion || "");
+    const texto = esInstalacion
+      ? `📋 *NUEVA ORDEN DE SERVICIO*\n\nHola ${nombreFmt}, se ha generado una orden para la instalación de tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}\n\nGracias por confiar en nosotros. 💙`
+      : `🔧 *ORDEN DE INCIDENCIA*\n\nHola ${nombreFmt}, hemos registrado una orden de atención para tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}\n\nNos comunicaremos contigo a la brevedad. 💙`;
     await fetch(PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2459,7 +2462,26 @@ export default function SidebarApp() {
                     {fila("Actuación", sel("tipoActuacion", ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV","Incidencia Internet","Mantenimiento","Visita Tecnica","Recojo de equipo"]))}
                     {fila("Fecha", inp("fechaActuacion","",  "date"))}
                     {fila("Hora", horaPicker())}
-                    {fila("Prioridad", sel("prioridad", ["Normal","Alta","Urgente"]))}
+                    {fila("Prioridad", (
+                      <div style={{ display:"flex", gap:5, padding:"5px 8px" }}>
+                        {[
+                          { v:"Normal",  emoji:"🟢", bg:"#dcfce7", border:"#16a34a", color:"#166534" },
+                          { v:"Alta",    emoji:"🟡", bg:"#fef3c7", border:"#f59e0b", color:"#92400e" },
+                          { v:"Urgente", emoji:"🔴", bg:"#fee2e2", border:"#dc2626", color:"#991b1b" },
+                        ].map(({ v, emoji, bg, border, color }) => {
+                          const sel = ordenForm.prioridad === v;
+                          return (
+                            <button key={v} onClick={() => setOrdenForm(p => ({...p, prioridad:v}))}
+                              style={{ padding:"4px 10px", borderRadius:5, fontSize:11, fontWeight:700, cursor:"pointer",
+                                border:`2px solid ${sel ? border : "#e5e7eb"}`,
+                                background: sel ? bg : "#f9fafb", color: sel ? color : "#6b7280",
+                                transition:"all .15s" }}>
+                              {emoji} {v}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
                     {fila("Cobrar", sel("solicitarPago", ["SI","NO"], e => setOrdenForm(p => ({...p, solicitarPago:e.target.value, montoCobrar: e.target.value==="NO"?"":p.montoCobrar}))))}
                     {ordenForm.solicitarPago === "SI" && fila("Monto S/", inp("montoCobrar", "0.00", "number"))}
                   </div>
@@ -3792,13 +3814,23 @@ export default function SidebarApp() {
                 {/* Prioridad */}
                 <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                   <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Prioridad</div>
-                  <div>
-                    <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
-                      value={ordenForm.prioridad} onChange={e => setOrdenForm(p => ({...p, prioridad:e.target.value}))}>
-                      <option>Normal</option>
-                      <option>Alta</option>
-                      <option>Urgente</option>
-                    </select>
+                  <div style={{ display:"flex", gap:5, padding:"5px 8px" }}>
+                    {[
+                      { v:"Normal",  emoji:"🟢", bg:"#dcfce7", border:"#16a34a", color:"#166534" },
+                      { v:"Alta",    emoji:"🟡", bg:"#fef3c7", border:"#f59e0b", color:"#92400e" },
+                      { v:"Urgente", emoji:"🔴", bg:"#fee2e2", border:"#dc2626", color:"#991b1b" },
+                    ].map(({ v, emoji, bg, border, color }) => {
+                      const activo = ordenForm.prioridad === v;
+                      return (
+                        <button key={v} onClick={() => setOrdenForm(p => ({...p, prioridad:v}))}
+                          style={{ padding:"4px 10px", borderRadius:5, fontSize:11, fontWeight:700, cursor:"pointer",
+                            border:`2px solid ${activo ? border : "#e5e7eb"}`,
+                            background: activo ? bg : "#f9fafb", color: activo ? color : "#6b7280",
+                            transition:"all .15s" }}>
+                          {emoji} {v}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 {/* Solicitar pago */}
