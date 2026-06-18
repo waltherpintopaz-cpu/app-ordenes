@@ -1467,8 +1467,10 @@ export default function SidebarApp() {
       const suspendido = ["SUSPENDIDO","CORTADO"].includes((detalle?.estado || "").toUpperCase());
       const diasMax = suspendido ? 3 : 10;
       const fechaMaxStr = new Date(corte.getTime() + diasMax * 86400000).toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
-      // Extensión hasta fin del mes del corte
-      const extDate = new Date(corte.getFullYear(), corte.getMonth() + 1, 0);
+      // Extensión hasta fin del mes actual (o del mes de maxDate si ya pasó este mes)
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      const baseExt = max > hoy ? max : hoy;
+      const extDate = new Date(baseExt.getFullYear(), baseExt.getMonth() + 1, 0);
       const extStr  = extDate.toISOString().split("T")[0];
       setProrrInfo({ idfactura: factPendiente.idfactura || factPendiente.id, vencimiento: factPendiente.vencimiento, corte: corte.toISOString(), max: max.toISOString(), diasMax, suspendido, fechaMaxStr, extStr });
     } catch(e) { notify("Error: " + e.message, false); }
@@ -3353,7 +3355,9 @@ export default function SidebarApp() {
             {prorrInfo && (() => {
               const minDate = new Date(prorrInfo.corte); minDate.setDate(minDate.getDate() + 1);
               const maxDate = new Date(prorrInfo.corte); maxDate.setDate(maxDate.getDate() + prorrInfo.diasMax);
-              const minStr  = minDate.toISOString().split("T")[0];
+              const hoyDate = new Date(); hoyDate.setHours(0,0,0,0);
+              // minStr nunca puede ser antes de hoy (Mikrowisp rechaza fechas pasadas)
+              const minStr  = (minDate < hoyDate ? hoyDate : minDate).toISOString().split("T")[0];
               const maxStr  = maxDate.toISOString().split("T")[0];
               const extStr  = prorrInfo.extStr || maxStr;
               const esSelExt = prorrForm.fecha && prorrForm.fecha > maxStr;
