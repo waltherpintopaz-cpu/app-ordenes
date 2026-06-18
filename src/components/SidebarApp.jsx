@@ -303,9 +303,10 @@ export default function SidebarApp() {
   const [analisis, setAnalisis]   = useState(null);
   const fileRef = useRef();
   // Prórroga
-  const [prorrForm, setProrrForm] = useState({ fecha: "", calMes: "" });
-  const [prorrInfo, setProrrInfo] = useState(null);
-  const [prorrando, setProrrando] = useState(false);
+  const [prorrForm,   setProrrForm]   = useState({ fecha: "", calMes: "" });
+  const [prorrInfo,   setProrrInfo]   = useState(null);
+  const [prorrando,   setProrrando]   = useState(false);
+  const [prorrActiva, setProrrActiva] = useState(null); // { idfactura, fecha } tras confirmar
   // Crear factura
   const [factForm,  setFactForm]  = useState({ vencimiento: "" });
   const [creando,   setCreando]   = useState(false);
@@ -1466,7 +1467,10 @@ export default function SidebarApp() {
       const suspendido = ["SUSPENDIDO","CORTADO"].includes((detalle?.estado || "").toUpperCase());
       const diasMax = suspendido ? 3 : 10;
       const fechaMaxStr = new Date(corte.getTime() + diasMax * 86400000).toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
-      setProrrInfo({ idfactura: factPendiente.idfactura || factPendiente.id, vencimiento: factPendiente.vencimiento, corte: corte.toISOString(), max: max.toISOString(), diasMax, suspendido, fechaMaxStr });
+      // Extensión hasta fin del mes del corte
+      const extDate = new Date(corte.getFullYear(), corte.getMonth() + 1, 0);
+      const extStr  = extDate.toISOString().split("T")[0];
+      setProrrInfo({ idfactura: factPendiente.idfactura || factPendiente.id, vencimiento: factPendiente.vencimiento, corte: corte.toISOString(), max: max.toISOString(), diasMax, suspendido, fechaMaxStr, extStr });
     } catch(e) { notify("Error: " + e.message, false); }
     setProrrando(false);
   }
@@ -1476,11 +1480,15 @@ export default function SidebarApp() {
     setProrrando(true);
     try {
       const fechaStr = prorrForm.fecha;
-      const corte    = new Date(prorrInfo.corte);
-      const selected = new Date(fechaStr + "T00:00:00");
-      const diffDias = Math.round((selected - corte) / 86400000);
-      if (diffDias < 1 || diffDias > prorrInfo.diasMax) {
-        notify(`Fecha fuera del rango permitido (máx. ${prorrInfo.diasMax} días)`, false);
+      const corte      = new Date(prorrInfo.corte);
+      const selected   = new Date(fechaStr + "T00:00:00");
+      const diffDias   = Math.round((selected - corte) / 86400000);
+      const esExt      = diffDias > prorrInfo.diasMax;
+      const extDias    = prorrInfo.extStr
+        ? Math.round((new Date(prorrInfo.extStr + "T00:00:00") - corte) / 86400000)
+        : prorrInfo.diasMax;
+      if (diffDias < 1 || diffDias > extDias) {
+        notify(`Fecha fuera del rango permitido (máx. hasta fin de mes)`, false);
         setProrrando(false); return;
       }
       const tkn = getToken(cliente.empresa, agente);
@@ -1488,7 +1496,7 @@ export default function SidebarApp() {
         idcliente:   parseInt(cliente.mikrowisp_id, 10),
         idfactura:   parseInt(prorrInfo.idfactura, 10),
         fechalimite: fechaStr,
-        descripcion: `Prórroga registrada por ${agente || "agente"} vía Chatwoot`,
+        descripcion: `Prórroga ${esExt ? "extendida" : "registrada"} por ${agente || "agente"} vía Chatwoot`,
       }, tkn);
       const ok = (res?.estado || res?.result || res?.status || "").toLowerCase() !== "error";
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
@@ -3325,6 +3333,8 @@ export default function SidebarApp() {
               const maxDate = new Date(prorrInfo.corte); maxDate.setDate(maxDate.getDate() + prorrInfo.diasMax);
               const minStr  = minDate.toISOString().split("T")[0];
               const maxStr  = maxDate.toISOString().split("T")[0];
+              const extStr  = prorrInfo.extStr || maxStr;
+              const esSelExt = prorrForm.fecha && prorrForm.fecha > maxStr;
               const diasSelec = prorrForm.fecha
                 ? Math.round((new Date(prorrForm.fecha+"T00:00:00") - new Date(prorrInfo.corte)) / 86400000)
                 : 0;
@@ -3392,24 +3402,30 @@ export default function SidebarApp() {
                       const fechaStr = `${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`;
                       const selec    = fechaStr === prorrForm.fecha;
                       const valida   = fechaStr >= minStr && fechaStr <= maxStr;
+                      const esExt    = !valida && fechaStr > maxStr && fechaStr <= extStr;
+                      const clickable = valida || esExt;
                       const esDom    = (primerDia + i) % 7 === 0;
+                      // Colores: normal=azul, extendida=naranja, seleccionada extendida=ámbar
+                      const bgSelec  = esExt || selec && esSelExt ? "#f59e0b" : T.blue;
+                      const colorNormal = valida ? (esDom ? "#dc2626" : T.navy) : esExt ? "#92400e" : "#d1d5db";
                       return (
                         <div key={dia}
-                          onClick={() => valida && setProrrForm(p => ({ ...p, fecha: fechaStr }))}
+                          onClick={() => clickable && setProrrForm(p => ({ ...p, fecha: fechaStr }))}
                           style={{
-                            textAlign:"center", padding:"7px 0", fontSize:12, fontWeight: selec ? 800 : valida ? 600 : 400,
-                            cursor: valida ? "pointer" : "default",
-                            color: selec ? "#fff" : !valida ? "#d1d5db" : esDom ? "#dc2626" : T.navy,
-                            background: selec ? T.blue : valida && !selec ? "transparent" : "transparent",
-                            borderRadius: selec ? "50%" : 0,
+                            textAlign:"center", padding:"7px 0", fontSize:12,
+                            fontWeight: selec ? 800 : clickable ? 600 : 400,
+                            cursor: clickable ? "pointer" : "default",
+                            color: selec ? "#fff" : colorNormal,
+                            background: selec ? bgSelec : esExt ? "#fffbeb" : "transparent",
+                            borderRadius: selec ? "50%" : esExt ? 4 : 0,
                             margin: selec ? "1px auto" : 0,
                             width: selec ? 28 : "auto",
                             height: selec ? 28 : "auto",
                             display:"flex", alignItems:"center", justifyContent:"center",
                             transition:"background .1s",
                           }}
-                          onMouseEnter={e => { if (valida && !selec) e.currentTarget.style.background = T.accent; }}
-                          onMouseLeave={e => { if (!selec) e.currentTarget.style.background = "transparent"; }}>
+                          onMouseEnter={e => { if (clickable && !selec) e.currentTarget.style.background = esExt ? "#fde68a" : T.accent; }}
+                          onMouseLeave={e => { if (!selec) e.currentTarget.style.background = esExt ? "#fffbeb" : "transparent"; }}>
                           {dia}
                         </div>
                       );
@@ -3419,15 +3435,23 @@ export default function SidebarApp() {
 
                 {/* Fecha seleccionada */}
                 {prorrForm.fecha ? (
-                  <div style={{ background:T.accent, border:`1px solid ${T.border}`, borderLeft:`3px solid ${T.blue}`,
-                    borderRadius:5, padding:"8px 12px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{
+                    background: esSelExt ? "#fffbeb" : T.accent,
+                    border: `1px solid ${esSelExt ? "#fde68a" : T.border}`,
+                    borderLeft: `3px solid ${esSelExt ? "#f59e0b" : T.blue}`,
+                    borderRadius:5, padding:"8px 12px", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between"
+                  }}>
                     <div>
-                      <div style={{ fontSize:11, color:T.muted, fontWeight:600 }}>Fecha seleccionada</div>
+                      <div style={{ fontSize:11, color: esSelExt ? "#92400e" : T.muted, fontWeight:600 }}>
+                        {esSelExt ? "⚠️ Prórroga extendida" : "Fecha seleccionada"}
+                      </div>
                       <div style={{ fontSize:13, fontWeight:800, color:T.navy }}>
                         {new Date(prorrForm.fecha+"T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"long",year:"numeric"})}
                       </div>
                     </div>
-                    <div style={{ fontSize:12, fontWeight:700, color:T.blue }}>+{diasSelec} día{diasSelec!==1?"s":""}</div>
+                    <div style={{ fontSize:12, fontWeight:700, color: esSelExt ? "#f59e0b" : T.blue }}>
+                      +{diasSelec} día{diasSelec!==1?"s":""}
+                    </div>
                   </div>
                 ) : (
                   <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginBottom:12 }}>
@@ -3436,9 +3460,9 @@ export default function SidebarApp() {
                 )}
 
                 <button onClick={registrarProrroga} disabled={prorrando || !prorrForm.fecha} className="sb-btn-action"
-                  style={{ ...S.btn(prorrando || !prorrForm.fecha ? "#9ca3af" : T.blue),
+                  style={{ ...S.btn(prorrando || !prorrForm.fecha ? "#9ca3af" : esSelExt ? "#f59e0b" : T.blue),
                     opacity: prorrando || !prorrForm.fecha ? 0.55 : 1 }}>
-                  {prorrando ? "Registrando..." : "Confirmar prórroga"}
+                  {prorrando ? "Registrando..." : esSelExt ? "Confirmar prórroga extendida" : "Confirmar prórroga"}
                 </button>
                 {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>El cliente será notificado automáticamente</div>}
               </>);
