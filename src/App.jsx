@@ -2163,6 +2163,9 @@ export default function App() {
   const [reporteConfigRestarPago, setReporteConfigRestarPago] = useState(() => { try { const v = localStorage.getItem("rpt_restarPago"); return v === null ? true : v === "true"; } catch { return true; } });
   const [reporteConfigGuardando, setReporteConfigGuardando] = useState(false);
   const [reporteConfigGuardadoOk, setReporteConfigGuardadoOk] = useState(false);
+  const [reportePlantillas, setReportePlantillas] = useState([]);
+  const [reportePlantillaNombre, setReportePlantillaNombre] = useState("");
+  const [reportePlantillaGuardando, setReportePlantillaGuardando] = useState(false);
   const [eqRptTecnico, setEqRptTecnico] = useState("TODOS");
   const [eqRptEstado, setEqRptEstado] = useState("TODOS");
   const [eqRptDesde, setEqRptDesde] = useState(() => {
@@ -2306,7 +2309,11 @@ export default function App() {
     if (!isSupabaseConfigured) return;
     void (async () => {
       try {
-        const { data } = await supabase.from("app_config").select("valor").eq("id", "reporte_config").maybeSingle();
+        const [{ data }, { data: dataPl }] = await Promise.all([
+          supabase.from("app_config").select("valor").eq("id", "reporte_config").maybeSingle(),
+          supabase.from("app_config").select("valor").eq("id", "reporte_plantillas").maybeSingle(),
+        ]);
+        if (Array.isArray(dataPl?.valor)) setReportePlantillas(dataPl.valor);
         if (data?.valor && typeof data.valor === "object") {
           const v = data.valor;
           if (v.margenGlobal !== undefined) setReporteConfigMargenGlobal(Number(v.margenGlobal) || 0);
@@ -11707,6 +11714,60 @@ export default function App() {
     imprimirHtmlMismaPestana(html);
   };
 
+  const getReporteConfigActual = () => ({
+    margenGlobal: reporteConfigMargenGlobal,
+    margenPorMat: reporteConfigMargenPorMat,
+    precioBaseMat: reporteConfigPrecioBaseMat,
+    costoInstal: reporteConfigCostoInstal,
+    costoInciden: reporteConfigCostoInciden,
+    costoRecuperacion: reporteConfigCostoRecuperacion,
+    nota: reporteConfigNota,
+    mostrarCosto: reporteConfigMostrarCosto,
+    mostrarVenta: reporteConfigMostrarVenta,
+    mostrarMargen: reporteConfigMostrarMargen,
+    margenEquipos: reporteConfigMargenEquipos,
+    margenPorEq: reporteConfigMargenPorEq,
+    precioBaseEq: reporteConfigPrecioBaseEq,
+    restarPago: reporteConfigRestarPago,
+  });
+
+  const aplicarReporteConfig = (v) => {
+    if (v.margenGlobal !== undefined) setReporteConfigMargenGlobal(Number(v.margenGlobal) || 0);
+    if (v.margenPorMat !== undefined) setReporteConfigMargenPorMat(v.margenPorMat || {});
+    if (v.precioBaseMat !== undefined) setReporteConfigPrecioBaseMat(v.precioBaseMat || {});
+    if (v.costoInstal !== undefined) setReporteConfigCostoInstal(Number(v.costoInstal) || 60);
+    if (v.costoInciden !== undefined) setReporteConfigCostoInciden(Number(v.costoInciden) || 25);
+    if (v.costoRecuperacion !== undefined) setReporteConfigCostoRecuperacion(Number(v.costoRecuperacion) || 0);
+    if (v.nota !== undefined) setReporteConfigNota(v.nota || "");
+    if (v.mostrarCosto !== undefined) setReporteConfigMostrarCosto(v.mostrarCosto !== false);
+    if (v.mostrarVenta !== undefined) setReporteConfigMostrarVenta(v.mostrarVenta !== false);
+    if (v.mostrarMargen !== undefined) setReporteConfigMostrarMargen(v.mostrarMargen !== false);
+    if (v.margenEquipos !== undefined) setReporteConfigMargenEquipos(Number(v.margenEquipos) || 0);
+    if (v.margenPorEq !== undefined) setReporteConfigMargenPorEq(v.margenPorEq || {});
+    if (v.precioBaseEq !== undefined) setReporteConfigPrecioBaseEq(v.precioBaseEq || {});
+    if (v.restarPago !== undefined) setReporteConfigRestarPago(v.restarPago !== false);
+  };
+
+  const guardarPlantillaActual = async () => {
+    const nombre = reportePlantillaNombre.trim();
+    if (!nombre || !isSupabaseConfigured) return;
+    setReportePlantillaGuardando(true);
+    const cfg = { id: Date.now().toString(), nombre, ...getReporteConfigActual() };
+    const nuevas = [...reportePlantillas.filter(p => p.nombre !== nombre), cfg];
+    setReportePlantillas(nuevas);
+    setReportePlantillaNombre("");
+    await supabase.from("app_config").upsert({ id: "reporte_plantillas", valor: nuevas, actualizado_en: new Date().toISOString() }, { onConflict: "id" });
+    setReportePlantillaGuardando(false);
+  };
+
+  const eliminarPlantilla = async (nombre) => {
+    const nuevas = reportePlantillas.filter(p => p.nombre !== nombre);
+    setReportePlantillas(nuevas);
+    if (isSupabaseConfigured) {
+      await supabase.from("app_config").upsert({ id: "reporte_plantillas", valor: nuevas, actualizado_en: new Date().toISOString() }, { onConflict: "id" });
+    }
+  };
+
   const imprimirReporteMateriales = () => {
     const empresa = String(usuarioSesion?.empresa || "Americanet");
     const esDim = empresa.toLowerCase().includes("dim");
@@ -17338,6 +17399,43 @@ export default function App() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                           <span style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>⚙ Configuración del reporte</span>
                           <button onClick={() => setReporteMargenModal(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8" }}>✕</button>
+                        </div>
+
+                        {/* Plantillas */}
+                        <div style={{ background: "#fefce8", borderRadius: 12, padding: "14px 18px", marginBottom: 18, border: "1px solid #fde68a" }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>Plantillas de configuración</div>
+                          {reportePlantillas.length > 0 ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                              {reportePlantillas.map(p => (
+                                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", borderRadius: 8, padding: "7px 10px", border: "1px solid #fde68a" }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{p.nombre}</span>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button onClick={() => aplicarReporteConfig(p)} style={{ padding: "4px 12px", background: "#0f172a", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cargar</button>
+                                    <button onClick={() => eliminarPlantilla(p.nombre)} style={{ padding: "4px 10px", background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✕</button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "#a16207", marginBottom: 10 }}>No hay plantillas guardadas aún.</div>
+                          )}
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <input
+                              type="text"
+                              placeholder="Nombre de la plantilla..."
+                              value={reportePlantillaNombre}
+                              onChange={e => setReportePlantillaNombre(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") guardarPlantillaActual(); }}
+                              style={{ flex: 1, padding: "7px 10px", border: "1.5px solid #fde68a", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                            />
+                            <button
+                              disabled={!reportePlantillaNombre.trim() || reportePlantillaGuardando}
+                              onClick={guardarPlantillaActual}
+                              style={{ padding: "7px 14px", background: reportePlantillaNombre.trim() ? "#d97706" : "#e2e8f0", color: reportePlantillaNombre.trim() ? "#fff" : "#94a3b8", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: reportePlantillaNombre.trim() ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}
+                            >
+                              {reportePlantillaGuardando ? "..." : "+ Guardar"}
+                            </button>
+                          </div>
                         </div>
 
                         {/* Costos de actuación */}
