@@ -2043,7 +2043,7 @@ export default function SidebarApp() {
     if (!dni) return notify("Sin DNI para sincronizar contraseña", false);
     const userId = iptvData.iptv_user_id || "";
     if (!userId) return notify("Sin user_id guardado, recrear la cuenta IPTV", false);
-    const nuevaPass = dni;
+    const nuevaPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
     setIptvCreando(true);
     try {
       const res = await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
@@ -2055,8 +2055,29 @@ export default function SidebarApp() {
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
       await supabase.from("iptv_clientes").update({ iptv_password: nuevaPass }).eq("dni", dni);
       setIptvData(prev => ({ ...prev, iptv_password: nuevaPass }));
-      notify("✅ Contraseña sincronizada en MaxPlayer");
-    } catch(e) { notify("Error al sincronizar contraseña: " + e.message, false); }
+      notify("✅ Nueva contraseña generada y actualizada");
+    } catch(e) { notify("Error al cambiar contraseña: " + e.message, false); }
+    setIptvCreando(false);
+  }
+
+  async function eliminarIPTV() {
+    if (!iptvData) return;
+    const dni = String(cliente.cedula || "").replace(/\D/g, "");
+    const userId = iptvData.iptv_user_id || "";
+    if (!userId) return notify("Sin user_id guardado, no se puede eliminar de MaxPlayer", false);
+    if (!window.confirm(`¿Eliminar cuenta IPTV de ${iptvData.iptv_usuario}? Esta acción no se puede deshacer.`)) return;
+    setIptvCreando(true);
+    try {
+      const res = await fetch(`https://api.maxplayer.tv/v3/api/public/users/${userId}`, {
+        method: "DELETE",
+        headers: { "Api-Token": MP_TOKEN },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").delete().eq("dni", dni);
+      setIptvData(null);
+      notify("✅ Cuenta IPTV eliminada");
+    } catch(e) { notify("Error al eliminar: " + e.message, false); }
     setIptvCreando(false);
   }
 
@@ -4491,7 +4512,11 @@ export default function SidebarApp() {
                 </button>
                 <button onClick={cambiarPassIPTV} disabled={iptvCreando}
                   style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
-                  {iptvCreando ? "Sincronizando..." : "🔑 Sincronizar contraseña"}
+                  {iptvCreando ? "Actualizando..." : "🔑 Cambiar contraseña"}
+                </button>
+                <button onClick={eliminarIPTV} disabled={iptvCreando}
+                  style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#dc2626"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
+                  {iptvCreando ? "Eliminando..." : "🗑️ Eliminar cuenta IPTV"}
                 </button>
                 {!contact?.phone_number && <div style={{ fontSize:10, color:T.muted, textAlign:"center" }}>Sin número de contacto</div>}
               </>
