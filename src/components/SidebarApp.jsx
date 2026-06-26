@@ -2038,7 +2038,7 @@ export default function SidebarApp() {
       ? nombreRaw.split(",")[1].trim().split(" ")[0]
       : nombreRaw.split(" ")[0];
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
-    const texto = `📺 *CREDENCIALES MAXPLAYER*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬`;
+    const texto = `📺 *CREDENCIALES MAXPLAYER*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬\n\n💡 *Tip:* Para una mejor experiencia conecta tu TV a la red *WiFi 5GHz* y asegúrate de tener buena cobertura.`;
     try {
       await fetch(PROXY_URL, {
         method: "POST",
