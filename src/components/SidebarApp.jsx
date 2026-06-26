@@ -1943,6 +1943,8 @@ export default function SidebarApp() {
         .filter(Boolean)
         .join("\n");
 
+      notify(`[DEBUG] ${data.messages?.length || 0} msgs, texto: ${texto.slice(0,80) || "(vacío)"}`, false);
+
       if (!texto) { notify("No hay mensajes del cliente para analizar", false); setBuscandoDatosChat(false); return; }
 
       const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1971,6 +1973,7 @@ ${texto}`,
       });
       const oaiData = await oaiRes.json();
       const raw = oaiData?.choices?.[0]?.message?.content || "";
+      notify(`[DEBUG GPT] ${raw.slice(0,120) || "(sin respuesta)"}`, false);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) { notify("No se pudo interpretar la respuesta del AI", false); setBuscandoDatosChat(false); return; }
       const extraido = JSON.parse(jsonMatch[0]);
