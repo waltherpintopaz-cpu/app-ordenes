@@ -2040,34 +2040,20 @@ export default function SidebarApp() {
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
     const texto = `📺 *CREDENCIALES IPTV*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬`;
     try {
-      const cwUrl = `${CW_BASE}/api/v1/accounts/${acctId || "1"}/conversations/${convId}/messages`;
-      const headers = { "api_access_token": CW_TOKEN };
-      // 1. Enviar imagen como adjunto
-      if (convId) {
-        const imgRes = await fetch(MP_LOGO_URL);
-        const imgBlob = await imgRes.blob();
-        const formImg = new FormData();
-        formImg.append("content", "");
-        formImg.append("message_type", "outgoing");
-        formImg.append("private", "false");
-        formImg.append("attachments[]", imgBlob, "maxplayer.png");
-        await fetch(cwUrl, { method:"POST", headers, body: formImg }).catch(()=>{});
-      }
-      // 2. Enviar texto con credenciales
-      if (convId) {
-        const formTxt = new FormData();
-        formTxt.append("content", texto);
-        formTxt.append("message_type", "outgoing");
-        formTxt.append("private", "false");
-        await fetch(cwUrl, { method:"POST", headers, body: formTxt });
-      } else {
-        await fetch(PROXY_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" } }),
-        });
-      }
-      notify("✅ Credenciales e imagen enviadas al cliente");
+      await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accion: "ChatwootMessage",
+          payload: {
+            phone:          contact.phone_number,
+            message:        texto,
+            account_id:     acctId || "1",
+            attachment_url: MP_LOGO_URL,
+          },
+        }),
+      });
+      notify("✅ Credenciales enviadas al cliente");
     } catch(e) { notify("Error al enviar: " + e.message, false); }
     setIptvEnviando(false);
   }
