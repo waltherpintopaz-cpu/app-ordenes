@@ -2030,6 +2030,26 @@ export default function SidebarApp() {
     setIptvCreando(false);
   }
 
+  async function cambiarPassIPTV() {
+    if (!iptvData) return;
+    const dni = String(cliente.cedula || "").replace(/\D/g, "");
+    const nuevaPass = dni.slice(0, 3) + dni.slice(3).split('').sort(() => Math.random() - 0.5).join('');
+    setIptvCreando(true);
+    try {
+      const res = await fetch(`https://api.maxplayer.tv/v3/api/public/users/${iptvData.iptv_usuario}/password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, password: nuevaPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").update({ iptv_password: nuevaPass }).eq("dni", dni);
+      setIptvData(prev => ({ ...prev, iptv_password: nuevaPass }));
+      notify("✅ Contraseña actualizada en MaxPlayer");
+    } catch(e) { notify("Error al cambiar contraseña: " + e.message, false); }
+    setIptvCreando(false);
+  }
+
   async function enviarIPTV() {
     if (!iptvData || !contact?.phone_number) return;
     setIptvEnviando(true);
@@ -4458,6 +4478,10 @@ export default function SidebarApp() {
                 <button onClick={enviarIPTV} disabled={iptvEnviando || !contact?.phone_number}
                   style={{ ...S.btn(iptvEnviando ? "#9ca3af" : "#7c3aed"), opacity: iptvEnviando ? 0.6 : 1, marginBottom: 6 }}>
                   {iptvEnviando ? "Enviando..." : "📲 Enviar credenciales al cliente"}
+                </button>
+                <button onClick={cambiarPassIPTV} disabled={iptvCreando}
+                  style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
+                  {iptvCreando ? "Actualizando..." : "🔑 Regenerar contraseña"}
                 </button>
                 {!contact?.phone_number && <div style={{ fontSize:10, color:T.muted, textAlign:"center" }}>Sin número de contacto</div>}
               </>
