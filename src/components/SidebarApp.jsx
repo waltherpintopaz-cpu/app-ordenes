@@ -4469,7 +4469,7 @@ export default function SidebarApp() {
                     <div style={{ fontSize:11, color:T.muted, fontWeight:600, marginBottom:6 }}>Se creará el siguiente usuario:</div>
                     {[
                       ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${MP_NODO_SUFFIX[Number(cliente.nodo)]??Number(cliente.nodo)??1}`],
-                      ["Contraseña", String(cliente.cedula||"").replace(/\D/g,"")],
+                      ["Contraseña", (() => { const d = String(cliente.cedula||"").replace(/\D/g,""); return d.slice(0,3) + d.slice(3).split('').sort(()=>Math.random()-0.5).join(''); })()],
                       ["Servidor",   "tv.americanet.club:25461"],
                     ].map(([l,v]) => (
                       <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
