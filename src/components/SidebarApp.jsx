@@ -574,6 +574,16 @@ export default function SidebarApp() {
       cedula:            detCliente?.cedula            || "",
       direccion_principal: detCliente?.direccion_principal || "",
     });
+    // Pre-llenar form de editar servicio con datos actuales
+    if (servicio) {
+      setSvcForm({
+        id_perfil: String(servicio.idperfil || servicio.id_perfil || ""),
+        precio:    String(servicio.precio   || servicio.costo     || ""),
+        pppuser:   servicio.pppuser || "",
+        ppppass:   servicio.ppppass || "",
+        ip:        servicio.ip      || "",
+      });
+    }
 
     const facts = invRes?.facturas || (Array.isArray(invRes) ? invRes : []);
     setFacturas(facts);
