@@ -1948,35 +1948,21 @@ export default function SidebarApp() {
       // Extracción por regex — sin depender de OpenAI
       const lineas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
 
-      const dniMatch    = texto.match(/\b(\d{8})\b/);
-      const celMatch    = texto.match(/\b(9\d{8})\b/);
-      const emailMatch  = texto.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-      const dirMatch    = lineas.find(l =>
+      const dniMatch = texto.match(/\b(\d{8})\b/);
+      const dirMatch = lineas.find(l =>
         /\b(mz|mza|lt|lote|av|jr|calle|psje|psj|pj|pje|urb|apto|dpto|dp|casa|block|bl|villa|sector|barrio|coop|asoc|aa\.hh|aahh)\b/i.test(l)
-      );
-      // Nombre: línea con solo letras/espacios de 3+ chars que no sea dirección ni número
-      const nombreMatch = lineas.find(l =>
-        /^[a-záéíóúñüA-ZÁÉÍÓÚÑÜ][a-záéíóúñüA-ZÁÉÍÓÚÑÜ\s]{2,}$/.test(l) &&
-        !/\d/.test(l) &&
-        !/\b(mz|av|jr|calle|plan|soles|hola|gracias|buenas|ok|si|no)\b/i.test(l)
       );
 
       const extraido = {
-        dni:       dniMatch?.[1]   || null,
-        nombre:    nombreMatch     || null,
-        celular:   celMatch?.[1]   || null,
-        email:     emailMatch?.[0] || null,
-        direccion: dirMatch        || null,
+        dni:       dniMatch?.[1] || null,
+        direccion: dirMatch      || null,
       };
 
       const campos = [];
       setOrdenForm(p => {
         const next = { ...p };
-        if (extraido.dni       && !p.dni)       { next.dni       = String(extraido.dni).replace(/\D/g,"");  campos.push("DNI"); }
-        if (extraido.nombre    && !p.nombre)    { next.nombre    = String(extraido.nombre);                  campos.push("Nombre"); }
-        if (extraido.celular   && !p.celular)   { next.celular   = String(extraido.celular).replace(/\D/g,""); campos.push("Celular"); }
-        if (extraido.email     && !p.email)     { next.email     = String(extraido.email);                   campos.push("Email"); }
-        if (extraido.direccion && !p.direccion) { next.direccion = String(extraido.direccion);               campos.push("Dirección"); }
+        if (extraido.dni       && !p.dni)       { next.dni       = String(extraido.dni);       campos.push("DNI"); }
+        if (extraido.direccion && !p.direccion) { next.direccion = String(extraido.direccion); campos.push("Dirección"); }
         return next;
       });
 
