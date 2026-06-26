@@ -2012,7 +2012,7 @@ export default function SidebarApp() {
     if (!dni) return notify("Sin DNI para crear usuario IPTV", false);
     const nodoNum = MP_NODO_SUFFIX[Number(cliente.nodo)] ?? Number(cliente.nodo) ?? 1;
     const iptvUser = `${dni}-${nodoNum}`;
-    const iptvPass = dni;
+    const iptvPass = dni.slice(0, 3) + dni.slice(3).split('').sort(() => Math.random() - 0.5).join('');
     setIptvCreando(true);
     try {
       const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
@@ -2038,7 +2038,7 @@ export default function SidebarApp() {
       ? nombreRaw.split(",")[1].trim().split(" ")[0]
       : nombreRaw.split(" ")[0];
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
-    const texto = `📺 *CREDENCIALES IPTV*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬`;
+    const texto = `📺 *CREDENCIALES MAXPLAYER*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬`;
     try {
       await fetch(PROXY_URL, {
         method: "POST",
