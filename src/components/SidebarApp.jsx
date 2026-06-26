@@ -343,6 +343,7 @@ export default function SidebarApp() {
   const [showUsuarioDrop,   setShowUsuarioDrop]   = useState(false);
   const [buscandoCoords,    setBuscandoCoords]    = useState(false);
   const [coordsLista,       setCoordsLista]       = useState([]);
+  const [buscandoDatosChat, setBuscandoDatosChat] = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -1921,6 +1922,79 @@ export default function SidebarApp() {
     setBuscandoCoords(false);
   }
 
+  // ── Extraer datos del cliente del chat con GPT-4o ────────────────────────
+  async function extraerDatosDeChat() {
+    if (!contact?.phone_number) return notify("No hay número de contacto", false);
+    setBuscandoDatosChat(true);
+    try {
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accion: "GetChatwootMessages",
+          payload: { phone: contact.phone_number, account_id: acctId || "1", ...(convId ? { conv_id: convId } : {}) },
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { notify("No se pudo obtener mensajes del chat", false); setBuscandoDatosChat(false); return; }
+
+      const texto = (data.messages || [])
+        .filter(m => m.message_type === 0) // solo mensajes del cliente (incoming)
+        .map(m => String(m.content || "").trim())
+        .filter(Boolean)
+        .join("\n");
+
+      if (!texto) { notify("No hay mensajes del cliente para analizar", false); setBuscandoDatosChat(false); return; }
+
+      const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OAI_KEY}` },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          max_tokens: 300,
+          temperature: 0,
+          messages: [{
+            role: "user",
+            content: `Eres un extractor de datos para una empresa de internet en Perú. Analiza esta conversación de WhatsApp y extrae los datos del cliente. Devuelve SOLO un JSON con estos campos (usa null si no aparece el dato):
+{"dni":"","nombre":"","celular":"","email":"","direccion":""}
+
+Reglas:
+- dni: número de 8 dígitos
+- nombre: nombre completo tal como aparece
+- celular: número de celular (9 dígitos, sin espacios)
+- email: correo electrónico
+- direccion: dirección completa tal como aparece
+
+Conversación:
+${texto}`,
+          }],
+        }),
+      });
+      const oaiData = await oaiRes.json();
+      const raw = oaiData?.choices?.[0]?.message?.content || "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) { notify("No se pudo interpretar la respuesta del AI", false); setBuscandoDatosChat(false); return; }
+      const extraido = JSON.parse(jsonMatch[0]);
+
+      const campos = [];
+      setOrdenForm(p => {
+        const next = { ...p };
+        if (extraido.dni       && !p.dni)       { next.dni       = String(extraido.dni).replace(/\D/g,"");  campos.push("DNI"); }
+        if (extraido.nombre    && !p.nombre)    { next.nombre    = String(extraido.nombre);                  campos.push("Nombre"); }
+        if (extraido.celular   && !p.celular)   { next.celular   = String(extraido.celular).replace(/\D/g,""); campos.push("Celular"); }
+        if (extraido.email     && !p.email)     { next.email     = String(extraido.email);                   campos.push("Email"); }
+        if (extraido.direccion && !p.direccion) { next.direccion = String(extraido.direccion);               campos.push("Dirección"); }
+        return next;
+      });
+
+      if (campos.length) notify(`✅ Extraído del chat: ${campos.join(", ")}`);
+      else notify("No se encontraron datos nuevos en el chat", false);
+    } catch(e) {
+      notify("Error al extraer datos: " + e.message, false);
+    }
+    setBuscandoDatosChat(false);
+  }
+
   // ── Helpers de display ────────────────────────────────────────────────────
   const primerNombre = (n) => {
     if (!n) return "";
@@ -2488,8 +2562,14 @@ export default function SidebarApp() {
                     {ordenForm.solicitarPago === "SI" && fila("Monto S/", inp("montoCobrar", "0.00", "number"))}
                   </div>
 
-                  <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
+                  <div style={{ background:"#7c3aed", padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>👤 PASO 2 · Datos del cliente</span>
+                    <button onClick={extraerDatosDeChat} disabled={buscandoDatosChat}
+                      style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.4)", borderRadius:5,
+                        color:"#fff", fontSize:11, fontWeight:700, padding:"3px 10px", cursor:"pointer",
+                        opacity: buscandoDatosChat ? 0.6 : 1 }}>
+                      {buscandoDatosChat ? "⏳ Analizando..." : "📥 Extraer del chat"}
+                    </button>
                   </div>
                   <div style={{ background:"#fff" }}>
                     {fila("DNI *",
