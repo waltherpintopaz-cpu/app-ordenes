@@ -2015,17 +2015,26 @@ export default function SidebarApp() {
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split('').sort(() => Math.random() - 0.5).join('');
     setIptvCreando(true);
     try {
+      // Crear con DNI como password inicial (MaxPlayer ignora el campo password al crear)
       const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
+        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: dni }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+      // Cambiar contraseña al valor aleatorio usando el endpoint dedicado
+      const resPass = await fetch(`https://api.maxplayer.tv/v3/api/public/users/${iptvUser}/password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, password: iptvPass }),
+      });
+      const dataPass = await resPass.json();
+      if (!resPass.ok) throw new Error(dataPass?.message || `Error cambiando password: ${resPass.status}`);
       await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
       const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
-      notify(`✅ Creado: ${iptvUser} | Pass enviado: ${iptvPass} | API: ${JSON.stringify(data).slice(0,80)}`);
+      notify(`✅ Usuario IPTV creado: ${iptvUser}`);
     } catch(e) { notify("Error IPTV: " + e.message, false); }
     setIptvCreando(false);
   }
