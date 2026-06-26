@@ -2007,7 +2007,7 @@ export default function SidebarApp() {
     if (!cliente) return;
     const dni = String(cliente.cedula || "").replace(/\D/g, "");
     if (!dni) return notify("Sin DNI para crear usuario IPTV", false);
-    const nodoNum = parseInt((cliente.nodo || "Nod_01").replace(/\D/g, ""), 10);
+    const nodoNum = parseInt(String(cliente.nodo || 1).replace(/\D/g, ""), 10) || 1;
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni;
     setIptvCreando(true);
@@ -4455,7 +4455,7 @@ export default function SidebarApp() {
                   <div style={{ background:T.accent, border:`1px solid ${T.border}`, borderRadius:5, padding:"10px 12px", marginBottom:12 }}>
                     <div style={{ fontSize:11, color:T.muted, fontWeight:600, marginBottom:6 }}>Se creará el siguiente usuario:</div>
                     {[
-                      ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${parseInt((cliente.nodo||"Nod_01").replace(/\D/g,""),10)}`],
+                      ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${parseInt(String(cliente.nodo||1).replace(/\D/g,""),10)||1}`],
                       ["Contraseña", String(cliente.cedula||"").replace(/\D/g,"")],
                       ["Servidor",   "tv.americanet.club:25461"],
                     ].map(([l,v]) => (
