@@ -2001,7 +2001,7 @@ export default function SidebarApp() {
     if (!cedula) return;
     const dni = String(cedula).replace(/\D/g, "");
     const { data } = await supabase.from("iptv_clientes")
-      .select("iptv_usuario,iptv_password,created_at,creado_por")
+      .select("iptv_usuario,iptv_password,iptv_user_id,created_at,creado_por")
       .eq("dni", dni).maybeSingle();
     setIptvData(data || null);
   }
@@ -2022,8 +2022,15 @@ export default function SidebarApp() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
-      await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
-      const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, created_at: new Date().toISOString(), creado_por: agente };
+      const userId = String(data.user_id || "");
+      // Establecer contraseña real vía endpoint correcto
+      await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+        body: JSON.stringify({ user_id: userId, password: iptvPass }),
+      });
+      await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
+      const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
       notify(`✅ Usuario IPTV creado: ${iptvUser}`);
     } catch(e) { notify("Error IPTV: " + e.message, false); }
@@ -2034,13 +2041,15 @@ export default function SidebarApp() {
     if (!iptvData) return;
     const dni = String(cliente.cedula || "").replace(/\D/g, "");
     if (!dni) return notify("Sin DNI para sincronizar contraseña", false);
+    const userId = iptvData.iptv_user_id || "";
+    if (!userId) return notify("Sin user_id guardado, recrear la cuenta IPTV", false);
     const nuevaPass = dni;
     setIptvCreando(true);
     try {
-      const res = await fetch(`https://api.maxplayer.tv/v3/api/public/users/${iptvData.iptv_usuario}`, {
+      const res = await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, password: nuevaPass }),
+        body: JSON.stringify({ user_id: userId, password: nuevaPass }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
