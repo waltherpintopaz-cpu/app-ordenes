@@ -1939,7 +1939,6 @@ export default function SidebarApp() {
       if (!data.ok) { notify("No se pudo obtener mensajes del chat", false); setBuscandoDatosChat(false); return; }
 
       const texto = (data.messages || [])
-        .filter(m => m.message_type === 0) // solo mensajes del cliente (incoming)
         .map(m => String(m.content || "").trim())
         .filter(Boolean)
         .join("\n");
