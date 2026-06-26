@@ -2025,7 +2025,7 @@ export default function SidebarApp() {
       await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
       const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
-      notify(`✅ Usuario IPTV creado: ${iptvUser}`);
+      notify(`✅ Creado: ${iptvUser} | Pass enviado: ${iptvPass} | API: ${JSON.stringify(data).slice(0,80)}`);
     } catch(e) { notify("Error IPTV: " + e.message, false); }
     setIptvCreando(false);
   }
