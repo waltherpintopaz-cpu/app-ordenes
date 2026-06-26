@@ -352,9 +352,11 @@ export default function SidebarApp() {
   const [coordsLista,       setCoordsLista]       = useState([]);
   const [buscandoDatosChat, setBuscandoDatosChat] = useState(false);
   // ── IPTV ─────────────────────────────────────────────────────────────────
-  const [iptvData,     setIptvData]     = useState(null);
-  const [iptvCreando,  setIptvCreando]  = useState(false);
-  const [iptvEnviando, setIptvEnviando] = useState(false);
+  const [iptvData,        setIptvData]        = useState(null);
+  const [iptvCreando,     setIptvCreando]     = useState(false);
+  const [iptvEnviando,    setIptvEnviando]    = useState(false);
+  const [iptvCambioPass,  setIptvCambioPass]  = useState(false);
+  const [iptvNuevaPass,   setIptvNuevaPass]   = useState("");
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -2043,7 +2045,8 @@ export default function SidebarApp() {
     if (!dni) return notify("Sin DNI para sincronizar contraseña", false);
     const userId = iptvData.iptv_user_id || "";
     if (!userId) return notify("Sin user_id guardado, recrear la cuenta IPTV", false);
-    const nuevaPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
+    const nuevaPass = iptvNuevaPass.trim();
+    if (!nuevaPass) return notify("Ingresa una contraseña", false);
     setIptvCreando(true);
     try {
       const res = await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
@@ -2055,7 +2058,9 @@ export default function SidebarApp() {
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
       await supabase.from("iptv_clientes").update({ iptv_password: nuevaPass }).eq("dni", dni);
       setIptvData(prev => ({ ...prev, iptv_password: nuevaPass }));
-      notify("✅ Nueva contraseña generada y actualizada");
+      setIptvCambioPass(false);
+      setIptvNuevaPass("");
+      notify("✅ Contraseña actualizada");
     } catch(e) { notify("Error al cambiar contraseña: " + e.message, false); }
     setIptvCreando(false);
   }
@@ -4510,10 +4515,32 @@ export default function SidebarApp() {
                   style={{ ...S.btn(iptvEnviando ? "#9ca3af" : "#7c3aed"), opacity: iptvEnviando ? 0.6 : 1, marginBottom: 6 }}>
                   {iptvEnviando ? "Enviando..." : "📲 Enviar credenciales al cliente"}
                 </button>
-                <button onClick={cambiarPassIPTV} disabled={iptvCreando}
-                  style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
-                  {iptvCreando ? "Actualizando..." : "🔑 Cambiar contraseña"}
-                </button>
+                {iptvCambioPass ? (
+                  <div style={{ marginBottom: 6 }}>
+                    <input
+                      type="text"
+                      placeholder="Nueva contraseña"
+                      value={iptvNuevaPass}
+                      onChange={e => setIptvNuevaPass(e.target.value)}
+                      style={{ width:"100%", padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13, marginBottom:4, boxSizing:"border-box" }}
+                    />
+                    <div style={{ display:"flex", gap:4 }}>
+                      <button onClick={cambiarPassIPTV} disabled={iptvCreando}
+                        style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), flex:1, opacity: iptvCreando ? 0.6 : 1 }}>
+                        {iptvCreando ? "Guardando..." : "✅ Confirmar"}
+                      </button>
+                      <button onClick={() => { setIptvCambioPass(false); setIptvNuevaPass(""); }}
+                        style={{ ...S.btn("#6b7280"), flex:1 }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setIptvCambioPass(true)} disabled={iptvCreando}
+                    style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
+                    🔑 Cambiar contraseña
+                  </button>
+                )}
                 <button onClick={eliminarIPTV} disabled={iptvCreando}
                   style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#dc2626"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
                   {iptvCreando ? "Eliminando..." : "🗑️ Eliminar cuenta IPTV"}
