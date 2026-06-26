@@ -1943,40 +1943,31 @@ export default function SidebarApp() {
         .filter(Boolean)
         .join("\n");
 
-      notify(`[DEBUG] ${data.messages?.length || 0} msgs, texto: ${texto.slice(0,80) || "(vacío)"}`, false);
-
       if (!texto) { notify("No hay mensajes del cliente para analizar", false); setBuscandoDatosChat(false); return; }
 
-      const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OAI_KEY}` },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          max_tokens: 300,
-          temperature: 0,
-          messages: [{
-            role: "user",
-            content: `Eres un extractor de datos para una empresa de internet en Perú. Analiza esta conversación de WhatsApp y extrae los datos del cliente. Devuelve SOLO un JSON con estos campos (usa null si no aparece el dato):
-{"dni":"","nombre":"","celular":"","email":"","direccion":""}
+      // Extracción por regex — sin depender de OpenAI
+      const lineas = texto.split(/\n/).map(l => l.trim()).filter(Boolean);
 
-Reglas:
-- dni: número de 8 dígitos
-- nombre: nombre completo tal como aparece
-- celular: número de celular (9 dígitos, sin espacios)
-- email: correo electrónico
-- direccion: dirección completa tal como aparece
+      const dniMatch    = texto.match(/\b(\d{8})\b/);
+      const celMatch    = texto.match(/\b(9\d{8})\b/);
+      const emailMatch  = texto.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
+      const dirMatch    = lineas.find(l =>
+        /\b(mz|mza|lt|lote|av|jr|calle|psje|psj|pj|pje|urb|apto|dpto|dp|casa|block|bl|villa|sector|barrio|coop|asoc|aa\.hh|aahh)\b/i.test(l)
+      );
+      // Nombre: línea con solo letras/espacios de 3+ chars que no sea dirección ni número
+      const nombreMatch = lineas.find(l =>
+        /^[a-záéíóúñüA-ZÁÉÍÓÚÑÜ][a-záéíóúñüA-ZÁÉÍÓÚÑÜ\s]{2,}$/.test(l) &&
+        !/\d/.test(l) &&
+        !/\b(mz|av|jr|calle|plan|soles|hola|gracias|buenas|ok|si|no)\b/i.test(l)
+      );
 
-Conversación:
-${texto}`,
-          }],
-        }),
-      });
-      const oaiData = await oaiRes.json();
-      const raw = oaiData?.choices?.[0]?.message?.content || "";
-      notify(`[DEBUG GPT] ${raw.slice(0,120) || "(sin respuesta)"}`, false);
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) { notify("No se pudo interpretar la respuesta del AI", false); setBuscandoDatosChat(false); return; }
-      const extraido = JSON.parse(jsonMatch[0]);
+      const extraido = {
+        dni:       dniMatch?.[1]   || null,
+        nombre:    nombreMatch     || null,
+        celular:   celMatch?.[1]   || null,
+        email:     emailMatch?.[0] || null,
+        direccion: dirMatch        || null,
+      };
 
       const campos = [];
       setOrdenForm(p => {
