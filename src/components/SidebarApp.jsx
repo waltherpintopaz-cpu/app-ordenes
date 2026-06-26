@@ -11,6 +11,8 @@ const MP_TOKEN   = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN  = "1777119384974866697";
 const MP_IPTV_U  = "ernesto";
 const MP_IPTV_P  = "ernesto";
+// mikrowisp_clientes.nodo (router ID) → número secuencial de nodo para username IPTV
+const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
@@ -2007,7 +2009,7 @@ export default function SidebarApp() {
     if (!cliente) return;
     const dni = String(cliente.cedula || "").replace(/\D/g, "");
     if (!dni) return notify("Sin DNI para crear usuario IPTV", false);
-    const nodoNum = parseInt(String(cliente.nodo || 1).replace(/\D/g, ""), 10) || 1;
+    const nodoNum = MP_NODO_SUFFIX[Number(cliente.nodo)] ?? Number(cliente.nodo) ?? 1;
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni;
     setIptvCreando(true);
@@ -4455,7 +4457,7 @@ export default function SidebarApp() {
                   <div style={{ background:T.accent, border:`1px solid ${T.border}`, borderRadius:5, padding:"10px 12px", marginBottom:12 }}>
                     <div style={{ fontSize:11, color:T.muted, fontWeight:600, marginBottom:6 }}>Se creará el siguiente usuario:</div>
                     {[
-                      ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${parseInt(String(cliente.nodo||1).replace(/\D/g,""),10)||1}`],
+                      ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${MP_NODO_SUFFIX[Number(cliente.nodo)]??Number(cliente.nodo)??1}`],
                       ["Contraseña", String(cliente.cedula||"").replace(/\D/g,"")],
                       ["Servidor",   "tv.americanet.club:25461"],
                     ].map(([l,v]) => (
