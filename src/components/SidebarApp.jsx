@@ -7,6 +7,10 @@ import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } f
 const CW_BASE    = "https://chat.americanet.club";
 const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
 const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
+const MP_TOKEN   = "mNTO0Z5ynAIsPx7LWBzFX90N";
+const MP_DOMAIN  = "1777119384974866697";
+const MP_IPTV_U  = "ernesto";
+const MP_IPTV_P  = "ernesto";
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
@@ -344,6 +348,10 @@ export default function SidebarApp() {
   const [buscandoCoords,    setBuscandoCoords]    = useState(false);
   const [coordsLista,       setCoordsLista]       = useState([]);
   const [buscandoDatosChat, setBuscandoDatosChat] = useState(false);
+  // ── IPTV ─────────────────────────────────────────────────────────────────
+  const [iptvData,     setIptvData]     = useState(null);
+  const [iptvCreando,  setIptvCreando]  = useState(false);
+  const [iptvEnviando, setIptvEnviando] = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [tecnicosLista, setTecnicosLista] = useState([]);
@@ -612,7 +620,7 @@ export default function SidebarApp() {
     setAutoLoad(Date.now());
 
     // Cargar historial de órdenes y liquidaciones del cliente
-    if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); }
+    if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); cargarIPTV(row.cedula); }
   }
 
   // ── Buscar cliente por teléfono ───────────────────────────────────────────
@@ -1985,6 +1993,58 @@ export default function SidebarApp() {
     setBuscandoDatosChat(false);
   }
 
+  // ── IPTV MaxPlayer ───────────────────────────────────────────────────────
+  async function cargarIPTV(cedula) {
+    if (!cedula) return;
+    const dni = String(cedula).replace(/\D/g, "");
+    const { data } = await supabase.from("iptv_clientes")
+      .select("iptv_usuario,iptv_password,created_at,creado_por")
+      .eq("dni", dni).maybeSingle();
+    setIptvData(data || null);
+  }
+
+  async function crearIPTV() {
+    if (!cliente) return;
+    const dni = String(cliente.cedula || "").replace(/\D/g, "");
+    if (!dni) return notify("Sin DNI para crear usuario IPTV", false);
+    const nodoNum = parseInt((cliente.nodo || "Nod_01").replace(/\D/g, ""), 10);
+    const iptvUser = `${dni}-${nodoNum}`;
+    const iptvPass = dni;
+    setIptvCreando(true);
+    try {
+      const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
+      const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, created_at: new Date().toISOString(), creado_por: agente };
+      setIptvData(nuevo);
+      notify(`✅ Usuario IPTV creado: ${iptvUser}`);
+    } catch(e) { notify("Error IPTV: " + e.message, false); }
+    setIptvCreando(false);
+  }
+
+  async function enviarIPTV() {
+    if (!iptvData || !contact?.phone_number) return;
+    setIptvEnviando(true);
+    const nombreRaw = cliente?.nombre || "";
+    const nombre = nombreRaw.includes(",")
+      ? nombreRaw.split(",")[1].trim().split(" ")[0]
+      : nombreRaw.split(" ")[0];
+    const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
+    const texto = `📺 *CREDENCIALES IPTV*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬`;
+    await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" } }),
+    }).catch(() => {});
+    notify("✅ Credenciales enviadas al cliente");
+    setIptvEnviando(false);
+  }
+
   // ── Helpers de display ────────────────────────────────────────────────────
   const primerNombre = (n) => {
     if (!n) return "";
@@ -3136,7 +3196,7 @@ export default function SidebarApp() {
 
         {/* ══ TABS ══ */}
         <div style={{ background:T.card, marginTop:8, borderTop:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`, display:"flex" }}>
-          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorr."],["nueva","Factura"],["editar","Editar"],["orden","Orden"]].map(([t, label]) => (
+          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorr."],["nueva","Factura"],["editar","Editar"],["orden","Orden"],["iptv","IPTV"]].map(([t, label]) => (
             <button key={t} className="sb-tab-btn"
               onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); if (t === "orden") setOrdenCreada(null); if (t === "editar") cargarPerfiles(); }}
               style={{ flex:1, border:"none",
@@ -4351,6 +4411,70 @@ export default function SidebarApp() {
             </div>
           )}
         </div>
+
+        {/* ══ TAB: IPTV ══ */}
+        {tab === "iptv" && (
+          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+            <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>📺 IPTV MaxPlayer</div>
+
+            {iptvData ? (
+              <>
+                {/* Credenciales actuales */}
+                <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:12 }}>
+                  {[
+                    ["Usuario",    iptvData.iptv_usuario],
+                    ["Contraseña", iptvData.iptv_password],
+                    ["Creado por", iptvData.creado_por || "—"],
+                    ["Fecha",      iptvData.created_at ? new Date(iptvData.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric"}) : "—"],
+                  ].map(([l,v], i, arr) => (
+                    <div key={l} style={{ display:"grid", gridTemplateColumns:"110px 1fr", borderBottom: i < arr.length-1 ? `1px solid ${T.border}` : "none" }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
+                      <div style={{ padding:"8px 10px", fontSize:12, fontWeight:700, color:T.navy, fontFamily: l==="Usuario"||l==="Contraseña" ? "monospace" : "inherit" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* App info */}
+                <div style={{ background:"#eff6ff", border:`1px solid #bfdbfe`, borderRadius:5, padding:"8px 10px", marginBottom:12, fontSize:11, color:"#1e40af" }}>
+                  <div style={{ fontWeight:700, marginBottom:3 }}>📱 Datos de conexión</div>
+                  <div>Servidor: <b>tv.americanet.club</b></div>
+                  <div>Puerto: <b>25461</b></div>
+                  <div>App: <b>MaxPlayer</b></div>
+                </div>
+
+                <button onClick={enviarIPTV} disabled={iptvEnviando || !contact?.phone_number}
+                  style={{ ...S.btn(iptvEnviando ? "#9ca3af" : "#7c3aed"), opacity: iptvEnviando ? 0.6 : 1, marginBottom: 6 }}>
+                  {iptvEnviando ? "Enviando..." : "📲 Enviar credenciales al cliente"}
+                </button>
+                {!contact?.phone_number && <div style={{ fontSize:10, color:T.muted, textAlign:"center" }}>Sin número de contacto</div>}
+              </>
+            ) : (
+              <>
+                {/* Preview usuario a crear */}
+                {cliente && (
+                  <div style={{ background:T.accent, border:`1px solid ${T.border}`, borderRadius:5, padding:"10px 12px", marginBottom:12 }}>
+                    <div style={{ fontSize:11, color:T.muted, fontWeight:600, marginBottom:6 }}>Se creará el siguiente usuario:</div>
+                    {[
+                      ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${parseInt((cliente.nodo||"Nod_01").replace(/\D/g,""),10)}`],
+                      ["Contraseña", String(cliente.cedula||"").replace(/\D/g,"")],
+                      ["Servidor",   "tv.americanet.club:25461"],
+                    ].map(([l,v]) => (
+                      <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
+                        <span style={{ color:T.muted, fontWeight:600 }}>{l}:</span>
+                        <span style={{ fontWeight:700, color:T.navy, fontFamily:"monospace" }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={crearIPTV} disabled={iptvCreando || !cliente}
+                  style={{ ...S.btn(iptvCreando ? "#9ca3af" : T.blue), opacity: iptvCreando ? 0.6 : 1 }}>
+                  {iptvCreando ? "Creando usuario..." : "➕ Crear usuario IPTV"}
+                </button>
+                {!cliente && <div style={{ fontSize:10, color:T.muted, textAlign:"center", marginTop:6 }}>Carga un cliente primero</div>}
+              </>
+            )}
+          </div>
+        )}
 
         {/* ══ NOTAS DEL CLIENTE ══ */}
         <div style={{ padding:"6px 8px 0" }}>
