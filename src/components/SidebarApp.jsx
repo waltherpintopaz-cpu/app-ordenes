@@ -2012,25 +2012,16 @@ export default function SidebarApp() {
     if (!dni) return notify("Sin DNI para crear usuario IPTV", false);
     const nodoNum = MP_NODO_SUFFIX[Number(cliente.nodo)] ?? Number(cliente.nodo) ?? 1;
     const iptvUser = `${dni}-${nodoNum}`;
-    const iptvPass = dni.slice(0, 3) + dni.slice(3).split('').sort(() => Math.random() - 0.5).join('');
+    const iptvPass = dni;
     setIptvCreando(true);
     try {
-      // Crear con DNI como password inicial (MaxPlayer ignora el campo password al crear)
       const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: dni }),
+        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
-      // Cambiar contraseña al valor aleatorio usando el endpoint dedicado
-      const resPass = await fetch(`https://api.maxplayer.tv/v3/api/public/users/${iptvUser}/password`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, password: iptvPass }),
-      });
-      const dataPass = await resPass.json();
-      if (!resPass.ok) throw new Error(dataPass?.message || `Error cambiando password: ${resPass.status}`);
       await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
       const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
@@ -4502,7 +4493,7 @@ export default function SidebarApp() {
                     <div style={{ fontSize:11, color:T.muted, fontWeight:600, marginBottom:6 }}>Se creará el siguiente usuario:</div>
                     {[
                       ["Usuario",    `${String(cliente.cedula||"").replace(/\D/g,"")}-${MP_NODO_SUFFIX[Number(cliente.nodo)]??Number(cliente.nodo)??1}`],
-                      ["Contraseña", (() => { const d = String(cliente.cedula||"").replace(/\D/g,""); return d.slice(0,3) + d.slice(3).split('').sort(()=>Math.random()-0.5).join(''); })()],
+                      ["Contraseña", String(cliente.cedula||"").replace(/\D/g,"")],
                       ["Servidor",   "tv.americanet.club:25461"],
                     ].map(([l,v]) => (
                       <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:3 }}>
