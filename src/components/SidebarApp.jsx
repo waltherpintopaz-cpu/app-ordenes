@@ -869,6 +869,7 @@ export default function SidebarApp() {
         id_router:   Number(svc.nodo),
         id_perfil:   Number(svcForm.id_perfil),
       };
+      if (svcForm.precio)         payload.costo   = Number(svcForm.precio);
       if (svcForm.pppuser.trim()) payload.userppp = svcForm.pppuser.trim();
       if (svcForm.ppppass.trim()) payload.passppp = svcForm.ppppass.trim();
       if (svcForm.ip.trim())      payload.ip      = svcForm.ip.trim();
