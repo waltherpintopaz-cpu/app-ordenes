@@ -7,6 +7,7 @@ import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } f
 const CW_BASE    = "https://chat.americanet.club";
 const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
 const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
+const MP_LOGO_URL = "https://vgwbqbzpjlbkmxtfghdm.supabase.co/storage/v1/object/public/logo%20image/Captura%20de%20pantalla%202026-06-26%20145210.png";
 const MP_TOKEN   = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN  = "1777119384974866697";
 const MP_IPTV_U  = "ernesto";
@@ -2038,12 +2039,36 @@ export default function SidebarApp() {
       : nombreRaw.split(" ")[0];
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
     const texto = `📺 *CREDENCIALES IPTV*\n\nHola ${nombreFmt}, aquí están tus credenciales para el servicio de televisión:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬`;
-    await fetch(PROXY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" } }),
-    }).catch(() => {});
-    notify("✅ Credenciales enviadas al cliente");
+    try {
+      const cwUrl = `${CW_BASE}/api/v1/accounts/${acctId || "1"}/conversations/${convId}/messages`;
+      const headers = { "api_access_token": CW_TOKEN };
+      // 1. Enviar imagen como adjunto
+      if (convId) {
+        const imgRes = await fetch(MP_LOGO_URL);
+        const imgBlob = await imgRes.blob();
+        const formImg = new FormData();
+        formImg.append("content", "");
+        formImg.append("message_type", "outgoing");
+        formImg.append("private", "false");
+        formImg.append("attachments[]", imgBlob, "maxplayer.png");
+        await fetch(cwUrl, { method:"POST", headers, body: formImg }).catch(()=>{});
+      }
+      // 2. Enviar texto con credenciales
+      if (convId) {
+        const formTxt = new FormData();
+        formTxt.append("content", texto);
+        formTxt.append("message_type", "outgoing");
+        formTxt.append("private", "false");
+        await fetch(cwUrl, { method:"POST", headers, body: formTxt });
+      } else {
+        await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" } }),
+        });
+      }
+      notify("✅ Credenciales e imagen enviadas al cliente");
+    } catch(e) { notify("Error al enviar: " + e.message, false); }
     setIptvEnviando(false);
   }
 
