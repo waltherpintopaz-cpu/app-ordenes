@@ -645,6 +645,7 @@ export default function SidebarApp() {
       usuario_nodo: row.usuario_nodo || "",
       caja_nap: row.caja_nap || "",
       estado: row.estado_servicio || "",
+      coordenadas: row.ubicacion || "",
       empresa,
     };
     setCliente(cli);
@@ -694,7 +695,7 @@ export default function SidebarApp() {
         const buscarLocal = async (t) => {
           const { data } = await supabase
             .from("clientes")
-            .select("id,dni,nombre,direccion,celular,nodo,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa")
+            .select("id,dni,nombre,direccion,celular,nodo,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa,ubicacion")
             .ilike("celular", `%${t}%`);
           return data || [];
         };
@@ -1419,7 +1420,7 @@ export default function SidebarApp() {
       // Usar nodo de tabla clientes (Nod_01, Nod_03...) si está disponible,
       // ya que el ID de Mikrowisp no coincide con la clave del router de diagnóstico
       const nodoStr = nodoReal || `Nod_${String(nodoNum).padStart(2,"0")}`;
-      const pppuser = detalle?._servicio?.pppuser || svc?.pppuser || "";
+      const pppuser = detalle?._servicio?.pppuser || svc?.pppuser || cliente.usuario_nodo || "";
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2184,6 +2185,7 @@ export default function SidebarApp() {
 
   const svc = detalle?._servicio;
   const isOnline = svc?.status_user === "ONLINE";
+  const coordsStr = svc?.coordenadas || cliente?.coordenadas || "";
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -2978,12 +2980,12 @@ export default function SidebarApp() {
         )}
 
         {/* ══ SERVICIO DE INTERNET ══ */}
-        {svc && (
+        {(svc || cliente.sinMikrowisp) && (
           <div style={{ background:T.bg, borderBottom:`1px solid ${T.border}`, padding:"10px 14px" }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
               <span style={{ fontSize:11, fontWeight:700, color:T.navy, textTransform:"uppercase", letterSpacing:"0.4px" }}>Servicio de internet</span>
-              {svc.coordenadas && (() => {
-                const [lat, lng] = svc.coordenadas.split(",").map(Number);
+              {coordsStr && (() => {
+                const [lat, lng] = coordsStr.split(",").map(Number);
                 if (!lat||!lng) return null;
                 return (
                   <div style={{ display:"flex", gap:5, alignItems:"center" }}>
@@ -2998,13 +3000,13 @@ export default function SidebarApp() {
               })()}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"8px 16px" }}>
-              {svc.perfil  && (
+              {svc?.perfil  && (
                 <div>
                   <div style={S.label}>Plan</div>
                   <div style={{ fontWeight:700, fontSize:12, color:T.blue }}>{svc.perfil}</div>
                 </div>
               )}
-              {svc.ip && (
+              {svc?.ip && (
                 <div>
                   <div style={S.label}>IP activa</div>
                   <div
@@ -3014,13 +3016,13 @@ export default function SidebarApp() {
                   >{svc.ip}</div>
                 </div>
               )}
-              {svc.pppuser && (
+              {(svc?.pppuser || cliente.usuario_nodo) && (
                 <div style={{ gridColumn:"1 / -1" }}>
                   <div style={S.label}>PPPoE</div>
-                  <div style={{ fontFamily:"monospace", fontWeight:600, color:T.navy, fontSize:11 }}>{svc.pppuser}</div>
+                  <div style={{ fontFamily:"monospace", fontWeight:600, color:T.navy, fontSize:11 }}>{svc?.pppuser || cliente.usuario_nodo}</div>
                 </div>
               )}
-              {svc.mac && (
+              {svc?.mac && (
                 <div>
                   <div style={S.label}>MAC</div>
                   <div style={{ fontFamily:"monospace", fontWeight:600, color:T.navy, fontSize:10 }}>{svc.mac}</div>
@@ -3118,8 +3120,8 @@ export default function SidebarApp() {
             </div>
 
             {/* Mapa */}
-            {showMap && svc.coordenadas && (() => {
-              const [lat, lng] = svc.coordenadas.split(",").map(Number);
+            {showMap && coordsStr && (() => {
+              const [lat, lng] = coordsStr.split(",").map(Number);
               const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
               return <iframe src={mapUrl} title="Ubicación" style={{ width:"100%", height:160, borderRadius:5, border:`1px solid ${T.border}`, marginTop:8 }} loading="lazy" />;
             })()}
