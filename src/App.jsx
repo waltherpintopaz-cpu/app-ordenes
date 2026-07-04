@@ -8901,7 +8901,10 @@ export default function App() {
   const generarCuentaIptv = async (dniRaw, nodoRaw) => {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
-    const nodoNum = MP_NODO_SUFFIX[Number(nodoRaw)] ?? Number(nodoRaw) ?? 1;
+    // orden.nodo llega como "Nod_01".."Nod_06" — convertir primero al ID numérico de MikroWisp
+    const NODO_MIKROWISP_ID = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 10, "Nod_04": 5, "Nod_05": 5, "Nod_06": 11 };
+    const nodoMikrowisp = NODO_MIKROWISP_ID[String(nodoRaw || "").trim()] ?? Number(nodoRaw) ?? 1;
+    const nodoNum = MP_NODO_SUFFIX[nodoMikrowisp] ?? 1;
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
 
