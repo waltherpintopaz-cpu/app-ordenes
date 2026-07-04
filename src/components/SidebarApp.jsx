@@ -373,6 +373,7 @@ export default function SidebarApp() {
   const [liquidacionesCliente,setLiquidacionesCliente] = useState([]);
   const [historialLoad, setHistorialLoad] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
+  const [liqDetalleAbierto, setLiqDetalleAbierto] = useState(null); // id de la liquidación expandida
   const [notasCliente,  setNotasCliente]  = useState([]);
   const [showNotas,     setShowNotas]     = useState(false);
   const [notaNueva,     setNotaNueva]     = useState("");
@@ -1641,11 +1642,23 @@ export default function SidebarApp() {
         .select("id,codigo,tipo_actuacion,estado,fecha_actuacion,tecnico,autor_orden,descripcion,fecha_creacion")
         .eq("dni", cedula).order("fecha_creacion", { ascending: false }).limit(8),
       supabase.from("liquidaciones")
-        .select("codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,cobro_realizado")
+        .select("id,codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,cobro_realizado,observacion_final,sn_onu,caja_nap,codigo_etiqueta")
         .eq("dni", cedula).order("fecha_liquidacion", { ascending: false }).limit(8),
     ]);
     if (ordRes.data) setOrdenesCliente(ordRes.data);
-    if (liqRes.data) setLiquidacionesCliente(liqRes.data);
+    if (liqRes.data) {
+      const liqIds = liqRes.data.map((l) => l.id).filter(Boolean);
+      const eqRes = liqIds.length
+        ? await supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo,accion").in("liquidacion_id", liqIds)
+        : { data: [] };
+      const equiposPorLiq = new Map();
+      for (const eq of (eqRes.data || [])) {
+        const arr = equiposPorLiq.get(eq.liquidacion_id) || [];
+        arr.push(eq);
+        equiposPorLiq.set(eq.liquidacion_id, arr);
+      }
+      setLiquidacionesCliente(liqRes.data.map((l) => ({ ...l, equipos: equiposPorLiq.get(l.id) || [] })));
+    }
     setHistorialLoad(false);
   }
 
@@ -2083,10 +2096,11 @@ export default function SidebarApp() {
   async function generarCuentaIptv(dniRaw, nodoRaw) {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
-    // nodoRaw puede venir como ID numérico de MikroWisp (cliente real) o como "Nod_01".."Nod_06" (cliente sin MikroWisp / orden nueva)
-    const NODO_MIKROWISP_ID = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 10, "Nod_04": 5, "Nod_05": 5, "Nod_06": 11 };
-    const nodoMikrowisp = NODO_MIKROWISP_ID[String(nodoRaw || "").trim()] ?? Number(nodoRaw) ?? 1;
-    const nodoNum = MP_NODO_SUFFIX[nodoMikrowisp] ?? 1;
+    // nodoRaw puede venir como ID numérico de MikroWisp (cliente real, vía MP_NODO_SUFFIX) o como
+    // "Nod_01".."Nod_06" (cliente sin MikroWisp / orden nueva) — en ese caso el sufijo es ese número directo.
+    const nodoStr = String(nodoRaw || "").trim();
+    const matchNod = nodoStr.match(/^Nod_0?(\d+)$/i);
+    const nodoNum = matchNod ? parseInt(matchNod[1], 10) : (MP_NODO_SUFFIX[Number(nodoRaw)] ?? 1);
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
 
@@ -3345,7 +3359,10 @@ export default function SidebarApp() {
                 {liquidacionesCliente.length > 0 && (<>
                   <div style={{ fontSize:10, fontWeight:700, color:T.muted, textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:6 }}>Liquidaciones</div>
                   <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                    {liquidacionesCliente.map((l, i) => (
+                    {liquidacionesCliente.map((l, i) => {
+                      const abierto = liqDetalleAbierto === (l.id ?? i);
+                      const tieneDetalle = Boolean(l.observacion_final || l.sn_onu || l.caja_nap || l.codigo_etiqueta || (l.equipos||[]).length);
+                      return (
                       <div key={i} style={{ background:T.greenLt, border:`1px solid #86efac`, borderRadius:5, padding:"8px 10px" }}>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
                           <span style={{ fontFamily:"monospace", fontWeight:700, fontSize:11, color:T.navy }}>{l.codigo||"—"}</span>
@@ -3353,8 +3370,28 @@ export default function SidebarApp() {
                         </div>
                         <div style={{ fontSize:11, color:T.muted }}>{l.tipo_actuacion} · {l.tecnico_liquida||"—"} · {String(l.fecha_liquidacion||"").slice(0,10)||"—"}</div>
                         {l.resultado_final && <div style={{ fontSize:10, color:T.green, marginTop:2, fontWeight:600 }}>{l.resultado_final}</div>}
+                        {tieneDetalle && (
+                          <button onClick={() => setLiqDetalleAbierto(abierto ? null : (l.id ?? i))}
+                            style={{ marginTop:6, background:"none", border:"none", padding:0, cursor:"pointer", fontSize:10, fontWeight:700, color:T.blue }}>
+                            {abierto ? "▲ Ocultar detalle" : "▼ Ver detalle"}
+                          </button>
+                        )}
+                        {abierto && (
+                          <div style={{ marginTop:6, paddingTop:6, borderTop:`1px solid #86efac`, display:"flex", flexDirection:"column", gap:3 }}>
+                            {l.sn_onu && <div style={{ fontSize:10, color:T.navy }}><strong>SN ONU:</strong> {l.sn_onu}</div>}
+                            {l.caja_nap && <div style={{ fontSize:10, color:T.navy }}><strong>Caja NAP:</strong> {l.caja_nap}</div>}
+                            {l.codigo_etiqueta && <div style={{ fontSize:10, color:T.navy }}><strong>Etiqueta:</strong> {l.codigo_etiqueta}</div>}
+                            {(l.equipos||[]).length > 0 && (
+                              <div style={{ fontSize:10, color:T.navy }}>
+                                <strong>Equipos:</strong> {l.equipos.map((eq,ei) => `${eq.tipo}${eq.marca?` ${eq.marca}`:""}${eq.serial?` (${eq.serial})`:""}`).join(", ")}
+                              </div>
+                            )}
+                            {l.observacion_final && <div style={{ fontSize:10, color:T.navy }}><strong>Obs:</strong> {l.observacion_final}</div>}
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>)}
               </div>
