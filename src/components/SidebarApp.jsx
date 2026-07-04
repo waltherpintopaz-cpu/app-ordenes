@@ -359,6 +359,7 @@ export default function SidebarApp() {
   const [iptvNuevaPass,   setIptvNuevaPass]   = useState("");
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
+  const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
   const [showOrdenMap,  setShowOrdenMap]  = useState(false);
@@ -1762,6 +1763,20 @@ export default function SidebarApp() {
         ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet")
         : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa);
       const esInstalacion = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
+
+      // Crear cuenta IPTV junto con la orden (si se marcó la opción)
+      let iptvInfo = null;
+      if (ordenIncluirIptv) {
+        try {
+          const dniOrden  = cliente ? (cliente.cedula || "") : ordenForm.dni.trim();
+          const nodoOrden = cliente ? cliente.nodo : ordenForm.nodo.trim();
+          iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden);
+          setIptvData({ iptv_usuario: iptvInfo.iptv_usuario, iptv_password: iptvInfo.iptv_password, iptv_user_id: iptvInfo.iptv_user_id, created_at: new Date().toISOString(), creado_por: agente });
+        } catch (e) {
+          notify("No se pudo crear la cuenta IPTV: " + e.message, false);
+        }
+      }
+
       const payload = {
         empresa:        empresaOrden,
         codigo,
@@ -1786,7 +1801,10 @@ export default function SidebarApp() {
         sn_onu:         cliente ? (snOnu || "") : ordenForm.snOnu.trim(),
         caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
-        descripcion:    ordenForm.descripcion || "",
+        descripcion:    [
+          ordenForm.descripcion || "",
+          iptvInfo ? `📺 Cuenta IPTV MaxPlayer — Usuario: ${iptvInfo.iptv_usuario} / Contraseña: ${iptvInfo.iptv_password}` : "",
+        ].filter(Boolean).join("\n"),
         solicitar_pago: ordenForm.solicitarPago || "SI",
         monto_cobrar:   ordenForm.solicitarPago === "SI" ? (parseFloat(ordenForm.montoCobrar) || 0) : 0,
         autor_orden:    ordenForm.autorOrden || agente,
@@ -1803,6 +1821,7 @@ export default function SidebarApp() {
 
       const codigoFinal = res.data?.codigo || codigo;
       setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
+      setOrdenIncluirIptv(false);
       notify(`✅ Orden ${codigoFinal} creada`);
 
       // WhatsApp al cliente
@@ -1825,7 +1844,7 @@ export default function SidebarApp() {
       }
 
       if (convId) {
-        const texto = `📋 *ORDEN CREADA*\n\nCódigo: *${codigoFinal}*\nTipo: ${ordenForm.tipoActuacion}\nTécnico: ${ordenForm.tecnico}${ordenForm.descripcion ? `\nDetalle: ${ordenForm.descripcion}` : ""}`;
+        const texto = `📋 *ORDEN CREADA*\n\nCódigo: *${codigoFinal}*\nTipo: ${ordenForm.tipoActuacion}\nTécnico: ${ordenForm.tecnico}${payload.descripcion ? `\nDetalle: ${payload.descripcion}` : ""}`;
         await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
@@ -2060,33 +2079,40 @@ export default function SidebarApp() {
     setIptvData(data || null);
   }
 
-  async function crearIPTV() {
-    if (!cliente) return;
-    const dni = String(cliente.cedula || "").replace(/\D/g, "");
-    if (!dni) return notify("Sin DNI para crear usuario IPTV", false);
-    const nodoNum = MP_NODO_SUFFIX[Number(cliente.nodo)] ?? Number(cliente.nodo) ?? 1;
+  /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
+  async function generarCuentaIptv(dniRaw, nodoRaw) {
+    const dni = String(dniRaw || "").replace(/\D/g, "");
+    if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
+    const nodoNum = MP_NODO_SUFFIX[Number(nodoRaw)] ?? Number(nodoRaw) ?? 1;
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
+
+    const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+      body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+    const userId = String(data.user_id || "");
+    // Establecer contraseña real vía endpoint correcto
+    await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+      body: JSON.stringify({ user_id: userId, password: iptvPass }),
+    });
+    await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, nodo: nodoRaw || null, creado_por: agente || null }, { onConflict: "dni" });
+    return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId };
+  }
+
+  async function crearIPTV() {
+    if (!cliente) return;
     setIptvCreando(true);
     try {
-      const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
-      const userId = String(data.user_id || "");
-      // Establecer contraseña real vía endpoint correcto
-      await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ user_id: userId, password: iptvPass }),
-      });
-      await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, nodo: cliente.nodo || null, creado_por: agente || null }, { onConflict: "dni" });
-      const nuevo = { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, created_at: new Date().toISOString(), creado_por: agente };
+      const { iptv_usuario, iptv_password, iptv_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo);
+      const nuevo = { iptv_usuario, iptv_password, iptv_user_id, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
-      notify(`✅ Usuario IPTV creado: ${iptvUser}`);
+      notify(`✅ Usuario IPTV creado: ${iptv_usuario}`);
     } catch(e) { notify("Error IPTV: " + e.message, false); }
     setIptvCreando(false);
   }
@@ -2868,6 +2894,12 @@ export default function SidebarApp() {
                     {fila("Observación",
                       <textarea style={{...S.input,border:"none",borderRadius:0,fontSize:12,resize:"vertical",minHeight:50}} placeholder="Descripción del trabajo (opcional)" value={ordenForm.descripcion} onChange={e=>setOrdenForm(p=>({...p,descripcion:e.target.value}))} />,
                       true
+                    )}
+                    {esInst && (
+                      <label style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderTop:`1px solid ${T.border}`, cursor:"pointer" }}>
+                        <input type="checkbox" checked={ordenIncluirIptv} onChange={e=>setOrdenIncluirIptv(e.target.checked)} />
+                        <span style={{ fontSize:11, fontWeight:600, color:T.navy }}>📺 Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden</span>
+                      </label>
                     )}
                   </div>
                   {/* ── Checklist de progreso ── */}
@@ -4304,13 +4336,20 @@ export default function SidebarApp() {
                       value={ordenForm.descripcion} onChange={e => setOrdenForm(p => ({...p, descripcion:e.target.value}))} />
                   </div>
                 </div>
+                {/* Crear cuenta IPTV junto con la orden */}
+                {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && (
+                  <label style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderTop:`1px solid ${T.border}`, cursor:"pointer" }}>
+                    <input type="checkbox" checked={ordenIncluirIptv} onChange={e => setOrdenIncluirIptv(e.target.checked)} />
+                    <span style={{ fontSize:11, fontWeight:600, color:T.navy }}>📺 Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden</span>
+                  </label>
+                )}
               </div>
 
               <button onClick={crearOrden} disabled={creandoOrden || !ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()}
                 className="sb-btn-action"
                 style={{ ...S.btn(creandoOrden || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim() ? "#9ca3af" : T.blue),
                   opacity: creandoOrden || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim() ? 0.55 : 1 }}>
-                {creandoOrden ? "Creando orden..." : "Crear orden de servicio"}
+                {creandoOrden ? "Creando orden..." : ordenIncluirIptv ? "Crear orden + cuenta IPTV" : "Crear orden de servicio"}
               </button>
               {convId && <div style={{ color:T.muted, fontSize:11, textAlign:"center", marginTop:5 }}>Se enviará como nota interna en esta conversación</div>}
             </>)}
