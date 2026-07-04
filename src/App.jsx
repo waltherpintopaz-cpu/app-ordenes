@@ -8950,9 +8950,16 @@ export default function App() {
 
     // Crear cuenta IPTV junto con la orden (si se marcó la opción)
     let descripcionFinal = orden.descripcion || "";
-    if (!ordenEditandoId && ordenIncluirIptv) {
+    if (ordenIncluirIptv && !descripcionFinal.includes("Cuenta IPTV MaxPlayer")) {
       try {
-        const iptvInfo = await generarCuentaIptv(orden.dni, orden.nodo);
+        const dniLimpio = String(orden.dni || "").replace(/\D/g, "");
+        const { data: iptvExistente } = await supabase
+          .from("iptv_clientes")
+          .select("iptv_usuario,iptv_password")
+          .eq("dni", dniLimpio)
+          .maybeSingle();
+
+        const iptvInfo = iptvExistente || await generarCuentaIptv(orden.dni, orden.nodo);
         descripcionFinal = [
           descripcionFinal,
           `📺 Cuenta IPTV MaxPlayer — Usuario: ${iptvInfo.iptv_usuario} / Contraseña: ${iptvInfo.iptv_password}`,
