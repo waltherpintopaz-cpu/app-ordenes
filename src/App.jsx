@@ -57,6 +57,12 @@ const CLIENTES_SHEET_GID = "1134373291";
 const CLIENTES_TABLE = "clientes";
 const ORDENES_TABLE = "ordenes";
 const USUARIOS_TABLE = "usuarios";
+// MaxPlayer (IPTV) — mismas credenciales que usa SidebarApp.jsx
+const MP_TOKEN = "mNTO0Z5ynAIsPx7LWBzFX90N";
+const MP_DOMAIN = "1777119384974866697";
+const MP_IPTV_U = "ernesto";
+const MP_IPTV_P = "ernesto";
+const MP_NODO_SUFFIX = { 1: 1, 2: 2, 3: 3, 5: 4, 11: 6 };
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const HIST_APPSHEET_SHEET_ID = "1soSl4tyfSC7VDNAXhRWUhtkotk09G1IpjqqxkzQnqKE";
@@ -1752,6 +1758,7 @@ export default function App() {
   const [clienteEnDB, setClienteEnDB] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
   const [enviarWhatsappOrden, setEnviarWhatsappOrden] = useState(true);
+  const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
   const [vistaActiva, setVistaActiva] = useState(() => {
     const sesionGuardada = localStorage.getItem("usuarioSesionId");
     return sesionGuardada ? "dashboard" : "crear";
@@ -8890,6 +8897,34 @@ export default function App() {
     []
   );
 
+  /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
+  const generarCuentaIptv = async (dniRaw, nodoRaw) => {
+    const dni = String(dniRaw || "").replace(/\D/g, "");
+    if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
+    const nodoNum = MP_NODO_SUFFIX[Number(nodoRaw)] ?? Number(nodoRaw) ?? 1;
+    const iptvUser = `${dni}-${nodoNum}`;
+    const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
+
+    const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+      body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+    const userId = String(data.user_id || "");
+    await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+      body: JSON.stringify({ user_id: userId, password: iptvPass }),
+    });
+    await supabase.from("iptv_clientes").upsert(
+      { dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, nodo: nodoRaw || null, creado_por: usuarioSesion?.nombre || null },
+      { onConflict: "dni" }
+    );
+    return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId };
+  };
+
   const guardarOrden = async () => {
     if (
       !orden.empresa.trim() ||
@@ -8910,12 +8945,27 @@ export default function App() {
       return;
     }
 
+    // Crear cuenta IPTV junto con la orden (si se marcó la opción)
+    let descripcionFinal = orden.descripcion || "";
+    if (!ordenEditandoId && ordenIncluirIptv) {
+      try {
+        const iptvInfo = await generarCuentaIptv(orden.dni, orden.nodo);
+        descripcionFinal = [
+          descripcionFinal,
+          `📺 Cuenta IPTV MaxPlayer — Usuario: ${iptvInfo.iptv_usuario} / Contraseña: ${iptvInfo.iptv_password}`,
+        ].filter(Boolean).join("\n");
+      } catch (e) {
+        alert("No se pudo crear la cuenta IPTV: " + e.message);
+      }
+    }
+
     const current = ordenEditandoId ? ordenes.find((item) => item.id === ordenEditandoId) || {} : {};
     const estadoFinal = String(current.estado || orden.estado || "Pendiente");
     const fechaCreacionFinal = current.fecha_creacion || current.fechaCreacion || new Date().toISOString();
     const ordenLocal = {
       ...current,
       ...orden,
+      descripcion: descripcionFinal,
       id: ordenEditandoId || Date.now(),
       estado: estadoFinal,
       fechaCreacion: formatFechaFlexible(fechaCreacionFinal),
@@ -9019,6 +9069,7 @@ export default function App() {
     setOrden(buildInitialOrder());
     setFotosClienteDni([]);
     setEnviarWhatsappOrden(true);
+    setOrdenIncluirIptv(false);
     setClienteEnDB(false);
     setVistaActiva("pendientes");
   };
@@ -15228,6 +15279,21 @@ export default function App() {
                       ))}
                     </select>
                   </div>
+
+                  {["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV"].includes(orden.tipoActuacion) && (
+                    <div
+                      onClick={() => setOrdenIncluirIptv((v) => !v)}
+                      title="Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden"
+                      style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "8px 12px", borderRadius: "8px", border: "1.5px solid", borderColor: ordenIncluirIptv ? "#86efac" : "#e2e8f0", background: ordenIncluirIptv ? "#f0fdf4" : "#f8fafc", userSelect: "none", alignSelf: "flex-end" }}
+                    >
+                      <div style={{ width: "36px", height: "20px", borderRadius: "10px", background: ordenIncluirIptv ? "#22c55e" : "#cbd5e1", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                        <div style={{ width: "14px", height: "14px", borderRadius: "50%", background: "#fff", position: "absolute", top: 3, left: ordenIncluirIptv ? 19 : 3, transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                      </div>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: ordenIncluirIptv ? "#166534" : "#6b7280" }}>
+                        📺 Crear cuenta IPTV
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -15235,7 +15301,7 @@ export default function App() {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     <button onClick={generarCodigo} style={secondaryButton}>Generar código</button>
-                    <button onClick={guardarOrden} style={primaryButton}>{ordenEditandoId ? "Actualizar orden" : "Guardar orden"}</button>
+                    <button onClick={guardarOrden} style={primaryButton}>{ordenEditandoId ? "Actualizar orden" : ordenIncluirIptv ? "Guardar orden + cuenta IPTV" : "Guardar orden"}</button>
                   </div>
                   <div
                     onClick={() => setEnviarWhatsappOrden((v) => !v)}
