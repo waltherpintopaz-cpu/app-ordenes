@@ -9193,7 +9193,7 @@ export default function App() {
       if (Number.isFinite(ordenOriginalId)) {
         const byId = await supabase
           .from(ORDENES_TABLE)
-          .select("id,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,ubicacion,tipo_actuacion")
+          .select("id,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,ubicacion,tipo_actuacion,descripcion")
           .eq("id", ordenOriginalId)
           .limit(1)
           .maybeSingle();
@@ -9202,7 +9202,7 @@ export default function App() {
       if (!ordenRow && codigoOrden) {
         const byCodigo = await supabase
           .from(ORDENES_TABLE)
-          .select("id,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,ubicacion,tipo_actuacion")
+          .select("id,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,ubicacion,tipo_actuacion,descripcion")
           .eq("codigo", codigoOrden)
           .limit(1)
           .maybeSingle();
@@ -9245,6 +9245,7 @@ export default function App() {
         usuarioNodo: String(liquidacionItem?.usuarioNodo || ordenRow?.usuario_nodo || "").trim(),
         passwordUsuario: String(liquidacionItem?.passwordUsuario || ordenRow?.password_usuario || "").trim(),
         ubicacion: String(liquidacionItem?.ubicacion || ordenRow?.ubicacion || "").trim(),
+        descripcion: String(liquidacionItem?.descripcion || ordenRow?.descripcion || "").trim(),
         liquidacion: {
           ...actual,
           equipos: equipos.length ? equipos : Array.isArray(actual?.equipos) ? actual.equipos : [],
@@ -24371,6 +24372,7 @@ export default function App() {
                   <div><strong>Usuario:</strong> {liquidacionSeleccionada.usuarioNodo || "-"}</div>
                   <div><strong>Contraseña:</strong> {liquidacionSeleccionada.passwordUsuario || "-"}</div>
                   <div><strong>Ubicación:</strong> {liquidacionSeleccionada.ubicacion || "-"}</div>
+                  <div><strong>Observaciones:</strong> {liquidacionSeleccionada.descripcion || "-"}</div>
                   <div><strong>Técnico asignado:</strong> {liquidacionSeleccionada.tecnico || "-"}</div>
                   <div><strong>Autor de la orden:</strong> {liquidacionSeleccionada.autorOrden || "-"}</div>
                 </div>
