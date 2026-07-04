@@ -628,6 +628,39 @@ export default function SidebarApp() {
     if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); cargarIPTV(row.cedula); }
   }
 
+  // ── Cargar cliente que no tiene cuenta en MikroWisp (solo datos internos) ──
+  async function cargarDesdeClienteLocal(row) {
+    const nodoNum = Number(row.nodo);
+    const empresa = row.empresa || (nodoNum === 5 ? "dimfiber" : nodoNum === 11 ? "nod06" : "americanet");
+    const cli = {
+      mikrowisp_id: null,
+      sinMikrowisp: true,
+      cedula: row.dni || "",
+      nombre: row.nombre || "",
+      direccion: row.direccion || "",
+      celular: row.celular || "",
+      nodo: row.nodo || "",
+      velocidad: row.velocidad || "",
+      precio_plan: row.precio_plan || "",
+      usuario_nodo: row.usuario_nodo || "",
+      caja_nap: row.caja_nap || "",
+      estado: row.estado_servicio || "",
+      empresa,
+    };
+    setCliente(cli);
+    setDetalle(null);
+    setFacturas([]);
+    setError(null);
+
+    if (row.sn_onu) setSnOnu(row.sn_onu);
+    if (row.nodo)   setNodoReal(row.nodo);
+
+    setAutoLoad(Date.now());
+    setTab("orden");
+
+    if (row.dni) { cargarHistorialOrdenes(row.dni); cargarNotas(row.dni); cargarIPTV(row.dni); }
+  }
+
   // ── Buscar cliente por teléfono ───────────────────────────────────────────
   async function buscarCliente(phone) {
     setLoading(true);
@@ -656,7 +689,25 @@ export default function SidebarApp() {
       if (!rows.length) rows = await buscar(local);
       if (!rows.length && raw.length >= 11) rows = await buscar(raw);
 
-      if (!rows.length) { setError("Cliente no encontrado para este número"); setLoading(false); return; }
+      if (!rows.length) {
+        // Fallback: cliente sin cuenta en MikroWisp, buscar en tabla interna
+        const buscarLocal = async (t) => {
+          const { data } = await supabase
+            .from("clientes")
+            .select("id,dni,nombre,direccion,celular,nodo,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa")
+            .ilike("celular", `%${t}%`);
+          return data || [];
+        };
+        let localRows = await buscarLocal("51" + local);
+        if (!localRows.length) localRows = await buscarLocal(local);
+        if (!localRows.length && raw.length >= 11) localRows = await buscarLocal(raw);
+
+        if (!localRows.length) { setError("Cliente no encontrado para este número"); setLoading(false); return; }
+
+        await cargarDesdeClienteLocal(localRows[0]);
+        setLoading(false);
+        return;
+      }
 
       const row = rows.find(r => r.estado === "ACTIVO") || rows[0];
       await cargarDesdeRow(row);
@@ -2917,6 +2968,15 @@ export default function SidebarApp() {
           </div>
         </div>
 
+        {/* ══ AVISO: CLIENTE SIN MIKROWISP ══ */}
+        {cliente.sinMikrowisp && (
+          <div style={{ background:"#fffbeb", borderBottom:`1px solid #fde68a`, padding:"8px 14px" }}>
+            <span style={{ fontSize:11, fontWeight:700, color:"#92400e" }}>
+              ⚠ Cliente sin cuenta MikroWisp — solo datos internos. Sin facturación ni activar/suspender servicio.
+            </span>
+          </div>
+        )}
+
         {/* ══ SERVICIO DE INTERNET ══ */}
         {svc && (
           <div style={{ background:T.bg, borderBottom:`1px solid ${T.border}`, padding:"10px 14px" }}>
@@ -3122,7 +3182,7 @@ export default function SidebarApp() {
         )}
 
         {/* ══ BOTONES ACTIVAR / SUSPENDER ══ */}
-        {(suspendido || estadoServicio === "ACTIVO") && (
+        {!cliente.sinMikrowisp && (suspendido || estadoServicio === "ACTIVO") && (
           <div style={{ padding:"8px 8px 0", display:"flex", gap:6 }}>
             {suspendido && (
               <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
@@ -3169,6 +3229,7 @@ export default function SidebarApp() {
         })()}
 
         {/* ══ BANNER DEUDA ══ */}
+        {!cliente.sinMikrowisp && (
         <div style={{ padding:"8px 8px 0" }}>
           {factPend.length > 0 ? (
             <div style={{ background:"#fffbeb", borderLeft:`3px solid #f59e0b`, borderRadius:5,
@@ -3196,6 +3257,7 @@ export default function SidebarApp() {
             </div>
           )}
         </div>
+        )}
 
         {/* ══ HISTORIAL COLAPSABLE ══ */}
         {(ordenesCliente.length > 0 || liquidacionesCliente.length > 0) && (
@@ -3265,7 +3327,9 @@ export default function SidebarApp() {
 
         {/* ══ TABS ══ */}
         <div style={{ background:T.card, marginTop:8, borderTop:`1px solid ${T.border}`, borderBottom:`1px solid ${T.border}`, display:"flex" }}>
-          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorr."],["nueva","Factura"],["editar","Editar"],["orden","Orden"],["iptv","IPTV"]].map(([t, label]) => (
+          {[["info","Facturas"],["pago","Pago"],["prorroga","Prorr."],["nueva","Factura"],["editar","Editar"],["orden","Orden"],["iptv","IPTV"]]
+            .filter(([t]) => !cliente.sinMikrowisp || !["info","pago","prorroga","nueva","editar"].includes(t))
+            .map(([t, label]) => (
             <button key={t} className="sb-tab-btn"
               onClick={() => { setTab(t); if (t === "prorroga" && !prorrInfo) consultarProrroga(); if (t === "orden") setOrdenCreada(null); if (t === "editar") cargarPerfiles(); }}
               style={{ flex:1, border:"none",
