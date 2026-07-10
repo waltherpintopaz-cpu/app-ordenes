@@ -37,11 +37,15 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     (async () => {
       setLoading(true); setError(null);
       try {
-        const { data: eqData, error: eqErr } = await supabase
+        // No filtramos por "estado" en la consulta: el valor guardado en la BD tiene mayusculas
+        // inconsistentes (ej. "Asignado" vs "asignado") y .in() de Postgrest es sensible a
+        // mayusculas, lo que dejaba fuera equipos validos silenciosamente. Se filtra en el
+        // navegador con normalizeEstado() para no depender del casing exacto.
+        const { data: eqDataAll, error: eqErr } = await supabase
           .from("equipos_catalogo")
-          .select("id,empresa,tipo,marca,modelo,codigo_qr,serial_mac,estado,tecnico_asignado,precio_unitario")
-          .in("estado", ["asignado", "liquidado"]);
+          .select("id,empresa,tipo,marca,modelo,codigo_qr,serial_mac,estado,tecnico_asignado,precio_unitario");
         if (eqErr) throw eqErr;
+        const eqData = (eqDataAll || []).filter((e) => ["asignado", "liquidado"].includes(normalizeEstado(e.estado)));
 
         // Fecha de asignación (para "días en custodia") — última salida "Asignacion a tecnico" por código QR
         const codigosQrTodos = [...new Set((eqData || []).map((e) => String(e.codigo_qr || "").trim()).filter(Boolean))];
@@ -179,7 +183,9 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo, historicoPorEquipo, fechaAsignacionMap]);
 
-  const equiposVisibles = filtroPrefijo === "todos" ? equipos : equipos.filter((e) => prefijoCodigo(e.codigo_qr) === filtroPrefijo);
+  const equiposVisibles = equipos
+    .filter((e) => filtroTecnico === "todos" || e.tecnico_asignado === filtroTecnico)
+    .filter((e) => filtroPrefijo === "todos" || prefijoCodigo(e.codigo_qr) === filtroPrefijo);
   const totalCustodia = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "asignado").length;
   const totalLiquidados = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "liquidado").length;
 
