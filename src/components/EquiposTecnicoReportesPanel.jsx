@@ -26,6 +26,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   const [liqEquipos, setLiqEquipos] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
   const [historicoPorEquipo, setHistoricoPorEquipo] = useState(new Map());
+  const [fechaAsignacionMap, setFechaAsignacionMap] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtroTecnico, setFiltroTecnico] = useState("todos");
@@ -38,9 +39,27 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       try {
         const { data: eqData, error: eqErr } = await supabase
           .from("equipos_catalogo")
-          .select("id,empresa,tipo,marca,modelo,codigo_qr,serial_mac,estado,tecnico_asignado")
+          .select("id,empresa,tipo,marca,modelo,codigo_qr,serial_mac,estado,tecnico_asignado,precio_unitario")
           .in("estado", ["asignado", "liquidado"]);
         if (eqErr) throw eqErr;
+
+        // Fecha de asignación (para "días en custodia") — última salida "Asignacion a tecnico" por código QR
+        const codigosQrTodos = [...new Set((eqData || []).map((e) => String(e.codigo_qr || "").trim()).filter(Boolean))];
+        const fechaAsignacionPorCodigo = new Map();
+        if (codigosQrTodos.length) {
+          const { data: movData } = await supabase
+            .from("inventario_movimientos")
+            .select("referencia,created_at")
+            .eq("tipo_item", "equipo")
+            .eq("movimiento", "salida")
+            .eq("motivo", "Asignacion a tecnico")
+            .in("referencia", codigosQrTodos)
+            .order("created_at", { ascending: false });
+          for (const m of (movData || [])) {
+            const ref = String(m.referencia || "").trim();
+            if (ref && !fechaAsignacionPorCodigo.has(ref)) fechaAsignacionPorCodigo.set(ref, m.created_at);
+          }
+        }
 
         const idsLiquidados = (eqData || []).filter((e) => normalizeEstado(e.estado) === "liquidado").map((e) => e.id);
         let liqEqData = [];
@@ -112,6 +131,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
         setLiqEquipos(liqEqData);
         setLiquidaciones(liqData);
         setHistoricoPorEquipo(historico);
+        setFechaAsignacionMap(fechaAsignacionPorCodigo);
       } catch (e) {
         setError(e?.message || "Error al cargar el reporte.");
       } finally {
@@ -147,15 +167,104 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       if (normalizeEstado(e.estado) === "liquidado") {
         g.liquidados.push({ ...e, liq: liquidacionPorEquipo.get(e.id) || historicoPorEquipo.get(e.id) || null });
       } else {
-        g.custodia.push(e);
+        const fechaAsig = fechaAsignacionMap.get(String(e.codigo_qr || "").trim()) || null;
+        const dias = fechaAsig ? Math.floor((Date.now() - new Date(fechaAsig).getTime()) / 86400000) : null;
+        g.custodia.push({ ...e, fechaAsignacion: fechaAsig, diasCustodia: dias });
       }
     }
+    for (const g of grupos.values()) {
+      g.valorCustodia = g.custodia.reduce((s, e) => s + Number(e.precio_unitario || 0), 0);
+      g.valorLiquidados = g.liquidados.reduce((s, e) => s + Number(e.precio_unitario || 0), 0);
+    }
     return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo, historicoPorEquipo]);
+  }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo, historicoPorEquipo, fechaAsignacionMap]);
 
   const equiposVisibles = filtroPrefijo === "todos" ? equipos : equipos.filter((e) => prefijoCodigo(e.codigo_qr) === filtroPrefijo);
   const totalCustodia = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "asignado").length;
   const totalLiquidados = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "liquidado").length;
+
+  const generarPdf = () => {
+    const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const ahora = new Date();
+    const fmtDate = (d) => d.toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" });
+    const valorCustodiaTotal = porTecnico.reduce((s, [, g]) => s + g.valorCustodia, 0);
+    const valorLiquidadosTotal = porTecnico.reduce((s, [, g]) => s + g.valorLiquidados, 0);
+
+    const secciones = porTecnico.map(([tecnico, { custodia, liquidados, valorCustodia, valorLiquidados }]) => {
+      const filasCustodia = custodia.map((e) => `
+        <tr>
+          <td>${esc(e.tipo || "-")}${e.marca ? ` · ${esc(e.marca)}` : ""}</td>
+          <td>${esc(e.serial_mac || "-")}</td>
+          <td>${esc(e.codigo_qr || "-")}</td>
+          <td>${Number(e.precio_unitario || 0).toFixed(2)}</td>
+          <td>${e.diasCustodia == null ? "—" : `${e.diasCustodia}d`}</td>
+        </tr>`).join("");
+      const filasLiquidados = liquidados.map((e) => `
+        <tr>
+          <td>${esc(e.tipo || "-")}${e.marca ? ` · ${esc(e.marca)}` : ""}</td>
+          <td>${esc(e.codigo_qr || "-")}</td>
+          <td>${esc(e.liq?.nombre || "—")}</td>
+          <td>${esc(e.liq?.codigo || "—")}</td>
+          <td>${e.liq?.fecha_liquidacion ? esc(String(e.liq.fecha_liquidacion).slice(0, 10)) : "—"}</td>
+          <td>${Number(e.precio_unitario || 0).toFixed(2)}</td>
+        </tr>`).join("");
+      return `
+        <div class="tecnico-section">
+          <div class="tecnico-header">
+            <span class="tecnico-title">${esc(tecnico)}</span>
+            <span class="tecnico-sub">${custodia.length} en custodia (S/ ${valorCustodia.toFixed(2)}) · ${liquidados.length} liquidados (S/ ${valorLiquidados.toFixed(2)})</span>
+          </div>
+          ${custodia.length ? `
+          <div class="sub-label">En custodia</div>
+          <table><thead><tr><th>Tipo/Marca</th><th>Serial</th><th>Código QR</th><th>Valor S/</th><th>Días</th></tr></thead>
+          <tbody>${filasCustodia}</tbody></table>` : ""}
+          ${liquidados.length ? `
+          <div class="sub-label">Liquidados</div>
+          <table><thead><tr><th>Tipo/Marca</th><th>Código QR</th><th>Cliente</th><th>Orden</th><th>Fecha</th><th>Valor S/</th></tr></thead>
+          <tbody>${filasLiquidados}</tbody></table>` : ""}
+        </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
+<title>Equipos por Técnico ${fmtDate(ahora)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:11px;color:#1E293B;padding:24px}
+.header{display:flex;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1E4F9C}
+.company{font-size:18px;font-weight:900;color:#1E4F9C}
+.report-title{font-size:13px;font-weight:700;color:#374151;margin-top:4px}
+.stats-row{display:flex;gap:10px;margin-bottom:16px}
+.stat-card{flex:1;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px;text-align:center}
+.stat-num{font-size:20px;font-weight:900;color:#1E4F9C}
+.stat-label{font-size:9px;color:#94A3B8;font-weight:600}
+.tecnico-section{margin-bottom:18px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden;page-break-inside:avoid}
+.tecnico-header{display:flex;justify-content:space-between;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0}
+.tecnico-title{font-size:12px;font-weight:800}
+.tecnico-sub{font-size:10px;color:#64748B}
+.sub-label{font-size:10px;font-weight:700;color:#64748B;padding:6px 12px 2px}
+table{width:100%;border-collapse:collapse;margin-bottom:8px}
+th{background:#1E4F9C;color:#fff;font-size:9px;padding:5px 8px;text-align:left}
+td{padding:4px 8px;font-size:10px;border-bottom:1px solid #F1F5F9}
+@media print{body{padding:12px}}
+</style></head><body>
+<div class="header">
+  <div><div class="company">Americanet</div><div class="report-title">Reporte de Equipos por Técnico — Custodia y Liquidados</div></div>
+  <div style="text-align:right;color:#64748B;font-size:10px"><div><strong>Generado:</strong> ${fmtDate(ahora)}</div></div>
+</div>
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-num">${equiposVisibles.length}</div><div class="stat-label">Total equipos</div></div>
+  <div class="stat-card"><div class="stat-num">${totalCustodia}</div><div class="stat-label">En custodia (S/ ${valorCustodiaTotal.toFixed(2)})</div></div>
+  <div class="stat-card"><div class="stat-num">${totalLiquidados}</div><div class="stat-label">Liquidados (S/ ${valorLiquidadosTotal.toFixed(2)})</div></div>
+</div>
+${secciones}
+</body></html>`;
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) { window.alert("Permite ventanas emergentes para generar el PDF."); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  };
 
   if (loading) return <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#64748b" }}>Cargando reporte...</div>;
   if (error) return <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#dc2626" }}>{error}</div>;
@@ -199,13 +308,21 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
               <option value="OTRO">Otro</option>
             </select>
           </label>
+          <button
+            type="button"
+            onClick={generarPdf}
+            disabled={porTecnico.length === 0}
+            style={{ marginLeft: "auto", padding: "8px 16px", borderRadius: 6, border: "none", background: "#1E4F9C", color: "#fff", fontWeight: 700, fontSize: 13, cursor: porTecnico.length === 0 ? "not-allowed" : "pointer", opacity: porTecnico.length === 0 ? 0.5 : 1 }}
+          >
+            📄 PDF
+          </button>
         </div>
       </div>
 
       {porTecnico.length === 0 ? (
         <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#64748b" }}>Sin equipos asignados o liquidados.</div>
       ) : (
-        porTecnico.map(([tecnico, { custodia, liquidados }]) => {
+        porTecnico.map(([tecnico, { custodia, liquidados, valorCustodia, valorLiquidados }]) => {
           const abierto = expandido[tecnico] !== false;
           return (
             <div key={tecnico} style={cardStyle}>
@@ -216,7 +333,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
               >
                 <span style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{tecnico}</span>
                 <span style={{ fontSize: 12, color: "#64748b" }}>
-                  {custodia.length} en custodia · {liquidados.length} liquidados {abierto ? "▲" : "▼"}
+                  {custodia.length} en custodia (S/ {valorCustodia.toFixed(2)}) · {liquidados.length} liquidados (S/ {valorLiquidados.toFixed(2)}) {abierto ? "▲" : "▼"}
                 </span>
               </button>
 
@@ -235,6 +352,8 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                             <th style={{ padding: "6px 8px" }}>Tipo / Marca</th>
                             <th style={{ padding: "6px 8px" }}>Serial</th>
                             <th style={{ padding: "6px 8px" }}>Código QR</th>
+                            <th style={{ padding: "6px 8px" }}>Valor S/</th>
+                            <th style={{ padding: "6px 8px" }}>Días en custodia</th>
                             <th style={{ padding: "6px 8px" }}>Estado</th>
                           </tr>
                         </thead>
@@ -244,6 +363,14 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                               <td style={{ padding: "6px 8px" }}><strong>{e.tipo || "-"}</strong>{e.marca ? ` · ${e.marca}` : ""}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.serial_mac || "-"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.codigo_qr || "-"}</td>
+                              <td style={{ padding: "6px 8px" }}>{Number(e.precio_unitario || 0).toFixed(2)}</td>
+                              <td style={{ padding: "6px 8px" }}>
+                                {e.diasCustodia == null ? "—" : (
+                                  <span style={{ fontWeight: 700, color: e.diasCustodia > 30 ? "#dc2626" : e.diasCustodia > 15 ? "#d97706" : "#16a34a" }}>
+                                    {e.diasCustodia}d
+                                  </span>
+                                )}
+                              </td>
                               <td style={{ padding: "6px 8px" }}><span style={estadoStyle(e.estado)}>{estadoLabel(e.estado)}</span></td>
                             </tr>
                           ))}
@@ -269,6 +396,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                             <th style={{ padding: "6px 8px" }}>PPPoE</th>
                             <th style={{ padding: "6px 8px" }}>Orden</th>
                             <th style={{ padding: "6px 8px" }}>Fecha</th>
+                            <th style={{ padding: "6px 8px" }}>Valor S/</th>
                             <th style={{ padding: "6px 8px" }}>Fuente</th>
                           </tr>
                         </thead>
@@ -282,6 +410,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.usuario_nodo || "—"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.codigo || "—"}</td>
                               <td style={{ padding: "6px 8px" }}>{e.liq?.fecha_liquidacion ? String(e.liq.fecha_liquidacion).slice(0, 10) : "—"}</td>
+                              <td style={{ padding: "6px 8px" }}>{Number(e.precio_unitario || 0).toFixed(2)}</td>
                               <td style={{ padding: "6px 8px" }}>
                                 {e.liq ? (
                                   <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: e.liq.fuente === "Historial AppSheet" ? "#ede9fe" : "#dbeafe", color: e.liq.fuente === "Historial AppSheet" ? "#6d28d9" : "#1d4ed8" }}>
