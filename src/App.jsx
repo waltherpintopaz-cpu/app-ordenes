@@ -36,6 +36,7 @@ import IptvPanel from "./components/IptvPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
 import EquiposTecnicoReportesPanel from "./components/EquiposTecnicoReportesPanel";
+import MaterialesTecnicoReportesPanel from "./components/MaterialesTecnicoReportesPanel";
 import AgentesDashboard from "./components/AgentesDashboard";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
@@ -316,6 +317,7 @@ const REPORTES_SUBMENU_ITEMS = [
   { key: "agentes",        label: "Agentes",        sideLabel: "Agentes"        },
   { key: "inventario",     label: "Inventario",     sideLabel: "Inventario Catálogo" },
   { key: "equiposTecnico", label: "Equipos x Técnico", sideLabel: "Equipos por Técnico" },
+  { key: "materialesTecnico", label: "Materiales x Técnico", sideLabel: "Materiales por Técnico" },
 ];
 const REPORTES_LUCIDE_ICONS = {
   ejecutivo:     LayoutDashboard,
@@ -329,6 +331,7 @@ const REPORTES_LUCIDE_ICONS = {
   agentes:       Users2,
   inventario:    Package,
   equiposTecnico: Package,
+  materialesTecnico: Package,
 };
 
 const BOT_SUBMENU_ITEMS = [
@@ -20340,6 +20343,10 @@ export default function App() {
 
         {vistaActiva === "reportes" && reportesSubmenu === "equiposTecnico" && esAdminSesion && (
           <EquiposTecnicoReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "reportes" && reportesSubmenu === "materialesTecnico" && esAdminSesion && (
+          <MaterialesTecnicoReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
