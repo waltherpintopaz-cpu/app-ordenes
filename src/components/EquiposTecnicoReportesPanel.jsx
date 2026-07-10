@@ -25,6 +25,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   const [equipos, setEquipos] = useState([]);
   const [liqEquipos, setLiqEquipos] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
+  const [historicoPorEquipo, setHistoricoPorEquipo] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtroTecnico, setFiltroTecnico] = useState("todos");
@@ -63,9 +64,54 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
           liqData = data || [];
         }
 
+        // Fallback: equipos liquidados sin match en liquidaciones "en vivo" — buscar en
+        // el historial migrado de AppSheet (onu_liquidacion_relacion -> historial_appsheet_liquidaciones),
+        // ya que en esas fechas la liquidacion se hacia en otro sistema.
+        const idsConMatch = new Set(liqEqData.map((l) => l.id_inventario));
+        const equiposSinMatch = (eqData || []).filter(
+          (e) => normalizeEstado(e.estado) === "liquidado" && !idsConMatch.has(e.id)
+        );
+        const historico = new Map();
+        const codigosQr = [...new Set(equiposSinMatch.map((e) => String(e.codigo_qr || "").trim()).filter(Boolean))];
+        if (codigosQr.length) {
+          const { data: relData } = await supabase
+            .from("onu_liquidacion_relacion")
+            .select("id_onu,liquidacion_codigo")
+            .in("id_onu", codigosQr);
+          const relPorOnu = new Map((relData || []).map((r) => [String(r.id_onu || "").trim().toUpperCase(), r.liquidacion_codigo]));
+
+          const codigosLiq = [...new Set((relData || []).map((r) => r.liquidacion_codigo).filter(Boolean))];
+          let liqHistData = [];
+          if (codigosLiq.length) {
+            const { data } = await supabase
+              .from("historial_appsheet_liquidaciones")
+              .select("*")
+              .in("codigo", codigosLiq);
+            liqHistData = data || [];
+          }
+          const liqHistPorCodigo = new Map(liqHistData.map((l) => [String(l.codigo || "").trim().toUpperCase(), l]));
+
+          for (const e of equiposSinMatch) {
+            const liqCodigo = relPorOnu.get(String(e.codigo_qr || "").trim().toUpperCase());
+            if (!liqCodigo) continue;
+            const liqHist = liqHistPorCodigo.get(String(liqCodigo).trim().toUpperCase());
+            if (!liqHist) continue;
+            historico.set(e.id, {
+              codigo: liqHist.codigo,
+              nombre: liqHist.nombre || liqHist.cliente,
+              dni: liqHist.dni,
+              nodo: liqHist.nodo,
+              usuario_nodo: liqHist.usuario_pppoe || liqHist.usuario_nodo,
+              fecha_liquidacion: liqHist.fecha,
+              fuente: "Historial AppSheet",
+            });
+          }
+        }
+
         setEquipos(eqData || []);
         setLiqEquipos(liqEqData);
         setLiquidaciones(liqData);
+        setHistoricoPorEquipo(historico);
       } catch (e) {
         setError(e?.message || "Error al cargar el reporte.");
       } finally {
@@ -99,13 +145,13 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       if (!grupos.has(key)) grupos.set(key, { custodia: [], liquidados: [] });
       const g = grupos.get(key);
       if (normalizeEstado(e.estado) === "liquidado") {
-        g.liquidados.push({ ...e, liq: liquidacionPorEquipo.get(e.id) || null });
+        g.liquidados.push({ ...e, liq: liquidacionPorEquipo.get(e.id) || historicoPorEquipo.get(e.id) || null });
       } else {
         g.custodia.push(e);
       }
     }
     return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo]);
+  }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo, historicoPorEquipo]);
 
   const equiposVisibles = filtroPrefijo === "todos" ? equipos : equipos.filter((e) => prefijoCodigo(e.codigo_qr) === filtroPrefijo);
   const totalCustodia = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "asignado").length;
@@ -223,6 +269,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                             <th style={{ padding: "6px 8px" }}>PPPoE</th>
                             <th style={{ padding: "6px 8px" }}>Orden</th>
                             <th style={{ padding: "6px 8px" }}>Fecha</th>
+                            <th style={{ padding: "6px 8px" }}>Fuente</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -235,6 +282,13 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.usuario_nodo || "—"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.codigo || "—"}</td>
                               <td style={{ padding: "6px 8px" }}>{e.liq?.fecha_liquidacion ? String(e.liq.fecha_liquidacion).slice(0, 10) : "—"}</td>
+                              <td style={{ padding: "6px 8px" }}>
+                                {e.liq ? (
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: e.liq.fuente === "Historial AppSheet" ? "#ede9fe" : "#dbeafe", color: e.liq.fuente === "Historial AppSheet" ? "#6d28d9" : "#1d4ed8" }}>
+                                    {e.liq.fuente === "Historial AppSheet" ? "AppSheet" : "Sistema"}
+                                  </span>
+                                ) : "—"}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
