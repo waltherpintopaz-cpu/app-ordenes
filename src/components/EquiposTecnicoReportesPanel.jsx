@@ -1,5 +1,15 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
+import { Settings, Save, X } from "lucide-react";
+
+// Misma clave que usa Inventario Catálogo — los precios configurados ahí se comparten con este reporte.
+const LS_PRECIOS_KEY = "inventario_catalogo_precios";
+function loadPreciosLS() {
+  try { return JSON.parse(localStorage.getItem(LS_PRECIOS_KEY) || "{}"); } catch { return {}; }
+}
+function savePreciosLS(obj) {
+  try { localStorage.setItem(LS_PRECIOS_KEY, JSON.stringify(obj)); } catch {}
+}
 
 const ESTADO_COLORS = {
   almacen:   { bg: "#dbeafe", text: "#1d4ed8", label: "Almacén" },
@@ -34,6 +44,10 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
   const [expandido, setExpandido] = useState({});
+  const [preciosLocal, setPreciosLocal] = useState(loadPreciosLS);
+  const [showConfig, setShowConfig] = useState(false);
+  const [preciosEdit, setPreciosEdit] = useState({});
+  const [saveMsg, setSaveMsg] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -162,6 +176,40 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     })();
   }, []);
 
+  // Precio efectivo: localStorage (Configurar Precios) tiene prioridad sobre el valor de la DB
+  function getPrecio(e) {
+    const k = `${e.empresa}||${e.tipo}||${e.modelo}`;
+    return preciosLocal[k] !== undefined ? Number(preciosLocal[k]) : Number(e.precio_unitario || 0);
+  }
+
+  const modelosUnicos = useMemo(() => {
+    const map = {};
+    for (const e of equipos) {
+      const k = `${e.empresa}||${e.tipo}||${e.modelo}`;
+      if (!map[k]) map[k] = { empresa: e.empresa, tipo: e.tipo, modelo: e.modelo, precio_unitario: e.precio_unitario };
+    }
+    return Object.values(map).sort((a, b) => `${a.empresa}${a.modelo}`.localeCompare(`${b.empresa}${b.modelo}`));
+  }, [equipos]);
+
+  function openConfig() {
+    const saved = loadPreciosLS();
+    const init = {};
+    for (const m of modelosUnicos) {
+      const k = `${m.empresa}||${m.tipo}||${m.modelo}`;
+      init[k] = saved[k] !== undefined ? saved[k] : m.precio_unitario;
+    }
+    setPreciosEdit(init);
+    setShowConfig(true);
+    setSaveMsg("");
+  }
+
+  function guardarPrecios() {
+    savePreciosLS(preciosEdit);
+    setPreciosLocal({ ...preciosEdit });
+    setSaveMsg("Precios guardados correctamente");
+    setTimeout(() => { setSaveMsg(""); setShowConfig(false); }, 1500);
+  }
+
   // id_inventario (equipos_catalogo.id) -> liquidación enriquecida
   const liquidacionPorEquipo = useMemo(() => {
     const liqPorId = new Map(liquidaciones.map((l) => [l.id, l]));
@@ -206,8 +254,8 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       }
     }
     for (const g of grupos.values()) {
-      g.valorCustodia = g.custodia.reduce((s, e) => s + Number(e.precio_unitario || 0), 0);
-      g.valorLiquidados = g.liquidados.reduce((s, e) => s + Number(e.precio_unitario || 0), 0);
+      g.valorCustodia = g.custodia.reduce((s, e) => s + getPrecio(e), 0);
+      g.valorLiquidados = g.liquidados.reduce((s, e) => s + getPrecio(e), 0);
     }
     return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [equipos, filtroTecnico, filtroPrefijo, filtroFechaDesde, filtroFechaHasta, liquidacionPorEquipo, historicoPorEquipo, fechaAsignacionMap]);
@@ -229,7 +277,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
           <td>${esc(e.tipo || "-")}${e.marca ? ` · ${esc(e.marca)}` : ""}</td>
           <td>${esc(e.serial_mac || "-")}</td>
           <td>${esc(e.codigo_qr || "-")}</td>
-          <td>${Number(e.precio_unitario || 0).toFixed(2)}</td>
+          <td>${getPrecio(e).toFixed(2)}</td>
           <td>${e.diasCustodia == null ? "—" : `${e.diasCustodia}d`}</td>
         </tr>`).join("");
       const filasLiquidados = liquidados.map((e) => `
@@ -239,7 +287,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
           <td>${esc(e.liq?.nombre || "—")}</td>
           <td>${esc(e.liq?.codigo || "—")}</td>
           <td>${e.liq?.fecha_liquidacion ? esc(String(e.liq.fecha_liquidacion).slice(0, 10)) : "—"}</td>
-          <td>${Number(e.precio_unitario || 0).toFixed(2)}</td>
+          <td>${getPrecio(e).toFixed(2)}</td>
         </tr>`).join("");
       return `
         <div class="tecnico-section">
@@ -356,9 +404,16 @@ ${secciones}
           )}
           <button
             type="button"
+            onClick={openConfig}
+            style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#374151", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+          >
+            <Settings size={15} /> Configurar Precios
+          </button>
+          <button
+            type="button"
             onClick={generarPdf}
             disabled={porTecnico.length === 0}
-            style={{ marginLeft: "auto", padding: "8px 16px", borderRadius: 6, border: "none", background: "#1E4F9C", color: "#fff", fontWeight: 700, fontSize: 13, cursor: porTecnico.length === 0 ? "not-allowed" : "pointer", opacity: porTecnico.length === 0 ? 0.5 : 1 }}
+            style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#1E4F9C", color: "#fff", fontWeight: 700, fontSize: 13, cursor: porTecnico.length === 0 ? "not-allowed" : "pointer", opacity: porTecnico.length === 0 ? 0.5 : 1 }}
           >
             📄 PDF
           </button>
@@ -409,7 +464,7 @@ ${secciones}
                               <td style={{ padding: "6px 8px" }}><strong>{e.tipo || "-"}</strong>{e.marca ? ` · ${e.marca}` : ""}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.serial_mac || "-"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.codigo_qr || "-"}</td>
-                              <td style={{ padding: "6px 8px" }}>{Number(e.precio_unitario || 0).toFixed(2)}</td>
+                              <td style={{ padding: "6px 8px" }}>{getPrecio(e).toFixed(2)}</td>
                               <td style={{ padding: "6px 8px" }}>
                                 {e.diasCustodia == null ? "—" : (
                                   <span style={{ fontWeight: 700, color: e.diasCustodia > 30 ? "#dc2626" : e.diasCustodia > 15 ? "#d97706" : "#16a34a" }}>
@@ -456,7 +511,7 @@ ${secciones}
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.usuario_nodo || "—"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.codigo || "—"}</td>
                               <td style={{ padding: "6px 8px" }}>{e.liq?.fecha_liquidacion ? String(e.liq.fecha_liquidacion).slice(0, 10) : "—"}</td>
-                              <td style={{ padding: "6px 8px" }}>{Number(e.precio_unitario || 0).toFixed(2)}</td>
+                              <td style={{ padding: "6px 8px" }}>{getPrecio(e).toFixed(2)}</td>
                               <td style={{ padding: "6px 8px" }}>
                                 {e.liq ? (
                                   <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: e.liq.fuente === "Historial AppSheet" ? "#ede9fe" : "#dbeafe", color: e.liq.fuente === "Historial AppSheet" ? "#6d28d9" : "#1d4ed8" }}>
@@ -475,6 +530,65 @@ ${secciones}
             </div>
           );
         })
+      )}
+
+      {showConfig && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 680, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 16, gap: 8 }}>
+              <Settings size={18} color="#1E4F9C" />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Configuración de Precios por Modelo</h3>
+              <button onClick={() => setShowConfig(false)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#eff6ff" }}>
+                    <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "1px solid #dbeafe" }}>Empresa</th>
+                    <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "1px solid #dbeafe" }}>Tipo</th>
+                    <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "1px solid #dbeafe" }}>Modelo</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right", borderBottom: "1px solid #dbeafe", width: 110 }}>Precio S/</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modelosUnicos.map((m) => {
+                    const k = `${m.empresa}||${m.tipo}||${m.modelo}`;
+                    return (
+                      <tr key={k} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "7px 10px" }}>{m.empresa}</td>
+                        <td style={{ padding: "7px 10px" }}>{m.tipo}</td>
+                        <td style={{ padding: "7px 10px", fontWeight: 500 }}>{m.modelo}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right" }}>
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={preciosEdit[k] ?? ""}
+                            onChange={(e) => setPreciosEdit((prev) => ({ ...prev, [k]: e.target.value }))}
+                            style={{ width: 90, border: "1px solid #d1d5db", borderRadius: 5, padding: "4px 7px", textAlign: "right", fontSize: 13 }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {saveMsg && (
+              <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 6, background: "#dcfce7", color: "#16a34a", fontSize: 13 }}>
+                {saveMsg}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowConfig(false)}
+                style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid #d1d5db", background: "#f3f4f6", cursor: "pointer", fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button onClick={guardarPrecios}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 18px", borderRadius: 7, border: "none", background: "#1E4F9C", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                <Save size={14} /> Guardar Precios
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
