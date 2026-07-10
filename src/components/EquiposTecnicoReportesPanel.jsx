@@ -41,11 +41,27 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
         // inconsistentes (ej. "Asignado" vs "asignado") y .in() de Postgrest es sensible a
         // mayusculas, lo que dejaba fuera equipos validos silenciosamente. Se filtra en el
         // navegador con normalizeEstado() para no depender del casing exacto.
-        const { data: eqDataAll, error: eqErr } = await supabase
-          .from("equipos_catalogo")
-          .select("id,empresa,tipo,marca,modelo,codigo_qr,serial_mac,estado,tecnico_asignado,precio_unitario");
-        if (eqErr) throw eqErr;
-        const eqData = (eqDataAll || []).filter((e) => ["asignado", "liquidado"].includes(normalizeEstado(e.estado)));
+        // Paginar explicitamente: sin .range() Postgrest corta en su limite por defecto (1000 filas),
+        // y como cada consulta sin orden explicito puede devolver un subconjunto distinto, los totales
+        // no cuadraban entre pantallas. Con este loop se traen todas las filas sin importar cuantas sean.
+        const eqDataAll = [];
+        {
+          const pageSize = 1000;
+          let offset = 0;
+          while (true) {
+            const { data, error: eqErr } = await supabase
+              .from("equipos_catalogo")
+              .select("id,empresa,tipo,marca,modelo,codigo_qr,serial_mac,estado,tecnico_asignado,precio_unitario")
+              .order("id", { ascending: true })
+              .range(offset, offset + pageSize - 1);
+            if (eqErr) throw eqErr;
+            const chunk = data || [];
+            eqDataAll.push(...chunk);
+            if (chunk.length < pageSize) break;
+            offset += pageSize;
+          }
+        }
+        const eqData = eqDataAll.filter((e) => ["asignado", "liquidado"].includes(normalizeEstado(e.estado)));
 
         // Fecha de asignación (para "días en custodia") — última salida "Asignacion a tecnico" por código QR
         const codigosQrTodos = [...new Set((eqData || []).map((e) => String(e.codigo_qr || "").trim()).filter(Boolean))];
