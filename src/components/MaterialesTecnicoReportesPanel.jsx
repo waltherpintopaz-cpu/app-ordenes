@@ -243,15 +243,18 @@ export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitle
       const filas = mats.map((m) => `
         <tr>
           <td>${esc(m.nombre)}</td>
+          <td>${m.precio.toFixed(2)}/${esc(m.unidad)}</td>
           <td>${m.asignado.toFixed(2)} ${esc(m.unidad)}</td>
           <td>${m.liquidado.toFixed(2)} ${esc(m.unidad)}</td>
           <td>${m.enPoder.toFixed(2)} ${esc(m.unidad)}</td>
+          <td>S/ ${m.valorLiquidado.toFixed(2)}</td>
           <td>S/ ${m.valorEnPoder.toFixed(2)}</td>
+          <td>S/ ${m.valorAsignado.toFixed(2)}</td>
         </tr>`).join("");
       return `
         <div class="tecnico-section">
           <div class="tecnico-header"><span class="tecnico-title">${esc(tecnico)}</span></div>
-          <table><thead><tr><th>Material</th><th>Asignado</th><th>Liquidado</th><th>En su poder</th><th>Valor en poder</th></tr></thead>
+          <table><thead><tr><th>Material</th><th>Precio</th><th>Asignado</th><th>Liquidado</th><th>En su poder</th><th>Valor liquidado</th><th>Valor en poder</th><th>Valor total</th></tr></thead>
           <tbody>${filas}</tbody></table>
         </div>`;
     }).join("");
@@ -284,7 +287,9 @@ td{padding:4px 8px;font-size:10px;border-bottom:1px solid #F1F5F9}
   <div class="stat-card"><div class="stat-num">${totales.asignado.toFixed(2)}</div><div class="stat-label">Total asignado</div></div>
   <div class="stat-card"><div class="stat-num">${totales.liquidado.toFixed(2)}</div><div class="stat-label">Total liquidado</div></div>
   <div class="stat-card"><div class="stat-num">${totales.enPoder.toFixed(2)}</div><div class="stat-label">Total en poder</div></div>
+  <div class="stat-card"><div class="stat-num">S/ ${totales.valorLiquidado.toFixed(2)}</div><div class="stat-label">Valor liquidado</div></div>
   <div class="stat-card"><div class="stat-num">S/ ${totales.valorEnPoder.toFixed(2)}</div><div class="stat-label">Valor en poder</div></div>
+  <div class="stat-card"><div class="stat-num">S/ ${totales.valorAsignado.toFixed(2)}</div><div class="stat-label">Valor total</div></div>
 </div>
 ${secciones}
 </body></html>`;
@@ -321,8 +326,16 @@ ${secciones}
             <div style={{ fontSize: 12, color: "#64748b" }}>En su poder</div>
           </div>
           <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: "#7c3aed" }}>S/ {totales.valorEnPoder.toFixed(2)}</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#b45309" }}>S/ {totales.valorLiquidado.toFixed(2)}</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>Valor liquidado</div>
+          </div>
+          <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#d97706" }}>S/ {totales.valorEnPoder.toFixed(2)}</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>Valor en poder</div>
+          </div>
+          <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#7c3aed" }}>S/ {totales.valorAsignado.toFixed(2)}</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>Valor total</div>
           </div>
         </div>
 
@@ -375,7 +388,11 @@ ${secciones}
       ) : (
         porTecnico.map(([tecnico, materiales]) => {
           const abierto = expandido[tecnico] !== false;
-          const subtotal = materiales.reduce((acc, m) => { acc.asignado += m.asignado; acc.liquidado += m.liquidado; acc.enPoder += m.enPoder; acc.valorEnPoder += m.valorEnPoder; return acc; }, { asignado: 0, liquidado: 0, enPoder: 0, valorEnPoder: 0 });
+          const subtotal = materiales.reduce((acc, m) => {
+            acc.asignado += m.asignado; acc.liquidado += m.liquidado; acc.enPoder += m.enPoder;
+            acc.valorAsignado += m.valorAsignado; acc.valorLiquidado += m.valorLiquidado; acc.valorEnPoder += m.valorEnPoder;
+            return acc;
+          }, { asignado: 0, liquidado: 0, enPoder: 0, valorAsignado: 0, valorLiquidado: 0, valorEnPoder: 0 });
           return (
             <div key={tecnico} style={cardStyle}>
               <button
@@ -385,7 +402,7 @@ ${secciones}
               >
                 <span style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{tecnico}</span>
                 <span style={{ fontSize: 12, color: "#64748b" }}>
-                  Asignado {subtotal.asignado.toFixed(2)} · Liquidado {subtotal.liquidado.toFixed(2)} · En poder {subtotal.enPoder.toFixed(2)} (S/ {subtotal.valorEnPoder.toFixed(2)}) {abierto ? "▲" : "▼"}
+                  Liquidado S/ {subtotal.valorLiquidado.toFixed(2)} · En poder S/ {subtotal.valorEnPoder.toFixed(2)} · Total S/ {subtotal.valorAsignado.toFixed(2)} {abierto ? "▲" : "▼"}
                 </span>
               </button>
 
@@ -394,22 +411,28 @@ ${secciones}
                   <thead>
                     <tr style={{ textAlign: "left", color: "#64748b" }}>
                       <th style={{ padding: "6px 8px" }}>Material</th>
+                      <th style={{ padding: "6px 8px" }}>Precio S/ (por unidad de medida)</th>
                       <th style={{ padding: "6px 8px" }}>Asignado</th>
                       <th style={{ padding: "6px 8px" }}>Liquidado</th>
                       <th style={{ padding: "6px 8px" }}>En su poder</th>
-                      <th style={{ padding: "6px 8px" }}>Valor S/</th>
+                      <th style={{ padding: "6px 8px" }}>Valor liquidado</th>
+                      <th style={{ padding: "6px 8px" }}>Valor en poder</th>
+                      <th style={{ padding: "6px 8px" }}>Valor total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {materiales.map((m) => (
                       <tr key={m.nombre} style={{ borderTop: "1px solid #f1f5f9" }}>
                         <td style={{ padding: "6px 8px" }}><strong>{m.nombre}</strong></td>
+                        <td style={{ padding: "6px 8px" }}>{m.precio.toFixed(2)} / {m.unidad}</td>
                         <td style={{ padding: "6px 8px" }}>{m.asignado.toFixed(2)} {m.unidad}</td>
                         <td style={{ padding: "6px 8px" }}>{m.liquidado.toFixed(2)} {m.unidad}</td>
                         <td style={{ padding: "6px 8px" }}>
                           <span style={{ fontWeight: 700, color: m.enPoder > 0 ? "#d97706" : "#16a34a" }}>{m.enPoder.toFixed(2)} {m.unidad}</span>
                         </td>
-                        <td style={{ padding: "6px 8px" }}>{m.valorEnPoder.toFixed(2)}</td>
+                        <td style={{ padding: "6px 8px" }}>S/ {m.valorLiquidado.toFixed(2)}</td>
+                        <td style={{ padding: "6px 8px", fontWeight: 700, color: m.enPoder > 0 ? "#d97706" : "#16a34a" }}>S/ {m.valorEnPoder.toFixed(2)}</td>
+                        <td style={{ padding: "6px 8px", fontWeight: 700 }}>S/ {m.valorAsignado.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
