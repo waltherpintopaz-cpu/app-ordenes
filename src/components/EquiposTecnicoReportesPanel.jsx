@@ -176,31 +176,37 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     })();
   }, []);
 
-  // Precio efectivo: localStorage (Configurar Precios) tiene prioridad sobre el valor de la DB
+  // Precio efectivo: localStorage (Configurar Precios) tiene prioridad sobre el valor de la DB.
+  // Clave por Tipo+Modelo (sin Empresa) — el mismo modelo físico a veces queda etiquetado con
+  // distinta empresa por inconsistencias de datos, y no debe duplicar precio.
   function getPrecio(e) {
-    const k = `${e.empresa}||${e.tipo}||${e.modelo}`;
+    const k = `${e.tipo}||${e.modelo}`;
     return preciosLocal[k] !== undefined ? Number(preciosLocal[k]) : Number(e.precio_unitario || 0);
   }
 
   const modelosUnicos = useMemo(() => {
     const map = {};
     for (const e of equipos) {
-      const k = `${e.empresa}||${e.tipo}||${e.modelo}`;
-      if (!map[k]) map[k] = { empresa: e.empresa, tipo: e.tipo, modelo: e.modelo, precio_unitario: e.precio_unitario };
+      const k = `${e.tipo}||${e.modelo}`;
+      if (!map[k]) map[k] = { tipo: e.tipo, modelo: e.modelo, precio_unitario: e.precio_unitario };
     }
-    return Object.values(map).sort((a, b) => `${a.empresa}${a.modelo}`.localeCompare(`${b.empresa}${b.modelo}`));
+    return Object.values(map).sort((a, b) => `${a.tipo}${a.modelo}`.localeCompare(`${b.tipo}${b.modelo}`));
   }, [equipos]);
 
   function openConfig() {
     const saved = loadPreciosLS();
     const init = {};
     for (const m of modelosUnicos) {
-      const k = `${m.empresa}||${m.tipo}||${m.modelo}`;
+      const k = `${m.tipo}||${m.modelo}`;
       init[k] = saved[k] !== undefined ? saved[k] : m.precio_unitario;
     }
     setPreciosEdit(init);
     setShowConfig(true);
     setSaveMsg("");
+  }
+
+  function restablecerPrecio(k, valorDefault) {
+    setPreciosEdit((prev) => ({ ...prev, [k]: valorDefault }));
   }
 
   function guardarPrecios() {
@@ -544,18 +550,17 @@ ${secciones}
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "#eff6ff" }}>
-                    <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "1px solid #dbeafe" }}>Empresa</th>
                     <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "1px solid #dbeafe" }}>Tipo</th>
                     <th style={{ padding: "8px 10px", textAlign: "left", borderBottom: "1px solid #dbeafe" }}>Modelo</th>
                     <th style={{ padding: "8px 10px", textAlign: "right", borderBottom: "1px solid #dbeafe", width: 110 }}>Precio S/</th>
+                    <th style={{ padding: "8px 10px", textAlign: "center", borderBottom: "1px solid #dbeafe", width: 90 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {modelosUnicos.map((m) => {
-                    const k = `${m.empresa}||${m.tipo}||${m.modelo}`;
+                    const k = `${m.tipo}||${m.modelo}`;
                     return (
                       <tr key={k} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "7px 10px" }}>{m.empresa}</td>
                         <td style={{ padding: "7px 10px" }}>{m.tipo}</td>
                         <td style={{ padding: "7px 10px", fontWeight: 500 }}>{m.modelo}</td>
                         <td style={{ padding: "7px 10px", textAlign: "right" }}>
@@ -565,6 +570,16 @@ ${secciones}
                             onChange={(e) => setPreciosEdit((prev) => ({ ...prev, [k]: e.target.value }))}
                             style={{ width: 90, border: "1px solid #d1d5db", borderRadius: 5, padding: "4px 7px", textAlign: "right", fontSize: 13 }}
                           />
+                        </td>
+                        <td style={{ padding: "7px 10px", textAlign: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => restablecerPrecio(k, m.precio_unitario)}
+                            title="Restablecer al precio original de la base de datos"
+                            style={{ border: "1px solid #d1d5db", background: "#f8fafc", color: "#64748b", borderRadius: 5, padding: "4px 8px", fontSize: 11, cursor: "pointer" }}
+                          >
+                            ↺ Default
+                          </button>
                         </td>
                       </tr>
                     );
