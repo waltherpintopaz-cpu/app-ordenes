@@ -48,6 +48,8 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   const [showConfig, setShowConfig] = useState(false);
   const [preciosEdit, setPreciosEdit] = useState({});
   const [saveMsg, setSaveMsg] = useState("");
+  const [plantillasGenerales, setPlantillasGenerales] = useState([]);
+  const [plantillaElegida, setPlantillaElegida] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -193,7 +195,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     return Object.values(map).sort((a, b) => `${a.tipo}${a.modelo}`.localeCompare(`${b.tipo}${b.modelo}`));
   }, [equipos]);
 
-  function openConfig() {
+  async function openConfig() {
     const saved = loadPreciosLS();
     const init = {};
     for (const m of modelosUnicos) {
@@ -203,15 +205,21 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     setPreciosEdit(init);
     setShowConfig(true);
     setSaveMsg("");
+    // Cargar la lista de plantillas guardadas en Reportes > General (Configurar reporte)
+    try {
+      const { data } = await supabase.from("app_config").select("valor").eq("id", "reporte_plantillas").maybeSingle();
+      setPlantillasGenerales(Array.isArray(data?.valor) ? data.valor : []);
+    } catch { setPlantillasGenerales([]); }
   }
 
-  // Trae los precios ya calculados (precio base + margen %) del modal "Configurar reporte"
-  // de Reportes > General (localStorage rpt_precioBaseEq / rpt_margenPorEq / rpt_margenEquipos).
+  // Trae los precios ya calculados (precio base + margen %) de la plantilla elegida,
+  // guardada en Reportes > General > Configurar reporte (tabla app_config).
   function importarDeReportesGeneral() {
-    let precioBaseEq = {}, margenPorEq = {}, margenGlobal = 0;
-    try { precioBaseEq = JSON.parse(localStorage.getItem("rpt_precioBaseEq") || "{}"); } catch {}
-    try { margenPorEq = JSON.parse(localStorage.getItem("rpt_margenPorEq") || "{}"); } catch {}
-    try { margenGlobal = Number(localStorage.getItem("rpt_margenEquipos") || 0) || 0; } catch {}
+    const plantilla = plantillasGenerales.find((p) => p.nombre === plantillaElegida);
+    if (!plantilla) { setSaveMsg("Selecciona una plantilla primero."); return; }
+    const precioBaseEq = plantilla.precioBaseEq || {};
+    const margenPorEq = plantilla.margenPorEq || {};
+    const margenGlobal = Number(plantilla.margenEquipos || 0) || 0;
 
     setPreciosEdit((prev) => {
       const next = { ...prev };
@@ -225,7 +233,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
         next[`${m.tipo}||${m.modelo}`] = Number((base * (1 + margen / 100)).toFixed(2));
         importados += 1;
       }
-      setSaveMsg(importados > 0 ? `Se importaron ${importados} precio(s) de Reportes General. Revisa y da clic en Guardar.` : "No se encontraron ajustes en Reportes General para estos modelos.");
+      setSaveMsg(importados > 0 ? `Se importaron ${importados} precio(s) de "${plantillaElegida}". Revisa y da clic en Guardar.` : `La plantilla "${plantillaElegida}" no tiene ajustes de equipos para estos modelos.`);
       return next;
     });
   }
@@ -571,13 +579,24 @@ ${secciones}
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Configuración de Precios por Modelo</h3>
               <button onClick={() => setShowConfig(false)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
             </div>
-            <button
-              type="button"
-              onClick={importarDeReportesGeneral}
-              style={{ marginBottom: 12, alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 600, fontSize: 12, cursor: "pointer" }}
-            >
-              📥 Importar de Reportes General
-            </button>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+              <select
+                value={plantillaElegida}
+                onChange={(e) => setPlantillaElegida(e.target.value)}
+                style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid #bfdbfe", background: "#fff", color: "#1d4ed8", fontSize: 12 }}
+              >
+                <option value="">Elegir plantilla de Reportes General…</option>
+                {plantillasGenerales.map((p) => <option key={p.id || p.nombre} value={p.nombre}>{p.nombre}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={importarDeReportesGeneral}
+                disabled={!plantillaElegida}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid #bfdbfe", background: plantillaElegida ? "#eff6ff" : "#f3f4f6", color: plantillaElegida ? "#1d4ed8" : "#94a3b8", fontWeight: 600, fontSize: 12, cursor: plantillaElegida ? "pointer" : "not-allowed" }}
+              >
+                📥 Importar
+              </button>
+            </div>
             <div style={{ overflowY: "auto", flex: 1 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
