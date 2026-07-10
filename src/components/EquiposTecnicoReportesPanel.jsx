@@ -7,6 +7,12 @@ const ESTADO_COLORS = {
   liquidado: { bg: "#fef9c3", text: "#b45309", label: "Liquidado" },
 };
 const normalizeEstado = (e) => (e || "").toLowerCase();
+const prefijoCodigo = (codigo) => {
+  const c = String(codigo || "").toUpperCase();
+  if (c.startsWith("DIM")) return "DIM";
+  if (c.startsWith("AMN")) return "AMN";
+  return "OTRO";
+};
 const estadoLabel = (e) => ESTADO_COLORS[normalizeEstado(e)]?.label || e || "—";
 const estadoStyle = (e) => {
   const conf = ESTADO_COLORS[normalizeEstado(e)];
@@ -22,6 +28,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtroTecnico, setFiltroTecnico] = useState("todos");
+  const [filtroPrefijo, setFiltroPrefijo] = useState("todos");
   const [expandido, setExpandido] = useState({});
 
   useEffect(() => {
@@ -50,7 +57,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
         if (liquidacionIds.length) {
           const { data, error: liqErr } = await supabase
             .from("liquidaciones")
-            .select("id,codigo,dni,nombre,nodo,tecnico_liquida,fecha_liquidacion")
+            .select("id,codigo,dni,nombre,nodo,tecnico_liquida,fecha_liquidacion,usuario_nodo")
             .in("id", liquidacionIds);
           if (liqErr) throw liqErr;
           liqData = data || [];
@@ -84,7 +91,8 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   );
 
   const porTecnico = useMemo(() => {
-    const base = filtroTecnico === "todos" ? equipos : equipos.filter((e) => e.tecnico_asignado === filtroTecnico);
+    let base = filtroTecnico === "todos" ? equipos : equipos.filter((e) => e.tecnico_asignado === filtroTecnico);
+    if (filtroPrefijo !== "todos") base = base.filter((e) => prefijoCodigo(e.codigo_qr) === filtroPrefijo);
     const grupos = new Map();
     for (const e of base) {
       const key = e.tecnico_asignado || "Sin asignar";
@@ -97,10 +105,11 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       }
     }
     return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [equipos, filtroTecnico, liquidacionPorEquipo]);
+  }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo]);
 
-  const totalCustodia = equipos.filter((e) => normalizeEstado(e.estado) === "asignado").length;
-  const totalLiquidados = equipos.filter((e) => normalizeEstado(e.estado) === "liquidado").length;
+  const equiposVisibles = filtroPrefijo === "todos" ? equipos : equipos.filter((e) => prefijoCodigo(e.codigo_qr) === filtroPrefijo);
+  const totalCustodia = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "asignado").length;
+  const totalLiquidados = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "liquidado").length;
 
   if (loading) return <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#64748b" }}>Cargando reporte...</div>;
   if (error) return <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#dc2626" }}>{error}</div>;
@@ -115,7 +124,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
 
         <div style={{ display: "flex", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
           <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{equipos.length}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{equiposVisibles.length}</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>Total</div>
           </div>
           <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
@@ -128,12 +137,23 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
           </div>
         </div>
 
-        <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-          Técnico{" "}
-          <select value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }}>
-            {tecnicos.map((t) => <option key={t} value={t}>{t === "todos" ? "Todos" : t}</option>)}
-          </select>
-        </label>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+            Técnico{" "}
+            <select value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }}>
+              {tecnicos.map((t) => <option key={t} value={t}>{t === "todos" ? "Todos" : t}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+            Código{" "}
+            <select value={filtroPrefijo} onChange={(e) => setFiltroPrefijo(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }}>
+              <option value="todos">Todos</option>
+              <option value="AMN">AMN (Americanet)</option>
+              <option value="DIM">DIM</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       {porTecnico.length === 0 ? (
@@ -197,8 +217,10 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                         <thead>
                           <tr style={{ textAlign: "left", color: "#64748b" }}>
                             <th style={{ padding: "6px 8px" }}>Tipo / Marca</th>
+                            <th style={{ padding: "6px 8px" }}>Código QR</th>
                             <th style={{ padding: "6px 8px" }}>Serial</th>
                             <th style={{ padding: "6px 8px" }}>Cliente</th>
+                            <th style={{ padding: "6px 8px" }}>PPPoE</th>
                             <th style={{ padding: "6px 8px" }}>Orden</th>
                             <th style={{ padding: "6px 8px" }}>Fecha</th>
                           </tr>
@@ -207,8 +229,10 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
                           {liquidados.map((e) => (
                             <tr key={e.id} style={{ borderTop: "1px solid #f1f5f9" }}>
                               <td style={{ padding: "6px 8px" }}><strong>{e.tipo || "-"}</strong>{e.marca ? ` · ${e.marca}` : ""}</td>
+                              <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.codigo_qr || "-"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.serial_mac || "-"}</td>
                               <td style={{ padding: "6px 8px" }}>{e.liq?.nombre || "—"}</td>
+                              <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.usuario_nodo || "—"}</td>
                               <td style={{ padding: "6px 8px", fontFamily: "monospace" }}>{e.liq?.codigo || "—"}</td>
                               <td style={{ padding: "6px 8px" }}>{e.liq?.fecha_liquidacion ? String(e.liq.fecha_liquidacion).slice(0, 10) : "—"}</td>
                             </tr>
