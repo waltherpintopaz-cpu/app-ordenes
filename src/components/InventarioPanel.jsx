@@ -791,12 +791,32 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
           return { data: [], error: err };
         }
       };
+      // Postgrest corta en 1000 filas si no se pagina explicitamente. equipos_catalogo ya supera
+      // ese limite, asi que se recorre por paginas para no perder equipos silenciosamente.
+      const fetchAllPaged = async (table, selectCols) => {
+        const all = [];
+        const pageSize = 1000;
+        let offset = 0;
+        try {
+          while (true) {
+            const { data, error } = await supabase.from(table).select(selectCols).order("id", { ascending: false }).range(offset, offset + pageSize - 1);
+            if (error) return { data: all, error };
+            const chunk = data || [];
+            all.push(...chunk);
+            if (chunk.length < pageSize) break;
+            offset += pageSize;
+          }
+          return { data: all, error: null };
+        } catch (err) {
+          return { data: all, error: err };
+        }
+      };
       const isFetchFailed = (err) => {
         const txt = String(err?.message || err || "").toLowerCase();
         return txt.includes("failed to fetch") || txt.includes("networkerror") || txt.includes("load failed");
       };
       let [eq, asig, mov, usu, liq, sol, art, alm, rel] = await Promise.all([
-        safeQuery(supabase.from("equipos_catalogo").select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado,almacen_id,almacen_nombre").order("id", { ascending: false })),
+        fetchAllPaged("equipos_catalogo", "id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado,almacen_id,almacen_nombre"),
         safeQuery(supabase.from("materiales_asignados_tecnicos").select("id,tecnico,material_id,material_nombre,cantidad_asignada,cantidad_disponible,unidad").order("id", { ascending: false })),
         safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,nodo,almacen_id,almacen_nombre").order("created_at", { ascending: false }).limit(1500)),
         safeQuery(supabase.from("usuarios").select("id,nombre,username,rol,activo").eq("activo", true).order("nombre", { ascending: true })),
@@ -828,7 +848,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
         (columnMissing("almacen_id", eq.error) || columnMissing("almacen_nombre", eq.error))
       ) {
         almacenesColsOff = true;
-        eq = await safeQuery(supabase.from("equipos_catalogo").select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado").order("id", { ascending: false }));
+        eq = await fetchAllPaged("equipos_catalogo", "id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado");
       }
       if (mov.error && columnMissing("nodo", mov.error)) {
         mov = await safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,almacen_id,almacen_nombre").order("created_at", { ascending: false }).limit(1500));

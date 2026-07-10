@@ -104,12 +104,24 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
 
   async function fetchEquipos() {
     setLoading(true); setError(null);
-    const { data, error } = await supabase
-      .from("equipos_catalogo")
-      .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado,tecnico_asignado")
-      .order("empresa").order("tipo").order("modelo");
-    if (error) { setError(error.message); setLoading(false); return; }
-    setEquipos(data || []);
+    // Postgrest corta en 1000 filas sin paginar explicitamente; equipos_catalogo ya supera ese
+    // limite, asi que se recorre por paginas para no perder equipos silenciosamente.
+    const all = [];
+    const pageSize = 1000;
+    let offset = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("equipos_catalogo")
+        .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado,tecnico_asignado")
+        .order("empresa").order("tipo").order("modelo")
+        .range(offset, offset + pageSize - 1);
+      if (error) { setError(error.message); setLoading(false); return; }
+      const chunk = data || [];
+      all.push(...chunk);
+      if (chunk.length < pageSize) break;
+      offset += pageSize;
+    }
+    setEquipos(all);
     setLoading(false);
   }
 
