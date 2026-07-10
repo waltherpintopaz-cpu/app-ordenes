@@ -22,7 +22,7 @@ const ESTADO_COLORS = {
 const normalizeEstado = (e) => (e || "").toLowerCase();
 const estadoLabel  = (e) => ESTADO_COLORS[normalizeEstado(e)]?.label || e || "—";
 const estadoStyle  = (e) => ESTADO_COLORS[normalizeEstado(e)]
-  ? { background: ESTADO_COLORS[e].bg, color: ESTADO_COLORS[e].text, borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 600 }
+  ? { background: ESTADO_COLORS[normalizeEstado(e)].bg, color: ESTADO_COLORS[normalizeEstado(e)].text, borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 600 }
   : { background: "#f3f4f6", color: "#374151", borderRadius: 6, padding: "2px 8px", fontSize: 12 };
 
 const fmt$ = (v) => `S/ ${Number(v || 0).toFixed(2)}`;
