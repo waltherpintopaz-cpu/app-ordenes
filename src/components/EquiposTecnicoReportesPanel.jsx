@@ -188,7 +188,7 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     const map = {};
     for (const e of equipos) {
       const k = `${e.tipo}||${e.modelo}`;
-      if (!map[k]) map[k] = { tipo: e.tipo, modelo: e.modelo, precio_unitario: e.precio_unitario };
+      if (!map[k]) map[k] = { tipo: e.tipo, marca: e.marca, modelo: e.modelo, precio_unitario: e.precio_unitario };
     }
     return Object.values(map).sort((a, b) => `${a.tipo}${a.modelo}`.localeCompare(`${b.tipo}${b.modelo}`));
   }, [equipos]);
@@ -203,6 +203,31 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     setPreciosEdit(init);
     setShowConfig(true);
     setSaveMsg("");
+  }
+
+  // Trae los precios ya calculados (precio base + margen %) del modal "Configurar reporte"
+  // de Reportes > General (localStorage rpt_precioBaseEq / rpt_margenPorEq / rpt_margenEquipos).
+  function importarDeReportesGeneral() {
+    let precioBaseEq = {}, margenPorEq = {}, margenGlobal = 0;
+    try { precioBaseEq = JSON.parse(localStorage.getItem("rpt_precioBaseEq") || "{}"); } catch {}
+    try { margenPorEq = JSON.parse(localStorage.getItem("rpt_margenPorEq") || "{}"); } catch {}
+    try { margenGlobal = Number(localStorage.getItem("rpt_margenEquipos") || 0) || 0; } catch {}
+
+    setPreciosEdit((prev) => {
+      const next = { ...prev };
+      let importados = 0;
+      for (const m of modelosUnicos) {
+        const keyOrigen = `${m.tipo || ""}||${m.marca || ""}||${m.modelo || ""}`;
+        const tieneAjuste = precioBaseEq[keyOrigen] !== undefined || margenPorEq[keyOrigen] !== undefined;
+        if (!tieneAjuste && !margenGlobal) continue;
+        const base = precioBaseEq[keyOrigen] !== undefined ? Number(precioBaseEq[keyOrigen]) : Number(m.precio_unitario || 0);
+        const margen = margenPorEq[keyOrigen] !== undefined ? Number(margenPorEq[keyOrigen]) : margenGlobal;
+        next[`${m.tipo}||${m.modelo}`] = Number((base * (1 + margen / 100)).toFixed(2));
+        importados += 1;
+      }
+      setSaveMsg(importados > 0 ? `Se importaron ${importados} precio(s) de Reportes General. Revisa y da clic en Guardar.` : "No se encontraron ajustes en Reportes General para estos modelos.");
+      return next;
+    });
   }
 
   function restablecerPrecio(k, valorDefault) {
@@ -546,6 +571,13 @@ ${secciones}
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Configuración de Precios por Modelo</h3>
               <button onClick={() => setShowConfig(false)} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer" }}><X size={18} /></button>
             </div>
+            <button
+              type="button"
+              onClick={importarDeReportesGeneral}
+              style={{ marginBottom: 12, alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontWeight: 600, fontSize: 12, cursor: "pointer" }}
+            >
+              📥 Importar de Reportes General
+            </button>
             <div style={{ overflowY: "auto", flex: 1 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
