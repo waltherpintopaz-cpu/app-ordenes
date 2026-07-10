@@ -35,6 +35,7 @@ import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
 import IptvPanel from "./components/IptvPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
+import EquiposTecnicoReportesPanel from "./components/EquiposTecnicoReportesPanel";
 import AgentesDashboard from "./components/AgentesDashboard";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
@@ -314,6 +315,7 @@ const REPORTES_SUBMENU_ITEMS = [
   { key: "mikrowisp",      label: "MikroWisp",      sideLabel: "MikroWisp"      },
   { key: "agentes",        label: "Agentes",        sideLabel: "Agentes"        },
   { key: "inventario",     label: "Inventario",     sideLabel: "Inventario Catálogo" },
+  { key: "equiposTecnico", label: "Equipos x Técnico", sideLabel: "Equipos por Técnico" },
 ];
 const REPORTES_LUCIDE_ICONS = {
   ejecutivo:     LayoutDashboard,
@@ -326,6 +328,7 @@ const REPORTES_LUCIDE_ICONS = {
   mikrowisp:     Activity,
   agentes:       Users2,
   inventario:    Package,
+  equiposTecnico: Package,
 };
 
 const BOT_SUBMENU_ITEMS = [
@@ -20333,6 +20336,10 @@ export default function App() {
 
         {vistaActiva === "reportes" && reportesSubmenu === "inventario" && esAdminSesion && (
           <InventarioCatalogoPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "reportes" && reportesSubmenu === "equiposTecnico" && esAdminSesion && (
+          <EquiposTecnicoReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
