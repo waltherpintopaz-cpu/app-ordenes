@@ -31,6 +31,8 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   const [error, setError] = useState(null);
   const [filtroTecnico, setFiltroTecnico] = useState("todos");
   const [filtroPrefijo, setFiltroPrefijo] = useState("todos");
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
   const [expandido, setExpandido] = useState({});
 
   useEffect(() => {
@@ -176,6 +178,15 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
     [equipos]
   );
 
+  const fechaEnRango = (fecha) => {
+    if (!filtroFechaDesde && !filtroFechaHasta) return true;
+    if (!fecha) return false;
+    const f = String(fecha).slice(0, 10);
+    if (filtroFechaDesde && f < filtroFechaDesde) return false;
+    if (filtroFechaHasta && f > filtroFechaHasta) return false;
+    return true;
+  };
+
   const porTecnico = useMemo(() => {
     let base = filtroTecnico === "todos" ? equipos : equipos.filter((e) => e.tecnico_asignado === filtroTecnico);
     if (filtroPrefijo !== "todos") base = base.filter((e) => prefijoCodigo(e.codigo_qr) === filtroPrefijo);
@@ -185,7 +196,9 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       if (!grupos.has(key)) grupos.set(key, { custodia: [], liquidados: [] });
       const g = grupos.get(key);
       if (normalizeEstado(e.estado) === "liquidado") {
-        g.liquidados.push({ ...e, liq: liquidacionPorEquipo.get(e.id) || historicoPorEquipo.get(e.id) || null });
+        const liq = liquidacionPorEquipo.get(e.id) || historicoPorEquipo.get(e.id) || null;
+        if (!fechaEnRango(liq?.fecha_liquidacion)) continue;
+        g.liquidados.push({ ...e, liq });
       } else {
         const fechaAsig = fechaAsignacionMap.get(String(e.codigo_qr || "").trim()) || null;
         const dias = fechaAsig ? Math.floor((Date.now() - new Date(fechaAsig).getTime()) / 86400000) : null;
@@ -197,13 +210,11 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
       g.valorLiquidados = g.liquidados.reduce((s, e) => s + Number(e.precio_unitario || 0), 0);
     }
     return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [equipos, filtroTecnico, filtroPrefijo, liquidacionPorEquipo, historicoPorEquipo, fechaAsignacionMap]);
+  }, [equipos, filtroTecnico, filtroPrefijo, filtroFechaDesde, filtroFechaHasta, liquidacionPorEquipo, historicoPorEquipo, fechaAsignacionMap]);
 
-  const equiposVisibles = equipos
-    .filter((e) => filtroTecnico === "todos" || e.tecnico_asignado === filtroTecnico)
-    .filter((e) => filtroPrefijo === "todos" || prefijoCodigo(e.codigo_qr) === filtroPrefijo);
-  const totalCustodia = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "asignado").length;
-  const totalLiquidados = equiposVisibles.filter((e) => normalizeEstado(e.estado) === "liquidado").length;
+  const totalCustodia = porTecnico.reduce((s, [, g]) => s + g.custodia.length, 0);
+  const totalLiquidados = porTecnico.reduce((s, [, g]) => s + g.liquidados.length, 0);
+  const totalEquipos = totalCustodia + totalLiquidados;
 
   const generarPdf = () => {
     const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -274,7 +285,7 @@ td{padding:4px 8px;font-size:10px;border-bottom:1px solid #F1F5F9}
   <div style="text-align:right;color:#64748B;font-size:10px"><div><strong>Generado:</strong> ${fmtDate(ahora)}</div></div>
 </div>
 <div class="stats-row">
-  <div class="stat-card"><div class="stat-num">${equiposVisibles.length}</div><div class="stat-label">Total equipos</div></div>
+  <div class="stat-card"><div class="stat-num">${totalEquipos}</div><div class="stat-label">Total equipos</div></div>
   <div class="stat-card"><div class="stat-num">${totalCustodia}</div><div class="stat-label">En custodia (S/ ${valorCustodiaTotal.toFixed(2)})</div></div>
   <div class="stat-card"><div class="stat-num">${totalLiquidados}</div><div class="stat-label">Liquidados (S/ ${valorLiquidadosTotal.toFixed(2)})</div></div>
 </div>
@@ -301,7 +312,7 @@ ${secciones}
 
         <div style={{ display: "flex", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
           <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{equiposVisibles.length}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{totalEquipos}</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>Total</div>
           </div>
           <div style={{ ...cardStyle, flex: 1, minWidth: 120, textAlign: "center", padding: "14px 10px" }}>
@@ -330,6 +341,19 @@ ${secciones}
               <option value="OTRO">Otro</option>
             </select>
           </label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+            Liquidado desde{" "}
+            <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+          </label>
+          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+            Hasta{" "}
+            <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+          </label>
+          {(filtroFechaDesde || filtroFechaHasta) && (
+            <button type="button" onClick={() => { setFiltroFechaDesde(""); setFiltroFechaHasta(""); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+              ✕ Limpiar fecha
+            </button>
+          )}
           <button
             type="button"
             onClick={generarPdf}
