@@ -4918,6 +4918,8 @@ export default function App() {
       caja_nap: nullIfEmpty(cliente.cajaNap),
       puerto_nap: nullIfEmpty(cliente.puertoNap),
       en_mikrowisp: cliente.en_mikrowisp === true ? true : false,
+      iptv_usuario: nullIfEmpty(cliente.iptv_usuario),
+      iptv_perfil: nullIfEmpty(cliente.iptv_perfil),
       payload: cliente,
       updated_at: new Date().toISOString(),
     };
@@ -9453,6 +9455,18 @@ export default function App() {
     const dni = String(registroLiquidado.dni || "").trim();
     if (!dni) return;
 
+    // Si la orden generó cuenta IPTV (MaxPlayer), recuperarla para adjuntarla al cliente
+    let iptvUsuarioLiq = "";
+    let iptvPerfilLiq = "";
+    if (isSupabaseConfigured) {
+      const { data: iptvRow } = await supabase
+        .from("iptv_clientes")
+        .select("iptv_usuario")
+        .eq("dni", dni)
+        .maybeSingle();
+      iptvUsuarioLiq = iptvRow?.iptv_usuario || "";
+    }
+
     const esInstalacion = esActuacionInstalacion(registroLiquidado.tipoActuacion);
 
     // Si NO es instalación: actualizar cliente existente por DNI, o crear uno básico si no existe
@@ -9475,6 +9489,7 @@ export default function App() {
             usuarioNodo: registroLiquidado.usuarioNodo || existente.usuarioNodo || "",
             cajaNap: cajaNapLiq || existente.cajaNap || "",
             ubicacion: ubicacionLiq || existente.ubicacion || "",
+            iptv_usuario: iptvUsuarioLiq || existente.iptv_usuario || "",
             ultimaActualizacion: new Date().toLocaleString(),
           };
           clienteResultado = actualizado;
@@ -9506,6 +9521,7 @@ export default function App() {
           descripcion: registroLiquidado.descripcion || "",
           fotoFachada: registroLiquidado.fotoFachada || "",
           fotosLiquidacion: [],
+          iptv_usuario: iptvUsuarioLiq || "",
           tecnico: registroLiquidado.tecnico || "",
           autorOrden: registroLiquidado.autorOrden || "",
           fechaRegistro: new Date().toLocaleString(),
@@ -9540,6 +9556,7 @@ export default function App() {
             ubicacion: String(payloadInsert.ubicacion || ""),
             descripcion: String(payloadInsert.descripcion || ""),
             tecnico: String(payloadInsert.tecnico || ""),
+            iptv_usuario: String(payloadInsert.iptv_usuario || "") || null,
             origen_registro: "incidencia",
             fecha_registro: new Date().toISOString(),
             ultima_actualizacion: new Date().toISOString(),
@@ -9616,6 +9633,7 @@ export default function App() {
       tecnico: registroLiquidado.tecnico || "",
       autorOrden: registroLiquidado.autorOrden || "",
       cajaNap: registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "",
+      iptv_usuario: iptvUsuarioLiq || "",
       fechaRegistro: new Date().toLocaleString(),
       ultimaActualizacion: new Date().toLocaleString(),
       historialInstalaciones: [historialItem],
@@ -9649,6 +9667,7 @@ export default function App() {
           fotoFachada: registroLiquidado.fotoFachada || existenteMismaOrden.fotoFachada || "",
           codigoEtiqueta: registroLiquidado.liquidacion?.codigoEtiqueta || existenteMismaOrden.codigoEtiqueta || "",
           cajaNap: registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || existenteMismaOrden.cajaNap || "",
+          iptv_usuario: iptvUsuarioLiq || existenteMismaOrden.iptv_usuario || "",
           ultimaActualizacion: new Date().toLocaleString(),
         };
         clienteResultado = actualizado;
