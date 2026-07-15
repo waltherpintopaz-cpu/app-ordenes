@@ -8968,10 +8968,25 @@ export default function App() {
           .eq("dni", dniLimpio)
           .maybeSingle();
 
-        const iptvInfo = iptvExistente || await generarCuentaIptv(orden.dni, orden.nodo);
+        // También puede existir asignada manualmente desde el listado de clientes (sin registro en iptv_clientes)
+        let iptvClienteExistente = null;
+        if (!iptvExistente) {
+          const { data: clienteRow } = await supabase
+            .from("clientes")
+            .select("iptv_usuario")
+            .eq("dni", dniLimpio)
+            .not("iptv_usuario", "is", null)
+            .neq("iptv_usuario", "")
+            .maybeSingle();
+          iptvClienteExistente = clienteRow?.iptv_usuario ? { iptv_usuario: clienteRow.iptv_usuario, iptv_password: null } : null;
+        }
+
+        const iptvInfo = iptvExistente || iptvClienteExistente || await generarCuentaIptv(orden.dni, orden.nodo);
         descripcionFinal = [
           descripcionFinal,
-          `📺 Cuenta IPTV MaxPlayer — Usuario: ${iptvInfo.iptv_usuario} / Contraseña: ${iptvInfo.iptv_password}`,
+          iptvInfo.iptv_password
+            ? `📺 Cuenta IPTV MaxPlayer — Usuario: ${iptvInfo.iptv_usuario} / Contraseña: ${iptvInfo.iptv_password}`
+            : `📺 Cuenta IPTV MaxPlayer (ya existente) — Usuario: ${iptvInfo.iptv_usuario}`,
         ].filter(Boolean).join("\n");
       } catch (e) {
         alert("No se pudo crear la cuenta IPTV: " + e.message);
