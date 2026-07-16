@@ -399,7 +399,7 @@ export default function SidebarApp() {
   const [mwRedes,       setMwRedes]       = useState([]);
   const [mwPlantillas,  setMwPlantillas]  = useState([]);
   const [mwPlantillaId, setMwPlantillaId] = useState(2);
-  const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"", ip:"" });
+  const [mwForm,        setMwForm]        = useState({ id_perfil:"", id_red_ipv4:"", userppp:"", passppp:"", costo:"", fecha_instalacion:"", coordenadas:"", ip:"", routerId:"" });
   const [mwIpLoad,      setMwIpLoad]      = useState(false);
   const [mwWizardLiq,   setMwWizardLiq]   = useState([]);
   const [mwCreandoSvc,  setMwCreandoSvc]  = useState(false);
@@ -1082,7 +1082,7 @@ export default function SidebarApp() {
     setMwWizardLiq([]);
     setMwForm({ id_perfil:"", id_red_ipv4:"", userppp: c.usuario_nodo||"", passppp: c.password_usuario||"",
       costo: String(c.precio_plan||""), fecha_instalacion: c.fecha_registro ? String(c.fecha_registro).split("T")[0] : new Date().toISOString().split("T")[0],
-      coordenadas: c.ubicacion||"", ip:"" });
+      coordenadas: c.ubicacion||"", ip:"", routerId: String(mikrowispRouterIdParaCliente(c.nodo, c.vlan)) });
     setMwStep(1);
     // Cargar liquidaciones del cliente
     const dni = String(c.dni||"").replace(/\D/g,"");
@@ -1185,7 +1185,7 @@ export default function SidebarApp() {
     setMwCreandoSvc(true); setMwMsg("");
     try {
       const nodo = mwCliSupa?.nodo || "Nod_01";
-      const nodoNum = mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
+      const nodoNum = Number(mwForm.routerId) || mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       const payload = { id_cliente: mwMkwId, id_router: nodoNum, id_perfil: Number(mwForm.id_perfil), id_red_ipv4: Number(mwForm.id_red_ipv4) };
@@ -2549,6 +2549,10 @@ export default function SidebarApp() {
                       <div>
                         <label style={{ ...S.label }}>Costo mensual S/</label>
                         <input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} />
+                      </div>
+                      <div>
+                        <label style={{ ...S.label }}>Router MikroWisp (ID)</label>
+                        <input style={{...S.input,fontSize:12}} value={mwForm.routerId} onChange={e=>setMwForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))} placeholder="10" />
                       </div>
                       <div>
                         <label style={{ ...S.label }}>Usuario PPP</label>
@@ -4610,6 +4614,7 @@ export default function SidebarApp() {
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
                       <div><label style={{ ...S.label }}>Fecha instalación</label><input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Costo mensual S/</label><input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} /></div>
+                      <div><label style={{ ...S.label }}>Router MikroWisp (ID)</label><input style={{...S.input,fontSize:12}} value={mwForm.routerId} onChange={e=>setMwForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))} placeholder="10" /></div>
                       <div><label style={{ ...S.label }}>Usuario PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.userppp} onChange={e=>setMwForm(f=>({...f,userppp:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Contraseña PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} /></div>
                     </div>

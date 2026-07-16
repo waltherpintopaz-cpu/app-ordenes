@@ -2002,7 +2002,7 @@ export default function App() {
   const [factPanelLoading,  setFactPanelLoading]  = useState(false);
   const [factPanelEsDim,    setFactPanelEsDim]    = useState(false);
   const [factPanelNodo,     setFactPanelNodo]     = useState(1);
-  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
+  const [svcNuevoForm,      setSvcNuevoForm]       = useState({ nodo:"", vlan:"", routerId:"", id_perfil:"", id_red_ipv4:"", costo:"", userppp:"", passppp:"", ip:"", fecha_instalacion:"", coordenadas:"", crearFactura:false, vencimientoFactura:"" });
   const [mkwCedula, setMkwCedula] = useState("");
   const [mkwBuscando, setMkwBuscando] = useState(false);
   const [mkwResultado, setMkwResultado] = useState(null);
@@ -3400,7 +3400,7 @@ export default function App() {
     const diasHastaVence = Math.round((proxVence - instDate) / 86400000);
     if (diasHastaVence < 10) proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 2, 2);
     setSvcFactF2Vence(proxVence.toISOString().split("T")[0]);
-    setSvcNuevoForm({ nodo: nodoInicial, vlan: cli.vlan ?? "", id_perfil:"", costo:"",
+    setSvcNuevoForm({ nodo: nodoInicial, vlan: cli.vlan ?? "", routerId: String(mikrowispRouterIdParaCliente(nodoInicial, cli.vlan)), id_perfil:"", costo:"",
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
       ip:       "",
@@ -3424,7 +3424,7 @@ export default function App() {
     if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     setSvcNuevoGuardando(true);
     const esDim = esDimNodo(svcNuevoForm.nodo);
-    const nodoNum = mikrowispRouterIdParaCliente(svcNuevoForm.nodo, svcNuevoForm.vlan);
+    const nodoNum = Number(svcNuevoForm.routerId) || mikrowispRouterIdParaCliente(svcNuevoForm.nodo, svcNuevoForm.vlan);
     const payload = {
       id_cliente:   svcNuevoCliId,
       id_router:    nodoNum,
@@ -20658,7 +20658,7 @@ export default function App() {
                               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Nodo / Router</label>
-                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
+                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,routerId:String(mikrowispRouterIdParaCliente(n,p.vlan)),id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                                     {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n=><option key={n} value={n}>{n}</option>)}
                                   </select>
@@ -20703,6 +20703,11 @@ export default function App() {
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Costo mensual S/</label>
                                   <input type="number" step="0.01" placeholder="50.00" value={svcNuevoForm.costo} onChange={e=>setSvcNuevoForm(f=>({...f,costo:e.target.value}))}
+                                    style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                </div>
+                                <div>
+                                  <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Router MikroWisp (ID)</label>
+                                  <input type="text" placeholder="10" value={svcNuevoForm.routerId} onChange={e=>setSvcNuevoForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
                                 </div>
                                 <div>
@@ -21394,7 +21399,7 @@ export default function App() {
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Nodo / Router</label>
                           <select value={svcNuevoForm.nodo}
-                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
+                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, routerId:String(mikrowispRouterIdParaCliente(n,p.vlan)), id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                             {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
@@ -21435,6 +21440,14 @@ export default function App() {
                           <input type="number" step="0.01" placeholder="Auto del plan"
                             value={svcNuevoForm.costo}
                             onChange={e => setSvcNuevoForm(f => ({...f, costo: e.target.value}))}
+                            style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                        </div>
+                        {/* Router MikroWisp */}
+                        <div>
+                          <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Router MikroWisp (ID)</label>
+                          <input type="text" placeholder="10"
+                            value={svcNuevoForm.routerId}
+                            onChange={e => setSvcNuevoForm(f => ({...f, routerId: e.target.value.replace(/\D/g,"")}))}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
                         </div>
                         {/* Fecha instalación */}
