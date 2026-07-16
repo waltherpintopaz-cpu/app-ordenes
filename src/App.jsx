@@ -9915,7 +9915,7 @@ export default function App() {
           fotos: eq.fotos || [],
           dni_cliente: String(ordenEnLiquidacion.dni || ""),
           nombre_cliente: String(ordenEnLiquidacion.nombre || ""),
-          nodo: String(ordenEnLiquidacion.nodo || ""),
+          nodo: normalizarEtiquetaNodo(ordenEnLiquidacion.nodo || ""),
           ingresado_almacen: false,
         }));
         const { error: sErr } = await supabase.from("stock_tecnico").insert(stockRows);
@@ -10025,7 +10025,7 @@ export default function App() {
       dni: ordenEnLiquidacion.dni || "",
       nombre_cliente: ordenEnLiquidacion.nombre || "",
       direccion: ordenEnLiquidacion.direccion || "",
-      nodo: ordenEnLiquidacion.nodo || "",
+      nodo: normalizarEtiquetaNodo(ordenEnLiquidacion.nodo || ""),
       creado_por: usuarioSesion?.nombre || "",
       fecha_ejecucion: new Date().toISOString(),
     };
