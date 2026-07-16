@@ -22177,8 +22177,9 @@ export default function App() {
                         <select value={f.vlan || ""} onChange={e => set("vlan", e.target.value)} style={inp}>
                           <option value="">— Sin VLAN —</option>
                           <option value="500">500 — Nod_06_A</option>
-                          <option value="100">100 — Nod_06_B</option>
+                          <option value="100">100 — Nod_06_B / Nod_01 / Nod_02</option>
                           <option value="200">200 — Nod_04_A</option>
+                          <option value="102">102 — Nod_03 (nuevo admin)</option>
                         </select>
                       </div>
                       {grp("Estado servicio", "estadoServicio", { select: true, options: ["ACTIVO", "SUSPENDIDO", "INACTIVO", "DESCONOCIDO"] })}
