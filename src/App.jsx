@@ -149,6 +149,23 @@ function mikrowispRouterIdParaCliente(nodo, vlan) {
   if (n === "Nod_03" && Number(vlan) === 102) return MW_ROUTER_ID_NOD03_NUEVO;
   return MW_NODO_MAP_BASE_WEB[n] ?? 1;
 }
+// Reverso: numero crudo de router Mikrowisp -> etiqueta visual "Nod_XX".
+// Un mismo Nod_XX puede tener varios IDs historicos de Mikrowisp (routers
+// reemplazados/migrados con el tiempo). Se usa para traducir datos que
+// llegan con el numero crudo en vez de la etiqueta (ej: import CSV/Sheet).
+const NODO_POR_ROUTER_MIKROWISP = {
+  "1": "Nod_01", "7": "Nod_01", "8": "Nod_01", "9": "Nod_01",
+  "2": "Nod_02",
+  "3": "Nod_03", "10": "Nod_03", "12": "Nod_03",
+  "5": "Nod_04",
+  "11": "Nod_06",
+};
+function normalizarEtiquetaNodo(valor) {
+  const raw = String(valor || "").trim();
+  if (!raw) return "";
+  if (/^Nod_0[1-6]$/i.test(raw)) return raw.replace(/^nod_/i, "Nod_");
+  return NODO_POR_ROUTER_MIKROWISP[raw] || raw;
+}
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {
     routerKey: "tiabaya",
@@ -3535,8 +3552,10 @@ export default function App() {
     // Fallback numérico por etiqueta de nodo — evita que nodo quede null cuando Mikrowisp
     // no devuelve servicios. Sin esto, dos clientes con mismo mikrowisp_id de distintos
     // sistemas (Americanet vs DimFiber) quedan en nodo=null y se mezclan sus teléfonos.
-    const NODO_LABEL_FALLBACK = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 3, "Nod_04": 5, "Nod_06": 11 };
-    const nodoFallback = NODO_LABEL_FALLBACK[String(d._nodo || "").trim()] ?? (esNod04 ? 5 : null);
+    // Usa el mismo mapa MW_NODO_MAP_BASE_WEB que el resto del archivo — antes habia
+    // una copia separada con Nod_03=3, un valor incorrecto que no corresponde a
+    // ningun router real de Mikrowisp (el real es 10, o 12 para los migrados a VLAN 102).
+    const nodoFallback = MW_NODO_MAP_BASE_WEB[String(d._nodo || "").trim()] ?? (esNod04 ? 5 : null);
     const nodo = nodoServicio ?? nodoFallback;
     let telefonos = movil;
     const nodoNum = nodo !== null ? Number(nodo) : null;
@@ -4964,6 +4983,7 @@ export default function App() {
         mikrowisp_sync_ok: row.mikrowisp_sync_ok || p.mikrowisp_sync_ok || false,
         iptv_usuario: row.iptv_usuario || p.iptv_usuario || "",
         iptv_perfil: row.iptv_perfil || p.iptv_perfil || "",
+        nodo: normalizarEtiquetaNodo(row.nodo || p.nodo),
         ...signalFields,
       };
     }
@@ -4982,7 +5002,7 @@ export default function App() {
       estado: row.estado || "",
       velocidad: row.velocidad || "",
       precioPlan: row.precio_plan || "",
-      nodo: row.nodo || "",
+      nodo: normalizarEtiquetaNodo(row.nodo),
       usuarioNodo: row.usuario_nodo || "",
       passwordUsuario: row.password_usuario || "",
       codigoEtiqueta: row.codigo_etiqueta || "",
@@ -5174,7 +5194,7 @@ export default function App() {
           direccion: getCol(row, "direccion", "dirección", "address"),
           celular: getCol(row, "celular", "telefono", "teléfono", "phone", "cel"),
           email: getCol(row, "email"),
-          nodo: getCol(row, "nodo", "node"),
+          nodo: normalizarEtiquetaNodo(getCol(row, "nodo", "node")),
           velocidad: getCol(row, "velocidad", "plan", "velocidad plan"),
           precioPlan: getCol(row, "precio", "precio_plan", "monto"),
           codigoAbonado: getCol(row, "codigo_abonado", "codigo abonado", "abonado", "cod_abonado"),
