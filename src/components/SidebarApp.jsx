@@ -322,6 +322,9 @@ export default function SidebarApp() {
   // Señal y mapa
   const [snOnu,    setSnOnu]    = useState(null);
   const [nodoReal, setNodoReal] = useState(null); // nodo del servidor de diagnóstico (de tabla clientes)
+  const [clienteIdReal, setClienteIdReal] = useState(null); // id real en tabla clientes (para editar VLAN)
+  const [clienteVlan, setClienteVlan] = useState(null);
+  const [guardandoVlan, setGuardandoVlan] = useState(false);
   const [senal,    setSenal]    = useState(null);   // { rx, oltRx, ts }
   const [senalLoad,setSenalLoad]= useState(false);
   const [showMap,    setShowMap]    = useState(false);
@@ -558,6 +561,7 @@ export default function SidebarApp() {
     setAnalisis(null); setImgFile(null); setImgPrev(null);
     setProrrInfo(null); setProrrForm({ fecha: "" });
     setSnOnu(null); setNodoReal(null); setSenal(null);
+    setClienteIdReal(null); setClienteVlan(null);
     setShowMap(false); setDiagResult(null); setDiagError(null); setShowDiag(false); setShowDiagDetail(false); setShowSenalDetail(false); setAutoLoad(0);
     setDniResultados([]); setDniSel(null); setDniBusq("");
     setOrdenCreada(null);
@@ -618,11 +622,14 @@ export default function SidebarApp() {
     }
 
     const pppuser = detRes?.datos?.[0]?.servicios?.[0]?.pppuser || detRes?.clientes?.[0]?.servicios?.[0]?.pppuser || "";
+    setClienteIdReal(null); setClienteVlan(null);
     if (pppuser) {
       const { data: snRows } = await supabase
-        .from("clientes").select("sn_onu, nodo").eq("usuario_nodo", pppuser).limit(1);
+        .from("clientes").select("id, sn_onu, nodo, vlan").eq("usuario_nodo", pppuser).limit(1);
       if (snRows?.[0]?.sn_onu) setSnOnu(snRows[0].sn_onu);
       if (snRows?.[0]?.nodo)   setNodoReal(snRows[0].nodo);
+      if (snRows?.[0]?.id != null) setClienteIdReal(snRows[0].id);
+      setClienteVlan(snRows?.[0]?.vlan ?? null);
     }
 
     // Señal de carga completa para auto-consulta
@@ -630,6 +637,21 @@ export default function SidebarApp() {
 
     // Cargar historial de órdenes y liquidaciones del cliente
     if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); cargarIPTV(row.cedula); }
+  }
+
+  async function guardarVlanCliente(nuevoVlan) {
+    if (!clienteIdReal) return;
+    setGuardandoVlan(true);
+    try {
+      const valor = nuevoVlan === "" ? null : Number(nuevoVlan);
+      const { error } = await supabase.from("clientes").update({ vlan: valor }).eq("id", clienteIdReal);
+      if (error) throw error;
+      setClienteVlan(valor);
+    } catch (e) {
+      alert("No se pudo guardar el VLAN: " + e.message);
+    } finally {
+      setGuardandoVlan(false);
+    }
   }
 
   // ── Cargar cliente que no tiene cuenta en MikroWisp (solo datos internos) ──
@@ -653,6 +675,9 @@ export default function SidebarApp() {
       empresa,
     };
     setCliente(cli);
+    setNodoReal(row.nodo || null);
+    setClienteIdReal(row.id ?? null);
+    setClienteVlan(row.vlan ?? null);
     setDetalle(null);
     setFacturas([]);
     setError(null);
@@ -699,7 +724,7 @@ export default function SidebarApp() {
         const buscarLocal = async (t) => {
           const { data } = await supabase
             .from("clientes")
-            .select("id,dni,nombre,direccion,celular,nodo,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa,ubicacion")
+            .select("id,dni,nombre,direccion,celular,nodo,vlan,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa,ubicacion")
             .ilike("celular", `%${t}%`);
           return data || [];
         };
@@ -3023,6 +3048,21 @@ export default function SidebarApp() {
                     title="Click para copiar DNI"
                     style={{ fontSize:11, color:"rgba(255,255,255,0.55)", cursor:"pointer" }}
                   >DNI <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.cedula}</strong></span>
+                )}
+                {String(nodoReal || cliente.nodo || "") === "Nod_03" && clienteIdReal && (
+                  <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"rgba(255,255,255,0.55)" }}>
+                    VLAN
+                    <select
+                      value={clienteVlan ?? ""}
+                      disabled={guardandoVlan}
+                      onChange={(e) => guardarVlanCliente(e.target.value)}
+                      style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:4, color:"#fff", fontSize:11, fontWeight:700, padding:"1px 4px" }}
+                    >
+                      <option value="" style={{ color:"#000" }}>— Sin VLAN —</option>
+                      <option value="100" style={{ color:"#000" }}>100 (viejo)</option>
+                      <option value="102" style={{ color:"#000" }}>102 (nuevo)</option>
+                    </select>
+                  </span>
                 )}
               </div>
             </div>
