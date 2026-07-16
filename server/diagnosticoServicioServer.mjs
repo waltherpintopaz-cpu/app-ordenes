@@ -227,9 +227,38 @@ const loadRoutersConfigFromSupabase = async () => {
   }
 };
 
-const connectRouterByNodo = async (nodo = "") => {
+// Nod_03 en migracion: clientes ya pasados a VLAN 102 viven en un Mikrotik fisico
+// distinto (router_key "nod03_nuevo"). El resto de Nod_03 (VLAN 100 o sin VLAN)
+// sigue en el router de siempre (tiabaya). Se resuelve por VLAN, no por nodo,
+// para no depender de mover clientes "en bloque".
+const ROUTER_KEY_NOD03_VLAN102 = "nod03_nuevo";
+
+const fetchClienteVlanPorPppoe = async (userPppoe = "") => {
+  const user = String(userPppoe || "").trim();
+  if (!user || !SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  try {
+    const rows = await fetchSupabaseRows(
+      "clientes",
+      `select=vlan&usuario_nodo=eq.${encodeURIComponent(user)}&limit=1`
+    );
+    const vlan = Array.isArray(rows) && rows[0] ? rows[0].vlan : null;
+    return vlan == null ? null : Number(vlan);
+  } catch (error) {
+    console.warn("No se pudo consultar VLAN del cliente para enrutar Mikrotik.", error);
+    return null;
+  }
+};
+
+const connectRouterByNodo = async (nodo = "", userPppoe = "") => {
   const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
-  const router = findRouterByNodo(routers, nodo);
+  let router = null;
+  if (normalizeNodo(nodo) === "NOD_03") {
+    const vlan = await fetchClienteVlanPorPppoe(userPppoe);
+    if (vlan === 102 && routers[ROUTER_KEY_NOD03_VLAN102]) {
+      router = routers[ROUTER_KEY_NOD03_VLAN102];
+    }
+  }
+  if (!router) router = findRouterByNodo(routers, nodo);
   if (!router) throw new Error(`No hay router configurado para el nodo ${nodo || "-"}.`);
   const configError = buildRouterConfigError(router);
   if (configError) throw new Error(configError);
@@ -348,7 +377,7 @@ const resolveSecretRemoteAddress = (secret = null, active = null) =>
 const queryRouter = async ({ nodo, userPppoe }) => {
   let connection = null;
   try {
-    connection = await connectRouterByNodo(nodo);
+    connection = await connectRouterByNodo(nodo, userPppoe);
     const { api, router } = connection;
     const { secret, active, activeTimedOut } = await loadSecretAndActive({ api, router, userPppoe });
 
@@ -409,7 +438,7 @@ const queryRouter = async ({ nodo, userPppoe }) => {
 const suspenderRouter = async ({ nodo, userPppoe }) => {
   let connection = null;
   try {
-    connection = await connectRouterByNodo(nodo);
+    connection = await connectRouterByNodo(nodo, userPppoe);
     const { api, router } = connection;
     const secret = await loadSecretOnly({ api, router, userPppoe });
     if (!secret) {
@@ -465,7 +494,7 @@ const suspenderRouter = async ({ nodo, userPppoe }) => {
 const activarRouter = async ({ nodo, userPppoe, ip = "" }) => {
   let connection = null;
   try {
-    connection = await connectRouterByNodo(nodo);
+    connection = await connectRouterByNodo(nodo, userPppoe);
     const { api, router } = connection;
     const secret = await loadSecretOnly({ api, router, userPppoe });
     if (!secret) {
