@@ -138,6 +138,8 @@ const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
 const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
 const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06"]);
 const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(nodo || "").trim().toLowerCase()) ? "DIM" : "Americanet";
+// VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
+const VLAN_POR_NODO_WEB = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {
     routerKey: "tiabaya",
@@ -617,6 +619,7 @@ const buildInitialOrder = () => ({
   velocidad: "",
   precioPlan: "",
   nodo: "",
+  vlan: "",
   usuarioNodo: "",
   passwordUsuario: "",
   snOnu: "",
@@ -657,6 +660,9 @@ function serializeOrderToSupabase(orderItem = {}, opts = {}) {
     velocidad: String(orderItem.velocidad || "").trim(),
     precio_plan: numberOrNull(orderItem.precioPlan),
     nodo: String(orderItem.nodo || "").trim(),
+    vlan: orderItem.vlan !== undefined && orderItem.vlan !== null && String(orderItem.vlan).trim() !== ""
+      ? numberOrNull(orderItem.vlan)
+      : (VLAN_POR_NODO_WEB[String(orderItem.nodo || "").trim()] ? Number(VLAN_POR_NODO_WEB[String(orderItem.nodo || "").trim()]) : null),
     usuario_nodo: String(orderItem.usuarioNodo || "").trim(),
     password_usuario: String(orderItem.passwordUsuario || "").trim(),
     sn_onu: String(orderItem.snOnu || "").trim(),
@@ -744,6 +750,7 @@ function deserializeOrderFromSupabase(row = {}) {
     velocidad: String(row.velocidad || "").trim(),
     precioPlan: row.precio_plan == null ? "" : String(row.precio_plan),
     nodo: String(row.nodo || "").trim(),
+    vlan: row.vlan == null ? "" : String(row.vlan),
     usuarioNodo: String(row.usuario_nodo || "").trim(),
     passwordUsuario: String(row.password_usuario || "").trim(),
     snOnu: String(row.sn_onu || "").trim(),
@@ -5753,15 +5760,17 @@ export default function App() {
       const nextNodo = String(nodoValue || "").trim();
       const passwordSugerido = sugerirPasswordPorNodo(nextNodo);
       const empresaAuto = prev.empresa || empresaPorNodo(nextNodo);
+      const vlanAuto = VLAN_POR_NODO_WEB[nextNodo] || "";
       if (String(prev.generarUsuario || "").toUpperCase() !== "SI") {
-        return { ...prev, nodo: nextNodo, empresa: empresaAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
+        return { ...prev, nodo: nextNodo, empresa: empresaAuto, vlan: vlanAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
       }
       const sugerido = sugerirUsuarioPorNodo(nextNodo, usuariosNodoUsados, usuariosNodoHabilitadosManual);
-      if (!sugerido) return { ...prev, nodo: nextNodo, empresa: empresaAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
+      if (!sugerido) return { ...prev, nodo: nextNodo, empresa: empresaAuto, vlan: vlanAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
       return {
         ...prev,
         nodo: nextNodo,
         empresa: empresaAuto,
+        vlan: vlanAuto,
         usuarioNodo: sugerido,
         passwordUsuario: passwordSugerido || prev.passwordUsuario,
       };
@@ -15080,6 +15089,18 @@ export default function App() {
                           <option>Nod_06</option>
                         </select>
                       </div>
+
+                      {!!VLAN_POR_NODO_WEB[orden.nodo] && (
+                        <div>
+                          <label style={labelStyle}>VLAN</label>
+                          <input
+                            style={inputStyle}
+                            value={orden.vlan}
+                            onChange={(e) => handleChange("vlan", e.target.value.replace(/\D/g, ""))}
+                            placeholder="VLAN"
+                          />
+                        </div>
+                      )}
 
                       <div style={{ position: "relative" }}>
                         <label style={labelStyle}>Usuario</label>
