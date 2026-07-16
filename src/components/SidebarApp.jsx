@@ -60,6 +60,8 @@ const empresaPorNodo = (n) => DIM_NODOS.has(String(n||"").trim().toLowerCase()) 
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 const NODOS_OLT_SSH = new Set(["Nod_04", "Nod_05", "Nod_06"]);
 const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"];
+// VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
+const VLAN_POR_NODO = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
 
 const NODO_USUARIO_RULES = {
   NOD_01: { prefix:"user",     start:801, suffix:"@americanet", pad:0 },
@@ -343,7 +345,7 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
@@ -1809,6 +1811,7 @@ export default function SidebarApp() {
         velocidad:      ordenForm.velocidad || "",
         precio_plan:    ordenForm.precioPlan ? Number(ordenForm.precioPlan) : null,
         nodo:           cliente ? String(cliente.nodo) : ordenForm.nodo.trim(),
+        vlan:           ordenForm.vlan ? Number(ordenForm.vlan) : (VLAN_POR_NODO[ordenForm.nodo] ? Number(VLAN_POR_NODO[ordenForm.nodo]) : null),
         usuario_nodo:   cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim(),
         password_usuario: cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim(),
         sn_onu:         cliente ? (snOnu || "") : ordenForm.snOnu.trim(),
@@ -2812,7 +2815,7 @@ export default function SidebarApp() {
                       <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.nodo}
                         onChange={e=>{
                           const n=e.target.value;
-                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:""}));
+                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:"",vlan:VLAN_POR_NODO[n]||""}));
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
@@ -2820,6 +2823,11 @@ export default function SidebarApp() {
                         <option value="">— Seleccionar —</option>
                         {NODOS_BASE.map(n=><option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
                       </select>
+                    )}
+                    {!!VLAN_POR_NODO[ordenForm.nodo] && fila("VLAN",
+                      <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.vlan}
+                        onChange={e=>setOrdenForm(p=>({...p,vlan:e.target.value.replace(/\D/g,"")}))}
+                        placeholder="VLAN" />
                     )}
                     {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?"#7c3aed":T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
                     {esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))}
@@ -4206,7 +4214,7 @@ export default function SidebarApp() {
                         value={ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`}
                         onChange={e => {
                           const n = e.target.value;
-                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:""}));
+                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:"", vlan:VLAN_POR_NODO[n]||""}));
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
@@ -4215,6 +4223,17 @@ export default function SidebarApp() {
                       </select>
                     </div>
                   </div>
+                  {!!VLAN_POR_NODO[ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`] && (
+                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>VLAN</div>
+                      <div>
+                        <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }}
+                          value={ordenForm.vlan || VLAN_POR_NODO[ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`] || ""}
+                          onChange={e => setOrdenForm(p=>({...p, vlan:e.target.value.replace(/\D/g,"")}))}
+                          placeholder="VLAN" />
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Velocidad</div>
                     <div>
