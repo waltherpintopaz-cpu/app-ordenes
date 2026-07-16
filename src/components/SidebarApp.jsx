@@ -1144,8 +1144,9 @@ export default function SidebarApp() {
     setMwAgregando(false);
   }
 
-  async function mwCargarPerfiles(nodo, mkwId, vlan) {
-    const nodoNum = mikrowispRouterIdParaCliente(nodo, vlan);
+  async function mwCargarPerfiles(nodo, mkwId, vlan, routerIdOverride) {
+    const nodoNum = Number(routerIdOverride) || mikrowispRouterIdParaCliente(nodo, vlan);
+    setMwForm(f => ({ ...f, routerId: String(nodoNum) }));
     const esDim = mwEsDim(nodo);
     const n = esDim ? 5 : nodoNum;
     const [pR, rR, plR] = await Promise.all([
@@ -2552,7 +2553,10 @@ export default function SidebarApp() {
                       </div>
                       <div>
                         <label style={{ ...S.label }}>Router MikroWisp (ID)</label>
-                        <input style={{...S.input,fontSize:12}} value={mwForm.routerId} onChange={e=>setMwForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))} placeholder="10" />
+                        <input style={{...S.input,fontSize:12}} value={mwForm.routerId} onChange={e=>setMwForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))}
+                          onBlur={e=>{ if(e.target.value) void mwCargarPerfiles(mwCliSupa?.nodo, mwMkwId, mwCliSupa?.vlan, e.target.value); }}
+                          placeholder="10" />
+                        <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>Al cambiarlo se recargan planes y rangos IPv4 de ese router</div>
                       </div>
                       <div>
                         <label style={{ ...S.label }}>Usuario PPP</label>
@@ -4614,7 +4618,13 @@ export default function SidebarApp() {
                     <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
                       <div><label style={{ ...S.label }}>Fecha instalación</label><input type="date" style={{...S.input,fontSize:12}} value={mwForm.fecha_instalacion} onChange={e=>setMwForm(f=>({...f,fecha_instalacion:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Costo mensual S/</label><input type="number" style={{...S.input,fontSize:12}} value={mwForm.costo} onChange={e=>setMwForm(f=>({...f,costo:e.target.value}))} /></div>
-                      <div><label style={{ ...S.label }}>Router MikroWisp (ID)</label><input style={{...S.input,fontSize:12}} value={mwForm.routerId} onChange={e=>setMwForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))} placeholder="10" /></div>
+                      <div>
+                        <label style={{ ...S.label }}>Router MikroWisp (ID)</label>
+                        <input style={{...S.input,fontSize:12}} value={mwForm.routerId} onChange={e=>setMwForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))}
+                          onBlur={e=>{ if(e.target.value) void mwCargarPerfiles(mwCliSupa?.nodo, mwMkwId, mwCliSupa?.vlan, e.target.value); }}
+                          placeholder="10" />
+                        <div style={{ fontSize:10, color:T.muted, marginTop:2 }}>Al cambiarlo se recargan planes y rangos IPv4 de ese router</div>
+                      </div>
                       <div><label style={{ ...S.label }}>Usuario PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.userppp} onChange={e=>setMwForm(f=>({...f,userppp:e.target.value}))} /></div>
                       <div><label style={{ ...S.label }}>Contraseña PPP</label><input style={{...S.input,fontSize:12}} value={mwForm.passppp} onChange={e=>setMwForm(f=>({...f,passppp:e.target.value}))} /></div>
                     </div>

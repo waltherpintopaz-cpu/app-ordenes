@@ -3345,9 +3345,10 @@ export default function App() {
 
   const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
 
-  const cargarPerfilesSvcNuevo = async (nodo, vlan) => {
+  const cargarPerfilesSvcNuevo = async (nodo, vlan, routerIdOverride) => {
     const esDim = esDimNodo(nodo);
-    const nodoNum = mikrowispRouterIdParaCliente(nodo, vlan);
+    const nodoNum = Number(routerIdOverride) || mikrowispRouterIdParaCliente(nodo, vlan);
+    setSvcNuevoForm(f => ({ ...f, routerId: String(nodoNum) }));
     try {
       const [perfRes, redesRes, plantRes] = await Promise.all([
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
@@ -20708,7 +20709,9 @@ export default function App() {
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Router MikroWisp (ID)</label>
                                   <input type="text" placeholder="10" value={svcNuevoForm.routerId} onChange={e=>setSvcNuevoForm(f=>({...f,routerId:e.target.value.replace(/\D/g,"")}))}
+                                    onBlur={e=>{ if(e.target.value) cargarPerfilesSvcNuevo(svcNuevoForm.nodo, svcNuevoForm.vlan, e.target.value); }}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                                  <div style={{ fontSize:10, color:"#64748b", marginTop:2 }}>Al cambiarlo se recargan planes y rangos IPv4 de ese router</div>
                                 </div>
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Usuario PPP</label>
@@ -21448,7 +21451,9 @@ export default function App() {
                           <input type="text" placeholder="10"
                             value={svcNuevoForm.routerId}
                             onChange={e => setSvcNuevoForm(f => ({...f, routerId: e.target.value.replace(/\D/g,"")}))}
+                            onBlur={e=>{ if(e.target.value) cargarPerfilesSvcNuevo(svcNuevoForm.nodo, svcNuevoForm.vlan, e.target.value); }}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, boxSizing:"border-box" }} />
+                          <div style={{ fontSize:10, color:"#64748b", marginTop:2 }}>Al cambiarlo se recargan planes y rangos IPv4 de ese router</div>
                         </div>
                         {/* Fecha instalación */}
                         <div>
