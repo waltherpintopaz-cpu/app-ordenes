@@ -140,6 +140,15 @@ const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06"]);
 const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(nodo || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 // VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
 const VLAN_POR_NODO_WEB = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
+// ID de router MikroWisp por nodo. Nod_03 esta en migracion: clientes que ya
+// pasaron a VLAN 102 usan el router nuevo (12); el resto sigue en el viejo (10).
+const MW_NODO_MAP_BASE_WEB = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 10, "Nod_04": 5, "Nod_06": 11 };
+const MW_ROUTER_ID_NOD03_NUEVO = 12;
+function mikrowispRouterIdParaCliente(nodo, vlan) {
+  const n = String(nodo || "").trim();
+  if (n === "Nod_03" && Number(vlan) === 102) return MW_ROUTER_ID_NOD03_NUEVO;
+  return MW_NODO_MAP_BASE_WEB[n] ?? 1;
+}
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {
     routerKey: "tiabaya",
@@ -3238,8 +3247,7 @@ export default function App() {
     setFactPanelCliId(null);
     setFactPanelLoading(true);
     setFactPanelEsDim(esDimNodo(cli.nodo));
-    const nodoMap = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
-    setFactPanelNodo(nodoMap[cli.nodo] ?? 1);
+    setFactPanelNodo(mikrowispRouterIdParaCliente(cli.nodo, cli.vlan));
     // Reset estados factura
     setSvcFactStep(1); setSvcFactMonto("");
     setSvcFactF1Pagada(true); setSvcFactF1Pasarela("Efectivo Oficina/Sucursal");
@@ -3265,7 +3273,7 @@ export default function App() {
       setFactPanelCliId(datos.id);
       // Cargar facturas existentes para el wizard
       try {
-        const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 }[cli.nodo] ?? 1;
+        const nodoNum = mikrowispRouterIdParaCliente(cli.nodo, cli.vlan);
         setMkwWizardFacturasLoad(true);
         setMkwWizardFacturas([]);
         const r = await fetch("https://n8n.americanet.space/webhook/sidebar-proxy", {
@@ -3335,12 +3343,11 @@ export default function App() {
     } catch { setMkwWizardStep(1); /* si API falla, mostrar paso 1 */ }
   };
 
-  const NODO_ROUTER_MAP_SVC = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
   const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
 
-  const cargarPerfilesSvcNuevo = async (nodo) => {
+  const cargarPerfilesSvcNuevo = async (nodo, vlan) => {
     const esDim = esDimNodo(nodo);
-    const nodoNum = NODO_ROUTER_MAP_SVC[nodo] ?? 1;
+    const nodoNum = mikrowispRouterIdParaCliente(nodo, vlan);
     try {
       const [perfRes, redesRes, plantRes] = await Promise.all([
         fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
@@ -3393,7 +3400,7 @@ export default function App() {
     const diasHastaVence = Math.round((proxVence - instDate) / 86400000);
     if (diasHastaVence < 10) proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 2, 2);
     setSvcFactF2Vence(proxVence.toISOString().split("T")[0]);
-    setSvcNuevoForm({ nodo: nodoInicial, id_perfil:"", costo:"",
+    setSvcNuevoForm({ nodo: nodoInicial, vlan: cli.vlan ?? "", id_perfil:"", costo:"",
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
       ip:       "",
@@ -3404,7 +3411,7 @@ export default function App() {
     const esDim = esDimNodo(nodoInicial);
     const [cliRes] = await Promise.all([
       esDim ? mkFetchNod04("GetClientsDetails", { cedula: dni }) : mkFetch("GetClientsDetails", { cedula: dni }),
-      cargarPerfilesSvcNuevo(nodoInicial),
+      cargarPerfilesSvcNuevo(nodoInicial, cli.vlan),
     ]);
     const datos = cliRes.json?.datos?.[0] || cliRes.json?.data?.[0];
     if (datos?.id) setSvcNuevoCliId(datos.id);
@@ -3417,8 +3424,7 @@ export default function App() {
     if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     setSvcNuevoGuardando(true);
     const esDim = esDimNodo(svcNuevoForm.nodo);
-    const NODO_ROUTER_ID = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
-    const nodoNum = NODO_ROUTER_ID[svcNuevoForm.nodo] ?? parseInt(String(svcNuevoForm.nodo).replace(/[^\d]/g, ""), 10);
+    const nodoNum = mikrowispRouterIdParaCliente(svcNuevoForm.nodo, svcNuevoForm.vlan);
     const payload = {
       id_cliente:   svcNuevoCliId,
       id_router:    nodoNum,
@@ -20652,7 +20658,7 @@ export default function App() {
                               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Nodo / Router</label>
-                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n); }}
+                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                                     {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n=><option key={n} value={n}>{n}</option>)}
                                   </select>
@@ -20922,7 +20928,7 @@ export default function App() {
                         {mkwWizardStep===4 && (() => {
                           const done=stepsStatus[3], cargando=mkwCliLoading[wid];
                           const mkwCliId = svcNuevoCliId || factPanelCliId;
-                          const nodoNum = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 }[String(cli.nodo||"")] ?? 1;
+                          const nodoNum = mikrowispRouterIdParaCliente(cli.nodo, cli.vlan);
                           const esDimCli = esDimNodo(cli.nodo);
                           return (
                             <div style={{ display:"grid", gap:16 }}>
@@ -21388,7 +21394,7 @@ export default function App() {
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Nodo / Router</label>
                           <select value={svcNuevoForm.nodo}
-                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n); }}
+                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                             {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>

@@ -1014,6 +1014,12 @@ export default function SidebarApp() {
   // ── Búsqueda flexible por DNI o nombre ──────────────────────────────────
   // ── MW wizard helpers ─────────────────────────────────────────────────────
   const MW_NODO_MAP  = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
+  // Nod_03 en migracion: clientes ya pasados a VLAN 102 usan el router MikroWisp nuevo (12).
+  const mikrowispRouterIdParaCliente = (nodo, vlan) => {
+    const n = String(nodo || "").trim();
+    if (n === "Nod_03" && Number(vlan) === 102) return 12;
+    return MW_NODO_MAP[n] ?? 1;
+  };
   const MW_NODOS_OK  = ["Nod_01","Nod_03","Nod_04"];
   const mwEsDim = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo||""));
 
@@ -1025,7 +1031,7 @@ export default function SidebarApp() {
     setMwBusqLoad(true); setMwCliSupa(null); setMwResultados([]); setMwMsg("");
     try {
       let query = supabase.from("clientes")
-        .select("id,nombre,dni,celular,email,direccion,nodo,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
+        .select("id,nombre,dni,celular,email,direccion,nodo,vlan,velocidad,precio_plan,fecha_registro,ubicacion,usuario_nodo,password_usuario,en_mikrowisp")
         .in("nodo", MW_NODOS_OK)
         .order("fecha_registro", { ascending: false })
         .limit(50);
@@ -1079,7 +1085,7 @@ export default function SidebarApp() {
       const existe = extraerId(check);
       if (existe) {
         setMwMkwId(existe);
-        await mwCargarPerfiles(mwCliSupa.nodo, existe);
+        await mwCargarPerfiles(mwCliSupa.nodo, existe, mwCliSupa.vlan);
         setMwStep(2);
         return;
       }
@@ -1107,14 +1113,14 @@ export default function SidebarApp() {
       await mkwDirect(esDim, "UpdateUser", { idcliente: nuevoId, datos: updateDatos });
       setMwMkwId(nuevoId);
       if (mwCliSupa.id) supabase.from("clientes").update({ en_mikrowisp: true }).eq("id", mwCliSupa.id).then(()=>{});
-      await mwCargarPerfiles(mwCliSupa.nodo, nuevoId);
+      await mwCargarPerfiles(mwCliSupa.nodo, nuevoId, mwCliSupa.vlan);
       setMwStep(2);
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwAgregando(false);
   }
 
-  async function mwCargarPerfiles(nodo, mkwId) {
-    const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+  async function mwCargarPerfiles(nodo, mkwId, vlan) {
+    const nodoNum = mikrowispRouterIdParaCliente(nodo, vlan);
     const esDim = mwEsDim(nodo);
     const n = esDim ? 5 : nodoNum;
     const [pR, rR, plR] = await Promise.all([
@@ -1154,7 +1160,7 @@ export default function SidebarApp() {
     setMwCreandoSvc(true); setMwMsg("");
     try {
       const nodo = mwCliSupa?.nodo || "Nod_01";
-      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const nodoNum = mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       const payload = { id_cliente: mwMkwId, id_router: nodoNum, id_perfil: Number(mwForm.id_perfil), id_red_ipv4: Number(mwForm.id_red_ipv4) };
@@ -1201,7 +1207,7 @@ export default function SidebarApp() {
     setMwFactCreando(true); setMwMsg("");
     try {
       const nodo = mwCliSupa?.nodo || "Nod_01";
-      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const nodoNum = mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       let idfactura;
@@ -1247,7 +1253,7 @@ export default function SidebarApp() {
     setMwFactCreando(true); setMwMsg("");
     try {
       const nodo = mwCliSupa?.nodo || "Nod_01";
-      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const nodoNum = mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       const desc = mwCliSupa?.velocidad ? `Prorrateo Plan ${mwCliSupa.velocidad}` : "Prorrateo servicio internet";
@@ -1266,7 +1272,7 @@ export default function SidebarApp() {
     try {
       const nodo = mwCliSupa.nodo || "Nod_01";
       const esDim = mwEsDim(nodo);
-      const n = esDim ? 5 : (MW_NODO_MAP[nodo] ?? 1);
+      const n = esDim ? 5 : mikrowispRouterIdParaCliente(nodo, mwCliSupa.vlan);
       const dni = String(mwCliSupa.dni || "").replace(/\D/g, "");
       // 1. Empujar datos Supabase → Mikrowisp (igual que App.jsx post-agregar)
       const datosUpdate = { codigo: dni };
@@ -1321,7 +1327,7 @@ export default function SidebarApp() {
     if (!mwMkwId || !mwCliSupa) return;
     try {
       const nodo = mwCliSupa.nodo || "Nod_01";
-      const nodoNum = MW_NODO_MAP[nodo] ?? 1;
+      const nodoNum = mikrowispRouterIdParaCliente(nodo, mwCliSupa.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       const dni = String(mwCliSupa.dni || "").replace(/\D/g, "");
