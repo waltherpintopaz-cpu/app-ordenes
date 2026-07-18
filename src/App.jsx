@@ -20371,7 +20371,7 @@ export default function App() {
         )}
 
         {vistaActiva === "wispro" && (
-          <WisproPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} />
+          <WisproPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} theme={theme} />
         )}
 
         {vistaActiva === "nap" && (

@@ -7,11 +7,11 @@ const DIAGNO_BASE = import.meta.env.PROD
   ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 
 /* ── estilos base ── */
-const lbl  = { display:"block", fontSize:11, fontWeight:700, color:"#475569", marginBottom:4 };
-const inp  = { width:"100%", padding:"8px 11px", border:"1.5px solid #e2e8f0", borderRadius:8,
-               fontSize:13, outline:"none", boxSizing:"border-box", background:"#fff" };
-const card = { background:"#fff", borderRadius:16, border:"1px solid #e8edf5",
-               boxShadow:"0 1px 8px rgba(15,23,42,0.05)", padding:"18px 22px", marginBottom:16 };
+const getLbl = (isDark) => ({ display:"block", fontSize:11, fontWeight:700, color: isDark ? "#a9bcdd" : "#475569", marginBottom:4 });
+const getInp = (isDark) => ({ width:"100%", padding:"8px 11px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius:8,
+               fontSize:13, outline:"none", boxSizing:"border-box", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" });
+const getCard = (isDark) => ({ background: isDark ? "#1a2740" : "#fff", borderRadius:16, border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5",
+               boxShadow:"0 1px 8px rgba(15,23,42,0.05)", padding:"18px 22px", marginBottom:16 });
 const btnS = (bg, dis) => ({ padding:"8px 18px", background: dis?"#94a3b8":bg, color:"#fff",
                border:"none", borderRadius:9, fontSize:12, fontWeight:700,
                cursor: dis?"default":"pointer" });
@@ -27,7 +27,11 @@ const fmtFecha = (iso) => { if(!iso) return "—"; const d=new Date(iso); return
 const resultColor = (r) => ({ enviado:"#16a34a", saltado_pago:"#d97706", saltado_optout:"#64748b", duplicado:"#94a3b8", error:"#dc2626" }[r] || "#64748b");
 
 /* ════════════════════════════════════════════════ */
-export default function WisproPanel({ esAdmin = false, sessionUser }) {
+export default function WisproPanel({ esAdmin = false, sessionUser, theme }) {
+  const isDark = theme === "dark";
+  const lbl = getLbl(isDark);
+  const inp = getInp(isDark);
+  const card = getCard(isDark);
   const [tab, setTab] = useState(esAdmin ? "config" : "clientes");
 
   /* ── config ── */
@@ -316,23 +320,23 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
     return true;
   });
 
-  if (!cfg) return <div style={{padding:40,color:"#64748b"}}>Cargando...</div>;
+  if (!cfg) return <div style={{padding:40,color: isDark ? "#93a2bd" : "#64748b"}}>Cargando...</div>;
 
   /* ════ RENDER ════ */
   return (
     <div style={{display:"grid", gap:16}}>
-      <div style={{background:"#fff", borderRadius:20, border:"1px solid #e8edf5",
+      <div style={{background: isDark ? "#1a2740" : "#fff", borderRadius:20, border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5",
         boxShadow:"0 2px 16px rgba(15,23,42,0.06)", padding:"22px 26px"}}>
 
         <div style={{marginBottom:18}}>
-          <h2 style={{margin:0, fontSize:22, fontWeight:800, color:"#0f172a"}}>WisPro — Notificaciones</h2>
-          <p style={{margin:"3px 0 0", fontSize:12, color:"#94a3b8"}}>
+          <h2 style={{margin:0, fontSize:22, fontWeight:800, color: isDark ? "#e6ecf7" : "#0f172a"}}>WisPro — Notificaciones</h2>
+          <p style={{margin:"3px 0 0", fontSize:12, color: isDark ? "#93a2bd" : "#94a3b8"}}>
             Recordatorios y mensajes automáticos para clientes de Nod_06 (DimFiber)
           </p>
         </div>
 
         {/* Tabs */}
-        <div style={{display:"flex", gap:4, marginBottom:24, borderBottom:"2px solid #f1f5f9"}}>
+        <div style={{display:"flex", gap:4, marginBottom:24, borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #f1f5f9"}}>
           {[
             esAdmin && {key:"config",label:"⚙ Configuración"},
             {key:"clientes",label:"👥 Clientes"},
@@ -354,7 +358,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
 
             {/* API */}
             <div style={card}>
-              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color:"#0f172a"}}>🔑 API WisPro</p>
+              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color: isDark ? "#e6ecf7" : "#0f172a"}}>🔑 API WisPro</p>
               <div style={{display:"grid", gap:12}}>
                 <div>
                   <label style={lbl}>API Token</label>
@@ -369,7 +373,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
                 </div>
                 {rawResp && (
                   <div style={{marginTop:10}}>
-                    <p style={{margin:"0 0 4px", fontSize:11, fontWeight:700, color:"#475569"}}>Respuesta raw (primeros 2 contratos):</p>
+                    <p style={{margin:"0 0 4px", fontSize:11, fontWeight:700, color: isDark ? "#a9bcdd" : "#475569"}}>Respuesta raw (primeros 2 contratos):</p>
                     <pre style={{background:"#0f172a", color:"#e2e8f0", borderRadius:10, padding:"12px 14px",
                       fontSize:10, overflowX:"auto", maxHeight:300, overflowY:"auto", margin:0}}>
                       {rawResp}
@@ -381,7 +385,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
 
             {/* WhatsApp emisor */}
             <div style={card}>
-              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color:"#0f172a"}}>📱 WhatsApp emisor (DIM)</p>
+              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color: isDark ? "#e6ecf7" : "#0f172a"}}>📱 WhatsApp emisor (DIM)</p>
               <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12}}>
                 <div>
                   <label style={lbl}>WABA (índice)</label>
@@ -408,15 +412,15 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
 
             {/* Tipos de mensajes */}
             <div style={card}>
-              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color:"#0f172a"}}>💬 Tipos de mensajes</p>
+              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color: isDark ? "#e6ecf7" : "#0f172a"}}>💬 Tipos de mensajes</p>
               <div style={{display:"grid", gap:12}}>
                 {TIPOS_MSG.map(t=>(
-                  <div key={t.key} style={{background:"#f8fafc", borderRadius:12, padding:"12px 16px",
-                    border:`1.5px solid ${cfg[t.key+"_activa"]?"#7c3aed":"#e2e8f0"}`}}>
+                  <div key={t.key} style={{background: isDark ? "#16213a" : "#f8fafc", borderRadius:12, padding:"12px 16px",
+                    border:`1.5px solid ${cfg[t.key+"_activa"]?"#7c3aed":(isDark ? "#2c3c58" : "#e2e8f0")}`}}>
                     <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
                       <div>
-                        <p style={{margin:"0 0 2px", fontWeight:700, fontSize:13, color:"#0f172a"}}>{t.icon} {t.label}</p>
-                        <p style={{margin:0, fontSize:11, color:"#64748b"}}>{t.desc}</p>
+                        <p style={{margin:"0 0 2px", fontWeight:700, fontSize:13, color: isDark ? "#e6ecf7" : "#0f172a"}}>{t.icon} {t.label}</p>
+                        <p style={{margin:0, fontSize:11, color: isDark ? "#93a2bd" : "#64748b"}}>{t.desc}</p>
                       </div>
                       <label style={{display:"flex", alignItems:"center", gap:6, cursor:"pointer", userSelect:"none"}}>
                         <input type="checkbox" checked={!!cfg[t.key+"_activa"]}
@@ -438,7 +442,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
 
             {/* Recordatorios config */}
             <div style={card}>
-              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color:"#0f172a"}}>🔔 Configuración de recordatorios</p>
+              <p style={{margin:"0 0 14px", fontWeight:800, fontSize:14, color: isDark ? "#e6ecf7" : "#0f172a"}}>🔔 Configuración de recordatorios</p>
               <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:14}}>
                 <div>
                   <label style={lbl}>Número de recordatorios</label>
@@ -446,7 +450,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
                     {[2,3].map(n=>(
                       <button key={n} onClick={()=>setCfg(c=>({...c,num_recordatorios:n}))}
                         style={{flex:1, padding:"8px", fontSize:13, fontWeight:700, borderRadius:8, border:"none",
-                          cursor:"pointer", background: cfg.num_recordatorios===n?"#7c3aed":"#f1f5f9",
+                          cursor:"pointer", background: cfg.num_recordatorios===n?"#7c3aed":(isDark ? "#16213a" : "#f1f5f9"),
                           color: cfg.num_recordatorios===n?"#fff":"#64748b"}}>
                         {n} mensajes
                       </button>
@@ -471,7 +475,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
                       </div>
                     ))}
                   </div>
-                  <p style={{margin:"6px 0 0", fontSize:11, color:"#94a3b8"}}>
+                  <p style={{margin:"6px 0 0", fontSize:11, color: isDark ? "#93a2bd" : "#94a3b8"}}>
                     Días después de la fecha de vencimiento
                   </p>
                 </div>
@@ -511,20 +515,20 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
             </div>
             {conMsg && <p style={{fontSize:12, color: conMsg.startsWith("⚠")?"#d97706":"#64748b", marginBottom:10}}>{conMsg}</p>}
             {contratos.length===0 && !loadingCon ? (
-              <p style={{color:"#94a3b8", fontSize:13, padding:"30px 0", textAlign:"center"}}>
+              <p style={{color: isDark ? "#93a2bd" : "#94a3b8", fontSize:13, padding:"30px 0", textAlign:"center"}}>
                 Cargando datos guardados...
               </p>
             ) : (
               <>
-                <p style={{fontSize:12, color:"#64748b", margin:"0 0 10px"}}>
+                <p style={{fontSize:12, color: isDark ? "#93a2bd" : "#64748b", margin:"0 0 10px"}}>
                   Mostrando {contratosFilt.length} de {contratos.length} contratos
                 </p>
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%", borderCollapse:"collapse", fontSize:12}}>
                     <thead>
-                      <tr style={{background:"#f8fafc", borderBottom:"2px solid #e2e8f0"}}>
+                      <tr style={{background: isDark ? "#16213a" : "#f8fafc", borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #e2e8f0"}}>
                         {["ID","Cliente","Teléfono","Estado","Mensajes","Recordatorios","Bienvenida","Notas"].map(h=>(
-                          <th key={h} style={{padding:"8px 12px", textAlign:"left", fontWeight:700, fontSize:11, color:"#475569", whiteSpace:"nowrap"}}>{h}</th>
+                          <th key={h} style={{padding:"8px 12px", textAlign:"left", fontWeight:700, fontSize:11, color: isDark ? "#a9bcdd" : "#475569", whiteSpace:"nowrap"}}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -536,10 +540,10 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
                         const tel = getTel(c);
                         const estado = c.state||c.status||"";
                         return (
-                          <tr key={cid} style={{borderBottom:"1px solid #f1f5f9", background:"#fff"}}>
-                            <td style={{padding:"8px 12px", fontFamily:"monospace", fontSize:11, color:"#64748b"}}>{cid}</td>
-                            <td style={{padding:"8px 12px", fontWeight:600, color:"#0f172a"}}>{nombre}</td>
-                            <td style={{padding:"8px 12px", color:"#475569"}}>{tel||"—"}</td>
+                          <tr key={cid} style={{borderBottom: isDark ? "1px solid #24334f" : "1px solid #f1f5f9", background: isDark ? "#1a2740" : "#fff"}}>
+                            <td style={{padding:"8px 12px", fontFamily:"monospace", fontSize:11, color: isDark ? "#93a2bd" : "#64748b"}}>{cid}</td>
+                            <td style={{padding:"8px 12px", fontWeight:600, color: isDark ? "#e6ecf7" : "#0f172a"}}>{nombre}</td>
+                            <td style={{padding:"8px 12px", color: isDark ? "#a9bcdd" : "#475569"}}>{tel||"—"}</td>
                             <td style={{padding:"8px 12px"}}>
                               <span style={{fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99,
                                 background: estado==="enabled"?"#f0fdf4":"#fff1f2",
@@ -588,7 +592,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
         {/* ══ TAB BIENVENIDA ══ */}
         {tab==="bienvenida" && (
           <div style={{maxWidth:560}}>
-            <p style={{margin:"0 0 18px", fontSize:13, color:"#64748b"}}>
+            <p style={{margin:"0 0 18px", fontSize:13, color: isDark ? "#93a2bd" : "#64748b"}}>
               Envía el mensaje de bienvenida manualmente a un cliente de WisPro.
             </p>
             {/* Cargar contratos si no están */}
@@ -614,10 +618,10 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
             </div>
 
             {bienContrato && (
-              <div style={{background:"#f8fafc", borderRadius:12, padding:"14px 16px", border:"1.5px solid #e2e8f0", marginBottom:14}}>
+              <div style={{background: isDark ? "#16213a" : "#f8fafc", borderRadius:12, padding:"14px 16px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", marginBottom:14}}>
                 <p style={{margin:"0 0 4px", fontWeight:700, fontSize:13}}>{getNombre(bienContrato)}</p>
-                <p style={{margin:"0 0 2px", fontSize:12, color:"#64748b"}}>Tel: {getTel(bienContrato)||"—"}</p>
-                <p style={{margin:0, fontSize:12, color:"#64748b"}}>Contrato ID: {bienContrato.id}</p>
+                <p style={{margin:"0 0 2px", fontSize:12, color: isDark ? "#93a2bd" : "#64748b"}}>Tel: {getTel(bienContrato)||"—"}</p>
+                <p style={{margin:0, fontSize:12, color: isDark ? "#93a2bd" : "#64748b"}}>Contrato ID: {bienContrato.id}</p>
                 {clientesCfg[String(bienContrato.id)]?.bienvenida_enviada && (
                   <p style={{margin:"8px 0 0", fontSize:11, color:"#d97706", background:"#fffbeb", borderRadius:6, padding:"4px 8px", border:"1px solid #fcd34d"}}>
                     ⚠ Ya se envió la bienvenida a este cliente anteriormente.
@@ -680,36 +684,36 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
             </div>
 
             {logs.length===0 && !loadingLogs ? (
-              <p style={{color:"#94a3b8", fontSize:13, padding:"30px 0", textAlign:"center"}}>Sin registros todavía.</p>
+              <p style={{color: isDark ? "#93a2bd" : "#94a3b8", fontSize:13, padding:"30px 0", textAlign:"center"}}>Sin registros todavía.</p>
             ) : (
               <>
                 <div style={{overflowX:"auto"}}>
                   <table style={{width:"100%", borderCollapse:"collapse", fontSize:12}}>
                     <thead>
-                      <tr style={{background:"#f8fafc", borderBottom:"2px solid #e2e8f0"}}>
+                      <tr style={{background: isDark ? "#16213a" : "#f8fafc", borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #e2e8f0"}}>
                         {["Fecha","Cliente","Teléfono","Tipo","Días vencido","Deuda","Resultado","Detalle"].map(h=>(
-                          <th key={h} style={{padding:"8px 12px", textAlign:"left", fontWeight:700, fontSize:11, color:"#475569", whiteSpace:"nowrap"}}>{h}</th>
+                          <th key={h} style={{padding:"8px 12px", textAlign:"left", fontWeight:700, fontSize:11, color: isDark ? "#a9bcdd" : "#475569", whiteSpace:"nowrap"}}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {logs.map(l=>(
-                        <tr key={l.id} style={{borderBottom:"1px solid #f1f5f9"}}>
-                          <td style={{padding:"7px 12px", fontSize:11, color:"#64748b", whiteSpace:"nowrap"}}>{fmtFecha(l.creado_at)}</td>
+                        <tr key={l.id} style={{borderBottom: isDark ? "1px solid #24334f" : "1px solid #f1f5f9"}}>
+                          <td style={{padding:"7px 12px", fontSize:11, color: isDark ? "#93a2bd" : "#64748b", whiteSpace:"nowrap"}}>{fmtFecha(l.creado_at)}</td>
                           <td style={{padding:"7px 12px", fontWeight:600}}>{l.cliente_nombre||"—"}</td>
                           <td style={{padding:"7px 12px", fontFamily:"monospace", fontSize:11}}>{l.telefono||"—"}</td>
                           <td style={{padding:"7px 12px"}}>
                             <span style={{fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:99,
-                              background:"#f1f5f9", color:"#475569", border:"1px solid #e2e8f0"}}>
+                              background: isDark ? "#24334f" : "#f1f5f9", color: isDark ? "#93a2bd" : "#475569", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0"}}>
                               {l.tipo}
                             </span>
                           </td>
-                          <td style={{padding:"7px 12px", textAlign:"center", color:"#64748b"}}>{l.dias_vencido??"-"}</td>
-                          <td style={{padding:"7px 12px", color:"#0f172a"}}>{l.deuda_monto!=null?`S/. ${Number(l.deuda_monto).toFixed(2)}`:"—"}</td>
+                          <td style={{padding:"7px 12px", textAlign:"center", color: isDark ? "#93a2bd" : "#64748b"}}>{l.dias_vencido??"-"}</td>
+                          <td style={{padding:"7px 12px", color: isDark ? "#e6ecf7" : "#0f172a"}}>{l.deuda_monto!=null?`S/. ${Number(l.deuda_monto).toFixed(2)}`:"—"}</td>
                           <td style={{padding:"7px 12px"}}>
                             <span style={{fontSize:10, fontWeight:700, color: resultColor(l.resultado)}}>{l.resultado}</span>
                           </td>
-                          <td style={{padding:"7px 12px", fontSize:11, color:"#94a3b8", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis"}}>
+                          <td style={{padding:"7px 12px", fontSize:11, color: isDark ? "#93a2bd" : "#94a3b8", maxWidth:200, overflow:"hidden", textOverflow:"ellipsis"}}>
                             {l.detalle||"—"}
                           </td>
                         </tr>
@@ -720,7 +724,7 @@ export default function WisproPanel({ esAdmin = false, sessionUser }) {
                 <div style={{display:"flex", gap:8, marginTop:12, justifyContent:"center"}}>
                   <button onClick={()=>setLogPage(p=>Math.max(0,p-1))} disabled={logPage===0}
                     style={btnS("#64748b", logPage===0)}>← Anterior</button>
-                  <span style={{padding:"8px 16px", fontSize:12, color:"#64748b"}}>Página {logPage+1}</span>
+                  <span style={{padding:"8px 16px", fontSize:12, color: isDark ? "#93a2bd" : "#64748b"}}>Página {logPage+1}</span>
                   <button onClick={()=>setLogPage(p=>p+1)} disabled={logs.length<LOG_PAGE_SIZE}
                     style={btnS("#64748b", logs.length<LOG_PAGE_SIZE)}>Siguiente →</button>
                 </div>
