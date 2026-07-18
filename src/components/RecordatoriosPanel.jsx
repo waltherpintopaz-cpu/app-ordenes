@@ -33,7 +33,8 @@ function fmtFecha(iso) {
 
 function isVenc(f) { return !!f && new Date(f) < new Date(); }
 
-export default function RecordatoriosPanel({ sessionUser }) {
+export default function RecordatoriosPanel({ sessionUser, theme }) {
+  const isDark = theme === "dark";
   const userId      = String(sessionUser?.id || sessionUser?.username || "");
   const autorNombre = sessionUser?.nombre || sessionUser?.username || "Usuario";
 
@@ -255,35 +256,35 @@ export default function RecordatoriosPanel({ sessionUser }) {
   const s = {
     wrap:      { maxWidth: 900, margin: "0 auto", padding: "0 0 40px 0" },
     header:    { display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 12 },
-    title:     { fontSize: 22, fontWeight: 800, color: "#0A2E5F", margin: 0 },
-    sub:       { fontSize: 12, color: "#94A3B8", marginTop: 4 },
-    badge:     (n) => ({ background: n > 0 ? "#1E4F9C" : "#E2E8F0", color: n > 0 ? "#fff" : "#64748B", borderRadius: 999, padding: "4px 14px", fontWeight: 800, fontSize: 13 }),
+    title:     { fontSize: 22, fontWeight: 800, color: isDark ? "#7fa1d4" : "#0A2E5F", margin: 0 },
+    sub:       { fontSize: 12, color: isDark ? "#93a2bd" : "#94A3B8", marginTop: 4 },
+    badge:     (n) => ({ background: n > 0 ? "#1E4F9C" : (isDark ? "#24334f" : "#E2E8F0"), color: n > 0 ? "#fff" : (isDark ? "#93a2bd" : "#64748B"), borderRadius: 999, padding: "4px 14px", fontWeight: 800, fontSize: 13 }),
     addBtn:    { background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontWeight: 700, fontSize: 14, cursor: "pointer" },
-    tabsMain:  { display: "flex", gap: 4, marginBottom: 20, borderBottom: "2px solid #f1f5f9" },
-    tabMain:   (a) => ({ padding: "10px 22px", fontWeight: 700, fontSize: 14, border: "none", background: "none", cursor: "pointer", borderBottom: a ? "2px solid #1E4F9C" : "2px solid transparent", color: a ? "#1E4F9C" : "#64748B", marginBottom: -2 }),
+    tabsMain:  { display: "flex", gap: 4, marginBottom: 20, borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #f1f5f9" },
+    tabMain:   (a) => ({ padding: "10px 22px", fontWeight: 700, fontSize: 14, border: "none", background: "none", cursor: "pointer", borderBottom: a ? "2px solid #1E4F9C" : "2px solid transparent", color: a ? (isDark ? "#7fa1d4" : "#1E4F9C") : (isDark ? "#93a2bd" : "#64748B"), marginBottom: -2 }),
     tabs:      { display: "flex", gap: 8, marginBottom: 18 },
-    tab:       (a) => ({ flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: a ? "#1E4F9C" : "#F1F5F9", color: a ? "#fff" : "#64748B" }),
-    card:      (prio, done) => ({ background: "#fff", borderRadius: 14, borderLeft: `4px solid ${prio.color}`, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", opacity: done ? 0.72 : 1, display: "flex", gap: 12, alignItems: "flex-start" }),
-    checkbox:  (done) => ({ width: 22, height: 22, borderRadius: 6, border: `2px solid ${done ? "#22C55E" : "#CBD5E1"}`, background: done ? "#22C55E" : "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, fontSize: 12, color: "#fff", userSelect: "none" }),
-    cardTitle: (done) => ({ fontSize: 15, fontWeight: 700, color: done ? "#94A3B8" : "#0F172A", textDecoration: done ? "line-through" : "none", margin: "0 0 4px 0" }),
-    cardDesc:  { fontSize: 13, color: "#64748B", margin: "0 0 8px 0" },
+    tab:       (a) => ({ flex: 1, padding: "9px 0", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13, background: a ? "#1E4F9C" : (isDark ? "#16213a" : "#F1F5F9"), color: a ? "#fff" : (isDark ? "#93a2bd" : "#64748B") }),
+    card:      (prio, done) => ({ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, borderLeft: `4px solid ${prio.color}`, padding: "14px 16px", marginBottom: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", opacity: done ? 0.72 : 1, display: "flex", gap: 12, alignItems: "flex-start" }),
+    checkbox:  (done) => ({ width: 22, height: 22, borderRadius: 6, border: `2px solid ${done ? "#22C55E" : "#CBD5E1"}`, background: done ? "#22C55E" : (isDark ? "#0d172a" : "#fff"), cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, fontSize: 12, color: "#fff", userSelect: "none" }),
+    cardTitle: (done) => ({ fontSize: 15, fontWeight: 700, color: done ? "#94A3B8" : (isDark ? "#e6ecf7" : "#0F172A"), textDecoration: done ? "line-through" : "none", margin: "0 0 4px 0" }),
+    cardDesc:  { fontSize: 13, color: isDark ? "#a9bcdd" : "#64748B", margin: "0 0 8px 0" },
     prioPill:  (p) => ({ background: p.bg, color: p.color, border: `1px solid ${p.border}`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }),
     fechaSpan: (v) => ({ fontSize: 11, color: v ? "#EF4444" : "#94A3B8" }),
     thumb:     { width: 64, height: 64, borderRadius: 10, objectFit: "cover", flexShrink: 0 },
     actions:   { display: "flex", gap: 6, marginLeft: "auto", flexShrink: 0 },
-    editBtn:   { background: "#F1F5F9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, color: "#475569", fontWeight: 600 },
+    editBtn:   { background: isDark ? "#16213a" : "#F1F5F9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, color: isDark ? "#c3d3ee" : "#475569", fontWeight: 600 },
     delBtn:    { background: "#FEF2F2", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, color: "#EF4444", fontWeight: 600 },
     empty:     { textAlign: "center", padding: "48px 0", color: "#94A3B8" },
     overlay:   { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 },
-    modal:     { background: "#fff", borderRadius: 18, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" },
-    mTitle:    { fontSize: 17, fontWeight: 800, color: "#0A2E5F", margin: "0 0 18px 0" },
-    label:     { fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 5, display: "block" },
-    input:     { width: "100%", border: "1px solid #E2E8F0", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: "#1E293B", background: "#F8FAFC", boxSizing: "border-box", marginBottom: 12 },
+    modal:     { background: isDark ? "#1a2740" : "#fff", borderRadius: 18, padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" },
+    mTitle:    { fontSize: 17, fontWeight: 800, color: isDark ? "#7fa1d4" : "#0A2E5F", margin: "0 0 18px 0" },
+    label:     { fontSize: 12, fontWeight: 700, color: isDark ? "#93a2bd" : "#64748B", marginBottom: 5, display: "block" },
+    input:     { width: "100%", border: isDark ? "1px solid #2c3c58" : "1px solid #E2E8F0", borderRadius: 10, padding: "10px 12px", fontSize: 14, color: isDark ? "#e6ecf7" : "#1E293B", background: isDark ? "#0d172a" : "#F8FAFC", boxSizing: "border-box", marginBottom: 12 },
     pBtns:     { display: "flex", gap: 8, marginBottom: 14 },
-    pBtn:      (p, sel) => ({ flex: 1, padding: "9px 0", border: `2px solid ${p.color}`, borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, background: sel ? p.color : "#fff", color: sel ? "#fff" : p.color }),
+    pBtn:      (p, sel) => ({ flex: 1, padding: "9px 0", border: `2px solid ${p.color}`, borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, background: sel ? p.color : (isDark ? "#16213a" : "#fff"), color: sel ? "#fff" : p.color }),
     saveBtn:   { width: "100%", background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 12, padding: 14, fontWeight: 800, fontSize: 15, cursor: "pointer", marginTop: 8 },
     notaCard:  (color) => ({ background: color || "#FFFBEB", borderRadius: 14, padding: "16px 18px", boxShadow: "0 2px 8px rgba(0,0,0,0.07)", border: "1px solid rgba(0,0,0,0.06)", position: "relative", breakInside: "avoid", marginBottom: 14 }),
-    userChip:  (sel) => ({ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: sel ? "2px solid #1E4F9C" : "2px solid #E2E8F0", background: sel ? "#EEF4FF" : "#F8FAFC", color: sel ? "#1E4F9C" : "#64748B", userSelect: "none" }),
+    userChip:  (sel) => ({ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: sel ? "2px solid #1E4F9C" : (isDark ? "2px solid #2c3c58" : "2px solid #E2E8F0"), background: sel ? "#EEF4FF" : (isDark ? "#16213a" : "#F8FAFC"), color: sel ? "#1E4F9C" : (isDark ? "#93a2bd" : "#64748B"), userSelect: "none" }),
     compartidoPill: { fontSize: 10, fontWeight: 700, background: "#EEF4FF", color: "#1E4F9C", borderRadius: 6, padding: "2px 7px", display: "inline-block" },
   };
 

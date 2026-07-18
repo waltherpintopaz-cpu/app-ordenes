@@ -43,7 +43,8 @@ function fmtFecha(iso) {
   return new Date(iso).toLocaleString("es-PE", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-export default function ReclamacionesPanel() {
+export default function ReclamacionesPanel({ theme }) {
+  const isDark = theme === "dark";
   const [lista, setLista]         = useState([]);
   const [loading, setLoading]     = useState(true);
   const [filtroEstado, setFiltroEstado] = useState("pendiente");
@@ -169,8 +170,8 @@ export default function ReclamacionesPanel() {
             </svg>
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: "#111827" }}>Libro de Reclamaciones</div>
-            <div style={{ fontSize: 12, color: "#6B7280" }}>Gestión de reclamos y quejas · Americanet Fiber Solution S.A.C.</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: isDark ? "#e6ecf7" : "#111827" }}>Libro de Reclamaciones</div>
+            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6B7280" }}>Gestión de reclamos y quejas · Americanet Fiber Solution S.A.C.</div>
           </div>
         </div>
       </div>
@@ -180,11 +181,11 @@ export default function ReclamacionesPanel() {
         {ESTADOS.map(e => (
           <div key={e.key}
             onClick={() => setFiltroEstado(e.key)}
-            style={{ background: filtroEstado === e.key ? e.bg : "#fff", border: `1px solid ${filtroEstado === e.key ? e.border : "#E5E7EB"}`,
+            style={{ background: filtroEstado === e.key ? e.bg : (isDark ? "#1a2740" : "#fff"), border: `1px solid ${filtroEstado === e.key ? e.border : (isDark ? "#2c3c58" : "#E5E7EB")}`,
               borderRadius: 10, padding: "12px 14px", cursor: "pointer", transition: "all .15s",
               borderLeft: `4px solid ${e.color}` }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: e.color }}>{contadores[e.key] ?? 0}</div>
-            <div style={{ fontSize: 11, color: "#6B7280", fontWeight: 600 }}>{e.label}</div>
+            <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6B7280", fontWeight: 600 }}>{e.label}</div>
           </div>
         ))}
       </div>
@@ -195,14 +196,14 @@ export default function ReclamacionesPanel() {
           placeholder="Buscar por código, nombre, DNI..."
           value={busq}
           onChange={e => setBusq(e.target.value)}
-          style={{ flex: 1, minWidth: 200, border: "1px solid #D1D5DB", borderRadius: 8, padding: "8px 12px", fontSize: 13, outline: "none", fontFamily: "inherit" }}
+          style={{ flex: 1, minWidth: 200, border: isDark ? "1px solid #2c3c58" : "1px solid #D1D5DB", borderRadius: 8, padding: "8px 12px", fontSize: 13, outline: "none", fontFamily: "inherit", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827" }}
         />
         <div style={{ display: "flex", gap: 6 }}>
           {[{ key: "todos", label: "Todos" }, ...ESTADOS].map(e => (
             <button key={e.key} onClick={() => setFiltroEstado(e.key)}
-              style={{ border: `1px solid ${filtroEstado === e.key ? "#003DA5" : "#E5E7EB"}`,
-                background: filtroEstado === e.key ? "#003DA5" : "#fff",
-                color: filtroEstado === e.key ? "#fff" : "#374151",
+              style={{ border: `1px solid ${filtroEstado === e.key ? "#003DA5" : (isDark ? "#2c3c58" : "#E5E7EB")}`,
+                background: filtroEstado === e.key ? "#003DA5" : (isDark ? "#16213a" : "#fff"),
+                color: filtroEstado === e.key ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
                 borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
               {e.label}
             </button>
@@ -211,21 +212,21 @@ export default function ReclamacionesPanel() {
         <div style={{ display: "flex", gap: 6 }}>
           {TIPOS.map(t => (
             <button key={t.key} onClick={() => setFiltroTipo(t.key)}
-              style={{ border: `1px solid ${filtroTipo === t.key ? "#F47A20" : "#E5E7EB"}`,
-                background: filtroTipo === t.key ? "#FFF7ED" : "#fff",
-                color: filtroTipo === t.key ? "#C2410C" : "#6B7280",
+              style={{ border: `1px solid ${filtroTipo === t.key ? "#F47A20" : (isDark ? "#2c3c58" : "#E5E7EB")}`,
+                background: filtroTipo === t.key ? "#FFF7ED" : (isDark ? "#16213a" : "#fff"),
+                color: filtroTipo === t.key ? "#C2410C" : (isDark ? "#93a2bd" : "#6B7280"),
                 borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
               {t.label}
             </button>
           ))}
         </div>
-        <button onClick={cargar} style={{ border: "1px solid #E5E7EB", background: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#374151", fontWeight: 600 }}>
+        <button onClick={cargar} style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #E5E7EB", background: isDark ? "#16213a" : "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: isDark ? "#c3d3ee" : "#374151", fontWeight: 600 }}>
           ↻ Actualizar
         </button>
       </div>
 
       {/* Tabla */}
-      <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF", fontSize: 13 }}>Cargando...</div>
         ) : listaFiltrada.length === 0 ? (
@@ -243,8 +244,8 @@ export default function ReclamacionesPanel() {
               {listaFiltrada.map((r, i) => {
                 const est = estadoInfo(r.estado);
                 return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #F3F4F6", background: i % 2 === 0 ? "#fff" : "#F9FAFB" }}>
-                    <td style={{ padding: "10px 14px", fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: "#003DA5", whiteSpace: "nowrap" }}>{r.codigo}</td>
+                  <tr key={r.id} style={{ borderBottom: isDark ? "1px solid #24334f" : "1px solid #F3F4F6", background: isDark ? (i % 2 === 0 ? "#1a2740" : "#16213a") : (i % 2 === 0 ? "#fff" : "#F9FAFB") }}>
+                    <td style={{ padding: "10px 14px", fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: isDark ? "#7fa1d4" : "#003DA5", whiteSpace: "nowrap" }}>{r.codigo}</td>
                     <td style={{ padding: "10px 14px" }}>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
                         background: r.tipo === "reclamo" ? "#FFF7ED" : "#F0FDF4",
@@ -252,10 +253,10 @@ export default function ReclamacionesPanel() {
                         {r.tipo === "reclamo" ? "Reclamo" : "Queja"}
                       </span>
                     </td>
-                    <td style={{ padding: "10px 14px", fontSize: 12, color: "#111827", fontWeight: 600, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.nombres}</td>
-                    <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151" }}>{r.dni}</td>
-                    <td style={{ padding: "10px 14px", fontSize: 12, color: "#374151" }}>{r.telefono}</td>
-                    <td style={{ padding: "10px 14px", fontSize: 11, color: "#6B7280", whiteSpace: "nowrap" }}>{fmtFecha(r.fecha_registro)}</td>
+                    <td style={{ padding: "10px 14px", fontSize: 12, color: isDark ? "#e6ecf7" : "#111827", fontWeight: 600, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.nombres}</td>
+                    <td style={{ padding: "10px 14px", fontSize: 12, color: isDark ? "#a9bcdd" : "#374151" }}>{r.dni}</td>
+                    <td style={{ padding: "10px 14px", fontSize: 12, color: isDark ? "#a9bcdd" : "#374151" }}>{r.telefono}</td>
+                    <td style={{ padding: "10px 14px", fontSize: 11, color: isDark ? "#93a2bd" : "#6B7280", whiteSpace: "nowrap" }}>{fmtFecha(r.fecha_registro)}</td>
                     <td style={{ padding: "10px 14px" }}>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
                         background: est.bg, color: est.color, border: `1px solid ${est.border}` }}>
@@ -280,7 +281,7 @@ export default function ReclamacionesPanel() {
       {detalle && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
           onClick={e => e.target === e.currentTarget && setDetalle(null)}>
-          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" }}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" }}>
 
             {/* Cabecera modal */}
             <div style={{ background: "#003DA5", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderRadius: "16px 16px 0 0" }}>
@@ -304,8 +305,8 @@ export default function ReclamacionesPanel() {
             <div style={{ padding: "20px 22px" }}>
 
               {/* Datos del cliente */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Datos del reclamante</div>
-              <div style={{ border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden", marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Datos del reclamante</div>
+              <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden", marginBottom: 18 }}>
                 {[
                   ["Nombres",   detalle.nombres],
                   ["DNI",       detalle.dni],
@@ -313,46 +314,46 @@ export default function ReclamacionesPanel() {
                   ["Correo",    detalle.email || "—"],
                   ["Dirección", detalle.direccion || "—"],
                 ].map(([l, v], i, arr) => (
-                  <div key={l} style={{ display: "grid", gridTemplateColumns: "110px 1fr", borderBottom: i < arr.length - 1 ? "1px solid #F3F4F6" : "none" }}>
-                    <div style={{ padding: "7px 12px", background: "#F9FAFB", fontSize: 11, fontWeight: 600, color: "#6B7280", display: "flex", alignItems: "center" }}>{l}</div>
-                    <div style={{ padding: "7px 12px", fontSize: 12, color: "#111827", fontWeight: 500 }}>{v}</div>
+                  <div key={l} style={{ display: "grid", gridTemplateColumns: "110px 1fr", borderBottom: i < arr.length - 1 ? (isDark ? "1px solid #24334f" : "1px solid #F3F4F6") : "none" }}>
+                    <div style={{ padding: "7px 12px", background: isDark ? "#16213a" : "#F9FAFB", fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6B7280", display: "flex", alignItems: "center" }}>{l}</div>
+                    <div style={{ padding: "7px 12px", fontSize: 12, color: isDark ? "#e6ecf7" : "#111827", fontWeight: 500 }}>{v}</div>
                   </div>
                 ))}
               </div>
 
               {/* Servicio */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Bien contratado</div>
-              <div style={{ border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden", marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Bien contratado</div>
+              <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden", marginBottom: 18 }}>
                 {[
                   ["Servicio", detalle.bien_contratado || "—"],
                   ["Monto",    detalle.monto_contratado ? `S/ ${Number(detalle.monto_contratado).toFixed(2)}` : "—"],
                 ].map(([l, v], i, arr) => (
-                  <div key={l} style={{ display: "grid", gridTemplateColumns: "110px 1fr", borderBottom: i < arr.length - 1 ? "1px solid #F3F4F6" : "none" }}>
-                    <div style={{ padding: "7px 12px", background: "#F9FAFB", fontSize: 11, fontWeight: 600, color: "#6B7280", display: "flex", alignItems: "center" }}>{l}</div>
-                    <div style={{ padding: "7px 12px", fontSize: 12, color: "#111827", fontWeight: 500 }}>{v}</div>
+                  <div key={l} style={{ display: "grid", gridTemplateColumns: "110px 1fr", borderBottom: i < arr.length - 1 ? (isDark ? "1px solid #24334f" : "1px solid #F3F4F6") : "none" }}>
+                    <div style={{ padding: "7px 12px", background: isDark ? "#16213a" : "#F9FAFB", fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6B7280", display: "flex", alignItems: "center" }}>{l}</div>
+                    <div style={{ padding: "7px 12px", fontSize: 12, color: isDark ? "#e6ecf7" : "#111827", fontWeight: 500 }}>{v}</div>
                   </div>
                 ))}
               </div>
 
               {/* Descripción */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Descripción</div>
-              <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#111827", lineHeight: 1.7, marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Descripción</div>
+              <div style={{ background: isDark ? "#16213a" : "#F9FAFB", border: isDark ? "1px solid #2c3c58" : "1px solid #E5E7EB", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: isDark ? "#e6ecf7" : "#111827", lineHeight: 1.7, marginBottom: 18 }}>
                 {detalle.descripcion}
               </div>
 
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Pedido del cliente</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Pedido del cliente</div>
               <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#111827", lineHeight: 1.7, marginBottom: 18 }}>
                 {detalle.pedido}
               </div>
 
               {/* Cambiar estado */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Estado</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Estado</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
                 {ESTADOS.map(e => (
                   <button key={e.key} disabled={guardando} onClick={() => actualizarEstado(detalle.id, e.key)}
-                    style={{ border: `2px solid ${detalle.estado === e.key ? e.color : "#E5E7EB"}`,
-                      background: detalle.estado === e.key ? e.bg : "#fff",
-                      color: detalle.estado === e.key ? e.color : "#6B7280",
+                    style={{ border: `2px solid ${detalle.estado === e.key ? e.color : (isDark ? "#2c3c58" : "#E5E7EB")}`,
+                      background: detalle.estado === e.key ? e.bg : (isDark ? "#16213a" : "#fff"),
+                      color: detalle.estado === e.key ? e.color : (isDark ? "#93a2bd" : "#6B7280"),
                       borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700,
                       cursor: guardando ? "not-allowed" : "pointer", fontFamily: "inherit", transition: "all .15s" }}>
                     {e.label}
@@ -361,7 +362,7 @@ export default function ReclamacionesPanel() {
               </div>
 
               {/* Respuesta */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Respuesta al cliente</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9CA3AF", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Respuesta al cliente</div>
               {detalle.respuesta && (
                 <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "#111827", lineHeight: 1.7, marginBottom: 10 }}>
                   {detalle.respuesta}
@@ -371,7 +372,7 @@ export default function ReclamacionesPanel() {
                 placeholder="Escribe la respuesta al cliente (se guardará en el registro)..."
                 value={respuesta}
                 onChange={e => setRespuesta(e.target.value)}
-                style={{ width: "100%", border: "1px solid #D1D5DB", borderRadius: 8, padding: "10px 12px", fontSize: 13, minHeight: 80, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", color: "#111827" }}
+                style={{ width: "100%", border: isDark ? "1px solid #2c3c58" : "1px solid #D1D5DB", borderRadius: 8, padding: "10px 12px", fontSize: 13, minHeight: 80, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827" }}
               />
               <button
                 onClick={() => guardarRespuesta(detalle.id)}

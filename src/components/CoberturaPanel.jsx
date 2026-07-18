@@ -125,7 +125,8 @@ const PULSE_CSS = `
 
 // ── Componente principal ─────────────────────────────────────────────────────
 
-export default function CoberturaPanel({ onCrearOrden }) {
+export default function CoberturaPanel({ onCrearOrden, theme }) {
+  const isDark = theme === "dark";
   const [cajas, setCajas] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
@@ -522,13 +523,13 @@ export default function CoberturaPanel({ onCrearOrden }) {
   // ── Buscador ─────────────────────────────────────────────────────────────
   const searchBar = (
     <div style={{ position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: isDark ? "#1a2740" : "#fff", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius: 10, padding: "9px 14px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input
           value={searchQ}
           onChange={e => onSearchChange(e.target.value)}
           placeholder="Buscar dirección, distrito, zona..."
-          style={{ flex: 1, border: "none", outline: "none", fontSize: 14, color: "#1e293b", background: "transparent" }}
+          style={{ flex: 1, border: "none", outline: "none", fontSize: 14, color: isDark ? "#e6ecf7" : "#1e293b", background: "transparent" }}
           onKeyDown={e => { if (e.key === "Enter" && searchQ.trim().length >= 3) onSearchChange(searchQ); }}
         />
         {searchLoading && <Spinner size={15} />}
@@ -537,11 +538,11 @@ export default function CoberturaPanel({ onCrearOrden }) {
         )}
       </div>
       {showSearchRes && searchRes.length > 0 && (
-        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", zIndex: 999, overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.15)", zIndex: 999, overflow: "hidden" }}>
           {searchRes.map((item, i) => (
             <button key={i} onClick={() => elegirResultado(item)}
-              style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "none", padding: "10px 14px", cursor: "pointer", fontSize: 13, color: "#374151", borderBottom: i < searchRes.length - 1 ? "1px solid #f1f5f9" : "none" }}
-              onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+              style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "none", padding: "10px 14px", cursor: "pointer", fontSize: 13, color: isDark ? "#c3d3ee" : "#374151", borderBottom: i < searchRes.length - 1 ? (isDark ? "1px solid #24334f" : "1px solid #f1f5f9") : "none" }}
+              onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
               onMouseLeave={e => e.currentTarget.style.background = "none"}
             >
               <div style={{ fontWeight: 600, marginBottom: 2 }}>{item.display_name?.split(",")[0]}</div>
@@ -557,7 +558,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
   const infoPanel = (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
       {/* Buscador sticky — siempre visible al top del panel */}
-      <div style={{ position: "sticky", top: 0, zIndex: 10, background: "#fff", paddingBottom: 4, marginBottom: -4 }}>
+      <div style={{ position: "sticky", top: 0, zIndex: 10, background: isDark ? "#131f36" : "#fff", paddingBottom: 4, marginBottom: -4 }}>
         {searchBar}
       </div>
 
@@ -600,32 +601,33 @@ export default function CoberturaPanel({ onCrearOrden }) {
 
       {/* Lista de cajas */}
       {ubicacion && cajasEnRadio.length > 0 && (
-        <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
-          <div style={{ padding: "11px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 700, color: "#1e293b", fontSize: 13 }}>Cajas NAP cercanas</span>
-            <span style={{ fontSize: 12, color: "#64748b" }}>{cajasEnRadio.length} en 500 m</span>
+        <div style={{ background: isDark ? "#1a2740" : "#fff", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
+          <div style={{ padding: "11px 14px", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, color: isDark ? "#e6ecf7" : "#1e293b", fontSize: 13 }}>Cajas NAP cercanas</span>
+            <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748b" }}>{cajasEnRadio.length} en 500 m</span>
           </div>
           {cajasVista.map((c, idx) => {
             const isSel = cajaSeleccionada?.id === c.id || cajaMejor?.id === c.id;
             const nc = NODO_COLORS[c.nodo] || { bg: "#f1f5f9", text: "#475569", border: "#cbd5e1" };
             const portPct = c.capacidad > 0 ? Math.round((c.ocupados / c.capacidad) * 100) : 0;
             const portColor = c.llena ? "#dc2626" : portPct >= 75 ? "#ea580c" : "#16a34a";
+            const rowBg = isDark ? "#1a2740" : "#fff";
             return (
               <div key={c.id} onClick={() => setCajaSeleccionada(prev => prev?.id === c.id ? null : { ...c })}
-                style={{ padding: "10px 14px", borderBottom: idx < cajasVista.length - 1 ? "1px solid #f1f5f9" : "none", cursor: "pointer", background: isSel ? "#fff7ed" : "#fff", display: "flex", gap: 10, alignItems: "center", transition: "background 0.15s" }}
-                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = "#f8fafc"; }}
-                onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = "#fff"; }}
+                style={{ padding: "10px 14px", borderBottom: idx < cajasVista.length - 1 ? (isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9") : "none", cursor: "pointer", background: isSel ? "#fff7ed" : rowBg, display: "flex", gap: 10, alignItems: "center", transition: "background 0.15s" }}
+                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"; }}
+                onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = rowBg; }}
               >
                 <div style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <img src={napBoxSvg(portColor, isSel, c.llena)} width={isSel ? 20 : 16} height={isSel ? 29 : 23} alt="" />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 700, fontSize: 13, color: isSel ? "#f97316" : "#1e293b" }}>{c.codigo}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: isSel ? "#f97316" : (isDark ? "#e6ecf7" : "#1e293b") }}>{c.codigo}</span>
                     <span style={{ fontSize: 10, fontWeight: 600, color: nc.text, background: nc.bg, border: `1px solid ${nc.border}`, borderRadius: 5, padding: "1px 6px" }}>{c.nodo}</span>
                     {idx === 0 && !cajaSeleccionada && <span style={{ fontSize: 10, fontWeight: 700, color: "#15803d", background: "#dcfce7", borderRadius: 5, padding: "1px 6px" }}>Mejor</span>}
                   </div>
-                  <div style={{ display: "flex", gap: 8, fontSize: 11, color: "#64748b" }}>
+                  <div style={{ display: "flex", gap: 8, fontSize: 11, color: isDark ? "#93a2bd" : "#64748b" }}>
                     <span>{formatDist(c.distancia)}</span>
                     {c.sector && <span>· {c.sector}</span>}
                     {c.capacidad > 0 && <span style={{ color: portColor, fontWeight: 600 }}>· {c.libres}/{c.capacidad} libres</span>}
@@ -633,7 +635,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
                 </div>
                 {c.capacidad > 0 && (
                   <div style={{ width: 36, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                    <div style={{ width: 32, height: 4, borderRadius: 2, background: "#e2e8f0", overflow: "hidden" }}>
+                    <div style={{ width: 32, height: 4, borderRadius: 2, background: isDark ? "#2c3c58" : "#e2e8f0", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${portPct}%`, background: portColor, borderRadius: 2 }} />
                     </div>
                     <span style={{ fontSize: 10, color: portColor, fontWeight: 700 }}>{portPct}%</span>
@@ -644,7 +646,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
           })}
           {cajasEnRadio.length > LISTA_INICIAL && (
             <button onClick={() => setListaExpandida(v => !v)}
-              style={{ width: "100%", padding: "9px 14px", border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 12, color: "#1d4ed8", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+              style={{ width: "100%", padding: "9px 14px", border: "none", background: isDark ? "#16213a" : "#f8fafc", cursor: "pointer", fontSize: 12, color: "#1d4ed8", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
               {listaExpandida ? "▲ Ver menos" : `▼ Ver ${cajasEnRadio.length - LISTA_INICIAL} más`}
             </button>
           )}
@@ -667,7 +669,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
 
   return (
     /* Layout desktop: mapa izquierda (flex), panel derecha (380px fijo) */
-    <div style={{ display: "flex", gap: 0, height: "calc(100vh - 110px)", minHeight: 500, overflow: "hidden", borderRadius: 14, border: "1.5px solid #e2e8f0", background: "#f8fafc", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+    <div style={{ display: "flex", gap: 0, height: "calc(100vh - 110px)", minHeight: 500, overflow: "hidden", borderRadius: 14, border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", background: isDark ? "#0f172a" : "#f8fafc", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
 
       {/* ── Columna izquierda: MAPA ── */}
       <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
@@ -675,7 +677,7 @@ export default function CoberturaPanel({ onCrearOrden }) {
       </div>
 
       {/* ── Columna derecha: PANEL DE INFO ── */}
-      <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", gap: 0, borderLeft: "1.5px solid #e2e8f0", background: "#fff", overflow: "hidden" }}>
+      <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", gap: 0, borderLeft: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", background: isDark ? "#131f36" : "#fff", overflow: "hidden" }}>
         {/* Contenido scrollable */}
         <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
           {infoPanel}
@@ -692,9 +694,9 @@ export default function CoberturaPanel({ onCrearOrden }) {
       {/* ── Modal link/coords ── */}
       {showLinkModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 700, color: "#1e293b" }}>Pegar link o coordenadas</h3>
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 700, color: isDark ? "#e6ecf7" : "#1e293b" }}>Pegar link o coordenadas</h3>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: isDark ? "#93a2bd" : "#64748b" }}>
               Acepta: Google Maps, Apple Maps, links con @lat,lng, o coordenadas directas (ej. -16.438, -71.598)
             </p>
             <textarea
@@ -702,12 +704,12 @@ export default function CoberturaPanel({ onCrearOrden }) {
               onChange={e => { setLinkInput(e.target.value); setLinkError(""); }}
               placeholder="Pega aquí el link o coordenadas..."
               rows={3}
-              style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: 13, resize: "none", outline: "none", boxSizing: "border-box" }}
+              style={{ width: "100%", padding: "10px 12px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius: 10, fontSize: 13, resize: "none", outline: "none", boxSizing: "border-box", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#1f3656" }}
             />
             {linkError && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 6 }}>{linkError}</div>}
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button onClick={() => { setShowLinkModal(false); setLinkInput(""); setLinkError(""); }}
-                style={{ flex: 1, padding: "10px 0", border: "1.5px solid #e2e8f0", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 14, color: "#374151", fontWeight: 600 }}>
+                style={{ flex: 1, padding: "10px 0", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius: 10, background: isDark ? "#16213a" : "#fff", cursor: "pointer", fontSize: 14, color: isDark ? "#c3d3ee" : "#374151", fontWeight: 600 }}>
                 Cancelar
               </button>
               <button onClick={aplicarLink}

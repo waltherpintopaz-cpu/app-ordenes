@@ -20365,7 +20365,7 @@ export default function App() {
         )}
 
         {vistaActiva === "mkwEstado" && (
-          <MkwEstadoPanel />
+          <MkwEstadoPanel theme={theme} />
         )}
 
         {vistaActiva === "wispro" && (
@@ -20387,15 +20387,16 @@ export default function App() {
               }));
               setVistaActiva("crear");
             }}
+            theme={theme}
           />
         )}
 
         {vistaActiva === "recordatorios" && (
-          <RecordatoriosPanel sessionUser={usuarioSesion} />
+          <RecordatoriosPanel sessionUser={usuarioSesion} theme={theme} />
         )}
 
         {vistaActiva === "reclamaciones" && (
-          <ReclamacionesPanel />
+          <ReclamacionesPanel theme={theme} />
         )}
 
         {vistaActiva === "logs" && esAdminSesion && (

@@ -89,7 +89,8 @@ const consultarMkw = async (cedula, apiTipo) => {
 };
 
 /* ══════════════════════════════════════════════ */
-export default function MkwEstadoPanel() {
+export default function MkwEstadoPanel({ theme }) {
+  const isDark = theme === "dark";
   const [nodoActivo, setNodoActivo] = useState("Nod_01");
   const [clientes, setClientes]     = useState([]);
   const [loading, setLoading]       = useState(false);
@@ -219,14 +220,14 @@ export default function MkwEstadoPanel() {
   /* ════ RENDER ════ */
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #e8edf5",
+      <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 20, border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5",
         boxShadow: "0 2px 16px rgba(15,23,42,0.06)", padding: "22px 26px" }}>
 
         <div style={{ marginBottom: 18 }}>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a" }}>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a" }}>
             Estado clientes MikroWisp
           </h2>
-          <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
+          <p style={{ margin: "3px 0 0", fontSize: 12, color: isDark ? "#93a2bd" : "#94a3b8" }}>
             Consulta y actualización de estado por nodo (Americanet / DimFiber)
           </p>
         </div>
@@ -236,8 +237,8 @@ export default function MkwEstadoPanel() {
           {NODOS.map(n => (
             <button key={n.key} onClick={() => setNodoActivo(n.key)}
               style={{ padding: "7px 20px", fontSize: 13, fontWeight: 700, borderRadius: 9, border: "none",
-                cursor: "pointer", background: nodoActivo === n.key ? n.color : "#f1f5f9",
-                color: nodoActivo === n.key ? "#fff" : "#64748b" }}>
+                cursor: "pointer", background: nodoActivo === n.key ? n.color : (isDark ? "#16213a" : "#f1f5f9"),
+                color: nodoActivo === n.key ? "#fff" : (isDark ? "#93a2bd" : "#64748b") }}>
               {n.label}
             </button>
           ))}
@@ -267,13 +268,13 @@ export default function MkwEstadoPanel() {
           {/* Busqueda */}
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
             placeholder="Buscar nombre, DNI, usuario..."
-            style={{ padding: "7px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8,
-              fontSize: 13, outline: "none", width: 220 }} />
+            style={{ padding: "7px 12px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius: 8,
+              fontSize: 13, outline: "none", width: 220, background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
 
           {/* Filtro estado */}
           <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
-            style={{ padding: "7px 12px", border: "1.5px solid #e2e8f0", borderRadius: 8,
-              fontSize: 12, cursor: "pointer", outline: "none", background: "#fff" }}>
+            style={{ padding: "7px 12px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", borderRadius: 8,
+              fontSize: 12, cursor: "pointer", outline: "none", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }}>
             <option value="todos">Todos los estados</option>
             <option value="ACTIVO">Activo</option>
             <option value="SUSPENDIDO">Suspendido</option>
@@ -315,39 +316,39 @@ export default function MkwEstadoPanel() {
           </p>
         ) : (
           <>
-            <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 10px" }}>
+            <p style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748b", margin: "0 0 10px" }}>
               Mostrando {clientesFiltrados.length} de {clientes.length} clientes
             </p>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                  <tr style={{ background: isDark ? "#16213a" : "#f8fafc", borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #e2e8f0" }}>
                     {["Nombre", "DNI", "Celular", "Usuario nodo", "Estado DB", "Estado MkW", "Actualizado", "Acción"].map(h => (
                       <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 700,
-                        fontSize: 11, color: "#475569", whiteSpace: "nowrap" }}>{h}</th>
+                        fontSize: 11, color: isDark ? "#93a2bd" : "#475569", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {clientesFiltrados.map(c => (
-                    <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9",
-                      background: syncRow[c.id] === "ok" ? "#f0fdf4" : syncRow[c.id] === "err" ? "#fff1f2" : "#fff" }}>
-                      <td style={{ padding: "9px 12px", fontWeight: 600, color: "#0f172a", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <tr key={c.id} style={{ borderBottom: isDark ? "1px solid #24334f" : "1px solid #f1f5f9",
+                      background: syncRow[c.id] === "ok" ? "#f0fdf4" : syncRow[c.id] === "err" ? "#fff1f2" : (isDark ? "#1a2740" : "#fff") }}>
+                      <td style={{ padding: "9px 12px", fontWeight: 600, color: isDark ? "#e6ecf7" : "#0f172a", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {c.nombre || "—"}
                       </td>
-                      <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: "#475569" }}>
+                      <td style={{ padding: "9px 12px", fontFamily: "monospace", fontSize: 12, color: isDark ? "#a9bcdd" : "#475569" }}>
                         {c.dni || "—"}
                       </td>
-                      <td style={{ padding: "9px 12px", fontSize: 12, color: "#0f172a" }}>
+                      <td style={{ padding: "9px 12px", fontSize: 12, color: isDark ? "#e6ecf7" : "#0f172a" }}>
                         {c.celular || c.contacto || "—"}
                       </td>
-                      <td style={{ padding: "9px 12px", fontSize: 11, color: "#64748b", fontFamily: "monospace" }}>
+                      <td style={{ padding: "9px 12px", fontSize: 11, color: isDark ? "#93a2bd" : "#64748b", fontFamily: "monospace" }}>
                         {c.usuario_nodo || "—"}
                       </td>
                       <td style={{ padding: "9px 12px" }}>
                         {badgeEstado(c.estado_servicio)}
                       </td>
-                      <td style={{ padding: "9px 12px", fontSize: 11, color: "#94a3b8" }}>
+                      <td style={{ padding: "9px 12px", fontSize: 11, color: isDark ? "#93a2bd" : "#94a3b8" }}>
                         {c.estado_mikrowisp ? (
                           <span style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6,
                             padding: "2px 7px", fontFamily: "monospace", fontSize: 10 }}>
