@@ -37,16 +37,17 @@ function BarraSenal({ rxDbm }) {
 //   detalle  — objeto retornado por useSmartOltSenal.verSenal()
 //   cargando — boolean
 //   error    — string
-export default function SeñalOnuCard({ detalle, cargando = false, error = "" }) {
+export default function SeñalOnuCard({ detalle, cargando = false, error = "", theme }) {
+  const isDark = theme === "dark";
   if (cargando) {
     return (
       <div
         style={{
-          border: "1px solid #e2e8f0",
+          border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0",
           borderRadius: 12,
-          background: "#f8fafc",
+          background: isDark ? "#16213a" : "#f8fafc",
           padding: "14px 16px",
-          color: "#64748b",
+          color: isDark ? "#93a2bd" : "#64748b",
           fontSize: 13,
         }}
       >
