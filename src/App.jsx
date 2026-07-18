@@ -20021,9 +20021,9 @@ export default function App() {
                   { label: "Con SN ONU", value: clientesResumen.conSnOnu },
                   { label: "Con etiqueta", value: clientesResumen.conEtiqueta },
                 ].map(({ label, value }) => (
-                  <div key={label} style={{ background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 8, padding: "8px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{value}</span>
-                    <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>{label}</span>
+                  <div key={label} style={{ background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", borderRadius: 8, padding: "8px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a" }}>{value}</span>
+                    <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#94a3b8", fontWeight: 600 }}>{label}</span>
                   </div>
                 ))}
               </div>
@@ -20039,10 +20039,10 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <div style={{ border: "1px solid #f1f5f9", borderRadius: 14, overflow: "visible" }}>
+                  <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", borderRadius: 14, overflow: "visible" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
                       <thead>
-                        <tr style={{ background: "#f8fafc", borderBottom: "1.5px solid #f1f5f9" }}>
+                        <tr style={{ background: isDark ? "#16213a" : "#f8fafc", borderBottom: isDark ? "1.5px solid #2c3c58" : "1.5px solid #f1f5f9" }}>
                           {[
                             { key: "cliente", label: "Cliente", sortCol: "nombre" },
                             { key: "dni", label: "DNI", sortCol: "dni" },
@@ -20065,7 +20065,7 @@ export default function App() {
                                   setSortClientes(prev => prev.col === h.sortCol ? { col: h.sortCol, dir: prev.dir === "asc" ? "desc" : "asc" } : { col: h.sortCol, dir: "asc" });
                                   setClientesPagina(1);
                                 }}
-                                style={{ textAlign: h.key === "acciones" ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: isSorted ? "#163f86" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", cursor: h.sortCol ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                                style={{ textAlign: h.key === "acciones" ? "center" : "left", padding: "10px 14px", fontWeight: 700, fontSize: 10, color: isSorted ? (isDark ? "#7fa1d4" : "#163f86") : (isDark ? "#93a2bd" : "#94a3b8"), textTransform: "uppercase", letterSpacing: "0.07em", cursor: h.sortCol ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
                                 {h.label}{arrow}
                               </th>
                             );
@@ -20077,18 +20077,18 @@ export default function App() {
                           const est = String(cliente.estadoServicio || "DESCONOCIDO").toUpperCase();
                           const estCfg = { ACTIVO: { c: "#16a34a", bg: "#dcfce7", l: "Activo" }, SUSPENDIDO: { c: "#dc2626", bg: "#fee2e2", l: "Suspendido" }, INACTIVO: { c: "#6b7280", bg: "#f3f4f6", l: "Inactivo" }, DESCONOCIDO: { c: "#d97706", bg: "#fef3c7", l: "Desc." } }[est] || { c: "#6b7280", bg: "#f3f4f6", l: est };
                           return (
-                            <tr key={cliente.id || idx} style={{ borderTop: "1px solid #f8fafc", cursor: "default" }}
-                              onMouseEnter={e => e.currentTarget.style.background = "#fafbff"}
+                            <tr key={cliente.id || idx} style={{ borderTop: isDark ? "1px solid #16213a" : "1px solid #f8fafc", cursor: "default" }}
+                              onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#fafbff"}
                               onMouseLeave={e => e.currentTarget.style.background = ""}>
                               {colsClientesVisibles.cliente && (
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#eff6ff", color: "#163f86", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
+                                  <div style={{ width: 34, height: 34, borderRadius: "50%", background: isDark ? "#1d2c48" : "#eff6ff", color: isDark ? "#7fa1d4" : "#163f86", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>
                                     {String(cliente.nombre || "?").charAt(0).toUpperCase()}
                                   </div>
                                   <div style={{ minWidth: 0 }}>
-                                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.nombre || "-"}</div>
-                                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+                                    <div style={{ fontWeight: 700, color: isDark ? "#e6ecf7" : "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.nombre || "-"}</div>
+                                    <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#94a3b8", marginTop: 1, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
                                       <span>{cliente.codigoAbonado || cliente.codigoCliente || ""}</span>
                                       {dniServiciosCount[String(cliente.dni || "").trim()] > 1 && (
                                         <span style={{ background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "1px 6px", fontSize: 9, fontWeight: 800 }}>
@@ -20104,13 +20104,13 @@ export default function App() {
                                         </span>
                                       )}
                                     </div>
-                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.direccion || ""}</div>
+                                    <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{cliente.direccion || ""}</div>
                                   </div>
                                 </div>
                               </td>
                               )}
                               {colsClientesVisibles.dni && (
-                              <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
+                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.dni || "-"}</td>
                               )}
                               {colsClientesVisibles.empresa && (
                               <td style={{ padding: "11px 14px" }}>
@@ -20124,12 +20124,12 @@ export default function App() {
                               </td>
                               )}
                               {colsClientesVisibles.contacto && (
-                              <td style={{ padding: "11px 14px", color: "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
+                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontSize: 12 }}>{cliente.celular || "-"}</td>
                               )}
                               {colsClientesVisibles.nodo && (
                               <td style={{ padding: "11px 14px" }}>
-                                <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{cliente.nodo || "-"}</div>
-                                <div style={{ fontSize: 11, color: "#94a3b8" }}>{cliente.velocidad || "-"}</div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#e6ecf7" : "#0f172a" }}>{cliente.nodo || "-"}</div>
+                                <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#94a3b8" }}>{cliente.velocidad || "-"}</div>
                               </td>
                               )}
                               {colsClientesVisibles.estado && (
@@ -20138,13 +20138,13 @@ export default function App() {
                               </td>
                               )}
                               {colsClientesVisibles.snOnu && (
-                              <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 11 }}>{cliente.snOnu || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 11 }}>{cliente.snOnu || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               {colsClientesVisibles.usuarioPppoe && (
-                              <td style={{ padding: "11px 14px", color: "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.usuarioNodo || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 12 }}>{cliente.usuarioNodo || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               {colsClientesVisibles.registrado && (
-                              <td style={{ padding: "11px 14px", color: "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              <td style={{ padding: "11px 14px", color: isDark ? "#93a2bd" : "#64748b", fontSize: 11, whiteSpace: "nowrap" }}>{cliente.fechaRegistro ? formatFechaFlexible(cliente.fechaRegistro) : <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               {/* ── Señal RX ── */}
                               {(() => {
@@ -20186,10 +20186,10 @@ export default function App() {
                               <td style={{ padding: "8px 14px" }}>
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
                                   {/* Button group: Ver | +Orden | SN señal */}
-                                  <div style={{ display: "inline-flex", alignItems: "stretch", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+                                  <div style={{ display: "inline-flex", alignItems: "stretch", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
                                     {/* Ver */}
                                     <button onClick={() => void abrirDetalleCliente(cliente)}
-                                      style={{ padding: "0 13px", height: 30, background: "#fff", color: "#374151", border: "none", borderRight: "1px solid #e2e8f0", borderRadius: "7px 0 0 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      style={{ padding: "0 13px", height: 30, background: isDark ? "#16213a" : "#fff", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRight: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "7px 0 0 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       Ver
                                     </button>
                                     {/* + Orden */}
@@ -20253,11 +20253,11 @@ export default function App() {
                                   <div style={{ position: "relative" }}>
                                     <button
                                       onClick={() => setAbonadosMenuClienteId(v => v === cliente.id ? null : cliente.id)}
-                                      style={{ padding: "0 10px", height: 30, background: abonadosMenuClienteId === cliente.id ? "#f1f5f9" : "#fff", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 14, fontWeight: 700, color: "#94a3b8", cursor: "pointer", letterSpacing: "0.05em", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>···</button>
+                                      style={{ padding: "0 10px", height: 30, background: abonadosMenuClienteId === cliente.id ? (isDark ? "#24334f" : "#f1f5f9") : (isDark ? "#16213a" : "#fff"), border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 7, fontSize: 14, fontWeight: 700, color: isDark ? "#93a2bd" : "#94a3b8", cursor: "pointer", letterSpacing: "0.05em", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>···</button>
                                     {abonadosMenuClienteId === cliente.id && (
                                       <>
                                         <div onClick={() => setAbonadosMenuClienteId(null)} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
-                                        <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 32px rgba(15,23,42,0.12)", minWidth: 180, zIndex: 1000, overflow: "hidden" }}>
+                                        <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 32px rgba(15,23,42,0.12)", minWidth: 180, zIndex: 1000, overflow: "hidden" }}>
                                           <button onClick={() => { void abrirDiagnosticoRapidoCliente(cliente); setAbonadosMenuClienteId(null); }}
                                             style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: "#166534", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
                                             <span>⚡</span> Diagnóstico MikroTik
@@ -20299,15 +20299,15 @@ export default function App() {
                                               </button>
                                             );
                                           })()}
-                                          <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0" }} />
+                                          <div style={{ height: 1, background: isDark ? "#2c3c58" : "#f1f5f9", margin: "4px 0" }} />
                                           <button onClick={() => { abrirModalIptv(cliente); setAbonadosMenuClienteId(null); }}
-                                            style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: cliente.iptv_usuario ? "#7c3aed" : "#0f172a", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
+                                            style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: cliente.iptv_usuario ? "#7c3aed" : (isDark ? "#e6ecf7" : "#0f172a"), fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
                                             <span>📺</span>
                                             {cliente.iptv_usuario ? `IPTV: ${cliente.iptv_usuario}` : "Agregar IPTV"}
                                           </button>
                                           {esAdminSesion && (
                                             <>
-                                              <div style={{ height: 1, background: "#f1f5f9", margin: "4px 0" }} />
+                                              <div style={{ height: 1, background: isDark ? "#2c3c58" : "#f1f5f9", margin: "4px 0" }} />
                                               <button onClick={() => { void eliminarCliente(cliente); setAbonadosMenuClienteId(null); }}
                                                 style={{ width: "100%", padding: "9px 14px", background: "none", border: "none", textAlign: "left", fontSize: 12, color: "#dc2626", fontWeight: 600, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}>
                                                 <span>✕</span> Eliminar cliente
@@ -20329,13 +20329,13 @@ export default function App() {
 
                   {/* Paginación */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, gap: 10, flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                      {clientesFiltrados.length === 0 ? 0 : (clientesPagina - 1) * CLIENTES_PAGE_SIZE + 1}–{Math.min(clientesPagina * CLIENTES_PAGE_SIZE, clientesFiltrados.length)} de <strong style={{ color: "#475569" }}>{clientesFiltrados.length}</strong>
+                    <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#94a3b8" }}>
+                      {clientesFiltrados.length === 0 ? 0 : (clientesPagina - 1) * CLIENTES_PAGE_SIZE + 1}–{Math.min(clientesPagina * CLIENTES_PAGE_SIZE, clientesFiltrados.length)} de <strong style={{ color: isDark ? "#c3d3ee" : "#475569" }}>{clientesFiltrados.length}</strong>
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <button type="button" onClick={() => setClientesPagina(p => Math.max(1, p - 1))} disabled={clientesPagina <= 1} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>← Ant.</button>
-                      <span style={{ fontSize: 12, color: "#64748b", padding: "0 8px" }}>Pág. {clientesPagina} / {totalPaginasClientes}</span>
-                      <button type="button" onClick={() => setClientesPagina(p => Math.min(totalPaginasClientes, p + 1))} disabled={clientesPagina >= totalPaginasClientes} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>Sig. →</button>
+                      <button type="button" onClick={() => setClientesPagina(p => Math.max(1, p - 1))} disabled={clientesPagina <= 1} style={{ padding: "7px 14px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: isDark ? "#c3d3ee" : "#475569" }}>← Ant.</button>
+                      <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748b", padding: "0 8px" }}>Pág. {clientesPagina} / {totalPaginasClientes}</span>
+                      <button type="button" onClick={() => setClientesPagina(p => Math.min(totalPaginasClientes, p + 1))} disabled={clientesPagina >= totalPaginasClientes} style={{ padding: "7px 14px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: isDark ? "#c3d3ee" : "#475569" }}>Sig. →</button>
                     </div>
                   </div>
                 </>
