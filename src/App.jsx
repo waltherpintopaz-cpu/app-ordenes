@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -2175,6 +2175,7 @@ export default function App() {
     return Number.isFinite(guardado) ? guardado : 30;
   });
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 900 : true);
+  const [theme, setTheme] = useState(() => localStorage.getItem("appTheme") || "light");
   const [mostrarMenuSesion, setMostrarMenuSesion] = useState(false);
   const [cambiandoClave, setCambiandoClave] = useState(false);
   const [cambioClaveForm, setCambioClaveForm] = useState({ actual: "", nueva: "", confirmar: "" });
@@ -2323,6 +2324,11 @@ export default function App() {
   const totalChecklistCrear = checklistCrearOrden.length;
   const completadosChecklistCrear = checklistCrearOrden.filter((x) => x.ok).length;
   const porcentajeChecklistCrear = Math.round((completadosChecklistCrear / totalChecklistCrear) * 100);
+
+  useEffect(() => {
+    document.body.setAttribute("data-theme", theme);
+    try { localStorage.setItem("appTheme", theme); } catch (e) { console.warn("localStorage quota: appTheme", e); }
+  }, [theme]);
 
   useEffect(() => {
     try { localStorage.setItem("ordenes", JSON.stringify(ordenes)); } catch (e) { console.warn("localStorage quota: ordenes", e); }
@@ -13928,9 +13934,11 @@ export default function App() {
     justifyContent: "center",
   };
 
+  const isDark = theme === "dark";
+
   const appShellStyle = {
     minHeight: "100vh",
-    background: "#f5f6fb",
+    background: isDark ? "#0f172a" : "#f5f6fb",
     display: "grid",
     gridTemplateColumns: isMobile ? "1fr" : (sidebarOpen ? "250px 1fr" : "0px 1fr"),
     gridTemplateRows: "64px 1fr",
@@ -13969,8 +13977,8 @@ export default function App() {
     top: "calc(100% + 10px)",
     right: 0,
     width: "260px",
-    background: "#ffffff",
-    border: "1px solid #eceef5",
+    background: isDark ? "#16213a" : "#ffffff",
+    border: isDark ? "1px solid #2c3c58" : "1px solid #eceef5",
     borderRadius: "16px",
     boxShadow: "0 18px 40px -28px rgba(31, 41, 55, 0.45)",
     padding: "14px",
@@ -13984,8 +13992,8 @@ export default function App() {
     left: 0,
     width: "260px",
     height: "100vh",
-    background: "#ffffff",
-    color: "#69728a",
+    background: isDark ? "#16213a" : "#ffffff",
+    color: isDark ? "#93a2bd" : "#69728a",
     display: "flex",
     flexDirection: "column",
     zIndex: 200,
@@ -13995,8 +14003,8 @@ export default function App() {
     overflowY: "auto",
   } : {
     gridArea: "sidebar",
-    background: "#ffffff",
-    color: "#69728a",
+    background: isDark ? "#16213a" : "#ffffff",
+    color: isDark ? "#93a2bd" : "#69728a",
     borderRight: "none",
     display: "flex",
     flexDirection: "column",
@@ -14014,8 +14022,8 @@ export default function App() {
 
   const userCardStyle = {
     padding: "12px 14px",
-    borderBottom: "1px solid #eceef5",
-    background: "#ffffff",
+    borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #eceef5",
+    background: isDark ? "#16213a" : "#ffffff",
   };
 
   const sidebarBodyStyle = {
@@ -14030,8 +14038,8 @@ export default function App() {
     margin: "1px 8px",
     textAlign: "left",
     border: "none",
-    background: active ? "#dbeafe" : "transparent",
-    color: active ? "#1B6EC4" : "#374151",
+    background: active ? (isDark ? "#1d2c48" : "#dbeafe") : "transparent",
+    color: active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#c3d3ee" : "#374151"),
     borderRadius: "8px",
     padding: "9px 12px",
     fontSize: "13.5px",
@@ -14048,8 +14056,8 @@ export default function App() {
     margin: "1px 8px",
     textAlign: "left",
     border: "none",
-    background: active ? "#dbeafe" : "transparent",
-    color: active ? "#1B6EC4" : "#374151",
+    background: active ? (isDark ? "#1d2c48" : "#dbeafe") : "transparent",
+    color: active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#c3d3ee" : "#374151"),
     borderRadius: "8px",
     padding: "9px 12px",
     fontSize: "13.5px",
@@ -14074,8 +14082,8 @@ export default function App() {
     margin: "1px 8px",
     textAlign: "left",
     border: "none",
-    background: active ? "#dbeafe" : "transparent",
-    color: active ? "#1B6EC4" : "#4b5563",
+    background: active ? (isDark ? "#1d2c48" : "#dbeafe") : "transparent",
+    color: active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#a9bcdd" : "#4b5563"),
     borderRadius: "7px",
     padding: "7px 10px",
     fontSize: "12.5px",
@@ -14094,16 +14102,17 @@ export default function App() {
   };
 
   const contentSurfaceStyle = {
-    background: "#ffffff",
-    border: "1px solid #eceef5",
+    background: isDark ? "#1a2740" : "#ffffff",
+    border: isDark ? "1px solid #2c3c58" : "1px solid #eceef5",
     borderRadius: "18px",
     padding: isMobile ? "10px" : "16px",
     minHeight: "calc(100vh - 96px)",
+    color: isDark ? "#e6ecf7" : undefined,
   };
 
   const renderSidebarIcon = (key, active = false, size = 16) => {
     const Icon = MENU_LUCIDE_ICONS[key] || LayoutDashboard;
-    const color = active ? "#1B6EC4" : "#6b7280";
+    const color = active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#93a2bd" : "#6b7280");
     return (
       <span aria-hidden="true" style={{ width: "20px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <Icon size={size} color={color} strokeWidth={1.6} />
@@ -14113,7 +14122,7 @@ export default function App() {
 
   const renderHistSubmenuIcon = (key, active = false, size = 13) => {
     const Icon = HIST_APPSHEET_LUCIDE_ICONS[key] || FileText;
-    const color = active ? "#1B6EC4" : "#6b7280";
+    const color = active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#93a2bd" : "#6b7280");
     return (
       <span aria-hidden="true" style={{ width: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <Icon size={size} color={color} strokeWidth={1.7} />
@@ -14450,6 +14459,17 @@ export default function App() {
           <span style={{ display: "block", width: "18px", height: "2px", background: "#fff", borderRadius: "2px", transition: "transform 0.2s, opacity 0.2s", transform: sidebarOpen ? "rotate(-45deg) translate(4px, -4px)" : "none" }} />
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="theme-toggle-btn"
+            aria-pressed={theme === "dark"}
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}
+            title={theme === "dark" ? "Modo claro" : "Modo oscuro"}
+          >
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{theme === "dark" ? "Claro" : "Oscuro"}</span>
+          </button>
           <div style={{ position: "relative" }} ref={sessionMenuRef}>
             <button type="button" onClick={() => setMostrarMenuSesion((prev) => !prev)} style={sessionMenuButtonStyle}>
               <span style={{ color: "#ffffff", fontWeight: 600 }}>{usuarioSesion?.nombre || "Sesión"}</span>
