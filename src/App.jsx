@@ -15400,7 +15400,7 @@ export default function App() {
                     </select>
                   </div>
 
-                  {["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV"].includes(orden.tipoActuacion) && (
+                  {["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV", "Incidencia Internet"].includes(orden.tipoActuacion) && (
                     <div
                       onClick={() => setOrdenIncluirIptv((v) => !v)}
                       title="Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden"
