@@ -27,27 +27,27 @@ function Badge({ activo, expirado }) {
   return <span style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>Suspendido</span>;
 }
 
-function StatCard({ icon: Icon, label, value, color }) {
+function StatCard({ icon: Icon, label, value, color, isDark }) {
   return (
-    <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 160 }}>
+    <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: "20px 24px", display: "flex", alignItems: "center", gap: 16, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 160 }}>
       <div style={{ background: color + "18", borderRadius: 10, padding: 10 }}>
         <Icon size={22} color={color} />
       </div>
       <div>
-        <div style={{ fontSize: 26, fontWeight: 800, color: "#111", lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{label}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111", lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2 }}>{label}</div>
       </div>
     </div>
   );
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, isDark }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+      <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 16, padding: 32, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)", color: isDark ? "#e6ecf7" : undefined }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{title}</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#6b7280" }}>✕</button>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: isDark ? "#e6ecf7" : undefined }}>{title}</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: isDark ? "#93a2bd" : "#6b7280" }}>✕</button>
         </div>
         {children}
       </div>
@@ -70,16 +70,16 @@ function CopyBtn({ text, label }) {
   );
 }
 
-const inputSt = { width: "100%", padding: "9px 12px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box" };
-const labelSt = { fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 5 };
+const getInputSt = (isDark) => ({ width: "100%", padding: "9px 12px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, outline: "none", boxSizing: "border-box", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827" });
+const getLabelSt = (isDark) => ({ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.8, display: "block", marginBottom: 5 });
 const fieldSt = { marginBottom: 16 };
 const btnPrimary = { background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 700, cursor: "pointer", fontSize: 14 };
-const btnSecondary = { background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 600, cursor: "pointer", fontSize: 14 };
+const getBtnSecondary = (isDark) => ({ background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 600, cursor: "pointer", fontSize: 14 });
 const btnDanger = { background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const btnEdit = { background: "#eff6ff", color: "#2563eb", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const btnGreen = { background: "#dcfce7", color: "#166534", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const btnWa = { background: "#dcfce7", color: "#166534", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 13 };
-const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
+const getThSt = (isDark) => ({ padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" });
 const tdSt = { padding: "10px 14px", verticalAlign: "middle" };
 const PERFILES_POR_PAGINA = 15;
 
@@ -96,7 +96,12 @@ function timeAgo(dateStr) {
   return `hace ${Math.floor(diff / 86400)}d`;
 }
 
-export default function IptvPanel({ esAdmin, sessionUser }) {
+export default function IptvPanel({ esAdmin, sessionUser, theme }) {
+  const isDark = theme === "dark";
+  const inputSt = getInputSt(isDark);
+  const labelSt = getLabelSt(isDark);
+  const btnSecondary = getBtnSecondary(isDark);
+  const thSt = getThSt(isDark);
   const [tab, setTab] = useState("dashboard");
   const [clientes, setClientes] = useState([]);
   const [servidores, setServidores] = useState([]);
@@ -388,7 +393,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
           <div style={{ background: "#2563eb", borderRadius: 10, padding: 8 }}><Tv size={22} color="#fff" /></div>
           <div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Panel IPTV</h2>
-            <p style={{ margin: 0, fontSize: 12, color: "#6b7280" }}>Gestión de clientes y servicios IPTV</p>
+            <p style={{ margin: 0, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>Gestión de clientes y servicios IPTV</p>
           </div>
         </div>
         <button onClick={cargar} style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6 }}>
@@ -399,14 +404,14 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
       {error && <div style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 8, padding: "10px 16px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "#f3f4f6", borderRadius: 10, padding: 4 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: isDark ? "#16213a" : "#f3f4f6", borderRadius: 10, padding: 4 }}>
         {TABS.map(t => {
           const Icon = t.icon;
           const active = tab === t.key;
           return (
             <button key={t.key} onClick={() => setTab(t.key)}
               style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all .15s",
-                background: active ? "#fff" : "transparent", color: active ? "#2563eb" : "#6b7280",
+                background: active ? (isDark ? "#1a2740" : "#fff") : "transparent", color: active ? "#2563eb" : (isDark ? "#93a2bd" : "#6b7280"),
                 boxShadow: active ? "0 1px 4px rgba(0,0,0,0.1)" : "none" }}>
               <Icon size={14} /> {t.label}
             </button>
@@ -414,18 +419,18 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
         })}
       </div>
 
-      {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>Cargando...</div>}
+      {loading && <div style={{ textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#6b7280" }}>Cargando...</div>}
 
       {/* ── DASHBOARD ── */}
       {!loading && tab === "dashboard" && (
         <div>
           <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
-            <StatCard icon={Users} label="Total clientes" value={stats.total} color="#2563eb" />
-            <StatCard icon={CheckCircle} label="Activos" value={stats.activos} color="#16a34a" />
-            <StatCard icon={Clock} label="Expirados" value={stats.expirados} color="#d97706" />
-            <StatCard icon={XCircle} label="Suspendidos" value={stats.suspendidos} color="#dc2626" />
+            <StatCard icon={Users} label="Total clientes" value={stats.total} color="#2563eb" isDark={isDark} />
+            <StatCard icon={CheckCircle} label="Activos" value={stats.activos} color="#16a34a" isDark={isDark} />
+            <StatCard icon={Clock} label="Expirados" value={stats.expirados} color="#d97706" isDark={isDark} />
+            <StatCard icon={XCircle} label="Suspendidos" value={stats.suspendidos} color="#dc2626" isDark={isDark} />
           </div>
-          <div style={{ background: "#fff", borderRadius: 14, padding: 24, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 24, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
             <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Próximos a vencer (7 días)</h3>
             {(() => {
               const en7dias = clientes.filter(c => {
@@ -433,12 +438,12 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                 const diff = (new Date(c.fecha_expiracion) - new Date()) / 86400000;
                 return diff >= 0 && diff <= 7;
               });
-              if (!en7dias.length) return <p style={{ color: "#6b7280", fontSize: 13 }}>Sin vencimientos próximos.</p>;
+              if (!en7dias.length) return <p style={{ color: isDark ? "#93a2bd" : "#6b7280", fontSize: 13 }}>Sin vencimientos próximos.</p>;
               return en7dias.map(c => (
-                <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f3f4f6" }}>
+                <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{c.nombre}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{c.username} · {serverNombre(c.server_id)}</div>
+                    <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{c.username} · {serverNombre(c.server_id)}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 13, color: "#d97706", fontWeight: 700 }}>
@@ -463,34 +468,34 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
             <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
-              <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "#9ca3af" }} />
+              <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: isDark ? "#93a2bd" : "#9ca3af" }} />
               <input
-                style={{ ...inputSt, paddingLeft: 34, background: "#fff" }}
+                style={{ ...inputSt, paddingLeft: 34, background: isDark ? "#1a2740" : "#fff" }}
                 placeholder="Buscar por nombre o usuario..."
                 value={busqueda}
                 onChange={e => setBusqueda(e.target.value)}
               />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 13, color: "#6b7280", whiteSpace: "nowrap" }}>{clientesFiltrados.length} de {clientes.length}</span>
+              <span style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{clientesFiltrados.length} de {clientes.length}</span>
               <button onClick={abrirNuevoCliente} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={14} /> Nuevo cliente
               </button>
             </div>
           </div>
 
-          <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ background: "#f8fafc" }}>
+                <tr style={{ background: isDark ? "#16213a" : "#f8fafc" }}>
                   {["Cliente", "Usuario", "Servidor", "Vencimiento", "Estado", "Acciones"].map(h => (
-                    <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
+                    <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {clientesFiltrados.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: "#9ca3af" }}>
+                  <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
                     {busqueda ? "Sin resultados para la búsqueda." : "Sin clientes registrados."}
                   </td></tr>
                 )}
@@ -498,26 +503,26 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                   const expirado = estaExpirado(c.fecha_expiracion);
                   const cPerfiles = perfiles.filter(p => p.client_id === c.id);
                   return (
-                    <tr key={c.id} style={{ borderTop: "1px solid #f3f4f6", cursor: "pointer" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "#f8fafc"}
+                    <tr key={c.id} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6", cursor: "pointer" }}
+                      onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
                       onMouseLeave={e => e.currentTarget.style.background = ""}
                     >
                       <td style={{ padding: "11px 14px" }}
                         onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
                         <div style={{ fontWeight: 700, color: "#2563eb" }}>{c.nombre}</div>
-                        {c.cliente_ref && <div style={{ fontSize: 11, color: "#9ca3af" }}>Ref: {c.cliente_ref}</div>}
+                        {c.cliente_ref && <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#9ca3af" }}>Ref: {c.cliente_ref}</div>}
                       </td>
                       <td style={{ padding: "11px 14px" }}
                         onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
-                        <span style={{ fontFamily: "monospace", fontSize: 12, color: "#374151" }}>{c.username}</span>
+                        <span style={{ fontFamily: "monospace", fontSize: 12, color: isDark ? "#c3d3ee" : "#374151" }}>{c.username}</span>
                       </td>
-                      <td style={{ padding: "11px 14px", color: "#6b7280" }}
+                      <td style={{ padding: "11px 14px", color: isDark ? "#93a2bd" : "#6b7280" }}
                         onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
                         {serverNombre(c.server_id)}
                       </td>
                       <td style={{ padding: "11px 14px" }}
                         onClick={() => { setClienteDetalle(c); setTabDetalle("credenciales"); }}>
-                        <div style={{ color: expirado ? "#dc2626" : "#374151", fontWeight: expirado ? 700 : 400, fontSize: 12 }}>
+                        <div style={{ color: expirado ? "#dc2626" : (isDark ? "#c3d3ee" : "#374151"), fontWeight: expirado ? 700 : 400, fontSize: 12 }}>
                           {c.fecha_expiracion ? new Date(c.fecha_expiracion).toLocaleDateString("es-PE") : "Sin límite"}
                         </div>
                       </td>
@@ -526,7 +531,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Badge activo={c.activo} expirado={expirado} />
                           {cPerfiles.length > 0 && (
-                            <span style={{ fontSize: 11, color: "#6b7280" }}>
+                            <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>
                               <UserCircle size={11} style={{ display: "inline", marginRight: 3 }} />{cPerfiles.length}/5
                             </span>
                           )}
@@ -567,17 +572,17 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
         return (
           <div>
             {/* Breadcrumb */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, fontSize: 13, color: "#6b7280" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20, fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280" }}>
               <button onClick={() => { setClienteDetalle(null); setActivityLog([]); }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#2563eb", fontWeight: 600, fontSize: 13, padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
                 ← Clientes
               </button>
               <span>›</span>
-              <span style={{ color: "#111", fontWeight: 600 }}>{c.nombre}</span>
+              <span style={{ color: isDark ? "#e6ecf7" : "#111", fontWeight: 600 }}>{c.nombre}</span>
             </div>
 
             {/* Header card */}
-            <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+            <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <div style={{ width: 52, height: 52, borderRadius: 12, background: avatarColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
                   {c.nombre[0].toUpperCase()}
@@ -587,7 +592,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                     <span style={{ fontSize: 18, fontWeight: 800 }}>{c.nombre}</span>
                     <Badge activo={c.activo} expirado={expirado} />
                   </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>
+                  <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 3 }}>
                     <span style={{ fontFamily: "monospace" }}>{c.username}</span>
                     {c.cliente_ref && <span style={{ marginLeft: 10 }}>· Ref: {c.cliente_ref}</span>}
                   </div>
@@ -605,39 +610,39 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
             {/* Stat cards */}
             <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Suscripción</div>
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 140 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Suscripción</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: expirado ? "#dc2626" : c.activo ? "#16a34a" : "#d97706" }}>
                   {expirado ? "Expirado" : c.activo ? "Activo" : "Suspendido"}
                 </div>
-                {c.fecha_expiracion && <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>Vence {new Date(c.fecha_expiracion).toLocaleDateString("es-PE")}</div>}
+                {c.fecha_expiracion && <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#9ca3af", marginTop: 2 }}>Vence {new Date(c.fecha_expiracion).toLocaleDateString("es-PE")}</div>}
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130, cursor: "pointer" }}
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130, cursor: "pointer" }}
                 onClick={() => setTabDetalle("perfiles")}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Perfiles</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{cPerfiles.length}<span style={{ fontSize: 13, color: "#9ca3af", fontWeight: 400 }}>/5</span></div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Perfiles</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111" }}>{cPerfiles.length}<span style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#9ca3af", fontWeight: 400 }}>/5</span></div>
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130, cursor: "pointer" }}
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130, cursor: "pointer" }}
                 onClick={() => setTabDetalle("devices")}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Dispositivos</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{cDevices.length}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Dispositivos</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111" }}>{cDevices.length}</div>
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Favoritos</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#111" }}>{totalFavs}</div>
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Favoritos</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111" }}>{totalFavs}</div>
               </div>
-              <div style={{ background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Paquete</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{paqueteNombre(c.package_id)}</div>
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", flex: 1, minWidth: 130 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Paquete</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#e6ecf7" : "#111" }}>{paqueteNombre(c.package_id)}</div>
               </div>
             </div>
 
             {/* Sub-tabs */}
-            <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: "2px solid #f3f4f6" }}>
+            <div style={{ display: "flex", gap: 0, marginBottom: 20, borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #f3f4f6" }}>
               {DETAIL_TABS.map(t => (
                 <button key={t.key} onClick={() => { if (t.key === "actividad") { setActivityLog([]); } setTabDetalle(t.key); }}
                   style={{ padding: "10px 20px", border: "none", background: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
-                    color: tabDetalle === t.key ? "#2563eb" : "#6b7280",
+                    color: tabDetalle === t.key ? "#2563eb" : (isDark ? "#93a2bd" : "#6b7280"),
                     borderBottom: tabDetalle === t.key ? "2px solid #2563eb" : "2px solid transparent",
                     marginBottom: -2 }}>
                   {t.label}
@@ -647,7 +652,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
             {/* Credenciales tab */}
             {tabDetalle === "credenciales" && (
-              <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 32px" }}>
                   {[
                     { label: "Servidor", value: serverNombre(c.server_id) },
@@ -657,10 +662,10 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                     { label: "Vencimiento", value: c.fecha_expiracion ? new Date(c.fecha_expiracion).toLocaleDateString("es-PE") : "Sin límite" },
                     { label: "Paquete", value: paqueteNombre(c.package_id) },
                   ].map(f => (
-                    <div key={f.label} style={{ borderBottom: "1px solid #f3f4f6", paddingBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{f.label}</div>
+                    <div key={f.label} style={{ borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6", paddingBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{f.label}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontFamily: f.copy ? "monospace" : "inherit", fontSize: 13, color: "#111", wordBreak: "break-all" }}>
+                        <span style={{ fontFamily: f.copy ? "monospace" : "inherit", fontSize: 13, color: isDark ? "#e6ecf7" : "#111", wordBreak: "break-all" }}>
                           {f.mask ? "••••••••" : f.value}
                         </span>
                         {f.copy && <CopyBtn text={f.value} label="Copiar" />}
@@ -669,8 +674,8 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                   ))}
                 </div>
                 {c.notas && (
-                  <div style={{ marginTop: 16, padding: "12px 14px", background: "#f8fafc", borderRadius: 8, fontSize: 13, color: "#6b7280" }}>
-                    <span style={{ fontWeight: 700, color: "#374151" }}>Notas: </span>{c.notas}
+                  <div style={{ marginTop: 16, padding: "12px 14px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: 8, fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280" }}>
+                    <span style={{ fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151" }}>Notas: </span>{c.notas}
                   </div>
                 )}
               </div>
@@ -687,15 +692,15 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                   )}
                 </div>
                 {cPerfiles.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "40px 24px", color: "#9ca3af" }}>
+                  <div style={{ textAlign: "center", padding: "40px 24px", color: isDark ? "#93a2bd" : "#9ca3af" }}>
                     <UserCircle size={36} style={{ marginBottom: 10, opacity: 0.35 }} />
                     <div style={{ fontSize: 14 }}>Sin perfiles. Crea el primero.</div>
                   </div>
                 ) : (
-                  <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                  <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
-                        <tr style={{ background: "#f8fafc" }}>
+                        <tr style={{ background: isDark ? "#16213a" : "#f8fafc" }}>
                           <th style={thSt}>Perfil</th>
                           <th style={{ ...thSt, textAlign: "center" }}>PIN</th>
                           <th style={{ ...thSt, textAlign: "center" }}>Favoritos</th>
@@ -707,7 +712,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                         {cPerfiles.map((p, idx) => {
                           const favCnt = Array.isArray(p.favoritos) ? p.favoritos.length : 0;
                           return (
-                            <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
+                            <tr key={p.id} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6", background: isDark ? (idx % 2 === 0 ? "#1a2740" : "#16213a") : (idx % 2 === 0 ? "#fff" : "#fafafa") }}>
                               <td style={tdSt}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                   <div style={{ width: 34, height: 34, borderRadius: 8, background: p.avatar_color || "#00D679", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#000", flexShrink: 0 }}>
@@ -724,7 +729,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                                   ? <span style={{ background: "#eff6ff", color: "#2563eb", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 12 }}>{favCnt}</span>
                                   : <span style={{ color: "#d1d5db" }}>0</span>}
                               </td>
-                              <td style={{ ...tdSt, color: "#9ca3af", fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString("es-PE")}</td>
+                              <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString("es-PE")}</td>
                               <td style={{ ...tdSt, textAlign: "right" }}>
                                 <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                                   <button onClick={() => abrirEditarPerfil(p)} style={btnEdit} title="Editar"><Edit2 size={13} /></button>
@@ -745,23 +750,23 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             {tabDetalle === "devices" && (
               <div>
                 {cDevices.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "40px 24px", color: "#9ca3af" }}>
+                  <div style={{ textAlign: "center", padding: "40px 24px", color: isDark ? "#93a2bd" : "#9ca3af" }}>
                     <div style={{ fontSize: 32, marginBottom: 10 }}>📱</div>
                     <div style={{ fontSize: 14 }}>Sin dispositivos registrados. El cliente debe abrir la app para que aparezcan.</div>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
                     {cDevices.map(d => (
-                      <div key={d.id} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 12 }}>
+                      <div key={d.id} style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "14px 16px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{ background: "#eff6ff", borderRadius: 10, width: 42, height: 42, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 20 }}>
                           {d.tipo === "iOS" ? "🍎" : "🤖"}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{d.nombre || "Device"} <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12 }}>{d.tipo}</span></div>
-                          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{d.nombre || "Device"} <span style={{ fontWeight: 400, color: isDark ? "#93a2bd" : "#6b7280", fontSize: 12 }}>{d.tipo}</span></div>
+                          <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2 }}>
                             {countryFlag(d.pais)} {d.ciudad ? `${d.ciudad} · ` : ""}{d.ip}
                           </div>
-                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{timeAgo(d.last_seen)}</div>
+                          <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#9ca3af", marginTop: 2 }}>{timeAgo(d.last_seen)}</div>
                         </div>
                       </div>
                     ))}
@@ -778,24 +783,24 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
               return (
                 <div>
                   {loadingActivity ? (
-                    <div style={{ textAlign: "center", padding: 32, color: "#9ca3af" }}>Cargando actividad...</div>
+                    <div style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Cargando actividad...</div>
                   ) : activityLog.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "40px 24px", color: "#9ca3af" }}>
+                    <div style={{ textAlign: "center", padding: "40px 24px", color: isDark ? "#93a2bd" : "#9ca3af" }}>
                       <div style={{ fontSize: 32, marginBottom: 10 }}>🕐</div>
                       <div style={{ fontSize: 14 }}>Sin actividad registrada aún.</div>
                     </div>
                   ) : (
-                    <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                    <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                       {activityLog.map((a, idx) => (
-                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderTop: idx > 0 ? "1px solid #f3f4f6" : "none" }}>
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderTop: idx > 0 ? isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" : "none" }}>
                           <div style={{ background: "#eff6ff", borderRadius: 8, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 16 }}>🤖</div>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>{a.device_name || "Dispositivo"}</div>
-                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2 }}>
                               {countryFlag(a.pais)} {a.ciudad ? `${a.ciudad} · ` : ""}{a.ip}
                             </div>
                           </div>
-                          <div style={{ fontSize: 12, color: "#9ca3af", whiteSpace: "nowrap" }}>{timeAgo(a.created_at)}</div>
+                          <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#9ca3af", whiteSpace: "nowrap" }}>{timeAgo(a.created_at)}</div>
                         </div>
                       ))}
                     </div>
@@ -813,7 +818,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
           {/* Toolbar */}
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ position: "relative", flex: 2, minWidth: 200 }}>
-              <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#9ca3af", pointerEvents: "none" }} />
+              <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: isDark ? "#93a2bd" : "#9ca3af", pointerEvents: "none" }} />
               <input
                 placeholder="Buscar por perfil o cliente..."
                 value={busquedaPerfil}
@@ -822,7 +827,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
               />
             </div>
             <select
-              style={{ ...inputSt, flex: 1, minWidth: 180, background: "#fff" }}
+              style={{ ...inputSt, flex: 1, minWidth: 180, background: isDark ? "#1a2740" : "#fff" }}
               value={filtroClientePerfil}
               onChange={e => { setFiltroClientePerfil(e.target.value); setPaginaPerfil(0); }}
             >
@@ -839,7 +844,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
           {/* Stats row */}
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: "#6b7280" }}>
+            <span style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280" }}>
               {perfilesFiltrados.length} perfil{perfilesFiltrados.length !== 1 ? "es" : ""}
               {(busquedaPerfil || filtroClientePerfil) ? " encontrados" : ` · ${perfiles.length} total`}
             </span>
@@ -855,16 +860,16 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
           {/* Table */}
           {perfilesFiltrados.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "48px 24px", color: "#9ca3af" }}>
+            <div style={{ textAlign: "center", padding: "48px 24px", color: isDark ? "#93a2bd" : "#9ca3af" }}>
               <UserCircle size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
               <div style={{ fontSize: 14 }}>No se encontraron perfiles.</div>
             </div>
           ) : (
             <>
-              <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+              <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: "#f8fafc" }}>
+                    <tr style={{ background: isDark ? "#16213a" : "#f8fafc" }}>
                       <th style={thSt}>Perfil</th>
                       <th style={thSt}>Cliente</th>
                       <th style={{ ...thSt, textAlign: "center" }}>PIN</th>
@@ -878,7 +883,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                       const cliente = clientes.find(c => c.id === p.client_id);
                       const favCnt = Array.isArray(p.favoritos) ? p.favoritos.length : 0;
                       return (
-                        <tr key={p.id} style={{ borderTop: "1px solid #f3f4f6", background: idx % 2 === 0 ? "#fff" : "#fafafa" }}>
+                        <tr key={p.id} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6", background: isDark ? (idx % 2 === 0 ? "#1a2740" : "#16213a") : (idx % 2 === 0 ? "#fff" : "#fafafa") }}>
                           <td style={tdSt}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                               <div style={{ position: "relative", flexShrink: 0 }}>
@@ -889,18 +894,18 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                               <span style={{ fontWeight: 600 }}>{p.nombre}</span>
                             </div>
                           </td>
-                          <td style={{ ...tdSt, color: "#6b7280" }}>{cliente?.nombre || "—"}</td>
+                          <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{cliente?.nombre || "—"}</td>
                           <td style={{ ...tdSt, textAlign: "center" }}>
                             {p.pin
                               ? <span title="Tiene PIN" style={{ fontSize: 14 }}>🔒</span>
                               : <span style={{ color: "#d1d5db", fontSize: 16 }}>—</span>}
                           </td>
-                          <td style={{ ...tdSt, textAlign: "center", color: "#6b7280" }}>
+                          <td style={{ ...tdSt, textAlign: "center", color: isDark ? "#93a2bd" : "#6b7280" }}>
                             {favCnt > 0
                               ? <span style={{ background: "#eff6ff", color: "#2563eb", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 12 }}>{favCnt}</span>
                               : <span style={{ color: "#d1d5db" }}>0</span>}
                           </td>
-                          <td style={{ ...tdSt, color: "#9ca3af", fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString("es-PE")}</td>
+                          <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>{new Date(p.created_at).toLocaleDateString("es-PE")}</td>
                           <td style={{ ...tdSt, textAlign: "right" }}>
                             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                               <button onClick={() => abrirEditarPerfil(p)} style={btnEdit} title="Editar / cambiar PIN"><Edit2 size={13} /></button>
@@ -922,7 +927,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                     disabled={paginaPerfil === 0}
                     style={{ ...btnSecondary, padding: "6px 16px", opacity: paginaPerfil === 0 ? 0.4 : 1 }}
                   >‹ Anterior</button>
-                  <span style={{ fontSize: 13, color: "#6b7280", minWidth: 100, textAlign: "center" }}>
+                  <span style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280", minWidth: 100, textAlign: "center" }}>
                     Pág {paginaPerfil + 1} de {totalPaginasPerfil}
                   </span>
                   <button
@@ -941,7 +946,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
       {!loading && tab === "servidores" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ fontSize: 14, color: "#6b7280" }}>{servidores.length} servidores configurados</span>
+            <span style={{ fontSize: 14, color: isDark ? "#93a2bd" : "#6b7280" }}>{servidores.length} servidores configurados</span>
             {esAdmin && (
               <button onClick={abrirNuevoServidor} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={14} /> Nuevo servidor
@@ -949,15 +954,15 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-            {servidores.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Sin servidores registrados.</p>}
+            {servidores.length === 0 && <p style={{ color: isDark ? "#93a2bd" : "#9ca3af", gridColumn: "1/-1" }}>Sin servidores registrados.</p>}
             {servidores.map(s => (
-              <div key={s.id} style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div key={s.id} style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ background: "#eff6ff", borderRadius: 8, padding: 8 }}><Server size={18} color="#2563eb" /></div>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 15 }}>{s.nombre}</div>
-                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2, wordBreak: "break-all" }}>{s.url}</div>
+                      <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2, wordBreak: "break-all" }}>{s.url}</div>
                     </div>
                   </div>
                   {esAdmin && (
@@ -968,11 +973,11 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>URL:</span>
+                  <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>URL:</span>
                   <CopyBtn text={s.url} label="Copiar URL" />
                 </div>
-                {s.xtream_user && <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>Admin: <span style={{ fontFamily: "monospace", color: "#374151" }}>{s.xtream_user}</span></div>}
-                {s.notas && <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 6 }}>{s.notas}</div>}
+                {s.xtream_user && <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 6 }}>Admin: <span style={{ fontFamily: "monospace", color: isDark ? "#c3d3ee" : "#374151" }}>{s.xtream_user}</span></div>}
+                {s.notas && <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#9ca3af", marginTop: 6 }}>{s.notas}</div>}
               </div>
             ))}
           </div>
@@ -983,7 +988,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
       {!loading && tab === "paquetes" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ fontSize: 14, color: "#6b7280" }}>{paquetes.length} paquetes</span>
+            <span style={{ fontSize: 14, color: isDark ? "#93a2bd" : "#6b7280" }}>{paquetes.length} paquetes</span>
             {esAdmin && (
               <button onClick={abrirNuevoPaquete} style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={14} /> Nuevo paquete
@@ -991,9 +996,9 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
-            {paquetes.length === 0 && <p style={{ color: "#9ca3af", gridColumn: "1/-1" }}>Sin paquetes registrados.</p>}
+            {paquetes.length === 0 && <p style={{ color: isDark ? "#93a2bd" : "#9ca3af", gridColumn: "1/-1" }}>Sin paquetes registrados.</p>}
             {paquetes.map(p => (
-              <div key={p.id} style={{ background: "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+              <div key={p.id} style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 20, boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ fontWeight: 700, fontSize: 16 }}>{p.nombre}</div>
                   {esAdmin && (
@@ -1006,8 +1011,8 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                 <div style={{ fontSize: 26, fontWeight: 800, color: "#2563eb", margin: "10px 0 4px" }}>
                   {p.precio ? `S/. ${Number(p.precio).toFixed(2)}` : "—"}
                 </div>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>{p.duracion_dias} días</div>
-                {p.descripcion && <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>{p.descripcion}</div>}
+                <div style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280" }}>{p.duracion_dias} días</div>
+                {p.descripcion && <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#9ca3af", marginTop: 8 }}>{p.descripcion}</div>}
               </div>
             ))}
           </div>
@@ -1016,14 +1021,14 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
       {/* ══ MODAL CLIENTE ══ */}
       {modalCliente !== null && (
-        <Modal title={modalCliente === "nuevo" ? "Nuevo cliente IPTV" : "Editar cliente"} onClose={() => setModalCliente(null)}>
+        <Modal title={modalCliente === "nuevo" ? "Nuevo cliente IPTV" : "Editar cliente"} onClose={() => setModalCliente(null)} isDark={isDark}>
           <div style={fieldSt}><label style={labelSt}>Nombre completo *</label><input style={inputSt} value={formCliente.nombre} onChange={e => setFormCliente(p => ({ ...p, nombre: e.target.value }))} placeholder="Ej: Juan Pérez" /></div>
           <div style={fieldSt}><label style={labelSt}>Usuario *</label><input style={inputSt} value={formCliente.username} onChange={e => setFormCliente(p => ({ ...p, username: e.target.value }))} placeholder="usuario_iptv" /></div>
           <div style={fieldSt}>
             <label style={labelSt}>Contraseña *</label>
             <div style={{ position: "relative" }}>
               <input style={{ ...inputSt, paddingRight: 40 }} type={showPass ? "text" : "password"} value={formCliente.password} onChange={e => setFormCliente(p => ({ ...p, password: e.target.value }))} placeholder="••••••••" />
-              <button onClick={() => setShowPass(v => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}>
+              <button onClick={() => setShowPass(v => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}>
                 {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
@@ -1054,11 +1059,11 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
       {/* ══ MODAL RENOVAR ══ */}
       {modalRenovar !== null && (
-        <Modal title="Renovar suscripción" onClose={() => setModalRenovar(null)}>
+        <Modal title="Renovar suscripción" onClose={() => setModalRenovar(null)} isDark={isDark}>
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{modalRenovar.nombre}</div>
-            <div style={{ fontSize: 13, color: "#6b7280" }}>
-              Vencimiento actual: <strong style={{ color: estaExpirado(modalRenovar.fecha_expiracion) ? "#dc2626" : "#374151" }}>
+            <div style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#6b7280" }}>
+              Vencimiento actual: <strong style={{ color: estaExpirado(modalRenovar.fecha_expiracion) ? "#dc2626" : (isDark ? "#c3d3ee" : "#374151") }}>
                 {modalRenovar.fecha_expiracion ? new Date(modalRenovar.fecha_expiracion).toLocaleDateString("es-PE") : "Sin límite"}
               </strong>
             </div>
@@ -1071,7 +1076,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
             {[7, 15, 30, 60, 90, 365].map(d => (
               <button key={d} onClick={() => setDiasRenovar(d)}
                 style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13,
-                  background: diasRenovar === d ? "#2563eb" : "#f3f4f6", color: diasRenovar === d ? "#fff" : "#374151" }}>
+                  background: diasRenovar === d ? "#2563eb" : (isDark ? "#16213a" : "#f3f4f6"), color: diasRenovar === d ? "#fff" : (isDark ? "#c3d3ee" : "#374151") }}>
                 {d === 365 ? "1 año" : `${d}d`}
               </button>
             ))}
@@ -1094,7 +1099,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
       {/* ══ MODAL SERVIDOR ══ */}
       {modalServidor !== null && (
-        <Modal title={modalServidor === "nuevo" ? "Nuevo servidor" : "Editar servidor"} onClose={() => setModalServidor(null)}>
+        <Modal title={modalServidor === "nuevo" ? "Nuevo servidor" : "Editar servidor"} onClose={() => setModalServidor(null)} isDark={isDark}>
           <div style={fieldSt}><label style={labelSt}>Nombre *</label><input style={inputSt} value={formServidor.nombre} onChange={e => setFormServidor(p => ({ ...p, nombre: e.target.value }))} placeholder="Ej: StreamPeru Principal" /></div>
           <div style={fieldSt}><label style={labelSt}>URL del servidor *</label><input style={inputSt} value={formServidor.url} onChange={e => setFormServidor(p => ({ ...p, url: e.target.value }))} placeholder="http://servidor:25461" /></div>
           <div style={fieldSt}><label style={labelSt}>Usuario Xtream (admin)</label><input style={inputSt} value={formServidor.xtream_user} onChange={e => setFormServidor(p => ({ ...p, xtream_user: e.target.value }))} placeholder="admin" /></div>
@@ -1109,7 +1114,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
       {/* ══ MODAL PERFIL ══ */}
       {modalPerfil !== null && (
-        <Modal title={modalPerfil === "nuevo" ? "Nuevo perfil" : "Editar perfil"} onClose={() => setModalPerfil(null)}>
+        <Modal title={modalPerfil === "nuevo" ? "Nuevo perfil" : "Editar perfil"} onClose={() => setModalPerfil(null)} isDark={isDark}>
           <div style={fieldSt}>
             <label style={labelSt}>Cliente *</label>
             <select style={inputSt} value={formPerfil.client_id} onChange={e => setFormPerfil(p => ({ ...p, client_id: e.target.value }))} disabled={modalPerfil !== "nuevo"}>
@@ -1147,7 +1152,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
                 placeholder="Dejar vacío = sin PIN"
                 maxLength={4}
               />
-              <button onClick={() => setShowPin(v => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}>
+              <button onClick={() => setShowPin(v => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}>
                 {showPin ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
@@ -1157,7 +1162,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
           </div>
           {/* Preview */}
           {formPerfil.nombre && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: "#f8fafc", borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: 10, marginBottom: 16 }}>
               <div style={{ position: "relative" }}>
                 <div style={{ width: 44, height: 44, borderRadius: 9, background: formPerfil.avatar_color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, color: "#000" }}>
                   {formPerfil.nombre[0].toUpperCase()}
@@ -1168,7 +1173,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
               </div>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 15 }}>{formPerfil.nombre}</div>
-                <div style={{ fontSize: 11, color: "#9ca3af" }}>{formPerfil.pin?.length === 4 ? "Con PIN activado" : "Sin PIN"}</div>
+                <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#9ca3af" }}>{formPerfil.pin?.length === 4 ? "Con PIN activado" : "Sin PIN"}</div>
               </div>
             </div>
           )}
@@ -1181,7 +1186,7 @@ export default function IptvPanel({ esAdmin, sessionUser }) {
 
       {/* ══ MODAL PAQUETE ══ */}
       {modalPaquete !== null && (
-        <Modal title={modalPaquete === "nuevo" ? "Nuevo paquete" : "Editar paquete"} onClose={() => setModalPaquete(null)}>
+        <Modal title={modalPaquete === "nuevo" ? "Nuevo paquete" : "Editar paquete"} onClose={() => setModalPaquete(null)} isDark={isDark}>
           <div style={fieldSt}><label style={labelSt}>Nombre *</label><input style={inputSt} value={formPaquete.nombre} onChange={e => setFormPaquete(p => ({ ...p, nombre: e.target.value }))} placeholder="Ej: Plan Mensual" /></div>
           <div style={fieldSt}><label style={labelSt}>Duración (días)</label><input style={inputSt} type="number" value={formPaquete.duracion_dias} onChange={e => setFormPaquete(p => ({ ...p, duracion_dias: Number(e.target.value) }))} min={1} /></div>
           <div style={fieldSt}><label style={labelSt}>Precio (S/.)</label><input style={inputSt} type="number" value={formPaquete.precio} onChange={e => setFormPaquete(p => ({ ...p, precio: e.target.value }))} placeholder="0.00" min={0} step={0.01} /></div>

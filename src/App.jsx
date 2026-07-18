@@ -20456,7 +20456,7 @@ export default function App() {
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
 
         {vistaActiva === "iptv" && (esAdminSesion || esGestorSesion) && (
-          <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} />
+          <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} theme={theme} />
         )}
 
         {vistaActiva === "noc" && esAdminSesion && (
