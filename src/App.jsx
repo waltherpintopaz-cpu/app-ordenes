@@ -14853,24 +14853,24 @@ export default function App() {
                 ...cardStyle,
                 padding: "16px",
                 borderRadius: "14px",
-                background: "linear-gradient(90deg, #f8fbff 0%, #eef5ff 100%)",
-                border: "1px solid #cfe0f5",
+                background: isDark ? "#1a2740" : "linear-gradient(90deg, #f8fbff 0%, #eef5ff 100%)",
+                border: isDark ? "1px solid #2c3c58" : "1px solid #cfe0f5",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: "20px", fontWeight: 800, color: "#163a63" }}>
+                  <div style={{ fontSize: "20px", fontWeight: 800, color: isDark ? "#e6ecf7" : "#163a63" }}>
                     {ordenEditandoId ? "Editar orden" : "Crear orden"}
                   </div>
-                  <div style={{ fontSize: "13px", color: "#4b5563", marginTop: "2px" }}>
+                  <div style={{ fontSize: "13px", color: isDark ? "#93a2bd" : "#4b5563", marginTop: "2px" }}>
                     Completa los pasos y guarda. Avance: <strong>{completadosChecklistCrear}/{totalChecklistCrear}</strong>
                   </div>
                 </div>
                 <div style={{ minWidth: "220px", flex: "0 0 260px" }}>
-                  <div style={{ height: "8px", borderRadius: "999px", background: "#dbeafe", overflow: "hidden" }}>
+                  <div style={{ height: "8px", borderRadius: "999px", background: isDark ? "#2c3c58" : "#dbeafe", overflow: "hidden" }}>
                     <div style={{ width: `${porcentajeChecklistCrear}%`, height: "100%", background: "#2563eb" }} />
                   </div>
-                  <div style={{ marginTop: "6px", fontSize: "12px", color: "#1d4d8b", textAlign: "right", fontWeight: 700 }}>
+                  <div style={{ marginTop: "6px", fontSize: "12px", color: isDark ? "#7fa1d4" : "#1d4d8b", textAlign: "right", fontWeight: 700 }}>
                     {porcentajeChecklistCrear}%
                   </div>
                 </div>
@@ -15383,7 +15383,7 @@ export default function App() {
 
                   <div>
                     <label style={labelStyle}>Autor de la orden</label>
-                    <input style={{ ...inputStyle, background: "#f1f5f9", color: "#64748b", cursor: "not-allowed" }} value={orden.autorOrden || usuarioSesion?.nombre || ""} readOnly />
+                    <input style={{ ...inputStyle, background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#93a2bd" : "#64748b", cursor: "not-allowed" }} value={orden.autorOrden || usuarioSesion?.nombre || ""} readOnly />
                   </div>
 
                   <div>
@@ -15415,7 +15415,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ ...cardStyle, borderRadius: "14px", padding: "16px", background: "#f8fbff" }}>
+              <div style={{ ...cardStyle, borderRadius: "14px", padding: "16px", background: isDark ? "#1a2740" : "#f8fbff" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
                   <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     <button onClick={generarCodigo} style={secondaryButton}>Generar código</button>
@@ -15473,9 +15473,9 @@ export default function App() {
                       {orden.prioridad}
                     </span>
                   </div>
-                  <div style={{ border: "1px solid #dbeafe", borderRadius: "10px", padding: "10px", background: "#f8fbff" }}>
-                    <div style={{ fontSize: "12px", color: "#64748b" }}>Avance del formulario</div>
-                    <div style={{ fontSize: "20px", fontWeight: 800, color: "#1d4d8b" }}>{porcentajeChecklistCrear}%</div>
+                  <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #dbeafe", borderRadius: "10px", padding: "10px", background: isDark ? "#16213a" : "#f8fbff" }}>
+                    <div style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#64748b" }}>Avance del formulario</div>
+                    <div style={{ fontSize: "20px", fontWeight: 800, color: isDark ? "#7fa1d4" : "#1d4d8b" }}>{porcentajeChecklistCrear}%</div>
                   </div>
                   <div><strong>Código:</strong><div>{orden.codigo || "Pendiente"}</div></div>
                   <div><strong>Cliente:</strong><div>{orden.nombre || "Pendiente"}</div></div>
