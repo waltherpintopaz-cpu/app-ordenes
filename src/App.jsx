@@ -20406,7 +20406,7 @@ export default function App() {
         )}
 
         {vistaActiva === "finanzas" && esAdminSesion && (
-          <FinanzasPanel sessionUser={usuarioSesion} />
+          <FinanzasPanel sessionUser={usuarioSesion} theme={theme} />
         )}
 
         {vistaActiva === "reportes" && reportesSubmenu === "tecnicos" && esAdminSesion && (

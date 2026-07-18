@@ -67,26 +67,31 @@ const emptyForm = {
 };
 
 // ── Estilos base ─────────────────────────────────────────────────────────────
-const card  = { background: "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
+const getCard = (isDark) => ({ background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)", color: isDark ? "#e6ecf7" : undefined });
 const btn   = (color = "#2563EB") => ({
   background: color, color: "#fff", border: "none", borderRadius: 8,
   padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 14,
   display: "inline-flex", alignItems: "center", gap: 6,
 });
-const btnGhost = {
-  background: "transparent", border: "1px solid #D1D5DB", borderRadius: 8,
-  padding: "7px 14px", cursor: "pointer", fontSize: 13, color: "#374151",
+const getBtnGhost = (isDark) => ({
+  background: "transparent", border: isDark ? "1px solid #2c3c58" : "1px solid #D1D5DB", borderRadius: 8,
+  padding: "7px 14px", cursor: "pointer", fontSize: 13, color: isDark ? "#c3d3ee" : "#374151",
   display: "inline-flex", alignItems: "center", gap: 5,
-};
-const input = {
-  width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #D1D5DB",
-  fontSize: 14, outline: "none", boxSizing: "border-box",
-};
-const select = { ...input };
-const label  = { fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" };
+});
+const getInput = (isDark) => ({
+  width: "100%", padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #D1D5DB",
+  fontSize: 14, outline: "none", boxSizing: "border-box", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827",
+});
+const getLabel  = (isDark) => ({ fontSize: 13, fontWeight: 600, color: isDark ? "#a9bcdd" : "#374151", marginBottom: 4, display: "block" });
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export default function FinanzasPanel({ sessionUser }) {
+export default function FinanzasPanel({ sessionUser, theme }) {
+  const isDark = theme === "dark";
+  const card = getCard(isDark);
+  const btnGhost = getBtnGhost(isDark);
+  const input = getInput(isDark);
+  const select = input;
+  const label = getLabel(isDark);
   const [tab,       setTab]       = useState("consolidado");
   const [movs,      setMovs]      = useState([]);
   const [cats,      setCats]      = useState([]);
@@ -440,8 +445,8 @@ export default function FinanzasPanel({ sessionUser }) {
       {/* Encabezado */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#111827" }}>Finanzas</h2>
-          <p style={{ margin: "2px 0 0", color: "#6B7280", fontSize: 13 }}>Ingresos y egresos por nodo</p>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827" }}>Finanzas</h2>
+          <p style={{ margin: "2px 0 0", color: isDark ? "#93a2bd" : "#6B7280", fontSize: 13 }}>Ingresos y egresos por nodo</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={btnGhost} onClick={() => { cargarMovimientos(); cargarCategorias(); cargarPeriodos(); }}>
@@ -454,12 +459,12 @@ export default function FinanzasPanel({ sessionUser }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, borderBottom: "2px solid #E5E7EB", marginBottom: 24 }}>
+      <div style={{ display: "flex", gap: 4, borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #E5E7EB", marginBottom: 24 }}>
         {TABS.map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setTab(key)} style={{
             background: "none", border: "none", padding: "10px 18px", cursor: "pointer",
             fontWeight: tab === key ? 700 : 500, fontSize: 14,
-            color: tab === key ? "#2563EB" : "#6B7280",
+            color: tab === key ? "#2563EB" : (isDark ? "#93a2bd" : "#6B7280"),
             borderBottom: tab === key ? "2px solid #2563EB" : "2px solid transparent",
             marginBottom: -2, display: "inline-flex", alignItems: "center", gap: 6,
           }}>
@@ -476,13 +481,14 @@ export default function FinanzasPanel({ sessionUser }) {
             filtroMes={filtroMes}   setFiltroMes={setFiltroMes}
             filtroNodo={filtroNodo} setFiltroNodo={setFiltroNodo}
             mostrarNodo
+            isDark={isDark}
           />
 
           {/* Cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
-            <CardStat label="Ingresos (tu parte)" valor={totConsolidado.ing_propio} color="#16A34A" Icon={TrendingUp} />
-            <CardStat label="Egresos (tu parte)"  valor={totConsolidado.egr_propio} color="#DC2626" Icon={TrendingDown} />
-            <CardStat label="Balance neto"         valor={totConsolidado.balance}    color={totConsolidado.balance >= 0 ? "#2563EB" : "#DC2626"} Icon={Wallet} />
+            <CardStat label="Ingresos (tu parte)" valor={totConsolidado.ing_propio} color="#16A34A" Icon={TrendingUp} isDark={isDark} />
+            <CardStat label="Egresos (tu parte)"  valor={totConsolidado.egr_propio} color="#DC2626" Icon={TrendingDown} isDark={isDark} />
+            <CardStat label="Balance neto"         valor={totConsolidado.balance}    color={totConsolidado.balance >= 0 ? "#2563EB" : "#DC2626"} Icon={Wallet} isDark={isDark} />
           </div>
 
           {/* Gráfico */}
@@ -502,7 +508,7 @@ export default function FinanzasPanel({ sessionUser }) {
           </div>
 
           {/* Tabla */}
-          <TablaMovimientos movs={movsFiltrados} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} onLightbox={setLightbox} />
+          <TablaMovimientos movs={movsFiltrados} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} onLightbox={setLightbox} isDark={isDark} />
         </div>
       )}
 
@@ -511,7 +517,7 @@ export default function FinanzasPanel({ sessionUser }) {
         <div>
           <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center" }}>
             <div>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginRight: 8 }}>Nodo:</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? "#a9bcdd" : "#374151", marginRight: 8 }}>Nodo:</span>
               <select value={nodoVista} onChange={(e) => setNodoVista(e.target.value)} style={{ ...select, width: "auto", minWidth: 220 }}>
                 {NODOS.map((n) => <option key={n.key} value={n.key}>{n.label}</option>)}
               </select>
@@ -519,6 +525,7 @@ export default function FinanzasPanel({ sessionUser }) {
             <FiltrosFecha
               filtroAnio={filtroAnio} setFiltroAnio={setFiltroAnio}
               filtroMes={filtroMes}   setFiltroMes={setFiltroMes}
+              isDark={isDark}
             />
           </div>
 
@@ -535,12 +542,12 @@ export default function FinanzasPanel({ sessionUser }) {
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
-            <CardStat label="Ingresos totales"   valor={totNodo.ingresos}   color="#16A34A" Icon={TrendingUp} sub={`Tu parte: S/ ${fmt(totNodo.ing_propio)}`} />
-            <CardStat label="Egresos totales"     valor={totNodo.egresos}    color="#DC2626" Icon={TrendingDown} sub={`Tu parte: S/ ${fmt(totNodo.egr_propio)}`} />
-            <CardStat label="Balance (tu parte)"  valor={totNodo.balance}    color={totNodo.balance >= 0 ? "#2563EB" : "#DC2626"} Icon={Wallet} />
+            <CardStat label="Ingresos totales"   valor={totNodo.ingresos}   color="#16A34A" Icon={TrendingUp} sub={`Tu parte: S/ ${fmt(totNodo.ing_propio)}`} isDark={isDark} />
+            <CardStat label="Egresos totales"     valor={totNodo.egresos}    color="#DC2626" Icon={TrendingDown} sub={`Tu parte: S/ ${fmt(totNodo.egr_propio)}`} isDark={isDark} />
+            <CardStat label="Balance (tu parte)"  valor={totNodo.balance}    color={totNodo.balance >= 0 ? "#2563EB" : "#DC2626"} Icon={Wallet} isDark={isDark} />
           </div>
 
-          <TablaMovimientos movs={movsNodo} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} onLightbox={setLightbox} />
+          <TablaMovimientos movs={movsNodo} onEditar={abrirModal} onEliminar={eliminarMov} loading={loading} onLightbox={setLightbox} isDark={isDark} />
         </div>
       )}
 
@@ -562,6 +569,7 @@ export default function FinanzasPanel({ sessionUser }) {
               movs={movs}
               onCerrar={() => setPeriodoVer(null)}
               onPDF={generarPDF}
+              isDark={isDark}
             />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -624,7 +632,7 @@ export default function FinanzasPanel({ sessionUser }) {
                 </p>
                 {cats.filter((c) => c.tipo === tipo || c.tipo === "ambos").map((c) => (
                   <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #F3F4F6" }}>
-                    <span style={{ fontSize: 14, color: c.activa ? "#111827" : "#9CA3AF", textDecoration: c.activa ? "none" : "line-through" }}>
+                    <span style={{ fontSize: 14, color: c.activa ? (isDark ? "#e6ecf7" : "#111827") : "#9CA3AF", textDecoration: c.activa ? "none" : "line-through" }}>
                       {c.nombre}
                     </span>
                     <button onClick={() => toggleCat(c)} style={{ ...btnGhost, fontSize: 12, padding: "3px 10px", color: c.activa ? "#DC2626" : "#16A34A" }}>
@@ -643,7 +651,7 @@ export default function FinanzasPanel({ sessionUser }) {
 
       {/* ── MODAL MOVIMIENTO ─────────────────────────────────────────────── */}
       {modal && (
-        <Modal titulo={editId ? "Editar movimiento" : "Nuevo movimiento"} onClose={() => setModal(false)}>
+        <Modal titulo={editId ? "Editar movimiento" : "Nuevo movimiento"} onClose={() => setModal(false)} isDark={isDark}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div>
               <span style={label}>Fecha</span>
@@ -697,8 +705,8 @@ export default function FinanzasPanel({ sessionUser }) {
               <span style={label}><Paperclip size={13} style={{ marginRight: 4 }} />Adjuntos (fotos / PDF)</span>
               <label style={{
                 display: "flex", alignItems: "center", gap: 8, padding: "10px 14px",
-                border: "2px dashed #D1D5DB", borderRadius: 10, cursor: "pointer",
-                background: "#FAFAFA", color: "#6B7280", fontSize: 13,
+                border: isDark ? "2px dashed #2c3c58" : "2px dashed #D1D5DB", borderRadius: 10, cursor: "pointer",
+                background: isDark ? "#16213a" : "#FAFAFA", color: isDark ? "#93a2bd" : "#6B7280", fontSize: 13,
               }}>
                 <input type="file" accept="image/*,application/pdf" multiple style={{ display: "none" }}
                   onChange={(e) => { Array.from(e.target.files || []).forEach(subirArchivo); e.target.value = ""; }} />
@@ -742,7 +750,7 @@ export default function FinanzasPanel({ sessionUser }) {
 
       {/* ── MODAL PERÍODO RENDICIÓN ──────────────────────────────────────── */}
       {modalRend && (
-        <Modal titulo="Nuevo período de rendición" onClose={() => setModalRend(false)}>
+        <Modal titulo="Nuevo período de rendición" onClose={() => setModalRend(false)} isDark={isDark}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <span style={label}>Nodo</span>
@@ -780,7 +788,7 @@ export default function FinanzasPanel({ sessionUser }) {
 
       {/* ── MODAL CATEGORÍA ──────────────────────────────────────────────── */}
       {modalCat && (
-        <Modal titulo="Nueva categoría" onClose={() => setModalCat(false)}>
+        <Modal titulo="Nueva categoría" onClose={() => setModalCat(false)} isDark={isDark}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <span style={label}>Nombre</span>
@@ -819,8 +827,8 @@ export default function FinanzasPanel({ sessionUser }) {
 }
 
 // ── Sub-componentes ───────────────────────────────────────────────────────────
-function CardStat({ label, valor, color, Icon, sub }) {
-  const card = { background: "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
+function CardStat({ label, valor, color, Icon, sub, isDark }) {
+  const card = { background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "16px 20px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
   return (
     <div style={card}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -835,10 +843,10 @@ function CardStat({ label, valor, color, Icon, sub }) {
   );
 }
 
-function FiltrosFecha({ filtroAnio, setFiltroAnio, filtroMes, setFiltroMes, filtroNodo, setFiltroNodo, mostrarNodo }) {
+function FiltrosFecha({ filtroAnio, setFiltroAnio, filtroMes, setFiltroMes, filtroNodo, setFiltroNodo, mostrarNodo, isDark }) {
   const select = {
-    padding: "7px 12px", borderRadius: 8, border: "1px solid #D1D5DB",
-    fontSize: 13, outline: "none", background: "#fff", cursor: "pointer",
+    padding: "7px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #D1D5DB",
+    fontSize: 13, outline: "none", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827", cursor: "pointer",
   };
   const anios = Array.from({ length: 5 }, (_, i) => anioActual - i);
   return (
@@ -860,8 +868,8 @@ function FiltrosFecha({ filtroAnio, setFiltroAnio, filtroMes, setFiltroMes, filt
   );
 }
 
-function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
-  const card = { background: "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
+function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox, isDark }) {
+  const card = { background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
   if (loading) return <div style={{ ...card, textAlign: "center", color: "#9CA3AF", padding: 40 }}>Cargando...</div>;
   if (!movs.length) return <div style={{ ...card, textAlign: "center", color: "#9CA3AF", padding: 40 }}>Sin movimientos para este filtro</div>;
   return (
@@ -869,9 +877,9 @@ function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
-            <tr style={{ borderBottom: "2px solid #F3F4F6" }}>
+            <tr style={{ borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #F3F4F6" }}>
               {["Fecha","Nodo","Tipo","Categoría","Descripción","Monto","% Tuyo","Tu parte","Adj.",""].map((h) => (
-                <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "#6B7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: isDark ? "#93a2bd" : "#6B7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -881,7 +889,7 @@ function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
               const imagenes = archivos.filter((a) => a.tipo === "imagen");
               const pdfs     = archivos.filter((a) => a.tipo === "pdf");
               return (
-                <tr key={m.id} style={{ borderBottom: "1px solid #F9FAFB" }}>
+                <tr key={m.id} style={{ borderBottom: isDark ? "1px solid #24334f" : "1px solid #F9FAFB" }}>
                   <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>{fmtFecha(m.fecha)}</td>
                   <td style={{ padding: "9px 10px" }}>
                     <span style={{ fontSize: 12, background: "#EFF6FF", color: "#1D4ED8", borderRadius: 6, padding: "2px 8px" }}>
@@ -896,9 +904,9 @@ function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
                     }}>{m.tipo}</span>
                   </td>
                   <td style={{ padding: "9px 10px" }}>{m.categoria}</td>
-                  <td style={{ padding: "9px 10px", color: "#6B7280" }}>{m.descripcion || "-"}</td>
+                  <td style={{ padding: "9px 10px", color: isDark ? "#93a2bd" : "#6B7280" }}>{m.descripcion || "-"}</td>
                   <td style={{ padding: "9px 10px", fontWeight: 600 }}>S/ {fmt(m.monto)}</td>
-                  <td style={{ padding: "9px 10px", color: "#6B7280" }}>{m.porcentaje_propio}%</td>
+                  <td style={{ padding: "9px 10px", color: isDark ? "#93a2bd" : "#6B7280" }}>{m.porcentaje_propio}%</td>
                   <td style={{ padding: "9px 10px", fontWeight: 700, color: m.tipo === "ingreso" ? "#16A34A" : "#DC2626" }}>
                     S/ {fmt(monto_propio(m))}
                   </td>
@@ -928,7 +936,7 @@ function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
                     )}
                   </td>
                   <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
-                    <button onClick={() => onEditar(m)} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280", marginRight: 4 }}>
+                    <button onClick={() => onEditar(m)} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6B7280", marginRight: 4 }}>
                       <Edit2 size={14} />
                     </button>
                     <button onClick={() => onEliminar(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626" }}>
@@ -945,18 +953,18 @@ function TablaMovimientos({ movs, onEditar, onEliminar, loading, onLightbox }) {
   );
 }
 
-function DetallePeriodo({ periodo, movs, onCerrar, onPDF }) {
-  const card = { background: "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)" };
+function DetallePeriodo({ periodo, movs, onCerrar, onPDF, isDark }) {
+  const card = { background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "18px 22px", boxShadow: "0 1px 4px rgba(0,0,0,.08)", color: isDark ? "#e6ecf7" : undefined };
   const movsP = movs.filter((m) => m.nodo === periodo.nodo && m.fecha >= periodo.fecha_inicio && m.fecha <= periodo.fecha_fin);
   const nodoInfo = NODO_MAP[periodo.nodo] || {};
   const t = calcTotales(movsP);
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <button onClick={onCerrar} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "#6B7280" }}>←</button>
+        <button onClick={onCerrar} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: isDark ? "#93a2bd" : "#6B7280" }}>←</button>
         <div>
-          <p style={{ margin: 0, fontWeight: 700, fontSize: 16 }}>{nodoInfo.label || periodo.nodo}</p>
-          <p style={{ margin: 0, fontSize: 12, color: "#6B7280" }}>{fmtFecha(periodo.fecha_inicio)} — {fmtFecha(periodo.fecha_fin)}</p>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 16, color: isDark ? "#e6ecf7" : undefined }}>{nodoInfo.label || periodo.nodo}</p>
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#93a2bd" : "#6B7280" }}>{fmtFecha(periodo.fecha_inicio)} — {fmtFecha(periodo.fecha_fin)}</p>
         </div>
         <div style={{ marginLeft: "auto" }}>
           <button onClick={() => onPDF(periodo)} style={{ background: "#16A34A", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -968,14 +976,14 @@ function DetallePeriodo({ periodo, movs, onCerrar, onPDF }) {
       {/* Resumen */}
       <div style={{ ...card, marginBottom: 16, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
         <div>
-          <p style={{ margin: 0, fontSize: 12, color: "#6B7280" }}>Ingresos del nodo</p>
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#93a2bd" : "#6B7280" }}>Ingresos del nodo</p>
           <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 18, color: "#16A34A" }}>S/ {fmt(t.ingresos)}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9CA3AF" }}>Tu parte ({nodoInfo.pct || 50}%): S/ {fmt(t.ing_propio)}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: isDark ? "#93a2bd" : "#9CA3AF" }}>Tu parte ({nodoInfo.pct || 50}%): S/ {fmt(t.ing_propio)}</p>
         </div>
         <div>
-          <p style={{ margin: 0, fontSize: 12, color: "#6B7280" }}>Egresos del nodo</p>
+          <p style={{ margin: 0, fontSize: 12, color: isDark ? "#93a2bd" : "#6B7280" }}>Egresos del nodo</p>
           <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 18, color: "#DC2626" }}>S/ {fmt(t.egresos)}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#9CA3AF" }}>Tu parte ({nodoInfo.pct || 50}%): S/ {fmt(t.egr_propio)}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: isDark ? "#93a2bd" : "#9CA3AF" }}>Tu parte ({nodoInfo.pct || 50}%): S/ {fmt(t.egr_propio)}</p>
         </div>
         <div style={{ background: t.balance >= 0 ? "#F0FDF4" : "#FEF2F2", borderRadius: 10, padding: "12px 16px" }}>
           <p style={{ margin: 0, fontSize: 12, color: "#6B7280" }}>
@@ -987,18 +995,18 @@ function DetallePeriodo({ periodo, movs, onCerrar, onPDF }) {
         </div>
       </div>
 
-      <TablaMovimientos movs={movsP} onEditar={() => {}} onEliminar={() => {}} loading={false} onLightbox={() => {}} />
+      <TablaMovimientos movs={movsP} onEditar={() => {}} onEliminar={() => {}} loading={false} onLightbox={() => {}} isDark={isDark} />
     </div>
   );
 }
 
-function Modal({ titulo, onClose, children }) {
+function Modal({ titulo, onClose, children, isDark }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#fff", borderRadius: 14, padding: 28, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.2)" }}>
+      <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 28, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.2)", color: isDark ? "#e6ecf7" : undefined }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>{titulo}</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#6B7280" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6B7280" }}>
             <X size={20} />
           </button>
         </div>
