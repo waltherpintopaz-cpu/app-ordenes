@@ -64,7 +64,8 @@ const baseForm = () => ({
   onuExternalId: "",
 });
 
-export default function SmartOltPanel() {
+export default function SmartOltPanel({ theme }) {
+  const isDark = theme === "dark";
   const [ponFiltro, setPonFiltro] = useState("TODOS");
   const [oltFiltro, setOltFiltro] = useState("TODOS");
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -508,15 +509,15 @@ export default function SmartOltPanel() {
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
-      <div style={{ border: "1px solid #dbe4ef", borderRadius: "14px", background: "#fff", padding: "16px" }}>
-        <h2 style={{ margin: 0, fontSize: "24px", color: "#183b62" }}>Smart OLT</h2>
-        <p style={{ margin: "8px 0 0", color: "#64748b" }}>ONUs sin autorizar, preautorización y diagnóstico de señal.</p>
+      <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", borderRadius: "14px", background: isDark ? "#1a2740" : "#fff", padding: "16px" }}>
+        <h2 style={{ margin: 0, fontSize: "24px", color: (isDark ? "#7fa1d4" : "#183b62") }}>Smart OLT</h2>
+        <p style={{ margin: "8px 0 0", color: (isDark ? "#93a2bd" : "#64748b") }}>ONUs sin autorizar, preautorización y diagnóstico de señal.</p>
       </div>
 
-      <div style={{ border: "1px solid #dbe4ef", borderRadius: "14px", background: "#fff", padding: "16px", display: "grid", gap: "10px" }}>
+      <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", borderRadius: "14px", background: isDark ? "#1a2740" : "#fff", padding: "16px", display: "grid", gap: "10px" }}>
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
           <label style={{ fontWeight: 700 }}>OLT:</label>
-          <select value={oltFiltro} onChange={(e) => setOltFiltro(e.target.value)} style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "8px 10px" }}>
+          <select value={oltFiltro} onChange={(e) => setOltFiltro(e.target.value)} style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "8px 10px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }}>
             <option value="TODOS">Todos</option>
             {oltsDisponibles.map((olt) => (
               <option key={olt} value={olt}>{olt}</option>
@@ -530,11 +531,11 @@ export default function SmartOltPanel() {
                 type="button"
                 onClick={() => setPonFiltro(v)}
                 style={{
-                  border: ponFiltro === v ? "none" : "1px solid #cbd5e1",
+                  border: ponFiltro === v ? "none" : (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"),
                   borderRadius: "10px",
                   padding: "8px 10px",
                   background: ponFiltro === v ? "#1d4ed8" : "#fff",
-                  color: ponFiltro === v ? "#fff" : "#334155",
+                  color: ponFiltro === v ? "#fff" : (isDark ? "#c3d3ee" : "#334155"),
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
@@ -555,10 +556,10 @@ export default function SmartOltPanel() {
             type="button"
             onClick={() => setAutoRefresh((p) => !p)}
             style={{
-              border: autoRefresh ? "none" : "1px solid #cbd5e1",
+              border: autoRefresh ? "none" : (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"),
               borderRadius: "10px",
               background: autoRefresh ? "#1d4ed8" : "#fff",
-              color: autoRefresh ? "#fff" : "#334155",
+              color: autoRefresh ? "#fff" : (isDark ? "#c3d3ee" : "#334155"),
               padding: "9px 12px",
               fontWeight: 700,
               cursor: "pointer",
@@ -568,7 +569,7 @@ export default function SmartOltPanel() {
           </button>
         </div>
 
-        <div style={{ color: "#64748b", fontSize: "13px" }}>Última actualización: {ultimaActualizacion || "-"}</div>
+        <div style={{ color: (isDark ? "#93a2bd" : "#64748b"), fontSize: "13px" }}>Última actualización: {ultimaActualizacion || "-"}</div>
         {error ? <div style={{ color: "#b91c1c", fontWeight: 700 }}>{error}</div> : null}
         {signalError ? <div style={{ color: "#b91c1c", fontWeight: 700 }}>{signalError}</div> : null}
         {info ? <div style={{ color: "#065f46", fontWeight: 700 }}>{info}</div> : null}
@@ -579,7 +580,7 @@ export default function SmartOltPanel() {
             value={snConsulta}
             onChange={(e) => setSnConsulta(e.target.value)}
             placeholder="SN para consultar señal"
-            style={{ minWidth: "260px", border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px" }}
+            style={{ minWidth: "260px", border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }}
           />
           <button
             type="button"
@@ -601,27 +602,27 @@ export default function SmartOltPanel() {
       </div>
 
       {signalDetalle ? (
-        <div style={{ border: "1px solid #dbe4ef", borderRadius: "14px", background: "#fff", padding: "16px" }}>
-          <div style={{ fontWeight: 800, color: "#1e3a8a" }}>Estado ONU: {signalDetalle.sn}</div>
-          <div style={{ marginTop: "6px", color: "#334155" }}>Estado: {signalDetalle.estado}</div>
-          <div style={{ marginTop: "4px", color: "#334155" }}>Señal: {signalDetalle.rxOnuDbm} / {signalDetalle.oltRxOntDbm}</div>
-          <div style={{ marginTop: "4px", color: "#64748b", fontSize: "13px" }}>Consulta: {signalDetalle.fechaConsulta}</div>
+        <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", borderRadius: "14px", background: isDark ? "#1a2740" : "#fff", padding: "16px" }}>
+          <div style={{ fontWeight: 800, color: (isDark ? "#7fa1d4" : "#1e3a8a") }}>Estado ONU: {signalDetalle.sn}</div>
+          <div style={{ marginTop: "6px", color: (isDark ? "#c3d3ee" : "#334155") }}>Estado: {signalDetalle.estado}</div>
+          <div style={{ marginTop: "4px", color: (isDark ? "#c3d3ee" : "#334155") }}>Señal: {signalDetalle.rxOnuDbm} / {signalDetalle.oltRxOntDbm}</div>
+          <div style={{ marginTop: "4px", color: (isDark ? "#93a2bd" : "#64748b"), fontSize: "13px" }}>Consulta: {signalDetalle.fechaConsulta}</div>
         </div>
       ) : null}
 
-      <div style={{ border: "1px solid #dbe4ef", borderRadius: "14px", background: "#fff", padding: "16px" }}>
-        <h3 style={{ margin: 0, fontSize: "18px", color: "#1f2937" }}>ONUs detectadas ({onusFiltradas.length})</h3>
+      <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", borderRadius: "14px", background: isDark ? "#1a2740" : "#fff", padding: "16px" }}>
+        <h3 style={{ margin: 0, fontSize: "18px", color: (isDark ? "#e6ecf7" : "#1f2937") }}>ONUs detectadas ({onusFiltradas.length})</h3>
         {onusFiltradas.length === 0 ? (
-          <p style={{ marginTop: "10px", color: "#64748b" }}>No hay ONUs sin autorizar para los filtros seleccionados.</p>
+          <p style={{ marginTop: "10px", color: (isDark ? "#93a2bd" : "#64748b") }}>No hay ONUs sin autorizar para los filtros seleccionados.</p>
         ) : (
           <div style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
             {onusFiltradas.map((item) => (
-              <div key={item.idLocal} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "10px", background: "#f8fafc" }}>
-                <div style={{ fontWeight: 800, color: "#1e3a8a" }}>{item.sn || "-"}</div>
-                <div style={{ marginTop: "2px", color: "#475569", fontSize: "13px" }}>
+              <div key={item.idLocal} style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "10px", padding: "10px", background: isDark ? "#16213a" : "#f8fafc" }}>
+                <div style={{ fontWeight: 800, color: (isDark ? "#7fa1d4" : "#1e3a8a") }}>{item.sn || "-"}</div>
+                <div style={{ marginTop: "2px", color: (isDark ? "#a9bcdd" : "#475569"), fontSize: "13px" }}>
                   {item.ponType || "-"} | Board {item.board || "-"} | Port {item.port || "-"} | ONU {item.onu || "-"}
                 </div>
-                <div style={{ marginTop: "2px", color: "#64748b", fontSize: "13px" }}>Type: {item.onuTypeName || "-"} | OLT: {item.oltId || "-"}</div>
+                <div style={{ marginTop: "2px", color: (isDark ? "#93a2bd" : "#64748b"), fontSize: "13px" }}>Type: {item.onuTypeName || "-"} | OLT: {item.oltId || "-"}</div>
                 <button
                   type="button"
                   onClick={() => abrirPreAutorizacion(item)}
@@ -636,21 +637,21 @@ export default function SmartOltPanel() {
       </div>
 
       {onuSeleccionada ? (
-        <div style={{ border: "1px solid #dbe4ef", borderRadius: "14px", background: "#fff", padding: "16px", display: "grid", gap: "10px" }}>
+        <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", borderRadius: "14px", background: isDark ? "#1a2740" : "#fff", padding: "16px", display: "grid", gap: "10px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" }}>
-            <h3 style={{ margin: 0, fontSize: "18px", color: "#1f2937" }}>Pre-autorización ONU</h3>
-            <button type="button" onClick={() => setOnuSeleccionada(null)} style={{ border: "1px solid #cbd5e1", borderRadius: "8px", background: "#fff", color: "#334155", padding: "7px 10px", fontWeight: 700, cursor: "pointer" }}>
+            <h3 style={{ margin: 0, fontSize: "18px", color: (isDark ? "#e6ecf7" : "#1f2937") }}>Pre-autorización ONU</h3>
+            <button type="button" onClick={() => setOnuSeleccionada(null)} style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "8px", background: isDark ? "#16213a" : "#fff", color: (isDark ? "#c3d3ee" : "#334155"), padding: "7px 10px", fontWeight: 700, cursor: "pointer" }}>
               Cerrar
             </button>
           </div>
-          <div style={{ color: "#64748b", fontSize: "13px" }}>OLT: {onuSeleccionada.oltId || "-"} · PON: {onuSeleccionada.ponType || "-"} · Board/Port/ONU: {onuSeleccionada.board || "-"} / {onuSeleccionada.port || "-"} / {onuSeleccionada.onu || "-"}</div>
-          <div style={{ color: "#1e3a8a", fontWeight: 800 }}>SN: {onuSeleccionada.sn || "-"}</div>
+          <div style={{ color: (isDark ? "#93a2bd" : "#64748b"), fontSize: "13px" }}>OLT: {onuSeleccionada.oltId || "-"} · PON: {onuSeleccionada.ponType || "-"} · Board/Port/ONU: {onuSeleccionada.board || "-"} / {onuSeleccionada.port || "-"} / {onuSeleccionada.onu || "-"}</div>
+          <div style={{ color: (isDark ? "#7fa1d4" : "#1e3a8a"), fontWeight: 800 }}>SN: {onuSeleccionada.sn || "-"}</div>
 
           <label style={{ fontWeight: 700 }}>Orden/cliente</label>
           <select
             value={ordenSeleccionadaId}
             onChange={(e) => seleccionarOrden(e.target.value)}
-            style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px" }}
+            style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }}
           >
             <option value="">Seleccionar orden</option>
             {ordenesPendientes.map((item) => (
@@ -659,20 +660,20 @@ export default function SmartOltPanel() {
               </option>
             ))}
           </select>
-          <div style={{ color: "#64748b", fontSize: "13px" }}>Obligatorio: la orden seleccionada recibirá el SN al autorizar.</div>
+          <div style={{ color: (isDark ? "#93a2bd" : "#64748b"), fontSize: "13px" }}>Obligatorio: la orden seleccionada recibirá el SN al autorizar.</div>
 
           <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
-            <input value={form.userVlanId} onChange={(e) => setForm((p) => ({ ...p, userVlanId: e.target.value }))} placeholder="User VLAN-ID" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px" }} />
-            <input value={form.nombre} onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))} placeholder="Name" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px" }} />
-            <input value={form.onuExternalId} onChange={(e) => setForm((p) => ({ ...p, onuExternalId: e.target.value }))} placeholder="ONU external ID" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px" }} />
-            <input value={form.comentario} onChange={(e) => setForm((p) => ({ ...p, comentario: e.target.value }))} placeholder="Address or comment" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px" }} />
+            <input value={form.userVlanId} onChange={(e) => setForm((p) => ({ ...p, userVlanId: e.target.value }))} placeholder="User VLAN-ID" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
+            <input value={form.nombre} onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))} placeholder="Name" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
+            <input value={form.onuExternalId} onChange={(e) => setForm((p) => ({ ...p, onuExternalId: e.target.value }))} placeholder="ONU external ID" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
+            <input value={form.comentario} onChange={(e) => setForm((p) => ({ ...p, comentario: e.target.value }))} placeholder="Address or comment" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
           </div>
 
           {String(onuSeleccionada.sn || "").toUpperCase().startsWith("MST") ? (
             <div style={{ border: "1px solid #f59e0b", background: "#fff8e1", borderRadius: "10px", padding: "10px", display: "grid", gap: "8px" }}>
               <div style={{ color: "#a44a00", fontWeight: 700 }}>SN MST detectado</div>
-              <div style={{ color: "#64748b", fontSize: "13px" }}>Recomendado: aplicar custom profile antes o después de autorizar.</div>
-              <input value={customProfile} onChange={(e) => setCustomProfile(e.target.value)} placeholder="Generic_1" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px", background: "#fff" }} />
+              <div style={{ color: (isDark ? "#93a2bd" : "#64748b"), fontSize: "13px" }}>Recomendado: aplicar custom profile antes o después de autorizar.</div>
+              <input value={customProfile} onChange={(e) => setCustomProfile(e.target.value)} placeholder="Generic_1" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
               <button type="button" onClick={() => void cambiarProfileManual()} disabled={cambiandoProfile} style={{ border: "none", borderRadius: "8px", background: "#f59e0b", color: "#fff", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>
                 {cambiandoProfile ? "Aplicando..." : "Aplicar custom profile"}
               </button>
@@ -682,8 +683,8 @@ export default function SmartOltPanel() {
           {String(onuSeleccionada.sn || "").toUpperCase().startsWith("HWT") ? (
             <div style={{ border: "1px solid #0ea5e9", background: "#f3f7ff", borderRadius: "10px", padding: "10px", display: "grid", gap: "8px" }}>
               <div style={{ color: "#0c4a6e", fontWeight: 700 }}>PPPoE para ONU HWT</div>
-              <input value={pppoeUser} onChange={(e) => setPppoeUser(e.target.value)} placeholder="Usuario PPPoE" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px", background: "#fff" }} />
-              <input value={pppoePass} onChange={(e) => setPppoePass(e.target.value)} placeholder="Clave PPPoE" style={{ border: "1px solid #cbd5e1", borderRadius: "10px", padding: "10px 12px", background: "#fff" }} />
+              <input value={pppoeUser} onChange={(e) => setPppoeUser(e.target.value)} placeholder="Usuario PPPoE" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
+              <input value={pppoePass} onChange={(e) => setPppoePass(e.target.value)} placeholder="Clave PPPoE" style={{ border: (isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1"), borderRadius: "10px", padding: "10px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a" }} />
               <button type="button" onClick={() => void configurarPppoeManual()} disabled={configurandoPppoe} style={{ border: "none", borderRadius: "8px", background: "#1d4ed8", color: "#fff", padding: "8px 12px", fontWeight: 700, cursor: "pointer" }}>
                 {configurandoPppoe ? "Aplicando PPPoE..." : "Aplicar PPPoE ahora"}
               </button>

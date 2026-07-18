@@ -9,12 +9,13 @@ function toSearch(v) {
   return text(v).toLowerCase();
 }
 
-const card = {
-  background: "#fff",
-  border: "1px solid #d9e3f0",
+const getCard = (isDark) => ({
+  background: isDark ? "#1a2740" : "#fff",
+  border: isDark ? "1px solid #2c3c58" : "1px solid #d9e3f0",
   borderRadius: "14px",
   padding: "16px",
-};
+  color: isDark ? "#e6ecf7" : undefined,
+});
 
 const badge = {
   display: "inline-block",
@@ -24,7 +25,9 @@ const badge = {
   padding: "6px 10px",
 };
 
-export default function ConciliacionOnusPanel({ isMobile = false }) {
+export default function ConciliacionOnusPanel({ isMobile = false, theme }) {
+  const isDark = theme === "dark";
+  const card = getCard(isDark);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -223,8 +226,8 @@ export default function ConciliacionOnusPanel({ isMobile = false }) {
   return (
     <div style={{ display: "grid", gap: "16px" }}>
       <div style={card}>
-        <h3 style={{ margin: "0 0 8px 0", fontSize: "24px", color: "#0b2f5b" }}>Conciliacion manual ONUs</h3>
-        <p style={{ margin: 0, color: "#4b5f78" }}>
+        <h3 style={{ margin: "0 0 8px 0", fontSize: "24px", color: isDark ? "#7fa1d4" : "#0b2f5b" }}>Conciliacion manual ONUs</h3>
+        <p style={{ margin: 0, color: isDark ? "#93a2bd" : "#4b5f78" }}>
           Resuelve relaciones ONU-liquidacion en tablas puente. No modifica inventario final.
         </p>
       </div>
@@ -269,7 +272,7 @@ export default function ConciliacionOnusPanel({ isMobile = false }) {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: "center", color: "#6b7280", padding: "20px" }}>
+                    <td colSpan={7} style={{ textAlign: "center", color: (isDark ? "#93a2bd" : "#6b7280"), padding: "20px" }}>
                       No hay filas para mostrar.
                     </td>
                   </tr>
@@ -312,12 +315,12 @@ export default function ConciliacionOnusPanel({ isMobile = false }) {
         </div>
 
         <div style={card}>
-          <h4 style={{ margin: "0 0 10px 0", color: "#102a43" }}>Resolucion manual</h4>
+          <h4 style={{ margin: "0 0 10px 0", color: isDark ? "#7fa1d4" : "#102a43" }}>Resolucion manual</h4>
           {!selected ? (
-            <p style={{ margin: 0, color: "#6b7280" }}>Selecciona una ONU de la lista para ver sugerencias.</p>
+            <p style={{ margin: 0, color: (isDark ? "#93a2bd" : "#6b7280") }}>Selecciona una ONU de la lista para ver sugerencias.</p>
           ) : (
             <div style={{ display: "grid", gap: "10px" }}>
-              <div style={{ padding: "10px", border: "1px solid #e2e8f0", borderRadius: "10px", background: "#f8fbff" }}>
+              <div style={{ padding: "10px", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "10px", background: isDark ? "#16213a" : "#f8fbff" }}>
                 <div><strong>IDONU:</strong> {text(selected.id_onu) || "-"}</div>
                 <div><strong>Cliente:</strong> {text(selected.nombre_cliente) || "-"}</div>
                 <div><strong>DNI:</strong> {text(selected.dni) || "-"}</div>
@@ -325,7 +328,7 @@ export default function ConciliacionOnusPanel({ isMobile = false }) {
                 <div><strong>Actual:</strong> {text(selected.liquidacion_codigo) || "-"}</div>
               </div>
 
-              <label style={{ fontWeight: 700, color: "#274060" }}>Liquidacion codigo (manual)</label>
+              <label style={{ fontWeight: 700, color: (isDark ? "#a9bcdd" : "#274060") }}>Liquidacion codigo (manual)</label>
               <div style={{ display: "flex", gap: "8px" }}>
                 <input
                   type="text"
@@ -340,20 +343,20 @@ export default function ConciliacionOnusPanel({ isMobile = false }) {
               </div>
 
               <div style={{ marginTop: "8px" }}>
-                <div style={{ fontWeight: 700, color: "#274060", marginBottom: "6px" }}>Sugerencias</div>
+                <div style={{ fontWeight: 700, color: (isDark ? "#a9bcdd" : "#274060"), marginBottom: "6px" }}>Sugerencias</div>
                 {suggestions.length === 0 ? (
-                  <p style={{ margin: 0, color: "#6b7280" }}>Sin sugerencias automáticas para esta ONU.</p>
+                  <p style={{ margin: 0, color: (isDark ? "#93a2bd" : "#6b7280") }}>Sin sugerencias automáticas para esta ONU.</p>
                 ) : (
                   <div style={{ display: "grid", gap: "8px" }}>
                     {suggestions.map((s, idx) => (
-                      <div key={`sg-${idx}-${s.codigo}`} style={{ border: "1px solid #e2e8f0", borderRadius: "10px", padding: "8px" }}>
+                      <div key={`sg-${idx}-${s.codigo}`} style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "10px", padding: "8px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
                           <strong>{text(s.codigo)}</strong>
                           <span style={{ ...badge, background: "#eff6ff", color: "#1e3a8a", padding: "4px 8px", fontSize: "11px" }}>
                             {text(s.confianza)}
                           </span>
                         </div>
-                        <div style={{ fontSize: "12px", color: "#475569", marginTop: "4px" }}>
+                        <div style={{ fontSize: "12px", color: isDark ? "#a9bcdd" : "#475569", marginTop: "4px" }}>
                           {text(s.fuente)} | DNI: {text(s.dni) || "-"} | NODO: {text(s.nodo) || "-"}
                         </div>
                         <div style={{ marginTop: "8px" }}>

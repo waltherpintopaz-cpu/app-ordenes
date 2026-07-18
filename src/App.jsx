@@ -16981,7 +16981,7 @@ export default function App() {
               </div>
             )}
 
-            {historialAppsheetSubmenu === "conciliacionOnus" && <ConciliacionOnusPanel isMobile={isMobile} />}
+            {historialAppsheetSubmenu === "conciliacionOnus" && <ConciliacionOnusPanel isMobile={isMobile} theme={theme} />}
 
             {historialAppsheetSubmenu === "ordenesBaseData" && (
               <div style={{ ...cardStyle, padding: 0, overflow: "hidden", borderColor: "#d7e2ef" }}>
@@ -19091,7 +19091,7 @@ export default function App() {
           </div>
         )}
 
-        {vistaActiva === "smartOlt" && <SmartOltPanel />}
+        {vistaActiva === "smartOlt" && <SmartOltPanel theme={theme} />}
 
         {vistaActiva === "seguimientoTecnicos" && (
           <SeguimientoTecnicosPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
