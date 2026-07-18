@@ -14,7 +14,8 @@ const accionColor = (a) => {
   return { bg: "#f1f5f9", c: "#475569" };
 };
 
-export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) {
+export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle, theme }) {
+  const isDark = theme === "dark";
   const [logsData, setLogsData] = useState([]);
   const [logsCargando, setLogsCargando] = useState(true);
   const [filtroAccion, setFiltroAccion] = useState("");
@@ -132,12 +133,12 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
       {logsCargando ? (
         <div style={{ ...cardStyle, textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando logs...</div>
       ) : (
-        <div style={{ border: "1px solid #f1f5f9", borderRadius: 14, overflow: "hidden" }}>
+        <div style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", borderRadius: 14, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr style={{ background: "#f8fafc" }}>
+              <tr style={{ background: isDark ? "#16213a" : "#f8fafc" }}>
                 {["Fecha", "Usuario", "Rol", "Empresa", "Acción", "Criticidad", "Detalle", "Dispositivo"].map(h => (
-                  <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", borderBottom: "1.5px solid #f1f5f9" }}>{h}</th>
+                  <th key={h} style={{ textAlign: "left", padding: "9px 12px", fontWeight: 700, fontSize: 10, color: isDark ? "#93a2bd" : "#94a3b8", textTransform: "uppercase", letterSpacing: "0.07em", borderBottom: isDark ? "1.5px solid #2c3c58" : "1.5px solid #f1f5f9" }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -146,15 +147,15 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
                 const ac = accionColor(l.accion);
                 const det = l.detalle || {};
                 return (
-                  <tr key={l.id} style={{ borderTop: "1px solid #f8fafc" }}
-                    onMouseEnter={e => e.currentTarget.style.background = "#fafbff"}
+                  <tr key={l.id} style={{ borderTop: isDark ? "1px solid #16213a" : "1px solid #f8fafc" }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#fafbff"}
                     onMouseLeave={e => e.currentTarget.style.background = ""}>
-                    <td style={{ padding: "9px 12px", color: "#475569", whiteSpace: "nowrap" }}>
+                    <td style={{ padding: "9px 12px", color: isDark ? "#a9bcdd" : "#475569", whiteSpace: "nowrap" }}>
                       {new Date(l.fecha).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}
                     </td>
-                    <td style={{ padding: "9px 12px", fontWeight: 700, color: "#0f172a" }}>{l.usuario || "-"}</td>
-                    <td style={{ padding: "9px 12px", color: "#64748b" }}>{l.rol || "-"}</td>
-                    <td style={{ padding: "9px 12px", color: "#64748b" }}>{l.empresa || "-"}</td>
+                    <td style={{ padding: "9px 12px", fontWeight: 700, color: isDark ? "#e6ecf7" : "#0f172a" }}>{l.usuario || "-"}</td>
+                    <td style={{ padding: "9px 12px", color: isDark ? "#93a2bd" : "#64748b" }}>{l.rol || "-"}</td>
+                    <td style={{ padding: "9px 12px", color: isDark ? "#93a2bd" : "#64748b" }}>{l.empresa || "-"}</td>
                     <td style={{ padding: "9px 12px" }}>
                       <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: ac.bg, color: ac.c }}>{l.accion || "-"}</span>
                     </td>
@@ -163,7 +164,7 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
                         {l.criticidad === "critica" ? "🔴 Crítica" : "🟢 Normal"}
                       </span>
                     </td>
-                    <td style={{ padding: "9px 12px", color: "#475569", maxWidth: 260, fontSize: 11 }}>
+                    <td style={{ padding: "9px 12px", color: isDark ? "#a9bcdd" : "#475569", maxWidth: 260, fontSize: 11 }}>
                       {det.codigo && <span><b>Orden:</b> {det.codigo} </span>}
                       {det.cliente && <span><b>Cliente:</b> {det.cliente} </span>}
                       {det.nombre && <span><b>Nombre:</b> {det.nombre} </span>}
@@ -172,12 +173,12 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
                       {det.motivo && <span><b>Motivo:</b> {det.motivo}</span>}
                       {det.empresa && <span><b>Empresa:</b> {det.empresa}</span>}
                     </td>
-                    <td style={{ padding: "9px 12px", color: "#94a3b8" }}>{l.dispositivo || "web"}</td>
+                    <td style={{ padding: "9px 12px", color: isDark ? "#93a2bd" : "#94a3b8" }}>{l.dispositivo || "web"}</td>
                   </tr>
                 );
               })}
               {logsPag.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: "30px", textAlign: "center", color: "#94a3b8" }}>Sin logs con los filtros actuales</td></tr>
+                <tr><td colSpan={8} style={{ padding: "30px", textAlign: "center", color: isDark ? "#93a2bd" : "#94a3b8" }}>Sin logs con los filtros actuales</td></tr>
               )}
             </tbody>
           </table>
@@ -186,13 +187,13 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle }) 
 
       {/* Paginación */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>
+        <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#94a3b8" }}>
           {logsFiltrados.length === 0 ? 0 : (page - 1) * LOGS_PAGE_SIZE + 1}–{Math.min(page * LOGS_PAGE_SIZE, logsFiltrados.length)} de {logsFiltrados.length}
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>← Ant.</button>
-          <span style={{ fontSize: 12, color: "#64748b", padding: "0 8px", alignSelf: "center" }}>Pág. {page} / {totalPags}</span>
-          <button onClick={() => setPage(p => Math.min(totalPags, p + 1))} disabled={page >= totalPags} style={{ padding: "7px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: "#475569" }}>Sig. →</button>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: "7px 14px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: isDark ? "#c3d3ee" : "#475569" }}>← Ant.</button>
+          <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748b", padding: "0 8px", alignSelf: "center" }}>Pág. {page} / {totalPags}</span>
+          <button onClick={() => setPage(p => Math.min(totalPags, p + 1))} disabled={page >= totalPags} style={{ padding: "7px 14px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 9, fontSize: 12, fontWeight: 600, cursor: "pointer", color: isDark ? "#c3d3ee" : "#475569" }}>Sig. →</button>
         </div>
       </div>
     </div>
