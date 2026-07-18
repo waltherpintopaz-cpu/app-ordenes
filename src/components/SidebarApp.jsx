@@ -1293,8 +1293,6 @@ export default function SidebarApp() {
   async function mwSincronizar() {
     if (!mwMkwId || !mwCliSupa) return;
     setMwSyncLoad(true); setMwMsg("");
-    // Mismo NODO_LABEL_FALLBACK que App.jsx (Nod_03=3, no 10)
-    const NODO_LABEL_FALLBACK = { "Nod_01":1, "Nod_02":2, "Nod_03":3, "Nod_04":5, "Nod_06":11 };
     try {
       const nodo = mwCliSupa.nodo || "Nod_01";
       const esDim = mwEsDim(nodo);
@@ -1323,9 +1321,12 @@ export default function SidebarApp() {
       const movil = esDim
         ? movilRaw.split(",").map(t => { const s=t.trim(); return s && !s.startsWith("51") ? "51"+s : s; }).filter(Boolean).join(",")
         : movilRaw;
-      // 4. Calcular nodo numérico con mismo fallback que App.jsx
+      // 4. Calcular nodo numérico con mismo fallback que App.jsx (usa el mismo
+      // mapa MW_NODO_MAP que ya usa el resto del archivo — antes habia una copia
+      // separada con Nod_03=3, un valor incorrecto que no corresponde a ningun
+      // router real de Mikrowisp).
       const nodoServicio = d.servicios?.[0]?.nodo ?? null;
-      const nodoFallback = NODO_LABEL_FALLBACK[String(nodo).trim()] ?? null;
+      const nodoFallback = MW_NODO_MAP[String(nodo).trim()] ?? null;
       const nodoNum = nodoServicio !== null ? Number(nodoServicio) : (nodoFallback !== null ? Number(nodoFallback) : null);
       // 5. DELETE + INSERT (evita conflictos en índices funcionales, igual que App.jsx)
       let delQ = supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", d.id);
