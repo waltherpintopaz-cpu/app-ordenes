@@ -14173,10 +14173,10 @@ export default function App() {
 
   if (!usuarioSesion) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", fontFamily: '"Inter", "Segoe UI", sans-serif' }}>
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: isMobile ? "column" : "row", fontFamily: '"Inter", "Segoe UI", sans-serif' }}>
 
         {/* Panel izquierdo — visual azul */}
-        <div style={{ flex: 1, background: "linear-gradient(145deg, #1249a0 0%, #1B6EC4 45%, #2389e0 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px", position: "relative", overflow: "hidden" }}>
+        <div style={{ flex: isMobile ? "0 0 auto" : 1, background: "linear-gradient(145deg, #1249a0 0%, #1B6EC4 45%, #2389e0 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: isMobile ? "36px 24px" : "48px", position: "relative", overflow: "hidden" }}>
           {/* Círculos decorativos */}
           <div style={{ position: "absolute", top: "-80px", left: "-80px", width: "340px", height: "340px", borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
           <div style={{ position: "absolute", bottom: "-60px", right: "-60px", width: "280px", height: "280px", borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
@@ -14186,20 +14186,22 @@ export default function App() {
             <img
               src="/americanet-logo-clean.png"
               alt="Americanet"
-              style={{ width: "220px", maxWidth: "100%", height: "auto", objectFit: "contain", filter: "brightness(0) invert(1)", marginBottom: "40px" }}
+              style={{ width: isMobile ? "160px" : "220px", maxWidth: "100%", height: "auto", objectFit: "contain", filter: "brightness(0) invert(1)", marginBottom: isMobile ? "20px" : "40px" }}
             />
-            <div style={{ fontSize: "38px", fontWeight: 800, color: "#ffffff", lineHeight: 1.15, marginBottom: "16px", letterSpacing: "-0.02em" }}>
+            <div style={{ fontSize: isMobile ? "26px" : "38px", fontWeight: 800, color: "#ffffff", lineHeight: 1.15, marginBottom: "12px", letterSpacing: "-0.02em" }}>
               Bienvenido.
             </div>
-            <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.72)", lineHeight: 1.6, fontWeight: 400 }}>
-              Sistema de gestión de órdenes de trabajo para el equipo Americanet.
-            </div>
+            {!isMobile && (
+              <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.72)", lineHeight: 1.6, fontWeight: 400 }}>
+                Sistema de gestión de órdenes de trabajo para el equipo Americanet.
+              </div>
+            )}
           </div>
         </div>
 
         {/* Panel derecho — formulario */}
-        <div style={{ width: "420px", flexShrink: 0, background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 40px" }}>
-          <div style={{ width: "100%" }}>
+        <div style={{ width: isMobile ? "100%" : "420px", flexShrink: 0, background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? "32px 24px 40px" : "48px 40px" }}>
+          <div style={{ width: "100%", maxWidth: isMobile ? "420px" : "100%" }}>
             <div style={{ marginBottom: "36px" }}>
               <div style={{ fontSize: "24px", fontWeight: 700, color: "#1a2332", marginBottom: "6px" }}>Iniciar sesión</div>
               <div style={{ fontSize: "14px", color: "#6b7280" }}>Ingresa tus credenciales para continuar</div>
