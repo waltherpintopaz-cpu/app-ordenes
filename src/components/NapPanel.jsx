@@ -84,7 +84,9 @@ const EMPTY_FORM = {
   fotos: [], fecha_instalacion: "",
 };
 
-export default function NapPanel({ sessionUser, rolSesion }) {
+export default function NapPanel({ sessionUser, rolSesion, theme }) {
+  const isDark = theme === "dark";
+  const styles = getStyles(isDark);
   const [cajas, setCajas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtroNodo, setFiltroNodo] = useState("Todos");
@@ -692,50 +694,50 @@ export default function NapPanel({ sessionUser, rolSesion }) {
   );
 }
 
-const styles = {
-  root: { fontFamily: "Inter, Arial, sans-serif", color: "#111827" },
+const getStyles = (isDark) => ({
+  root: { fontFamily: "Inter, Arial, sans-serif", color: isDark ? "#e6ecf7" : "#111827" },
   toast: { position: "fixed", top: 20, right: 20, padding: "12px 20px", borderRadius: 10, color: "#fff", fontWeight: 600, fontSize: 14, zIndex: 9999, boxShadow: "0 4px 20px rgba(0,0,0,0.15)" },
   pageHeader: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" },
-  pageTitle: { margin: 0, fontSize: 20, fontWeight: 700, color: "#163f86" },
-  pageSub: { margin: "3px 0 0", fontSize: 13, color: "#5e718f" },
+  pageTitle: { margin: 0, fontSize: 20, fontWeight: 700, color: isDark ? "#7fa1d4" : "#163f86" },
+  pageSub: { margin: "3px 0 0", fontSize: 13, color: isDark ? "#93a2bd" : "#5e718f" },
   statsRow: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 18 },
-  statCard: { borderRadius: 12, padding: "12px 14px", border: "1px solid #e4eaf4" },
+  statCard: { borderRadius: 12, padding: "12px 14px", border: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4" },
   filtersRow: { display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" },
-  searchInput: { flex: 1, minWidth: 200, padding: "8px 12px", border: "1.5px solid #e4eaf4", borderRadius: 8, fontSize: 13, background: "#f8fafc", outline: "none", color: "#111827", fontFamily: "inherit" },
-  select: { padding: "8px 10px", border: "1.5px solid #e4eaf4", borderRadius: 8, fontSize: 13, background: "#f8fafc", color: "#111827", outline: "none", cursor: "pointer" },
+  searchInput: { flex: 1, minWidth: 200, padding: "8px 12px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e4eaf4", borderRadius: 8, fontSize: 13, background: isDark ? "#0d172a" : "#f8fafc", outline: "none", color: isDark ? "#e6ecf7" : "#111827", fontFamily: "inherit" },
+  select: { padding: "8px 10px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e4eaf4", borderRadius: 8, fontSize: 13, background: isDark ? "#0d172a" : "#f8fafc", color: isDark ? "#e6ecf7" : "#111827", outline: "none", cursor: "pointer" },
   splitLayout: { display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "start" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 },
-  cajaCard: { background: "#fff", borderRadius: 12, padding: "14px 16px", border: "1px solid #e4eaf4", cursor: "pointer", transition: "box-shadow .15s", boxShadow: "0 2px 8px -4px rgba(17,47,94,0.1)", display: "grid", gap: 8 },
+  cajaCard: { background: isDark ? "#1a2740" : "#fff", borderRadius: 12, padding: "14px 16px", border: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4", cursor: "pointer", transition: "box-shadow .15s", boxShadow: "0 2px 8px -4px rgba(17,47,94,0.1)", display: "grid", gap: 8 },
   cajaCardSelected: { borderColor: "#93c5fd", boxShadow: "0 0 0 2px #bfdbfe" },
   cajaCardTop: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 },
-  cajaCodigo: { fontSize: 14, fontWeight: 700, color: "#163f86" },
-  cajaSector: { fontSize: 11, color: "#6b7280", marginTop: 1 },
+  cajaCodigo: { fontSize: 14, fontWeight: 700, color: isDark ? "#7fa1d4" : "#163f86" },
+  cajaSector: { fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 1 },
   estadoBadge: { fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6, border: "1px solid", whiteSpace: "nowrap" },
   cajaCardFooter: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   btnIconEdit: { padding: "3px 8px", fontSize: 12, background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, cursor: "pointer", color: "#1d4ed8" },
   btnIconDel: { padding: "3px 8px", fontSize: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", color: "#dc2626" },
-  detallePanel: { background: "#fff", borderRadius: 14, padding: 18, border: "1px solid #e4eaf4", boxShadow: "0 4px 16px -8px rgba(17,47,94,0.12)", position: "sticky", top: 90, maxHeight: "80vh", overflowY: "auto" },
+  detallePanel: { background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 18, border: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4", boxShadow: "0 4px 16px -8px rgba(17,47,94,0.12)", position: "sticky", top: 90, maxHeight: "80vh", overflowY: "auto" },
   detallePanelHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
-  detalleCodigo: { fontSize: 18, fontWeight: 800, color: "#163f86" },
-  detalleSector: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  detalleCodigo: { fontSize: 18, fontWeight: 800, color: isDark ? "#7fa1d4" : "#163f86" },
+  detalleSector: { fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2 },
   detalleInfoGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 },
   detalleInfoRow: { display: "flex", flexDirection: "column", gap: 1 },
-  detalleInfoLabel: { fontSize: 10, fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em" },
-  detalleInfoVal: { fontSize: 12, color: "#111827", fontWeight: 500 },
-  obsBox: { background: "#f8fafc", border: "1px solid #e4eaf4", borderRadius: 8, padding: "10px 12px", marginBottom: 14 },
-  clienteRow: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "#f8fafc", borderRadius: 8, border: "1px solid #f1f5f9" },
-  center: { textAlign: "center", padding: "48px 0", color: "#6b7280", fontSize: 14 },
+  detalleInfoLabel: { fontSize: 10, fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.04em" },
+  detalleInfoVal: { fontSize: 12, color: isDark ? "#e6ecf7" : "#111827", fontWeight: 500 },
+  obsBox: { background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4", borderRadius: 8, padding: "10px 12px", marginBottom: 14 },
+  clienteRow: { display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9" },
+  center: { textAlign: "center", padding: "48px 0", color: isDark ? "#93a2bd" : "#6b7280", fontSize: 14 },
   btnPrimary: { padding: "9px 18px", background: "#2563eb", border: "none", borderRadius: 8, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
-  btnSecondary: { padding: "9px 18px", background: "#f8fafc", border: "1.5px solid #e4eaf4", borderRadius: 8, color: "#374151", fontWeight: 600, fontSize: 13, cursor: "pointer" },
-  btnClose: { padding: "4px 10px", background: "#f1f5f9", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, color: "#374151" },
+  btnSecondary: { padding: "9px 18px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e4eaf4", borderRadius: 8, color: isDark ? "#c3d3ee" : "#374151", fontWeight: 600, fontSize: 13, cursor: "pointer" },
+  btnClose: { padding: "4px 10px", background: isDark ? "#16213a" : "#f1f5f9", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, color: isDark ? "#c3d3ee" : "#374151" },
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 },
-  modal: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 700, maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column" },
-  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #e4eaf4" },
-  modalTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: "#163f86" },
+  modal: { background: isDark ? "#1a2740" : "#fff", borderRadius: 16, width: "100%", maxWidth: 700, maxHeight: "90vh", overflow: "hidden", display: "flex", flexDirection: "column" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4" },
+  modalTitle: { margin: 0, fontSize: 16, fontWeight: 700, color: isDark ? "#7fa1d4" : "#163f86" },
   modalBody: { padding: "18px 20px", overflowY: "auto", flex: 1, display: "grid", gap: 12 },
-  modalFooter: { padding: "14px 20px", borderTop: "1px solid #e4eaf4", display: "flex", justifyContent: "flex-end", gap: 10 },
+  modalFooter: { padding: "14px 20px", borderTop: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4", display: "flex", justifyContent: "flex-end", gap: 10 },
   formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   fg: { display: "grid", gap: 4 },
-  label: { fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em" },
-  input: { padding: "8px 12px", border: "1.5px solid #e4eaf4", borderRadius: 8, fontSize: 13, color: "#111827", background: "#f8fafc", outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" },
-};
+  label: { fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em" },
+  input: { padding: "8px 12px", border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e4eaf4", borderRadius: 8, fontSize: 13, color: isDark ? "#e6ecf7" : "#111827", background: isDark ? "#0d172a" : "#f8fafc", outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" },
+});

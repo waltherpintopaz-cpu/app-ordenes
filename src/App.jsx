@@ -13669,15 +13669,16 @@ export default function App() {
   }, [vistaActiva, ordenesMapaFiltradas]);
 
   const isMobile = typeof window !== "undefined" ? window.innerWidth < 900 : false;
+  const isDark = theme === "dark";
 
   const navTo = (key) => { setVistaActiva(key); if (isMobile) setSidebarOpen(false); };
 
   const pageStyle = {
     minHeight: "100vh",
-    background: "#f4f6fb",
+    background: isDark ? "#0f172a" : "#f4f6fb",
     padding: "32px 16px",
     fontFamily: "Inter, Arial, sans-serif",
-    color: "#111827",
+    color: isDark ? "#e6ecf7" : "#111827",
   };
 
   const containerStyle = {
@@ -13703,14 +13704,14 @@ export default function App() {
 
   const subtitleStyle = {
     margin: "6px 0 0 0",
-    color: "#5e718f",
+    color: isDark ? "#93a2bd" : "#5e718f",
     fontSize: "14px",
   };
 
   const menuButton = (active) => ({
-    background: active ? "#2b5fb8" : "#ffffff",
-    color: active ? "#ffffff" : "#1f2937",
-    border: "1px solid #d2def2",
+    background: active ? "#2b5fb8" : (isDark ? "#1a2740" : "#ffffff"),
+    color: active ? "#ffffff" : (isDark ? "#e6ecf7" : "#1f2937"),
+    border: isDark ? "1px solid #2c3c58" : "1px solid #d2def2",
     borderRadius: "12px",
     padding: "12px 18px",
     cursor: "pointer",
@@ -13725,18 +13726,18 @@ export default function App() {
   };
 
   const cardStyle = {
-    background: "#ffffff",
+    background: isDark ? "#1a2740" : "#ffffff",
     borderRadius: "16px",
     padding: "20px",
     boxShadow: "0 8px 22px -20px rgba(17, 47, 94, 0.35)",
-    border: "1px solid #e4eaf4",
+    border: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4",
   };
 
   const sectionTitleStyle = {
     margin: "0 0 18px 0",
     fontSize: "18px",
     fontWeight: "700",
-    color: "#163f86",
+    color: isDark ? "#7fa1d4" : "#163f86",
   };
 
   const formGridStyle = {
@@ -13754,19 +13755,19 @@ export default function App() {
     marginBottom: "8px",
     fontSize: "13px",
     fontWeight: "600",
-    color: "#36577f",
+    color: isDark ? "#a9bcdd" : "#36577f",
   };
 
   const inputStyle = {
     width: "100%",
     padding: "12px 14px",
     borderRadius: "12px",
-    border: "1px solid #dbe3ee",
+    border: isDark ? "1px solid #2c3c58" : "1px solid #dbe3ee",
     fontSize: "14px",
     outline: "none",
     boxSizing: "border-box",
-    background: "#ffffff",
-    color: "#1f3656",
+    background: isDark ? "#0d172a" : "#ffffff",
+    color: isDark ? "#e6ecf7" : "#1f3656",
   };
 
   const textareaStyle = {
@@ -13787,9 +13788,9 @@ export default function App() {
   };
 
   const secondaryButton = {
-    background: "#ffffff",
-    color: "#17428a",
-    border: "1px solid #dbe3ee",
+    background: isDark ? "#1a2740" : "#ffffff",
+    color: isDark ? "#7fa1d4" : "#17428a",
+    border: isDark ? "1px solid #2c3c58" : "1px solid #dbe3ee",
     borderRadius: "12px",
     padding: "12px 18px",
     cursor: "pointer",
@@ -13843,8 +13844,8 @@ export default function App() {
   };
 
   const dangerButton = {
-    background: "#fff",
-    color: "#b91c1c",
+    background: isDark ? "#1a2740" : "#fff",
+    color: "#e57373",
     border: "1px solid #f7d0c8",
     borderRadius: "10px",
     padding: "8px 12px",
@@ -13933,8 +13934,6 @@ export default function App() {
     alignItems: "center",
     justifyContent: "center",
   };
-
-  const isDark = theme === "dark";
 
   const appShellStyle = {
     minHeight: "100vh",
@@ -14671,12 +14670,12 @@ export default function App() {
 
           const kpiCard = (label, value, color, sub) => (
             <div key={label} style={{
-              background: "#fff", borderRadius: "14px", padding: "18px 20px",
-              border: "1px solid #e4eaf4", boxShadow: "0 1px 4px rgba(43,95,184,0.07)",
+              background: isDark ? "#1a2740" : "#fff", borderRadius: "14px", padding: "18px 20px",
+              border: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4", boxShadow: "0 1px 4px rgba(43,95,184,0.07)",
             }}>
-              <div style={{ fontSize: "13px", color: "#6b7280", fontWeight: 500, marginBottom: "6px" }}>{label}</div>
+              <div style={{ fontSize: "13px", color: isDark ? "#93a2bd" : "#6b7280", fontWeight: 500, marginBottom: "6px" }}>{label}</div>
               <div style={{ fontSize: "32px", fontWeight: "800", color, lineHeight: 1 }}>{value}</div>
-              {sub && <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "6px" }}>{sub}</div>}
+              {sub && <div style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", marginTop: "6px" }}>{sub}</div>}
             </div>
           );
 
@@ -14684,7 +14683,7 @@ export default function App() {
             <div style={{ display: "grid", gap: "20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                 <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Dashboard</h2>
-                <span style={{ fontSize: "13px", color: "#6b7280", background: "#f3f6fb", padding: "4px 12px", borderRadius: "20px" }}>
+                <span style={{ fontSize: "13px", color: isDark ? "#93a2bd" : "#6b7280", background: isDark ? "#16213a" : "#f3f6fb", padding: "4px 12px", borderRadius: "20px" }}>
                   {new Date().toLocaleDateString("es-PE", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
                 </span>
               </div>
@@ -14709,10 +14708,10 @@ export default function App() {
                       {tiposOrdenados.map(([tipo, cnt]) => (
                         <div key={tipo}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                            <span style={{ fontSize: "13px", color: "#374151" }}>{tipo}</span>
+                            <span style={{ fontSize: "13px", color: isDark ? "#c3d3ee" : "#374151" }}>{tipo}</span>
                             <span style={{ fontSize: "13px", fontWeight: "700", color: TIPO_COLORS[tipo] || "#6b7280" }}>{cnt}</span>
                           </div>
-                          <div style={{ height: "6px", background: "#f0f4fb", borderRadius: "3px", overflow: "hidden" }}>
+                          <div style={{ height: "6px", background: isDark ? "#0d172a" : "#f0f4fb", borderRadius: "3px", overflow: "hidden" }}>
                             <div style={{
                               height: "100%", borderRadius: "3px",
                               width: `${Math.round((cnt / maxTipo) * 100)}%`,
@@ -14735,11 +14734,11 @@ export default function App() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "10px" }}>
                       {Object.entries(nodosCount).sort((a, b) => b[1] - a[1]).map(([nodo, cnt]) => (
                         <div key={nodo} style={{
-                          background: "#f3f6fb", borderRadius: "10px", padding: "12px 14px",
+                          background: isDark ? "#16213a" : "#f3f6fb", borderRadius: "10px", padding: "12px 14px",
                           borderLeft: `4px solid ${NODO_COLORS[nodo] || "#6b7280"}`,
                         }}>
-                          <div style={{ fontSize: "12px", color: "#6b7280", fontWeight: 500 }}>{nodo}</div>
-                          <div style={{ fontSize: "24px", fontWeight: "800", color: NODO_COLORS[nodo] || "#374151" }}>{cnt}</div>
+                          <div style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280", fontWeight: 500 }}>{nodo}</div>
+                          <div style={{ fontSize: "24px", fontWeight: "800", color: NODO_COLORS[nodo] || (isDark ? "#c3d3ee" : "#374151") }}>{cnt}</div>
                         </div>
                       ))}
                     </div>
@@ -14760,18 +14759,18 @@ export default function App() {
                         <div key={tec} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                           <div style={{
                             width: "32px", height: "32px", borderRadius: "50%",
-                            background: "#e8eef8", display: "flex", alignItems: "center",
+                            background: isDark ? "#1d2c48" : "#e8eef8", display: "flex", alignItems: "center",
                             justifyContent: "center", fontSize: "13px", fontWeight: "700",
-                            color: "#2b5fb8", flexShrink: 0,
+                            color: isDark ? "#7fa1d4" : "#2b5fb8", flexShrink: 0,
                           }}>
                             {String(tec).slice(0, 1).toUpperCase()}
                           </div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
-                              <span style={{ fontSize: "13px", color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tec}</span>
-                              <span style={{ fontSize: "13px", fontWeight: "700", color: "#2b5fb8", flexShrink: 0 }}>{cnt}</span>
+                              <span style={{ fontSize: "13px", color: isDark ? "#c3d3ee" : "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tec}</span>
+                              <span style={{ fontSize: "13px", fontWeight: "700", color: isDark ? "#7fa1d4" : "#2b5fb8", flexShrink: 0 }}>{cnt}</span>
                             </div>
-                            <div style={{ height: "4px", background: "#f0f4fb", borderRadius: "2px", marginTop: "4px", overflow: "hidden" }}>
+                            <div style={{ height: "4px", background: isDark ? "#0d172a" : "#f0f4fb", borderRadius: "2px", marginTop: "4px", overflow: "hidden" }}>
                               <div style={{
                                 height: "100%", borderRadius: "2px",
                                 width: `${Math.round((cnt / maxTec) * 100)}%`,
@@ -14803,22 +14802,22 @@ export default function App() {
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                       <thead>
-                        <tr style={{ borderBottom: "2px solid #e4eaf4" }}>
+                        <tr style={{ borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #e4eaf4" }}>
                           {["Código", "Tipo", "Cliente", "Técnico", "Nodo", "Fecha", "Estado"].map((h) => (
-                            <th key={h} style={{ textAlign: "left", padding: "6px 10px", color: "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                            <th key={h} style={{ textAlign: "left", padding: "6px 10px", color: isDark ? "#93a2bd" : "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {ultimasOrdenes.map((o, i) => (
-                          <tr key={o.id || i} style={{ borderBottom: "1px solid #f0f4fb" }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = "#f8faff"}
+                          <tr key={o.id || i} style={{ borderBottom: isDark ? "1px solid #24334f" : "1px solid #f0f4fb" }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = isDark ? "#16213a" : "#f8faff"}
                             onMouseLeave={(e) => e.currentTarget.style.background = ""}
                           >
-                            <td style={{ padding: "7px 10px", fontWeight: 600, color: "#2b5fb8", whiteSpace: "nowrap" }}>{o.codigo || "-"}</td>
-                            <td style={{ padding: "7px 10px", color: "#374151" }}>{o.tipoActuacion || "-"}</td>
-                            <td style={{ padding: "7px 10px", color: "#374151", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.nombre || "-"}</td>
-                            <td style={{ padding: "7px 10px", color: "#374151" }}>{o.tecnico || <span style={{ color: "#f59e0b" }}>Sin asignar</span>}</td>
+                            <td style={{ padding: "7px 10px", fontWeight: 600, color: isDark ? "#7fa1d4" : "#2b5fb8", whiteSpace: "nowrap" }}>{o.codigo || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: isDark ? "#c3d3ee" : "#374151" }}>{o.tipoActuacion || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: isDark ? "#c3d3ee" : "#374151", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.nombre || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: isDark ? "#c3d3ee" : "#374151" }}>{o.tecnico || <span style={{ color: "#f59e0b" }}>Sin asignar</span>}</td>
                             <td style={{ padding: "7px 10px" }}>
                               {o.nodo ? (
                                 <span style={{ background: NODO_COLORS[o.nodo] ? `${NODO_COLORS[o.nodo]}18` : "#f3f6fb", color: NODO_COLORS[o.nodo] || "#6b7280", borderRadius: "6px", padding: "2px 8px", fontWeight: 600, fontSize: "12px" }}>
@@ -14826,7 +14825,7 @@ export default function App() {
                                 </span>
                               ) : "-"}
                             </td>
-                            <td style={{ padding: "7px 10px", color: "#6b7280", whiteSpace: "nowrap" }}>{o.fechaActuacion || "-"}</td>
+                            <td style={{ padding: "7px 10px", color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{o.fechaActuacion || "-"}</td>
                             <td style={{ padding: "7px 10px" }}>
                               <span style={{
                                 background: String(o.estado || "").toLowerCase().includes("proceso") ? "#fef3c7" : "#e0e7ff",
@@ -15667,12 +15666,12 @@ export default function App() {
                   const esPasada = fechaTexto && fechaTexto < today;
                   const bloqueadoPorNodo = esGestorSesion && nodosAccesoGestoraSet.size > 0 && !!item.nodo && !tieneAccesoNodoSesion(item.nodo);
                   return (
-                    <div key={item.id} style={{ background: "#fff", border: "1px solid #e8edf5", borderLeft: `4px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(15,23,42,0.04)" }}>
+                    <div key={item.id} style={{ background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5", borderLeft: `4px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(15,23,42,0.04)" }}>
 
                       {/* ── Fila superior: código + hora + badges + acciones ── */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
                           {item.empresa === "Americanet" && (
                             <img src={logoAmericanet} alt="Americanet" style={{ height: 22, maxWidth: 80, objectFit: "contain", mixBlendMode: "multiply" }} />
                           )}
@@ -15697,7 +15696,7 @@ export default function App() {
                         </div>
                         {/* Acciones principales */}
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <button onClick={async () => { if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; } setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Ver</button>
+                          <button onClick={async () => { if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; } setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", cursor: "pointer" }}>Ver</button>
                           {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
                           {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
                           {item?.snOnu && (HUAWEI_NODOS.includes(String(item?.nodo || "")) || OLT_SSH_NODOS.includes(String(item?.nodo || "")) || SMART_OLT_NODOS.includes(String(item?.nodo || ""))) && (
@@ -15705,7 +15704,7 @@ export default function App() {
                               📡 {pendSenalLoading[item.id] ? "..." : "Actualizar"}
                             </button>
                           )}
-                          {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer" }}>Cancelar</button>}
+                          {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", cursor: "pointer" }}>Cancelar</button>}
                           {puedeEliminarOrden && !bloqueadoPorNodo && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
                         </div>
                       </div>
@@ -15731,14 +15730,14 @@ export default function App() {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "10px 14px", alignItems: "center" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 20px", alignItems: "flex-start" }}>
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{item.nombre || "-"}</div>
-                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>{item.tipoActuacion || item.orden || "-"}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? "#e6ecf7" : "#0f172a" }}>{item.nombre || "-"}</div>
+                            <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#64748b", marginTop: 1 }}>{item.tipoActuacion || item.orden || "-"}</div>
                           </div>
-                          <div style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
+                          <div style={{ fontSize: 12, color: isDark ? "#a9bcdd" : "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
                             <span>📍 {item.direccion || "-"}</span>
                             <span>DNI {item.dni || "-"} · {item.celular || "sin cel."}</span>
                           </div>
-                          <div style={{ fontSize: 12, color: "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
+                          <div style={{ fontSize: 12, color: isDark ? "#a9bcdd" : "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
                             <span>👷 {item.tecnico || "Sin técnico"}</span>
                             <span>🌐 {item.nodo || "-"} · {item.usuarioNodo || "-"}</span>
                           </div>
@@ -19601,29 +19600,29 @@ export default function App() {
 
         {vistaActiva === "clientes" && (
           <div style={{ display: "grid", gap: 20 }}>
-            <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #e8edf5", boxShadow: "0 2px 16px rgba(15,23,42,0.06)", padding: "22px 26px" }}>
+            <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 20, border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5", boxShadow: "0 2px 16px rgba(15,23,42,0.06)", padding: "22px 26px" }}>
 
               {/* ── Header ── */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.4px" }}>Abonados</h2>
-                  <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
+                  <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a", letterSpacing: "-0.4px" }}>Abonados</h2>
+                  <p style={{ margin: "3px 0 0", fontSize: 12, color: isDark ? "#93a2bd" : "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {esAdminSesion && (
                     <button onClick={abrirNuevoCliente} style={{ padding: "8px 16px", background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "-0.2px" }}>+ Nuevo</button>
                   )}
-                  <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  <button onClick={() => cargarClientesDesdeSupabase({ silent: false })} disabled={clientesSyncLoading || !isSupabaseConfigured} style={{ padding: "8px 14px", background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#c3d3ee" : "#475569", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Recargar
                   </button>
-                  <button onClick={() => setMostrarColsModal(true)} style={{ padding: "8px 14px", background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  <button onClick={() => setMostrarColsModal(true)} style={{ padding: "8px 14px", background: isDark ? "#16213a" : "#f8fafc", color: isDark ? "#93a2bd" : "#64748b", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Columnas
                   </button>
                   {esAdminSesion && (
                     <div style={{ position: "relative" }}>
                       <button
                         onClick={() => setAbonadosToolsOpen(v => !v)}
-                        style={{ padding: "8px 14px", background: abonadosToolsOpen ? "#0f172a" : "#f8fafc", color: abonadosToolsOpen ? "#fff" : "#475569", border: "1px solid " + (abonadosToolsOpen ? "#0f172a" : "#e2e8f0"), borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                        style={{ padding: "8px 14px", background: abonadosToolsOpen ? "#0f172a" : (isDark ? "#16213a" : "#f8fafc"), color: abonadosToolsOpen ? "#fff" : (isDark ? "#c3d3ee" : "#475569"), border: "1px solid " + (abonadosToolsOpen ? "#0f172a" : (isDark ? "#2c3c58" : "#e2e8f0")), borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                         Herramientas <span style={{ fontSize: 10, opacity: 0.7 }}>▾</span>
                       </button>
                       {abonadosToolsOpen && (
@@ -20374,7 +20373,7 @@ export default function App() {
         )}
 
         {vistaActiva === "nap" && (
-          <NapPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
+          <NapPanel sessionUser={usuarioSesion} rolSesion={rolSesion} theme={theme} />
         )}
 
         {vistaActiva === "cobertura" && (
