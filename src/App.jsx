@@ -18578,6 +18578,7 @@ export default function App() {
             aplicaFiltroNodosGestora={false}
             nodosSesionPermitidos={[]}
             ordenesFallback={ordenes}
+            theme={theme}
           />
         )}
 

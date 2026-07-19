@@ -96,7 +96,8 @@ const napBoxSvg = (portColor = "#0284c7", selected = false) => {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40"><rect x="3" y="0.5" width="22" height="33" rx="3" fill="#cfd8dc" stroke="${borderColor}" stroke-width="${sw}"/><rect x="0" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="0" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><line x1="6" y1="7" x2="22" y2="7" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="11" x2="22" y2="11" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="15" x2="22" y2="15" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="19" x2="22" y2="19" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="23" x2="22" y2="23" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="30" r="1.5" fill="${portColor}"/><circle cx="10" cy="30" r="1.5" fill="${portColor}"/><circle cx="13" cy="30" r="1.5" fill="${portColor}"/><circle cx="16" cy="30" r="1.5" fill="${portColor}"/><circle cx="19" cy="30" r="1.5" fill="#64748b"/><circle cx="22" cy="30" r="1.5" fill="#64748b"/><polygon points="14,34 9,40 19,40" fill="${triColor}"/></svg>`)}`;
 };
 
-export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos = [], ordenesFallback = [] }) {
+export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos = [], ordenesFallback = [], theme }) {
+  const isDark = theme === "dark";
   const [ordenes, setOrdenes] = useState([]);
   const [cajas, setCajas] = useState([]);
   const [error, setError] = useState("");
@@ -535,7 +536,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const panelStyle = {
     display: "flex", flexDirection: "column", gap: 0, height: fullScreen ? "100vh" : "auto",
     position: fullScreen ? "fixed" : "relative", inset: fullScreen ? 0 : "auto",
-    zIndex: fullScreen ? 9999 : "auto", background: "#f8fafc",
+    zIndex: fullScreen ? 9999 : "auto", background: isDark ? "#0f172a" : "#f8fafc",
   };
   const toolbarStyle = {
     display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
@@ -543,7 +544,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   };
   const btnStyle = (active = false, color = "#2563eb") => ({
     padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12,
-    background: active ? color : "#e2e8f0", color: active ? "#fff" : "#374151",
+    background: active ? color : (isDark ? "#24334f" : "#e2e8f0"), color: active ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
   });
   const MAP_H = fullScreen ? "calc(100vh - 110px)" : 580;
   const mapContainerStyle = {
@@ -551,12 +552,12 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   };
   const mapCanvasStyle = { flex: 1, minWidth: 0, height: MAP_H, position: "relative" };
   const sidebarStyle = {
-    width: 300, minWidth: 280, height: "100%", overflowY: "auto", background: "#fff",
-    borderLeft: "1px solid #e2e8f0", display: "flex", flexDirection: "column",
+    width: 300, minWidth: 280, height: "100%", overflowY: "auto", background: isDark ? "#131f36" : "#fff",
+    borderLeft: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", display: "flex", flexDirection: "column",
   };
   const detailCardStyle = {
-    background: "#fff7ed", border: "1.5px solid #fed7aa", borderRadius: 10,
-    padding: "12px 14px", margin: "8px 10px", fontSize: 13,
+    background: isDark ? "#2a2013" : "#fff7ed", border: isDark ? "1.5px solid #4a3a1a" : "1.5px solid #fed7aa", borderRadius: 10,
+    padding: "12px 14px", margin: "8px 10px", fontSize: 13, color: isDark ? "#e6ecf7" : undefined,
   };
   const tagStyle = (color = "#2563eb") => ({
     display: "inline-block", padding: "2px 8px", borderRadius: 999,
@@ -586,18 +587,18 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       </div>
 
       {/* ── Filtros ── */}
-      <div style={{ display: "flex", gap: 8, padding: "8px 12px", background: "#f1f5f9", flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #e2e8f0" }}>
+      <div style={{ display: "flex", gap: 8, padding: "8px 12px", background: isDark ? "#16213a" : "#f1f5f9", flexWrap: "wrap", alignItems: "center", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0" }}>
         <input
           value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar código, cliente, caja, nodo..."
-          style={{ flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 12 }}
+          style={{ flex: 1, minWidth: 180, padding: "6px 10px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1", fontSize: 12, background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827" }}
         />
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {["TODOS", ...nodos].map((n) => (
             <button key={n} style={{ ...btnStyle(filtroNodo === n, "#1a3a6b"), padding: "4px 10px", fontSize: 11 }} onClick={() => setFiltroNodo(n)}>{n}</button>
           ))}
         </div>
-        <span style={{ fontSize: 11, color: "#6b7280" }}>{ordenesFiltradas.length} órd · {cajasFiltradas.length} cajas</span>
+        <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{ordenesFiltradas.length} órd · {cajasFiltradas.length} cajas</span>
       </div>
 
       {/* ── Buscador de ubicación ── */}
@@ -618,7 +619,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           {geocodingLoading ? "⌛" : "Ir"}
         </button>
         {miUbicacion && (
-          <span style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>
             {miUbicacion.lat.toFixed(4)}, {miUbicacion.lng.toFixed(4)}
             {cajasNear5[0] && <> · {cajasNear5[0].codigo} a {formatDist(cajasNear5[0].dist)}</>}
           </span>
@@ -638,7 +639,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         <div style={mapCanvasStyle}>
           <div ref={mapCanvasRef} style={{ width: "100%", height: MAP_H }} />
           {!mapReady && !mapError && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", fontSize: 14, color: "#6b7280" }}>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isDark ? "#0f172a" : "#f8fafc", fontSize: 14, color: isDark ? "#93a2bd" : "#6b7280" }}>
               Cargando mapa...
             </div>
           )}
@@ -658,8 +659,8 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
             ].map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)} style={{
                 flex: 1, padding: "9px 4px", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700,
-                background: tab === t.key ? "#fff" : "#f8fafc",
-                color: tab === t.key ? "#1a3a6b" : "#6b7280",
+                background: tab === t.key ? (isDark ? "#1a2740" : "#fff") : (isDark ? "#16213a" : "#f8fafc"),
+                color: tab === t.key ? "#1a3a6b" : (isDark ? "#93a2bd" : "#6b7280"),
                 borderBottom: tab === t.key ? "2px solid #1a3a6b" : "none",
               }}>{t.label}</button>
             ))}
@@ -673,7 +674,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: 14, color: "#1a3a6b" }}>Caja {detalle.codigo || "-"}</div>
-                      <div style={{ fontSize: 11, color: "#6b7280" }}>Sector: {detalle.sector || "-"} · {detalle.nodo || "-"}</div>
+                      <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>Sector: {detalle.sector || "-"} · {detalle.nodo || "-"}</div>
                     </div>
                     {detalle.capacidad > 0 && (
                       <span style={tagStyle(Number(detalle.puertos_ocupados || 0) >= Number(detalle.capacidad) ? "#dc2626" : "#0284c7")}>
@@ -681,7 +682,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                       </span>
                     )}
                   </div>
-                  {detalle.ubicacion && <div style={{ fontSize: 11, color: "#374151", marginBottom: 6 }}>📍 {detalle.ubicacion}</div>}
+                  {detalle.ubicacion && <div style={{ fontSize: 11, color: isDark ? "#c3d3ee" : "#374151", marginBottom: 6 }}>📍 {detalle.ubicacion}</div>}
                   {/* Fotos */}
                   {(detalle.photo_nap_url || detalle.photo_parametro_url) && (
                     <div style={{ marginBottom: 8 }}>
@@ -709,12 +710,12 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                   {simCajaSelUid === String(detalle.uid) && (
                     <div style={{ marginTop: 10 }}>
                       <div style={{ fontWeight: 700, fontSize: 12, color: "#1a3a6b", marginBottom: 4 }}>Clientes conectados</div>
-                      {clientesCajaLoading && <div style={{ fontSize: 11, color: "#6b7280" }}>Cargando...</div>}
+                      {clientesCajaLoading && <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>Cargando...</div>}
                       {!clientesCajaLoading && clientesCaja.length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>Sin clientes registrados en esta caja</div>}
                       {clientesCaja.map((c) => (
                         <div key={c.id} style={{ padding: "4px 6px", borderRadius: 6, background: "#f1f5f9", marginBottom: 3, fontSize: 11 }}>
                           <div style={{ fontWeight: 700 }}>{c.nombre || "-"}</div>
-                          <div style={{ color: "#6b7280" }}>{c.usuario_nodo || c.dni || "-"} · <span style={tagStyle(c.estado_servicio === "ACTIVO" ? "#16a34a" : "#dc2626")}>{c.estado_servicio || "?"}</span></div>
+                          <div style={{ color: isDark ? "#93a2bd" : "#6b7280" }}>{c.usuario_nodo || c.dni || "-"} · <span style={tagStyle(c.estado_servicio === "ACTIVO" ? "#16a34a" : "#dc2626")}>{c.estado_servicio || "?"}</span></div>
                         </div>
                       ))}
                     </div>
@@ -723,9 +724,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
               ) : (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 14, color: "#1a3a6b", marginBottom: 4 }}>{detalle.codigo || "SIN-CÓDIGO"}</div>
-                  <div style={{ fontSize: 12, color: "#374151", marginBottom: 2 }}>{detalle.nombre || "-"}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>{detalle.nodo || "-"} · {detalle.tipo_actuacion || "-"}</div>
-                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8 }}>📍 {detalle.direccion || "-"}</div>
+                  <div style={{ fontSize: 12, color: isDark ? "#c3d3ee" : "#374151", marginBottom: 2 }}>{detalle.nombre || "-"}</div>
+                  <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", marginBottom: 2 }}>{detalle.nodo || "-"} · {detalle.tipo_actuacion || "-"}</div>
+                  <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", marginBottom: 8 }}>📍 {detalle.direccion || "-"}</div>
                   <button style={btnStyle(false, "#1a3a6b")} onClick={() => llegar(detalle)}>🧭 Llegar</button>
                 </>
               )}
@@ -736,7 +737,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           {tab === "cajas" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: "#6b7280" }}>{cajasFiltradas.length} cajas</span>
+                <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{cajasFiltradas.length} cajas</span>
                 <button style={{ ...btnStyle(false, "#1a3a6b"), padding: "4px 10px", fontSize: 11 }} onClick={() => { setCajaEditorMode("create"); setEditingCajaRef(null); setCajaForm({ codigo: generarCodigoCaja(), sector: "", nodo: "", ubicacion: miUbicacion ? `${miUbicacion.lat.toFixed(7)}, ${miUbicacion.lng.toFixed(7)}` : "", ctoid: "" }); setShowCajaEditor(true); }}>
                   + Nueva caja
                 </button>
@@ -749,13 +750,13 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                 return (
                   <button key={String(caja.uid)} onClick={() => centrar(caja, "caja")} style={{
                     width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${isSelected ? "#F97316" : "#e2e8f0"}`,
-                    background: isSelected ? "#fff7ed" : "#fff", marginBottom: 4, cursor: "pointer",
+                    background: isSelected ? (isDark ? "#2a2013" : "#fff7ed") : (isDark ? "#1a2740" : "#fff"), marginBottom: 4, cursor: "pointer",
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontWeight: 700, fontSize: 12, color: "#1a3a6b" }}>Caja {caja.codigo || "-"}</span>
                       {pct !== null && <span style={tagStyle(pct >= 90 ? "#dc2626" : pct >= 70 ? "#ea580c" : "#0284c7")}>{ocp}/{cap}</span>}
                     </div>
-                    <div style={{ fontSize: 11, color: "#6b7280" }}>Sector: {caja.sector || "-"} · {caja.nodo || "-"}</div>
+                    <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>Sector: {caja.sector || "-"} · {caja.nodo || "-"}</div>
                     {miUbicacion && caja.coords && <div style={{ fontSize: 10, color: "#94a3b8" }}>{formatDist(haversineM(miUbicacion.lat, miUbicacion.lng, Number(caja.coords.lat), Number(caja.coords.lng)))}</div>}
                   </button>
                 );
@@ -772,14 +773,14 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                   <button key={String(item.id)} onClick={() => centrar(item, "orden")} style={{
                     width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
                     border: `1.5px solid ${isSelected ? tipoColor(item.tipo_actuacion) : "#e2e8f0"}`,
-                    background: isSelected ? "#eff6ff" : "#fff", marginBottom: 4, cursor: "pointer",
+                    background: isSelected ? (isDark ? "#16213a" : "#eff6ff") : (isDark ? "#1a2740" : "#fff"), marginBottom: 4, cursor: "pointer",
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontWeight: 700, fontSize: 12, color: tipoColor(item.tipo_actuacion) }}>{item.codigo || "-"}</span>
                       <span style={tagStyle(tipoColor(item.tipo_actuacion))}>{(item.tipo_actuacion || "?").split(" ")[0]}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#374151" }}>{item.nombre || "-"}</div>
-                    <div style={{ fontSize: 11, color: "#6b7280" }}>{item.nodo || "-"} · {item.tecnico || "-"}</div>
+                    <div style={{ fontSize: 12, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nombre || "-"}</div>
+                    <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{item.nodo || "-"} · {item.tecnico || "-"}</div>
                   </button>
                 );
               })}
@@ -789,7 +790,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           {/* Tab cercanas */}
           {tab === "cercanas" && miUbicacion && (
             <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
-              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>Top {cajasNear20.length} cajas más cercanas a tu ubicación</div>
+              <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", marginBottom: 6 }}>Top {cajasNear20.length} cajas más cercanas a tu ubicación</div>
               {cajasNear20.map((caja, i) => {
                 const isSelected = selectedTipo === "caja" && String(selectedId) === String(caja.uid);
                 const cap = Number(caja?.capacidad || 0);
@@ -798,17 +799,17 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                   <button key={String(caja.uid)} onClick={() => centrar(caja, "caja")} style={{
                     width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
                     border: `1.5px solid ${isSelected ? "#F97316" : "#e2e8f0"}`,
-                    background: isSelected ? "#fff7ed" : "#fff", marginBottom: 4, cursor: "pointer",
+                    background: isSelected ? (isDark ? "#2a2013" : "#fff7ed") : (isDark ? "#1a2740" : "#fff"), marginBottom: 4, cursor: "pointer",
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontWeight: 800, fontSize: 13, color: i < 5 ? "#F97316" : "#6b7280" }}>#{i + 1}</span>
+                        <span style={{ fontWeight: 800, fontSize: 13, color: i < 5 ? "#F97316" : (isDark ? "#93a2bd" : "#6b7280") }}>#{i + 1}</span>
                         <span style={{ fontWeight: 700, fontSize: 12, color: "#1a3a6b" }}>Caja {caja.codigo || "-"}</span>
                       </div>
                       <span style={tagStyle("#F97316")}>{formatDist(caja.dist)}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: "#6b7280" }}>{caja.sector || "-"} · {caja.nodo || "-"}</div>
-                    {cap > 0 && <div style={{ fontSize: 10, color: "#6b7280" }}>{ocp}/{cap} puertos ocupados</div>}
+                    <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{caja.sector || "-"} · {caja.nodo || "-"}</div>
+                    {cap > 0 && <div style={{ fontSize: 10, color: isDark ? "#93a2bd" : "#6b7280" }}>{ocp}/{cap} puertos ocupados</div>}
                   </button>
                 );
               })}
@@ -820,7 +821,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       {/* ── Modal editor de caja ── */}
       {showCajaEditor && (
         <div style={{ position: "fixed", inset: 0, background: "#0006", zIndex: 10000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#fff", borderRadius: 14, padding: 24, width: 360, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto" }}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 24, width: 360, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", color: isDark ? "#e6ecf7" : undefined }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: "#1a3a6b", marginBottom: 16 }}>
               {cajaEditorMode === "edit" ? "✏️ Editar caja NAP" : "➕ Nueva caja NAP"}
             </div>
@@ -830,15 +831,15 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
               { label: "Ubicación (lat, lng)", key: "ubicacion", placeholder: "-16.438, -71.598" },
             ].map(({ label, key, placeholder }) => (
               <div key={key} style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>{label}</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", display: "block", marginBottom: 4 }}>{label}</label>
                 <input value={cajaForm[key]} onChange={(e) => setCajaForm((p) => ({ ...p, [key]: e.target.value }))}
-                  placeholder={placeholder} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box" }} />
+                  placeholder={placeholder} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", fontSize: 13, boxSizing: "border-box", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827" }} />
               </div>
             ))}
             <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 4 }}>Nodo *</label>
+              <label style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", display: "block", marginBottom: 4 }}>Nodo *</label>
               <select value={cajaForm.nodo} onChange={(e) => setCajaForm((p) => ({ ...p, nodo: e.target.value }))}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13 }}>
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #e2e8f0", fontSize: 13, background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#111827" }}>
                 <option value="">Selecciona nodo...</option>
                 {NODOS_BASE.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
@@ -855,7 +856,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
               { label: "Foto Parámetro", file: fotoParamFile, preview: fotoParamPreview, existing: cajaEditorMode === "edit" ? editingCajaRef?.photo_parametro_url : "", setFile: setFotoParamFile, setPreview: setFotoParamPreview },
             ].map(({ label, file, preview, existing, setFile, setPreview }) => (
               <div key={label} style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 6 }}>{label}</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", display: "block", marginBottom: 6 }}>{label}</label>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   {(preview || existing) && (
                     <img src={preview || existing} alt={label}
@@ -863,7 +864,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                       onClick={() => window.open(preview || existing, "_blank")} />
                   )}
                   <div style={{ flex: 1 }}>
-                    <label style={{ display: "block", padding: "8px 12px", background: "#f1f5f9", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: "pointer", fontSize: 12, color: "#374151", textAlign: "center" }}>
+                    <label style={{ display: "block", padding: "8px 12px", background: isDark ? "#16213a" : "#f1f5f9", border: "1.5px dashed #94a3b8", borderRadius: 8, cursor: "pointer", fontSize: 12, color: isDark ? "#c3d3ee" : "#374151", textAlign: "center" }}>
                       {file ? `✅ ${file.name}` : (existing ? "🔄 Cambiar foto" : "📷 Seleccionar foto")}
                       <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => {
                         const f = e.target.files?.[0];
