@@ -120,7 +120,7 @@ async function mkwProxy(nodo, accion, payload, token) {
 }
 
 // ─── CSS global ───────────────────────────────────────────────────────────────
-const globalCSS = `
+const getGlobalCSS = (T) => `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
   .sb-panel * { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
@@ -132,23 +132,25 @@ const globalCSS = `
   .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
   .sb-hora-num::-webkit-outer-spin-button, .sb-hora-num::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
   .sb-hora-num[type=number] { -moz-appearance:textfield; }
-  .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; background: #003DA5; border-bottom: none; white-space: nowrap; }
-  .sb-tbl td { font-size: 12px; color: #0A0A1A; border-bottom: 1px solid #D9E3F8; }
+  .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; background: ${T.blue}; border-bottom: none; white-space: nowrap; }
+  .sb-tbl td { font-size: 12px; color: ${T.navy}; border-bottom: 1px solid ${T.border}; }
   .sb-tbl tr:last-child td { border-bottom: none; }
-  .sb-tbl tr:nth-child(even) td { background: #F0F4FF; }
-  .sb-tbl tr:hover td { background: #E8EFFF; }
-  .sb-row-form { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 0; border-bottom: 1px solid #D9E3F8; padding: 9px 0; }
+  .sb-tbl tr:nth-child(even) td { background: ${T.bg}; }
+  .sb-tbl tr:hover td { background: ${T.accent}; }
+  .sb-row-form { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 0; border-bottom: 1px solid ${T.border}; padding: 9px 0; }
   .sb-row-form:last-child { border-bottom: none; }
-  .sb-row-form-label { font-size: 12px; font-weight: 600; color: #4B5563; }
-  .sb-row-form-val { font-size: 12px; color: #0A0A1A; font-weight: 500; }
+  .sb-row-form-label { font-size: 12px; font-weight: 600; color: ${T.slate}; }
+  .sb-row-form-val { font-size: 12px; color: ${T.navy}; font-weight: 500; }
   @keyframes sbFadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes sbPing   { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.2);opacity:0} }
   @keyframes dotPulse { 0%,80%,100%{transform:scale(.55);opacity:.25} 40%{transform:scale(1);opacity:1} }
-  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: #D9E3F8; border-radius: 4px; }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 4px; }
 `;
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const T = {
+// Paleta clara (por defecto) y oscura (pensada para combinar con el tema
+// oscuro de Chatwoot: fondos casi negros con un leve tinte azul/morado).
+const LIGHT_T = {
   navy:    "#0A0A1A",
   blue:    "#003DA5",
   blueDk:  "#002d80",
@@ -170,7 +172,29 @@ const T = {
   accent:  "#E8EFFF",
 };
 
-const S = {
+const DARK_T = {
+  navy:    "#E5E7EB",
+  blue:    "#3B82F6",
+  blueDk:  "#2563EB",
+  sky:     "#3B82F6",
+  skyDk:   "#2563EB",
+  slate:   "#9AA0AC",
+  muted:   "#9AA0AC",
+  border:  "#2E2E38",
+  bg:      "#121218",
+  card:    "#1C1C24",
+  green:   "#22C55E",
+  greenLt: "#123A2C",
+  amber:   "#F59E0B",
+  amberLt: "#3A2E12",
+  red:     "#EF4444",
+  redLt:   "#3A1620",
+  purple:  "#3B82F6",
+  teal:    "#3B82F6",
+  accent:  "#1D2C48",
+};
+
+const getS = (T) => ({
   root:   { fontFamily:"'Inter',system-ui,-apple-system,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
   card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, marginBottom:8, overflow:"hidden" },
   label:  { fontSize:11, fontWeight:700, color:T.slate, marginBottom:3, display:"block", textTransform:"uppercase", letterSpacing:"0.4px" },
@@ -179,13 +203,13 @@ const S = {
   badge:  (c,bg) => ({ background:bg||c, color:"#fff", borderRadius:3, padding:"2px 7px", fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:3 }),
   btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:5, padding:"9px 14px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
   btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:4, padding:"4px 10px", fontWeight:700, fontSize:11, cursor:"pointer" }),
-  btnOut: { background:"#fff", border:`1px solid #D9E3F8`, borderRadius:4, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:"#4B5563" },
-  input:  { border:`1px solid #D9E3F8`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:"#0A0A1A", background:"#fff", fontFamily:"inherit" },
-  select: { border:`1px solid #D9E3F8`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", background:"#fff", color:"#0A0A1A", fontFamily:"inherit" },
-  alert:  (ok) => ({ background:ok?"#e6f9ee":"#fee2e2", color:ok?"#00B140":"#DC2626", border:`1px solid ${ok?"#86efac":"#fca5a5"}`, borderRadius:5, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
-  divider:{ borderTop:`1px solid #D9E3F8`, margin:"12px 0" },
-  statCard: () => ({ background:T.card, border:`1px solid #D9E3F8`, borderRadius:5, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
-};
+  btnOut: { background:T.card, border:`1px solid ${T.border}`, borderRadius:4, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:T.slate },
+  input:  { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:T.card, fontFamily:"inherit" },
+  select: { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", background:T.card, color:T.navy, fontFamily:"inherit" },
+  alert:  (ok) => ({ background:ok?T.greenLt:T.redLt, color:ok?T.green:T.red, border:`1px solid ${ok?T.green:T.red}66`, borderRadius:5, padding:"9px 12px", fontSize:12, marginBottom:8, fontWeight:600 }),
+  divider:{ borderTop:`1px solid ${T.border}`, margin:"12px 0" },
+  statCard: () => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:5, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
+});
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
 function Splash({ title, subtitle, loading, onRetry }) {
@@ -282,12 +306,12 @@ function SplashAgente({ onSelect }) {
             {TODOS_AGENTES.map(nombre => (
               <button key={nombre} onClick={() => setSel(nombre)}
                 style={{ background: sel === nombre ? "#fff" : "rgba(255,255,255,0.12)",
-                  color: sel === nombre ? T.navy : "#fff",
+                  color: sel === nombre ? LIGHT_T.navy : "#fff",
                   border: `2px solid ${sel === nombre ? "#fff" : "rgba(255,255,255,0.25)"}`,
                   borderRadius:10, padding:"11px 16px", fontWeight:700, fontSize:13,
                   cursor:"pointer", fontFamily:"inherit", textAlign:"left", transition:"all .15s",
                   display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ width:32, height:32, borderRadius:"50%", background: sel === nombre ? T.blue : "rgba(255,255,255,0.2)",
+                <span style={{ width:32, height:32, borderRadius:"50%", background: sel === nombre ? LIGHT_T.blue : "rgba(255,255,255,0.2)",
                   display:"inline-flex", alignItems:"center", justifyContent:"center",
                   fontSize:14, fontWeight:800, color:"#fff", flexShrink:0 }}>
                   {nombre[0]}
@@ -311,6 +335,17 @@ function SplashAgente({ onSelect }) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function SidebarApp() {
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("sb_theme") || "light"; } catch { return "light"; } });
+  const isDark = theme === "dark";
+  const T = isDark ? DARK_T : LIGHT_T;
+  const S = getS(T);
+  const toggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      try { localStorage.setItem("sb_theme", next); } catch {}
+      return next;
+    });
+  };
   const contactLoadedRef = useRef(false);  // evita que urlParam sobreescriba postMessage
   const [contact, setContact]     = useState(null);  // datos de Chatwoot
   const [convId,  setConvId]      = useState(null);
@@ -2335,7 +2370,7 @@ export default function SidebarApp() {
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div style={S.root} className="sb-panel">
-      <style>{globalCSS}</style>
+      <style>{getGlobalCSS(T)}</style>
 
       {/* ── Splash selección de agente (obligatorio) ── */}
       {!agente && <SplashAgente onSelect={nombre => {
@@ -2367,9 +2402,13 @@ export default function SidebarApp() {
 
       {/* ══ TOPBAR minimalista ══ */}
       <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderBottom:`1px solid ${T.border}`, background:T.card }}>
-        <img src={logoAmericanet} alt="Americanet" style={{ height:16, filter:"brightness(0) saturate(0) brightness(0.35)", opacity:0.5 }} />
+        <img src={logoAmericanet} alt="Americanet" style={{ height:16, filter: isDark ? "brightness(0) invert(1) opacity(0.55)" : "brightness(0) saturate(0) brightness(0.35)", opacity:0.5 }} />
         <span style={{ fontSize:11, color:T.muted, fontWeight:600, letterSpacing:"0.2px" }}>Panel de Agentes</span>
         <div style={{ flex:1 }} />
+        <button onClick={toggleTheme} title={isDark ? "Modo claro" : "Modo oscuro"}
+          style={{ ...S.btnOut, fontSize:12, padding:"3px 8px", lineHeight:1 }}>
+          {isDark ? "☀️" : "🌙"}
+        </button>
         {agente && (
           <div style={{ display:"flex", alignItems:"center", gap:5 }}>
             <span style={{ background:T.accent, color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600, border:`1px solid ${T.border}` }}>
@@ -3417,11 +3456,11 @@ export default function SidebarApp() {
         {!cliente.sinMikrowisp && (
         <div style={{ padding:"8px 8px 0" }}>
           {factPend.length > 0 ? (
-            <div style={{ background:"#fffbeb", borderLeft:`3px solid #f59e0b`, borderRadius:5,
-              border:`1px solid #fde68a`, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px" }}>
+            <div style={{ background:T.amberLt, borderLeft:`3px solid ${T.amber}`, borderRadius:5,
+              border:`1px solid ${T.amber}66`, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px" }}>
               <div>
-                <div style={{ fontSize:11, fontWeight:700, color:"#92400e", textTransform:"uppercase", letterSpacing:"0.3px" }}>Deuda pendiente</div>
-                <div style={{ fontWeight:800, fontSize:18, color:T.navy, lineHeight:1.2, marginTop:2 }}>
+                <div style={{ fontSize:11, fontWeight:700, color:T.amber, textTransform:"uppercase", letterSpacing:"0.3px" }}>Deuda pendiente</div>
+                <div style={{ fontWeight:800, fontSize:18, color:isDark ? "#fff" : T.navy, lineHeight:1.2, marginTop:2 }}>
                   S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}
                 </div>
                 <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
@@ -3436,7 +3475,7 @@ export default function SidebarApp() {
             </div>
           ) : (
             <div style={{ background:T.greenLt, borderLeft:`3px solid ${T.green}`, borderRadius:5,
-              border:`1px solid #86efac`, display:"flex", alignItems:"center", gap:10, padding:"9px 12px" }}>
+              border:`1px solid ${T.green}66`, display:"flex", alignItems:"center", gap:10, padding:"9px 12px" }}>
               <div style={{ fontWeight:600, color:T.green, fontSize:12 }}>Sin deuda pendiente</div>
               <span style={{ fontSize:11, color:T.muted }}>· Cliente al dia</span>
             </div>
