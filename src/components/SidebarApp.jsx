@@ -2307,8 +2307,8 @@ export default function SidebarApp() {
       }} />}
       {agente && contact && loading && <Splash loading={true} />}
 
-      {/* ── Debug overlay ── */}
-      {!contact && isDebug && (
+      {/* ── Debug overlay — visible siempre mientras no llega el contacto, para diagnosticar el atasco sin necesitar ?debug en la URL ── */}
+      {!contact && (
         <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.85)", color:"#0f0", fontFamily:"monospace", fontSize:10, padding:10, zIndex:9999, maxHeight:200, overflowY:"auto" }}>
           <div style={{ color:"#ff0", marginBottom:4 }}>DEBUG — mensajes recibidos:</div>
           {debugMsgs.length === 0 && <div style={{ color:"#888" }}>Ningún mensaje aún. Esperando postMessage...</div>}
