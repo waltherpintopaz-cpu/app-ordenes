@@ -493,22 +493,27 @@ export default function SidebarApp() {
 
     window.addEventListener("message", onMsg);
 
-    // Notificar a Chatwoot que el iframe está listo
+    const timers = [];
+
+    // Notificar a Chatwoot que el iframe está listo — reintenta solo, sin
+    // necesitar clic, por si el panel de Chatwoot tarda en arrancar (primer
+    // chat tras abrir Chatwoot en frío puede demorar más de unos segundos).
     const notifyReady = () => {
       try { window.parent.postMessage({ event: "iFrameLoaded" }, "*"); } catch(e) {}
     };
     notifyReady();
-    setTimeout(notifyReady, 500);
-    setTimeout(notifyReady, 1500);
-    setTimeout(notifyReady, 3000);
-    setTimeout(notifyReady, 5000);
+    let intentos = 0;
+    const readyInterval = setInterval(() => {
+      intentos += 1;
+      if (contactLoadedRef.current || intentos >= 20) { clearInterval(readyInterval); return; }
+      notifyReady();
+    }, 1500);
+    timers.push(readyInterval);
 
     // ── URL params: solo carga inicial si no llega postMessage ─────────────
     const urlPhone  = params.get("phone") || params.get("phone_number") || "";
     const urlConvId = params.get("conv_id") || params.get("conversation_id") || "";
     const urlAcctId = params.get("account_id") || "1";
-
-    const timers = [];
 
     if (urlPhone) {
       // Esperar 800ms por si llega postMessage primero
