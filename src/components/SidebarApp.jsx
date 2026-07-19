@@ -175,7 +175,7 @@ const S = {
 };
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
-function Splash({ title, subtitle, loading }) {
+function Splash({ title, subtitle, loading, onRetry }) {
   return (
     <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
       background:"linear-gradient(145deg,#1a6fbc 0%,#0d5a9e 50%,#0a4882 100%)", overflow:"hidden", fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif" }}>
@@ -205,8 +205,22 @@ function Splash({ title, subtitle, loading }) {
           </div>
         )}
         {!loading && (
-          <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:4, textAlign:"center" }}>
-            Esperando conversación en Chatwoot...
+          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12 }}>
+            <div style={{ color:"rgba(255,255,255,0.4)", fontSize:11, marginTop:4, textAlign:"center" }}>
+              Esperando conversación en Chatwoot...
+            </div>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                style={{
+                  background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.25)",
+                  borderRadius:8, padding:"6px 14px", color:"#fff", fontSize:11, fontWeight:600,
+                  cursor:"pointer",
+                }}
+              >
+                🔄 Reintentar conexión
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -486,6 +500,8 @@ export default function SidebarApp() {
     notifyReady();
     setTimeout(notifyReady, 500);
     setTimeout(notifyReady, 1500);
+    setTimeout(notifyReady, 3000);
+    setTimeout(notifyReady, 5000);
 
     // ── URL params: solo carga inicial si no llega postMessage ─────────────
     const urlPhone  = params.get("phone") || params.get("phone_number") || "";
@@ -2278,7 +2294,10 @@ export default function SidebarApp() {
       }} />}
 
       {/* ── Splashes ── */}
-      {agente && !contact && <Splash loading={false} />}
+      {agente && !contact && <Splash loading={false} onRetry={() => {
+        try { window.parent.postMessage({ event: "iFrameLoaded" }, "*"); } catch (e) {}
+        setTimeout(() => { if (!contactLoadedRef.current) window.location.reload(); }, 1200);
+      }} />}
       {agente && contact && loading && <Splash loading={true} />}
 
       {/* ── Debug overlay ── */}
