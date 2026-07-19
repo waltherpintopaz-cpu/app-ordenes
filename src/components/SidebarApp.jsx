@@ -3,6 +3,19 @@ import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } from "lucide-react";
 
+// ─── Captura temprana de postMessage ─────────────────────────────────────────
+// Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
+// antes de que React monte el componente y enganche su propio listener
+// (esta carrera es más notoria en Chrome que en Firefox). Para no perder ese
+// primer mensaje, escuchamos "message" desde el instante en que este módulo
+// se ejecuta — mucho antes de que exista cualquier componente React — y
+// guardamos todo lo que llegue en una cola. El componente, al montar, procesa
+// esa cola completa antes de seguir escuchando en vivo.
+const __earlyMessageQueue = [];
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (e) => { __earlyMessageQueue.push(e); });
+}
+
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const CW_BASE    = "https://chat.americanet.club";
 const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
@@ -491,6 +504,9 @@ export default function SidebarApp() {
       }
     }
 
+    // Procesar primero cualquier mensaje que haya llegado ANTES de montar
+    // (la carrera que se pierde en Chrome) y luego seguir escuchando en vivo.
+    __earlyMessageQueue.splice(0).forEach(onMsg);
     window.addEventListener("message", onMsg);
 
     const timers = [];
