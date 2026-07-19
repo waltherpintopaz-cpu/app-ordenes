@@ -2295,8 +2295,10 @@ export default function SidebarApp() {
 
       {/* ── Splashes ── */}
       {agente && !contact && <Splash loading={false} onRetry={() => {
-        try { window.parent.postMessage({ event: "iFrameLoaded" }, "*"); } catch (e) {}
-        setTimeout(() => { if (!contactLoadedRef.current) window.location.reload(); }, 1200);
+        const send = () => { try { window.parent.postMessage({ event: "iFrameLoaded" }, "*"); } catch (e) {} };
+        send();
+        [700, 1600, 2800, 4200].forEach(ms => setTimeout(() => { if (!contactLoadedRef.current) send(); }, ms));
+        setTimeout(() => { if (!contactLoadedRef.current) window.location.reload(); }, 6000);
       }} />}
       {agente && contact && loading && <Splash loading={true} />}
 
