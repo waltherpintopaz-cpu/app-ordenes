@@ -587,10 +587,39 @@ export default function SidebarApp() {
 
   function copiarAlPortapapeles(valor, etiqueta = "Valor") {
     if (!valor) return;
-    navigator.clipboard.writeText(String(valor)).then(
-      () => notify(`${etiqueta} copiado: ${valor}`, true),
-      () => notify("No se pudo copiar", false)
-    );
+    const texto = String(valor);
+
+    // Respaldo: algunos navegadores (Chrome dentro de iframes de otro sitio,
+    // como este embebido en Chatwoot) bloquean la API moderna de portapapeles
+    // salvo que el sitio que lo embebe la autorice explícitamente. Firefox no
+    // exige ese permiso. Si la API moderna falla, probamos el método clásico.
+    const copiarClasico = () => {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = texto;
+        ta.style.position = "fixed";
+        ta.style.top = "-1000px";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (ok) notify(`${etiqueta} copiado: ${texto}`, true);
+        else notify("No se pudo copiar", false);
+      } catch (e) {
+        notify("No se pudo copiar", false);
+      }
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(texto).then(
+        () => notify(`${etiqueta} copiado: ${texto}`, true),
+        () => copiarClasico()
+      );
+    } else {
+      copiarClasico();
+    }
   }
 
   function resetEstado() {
