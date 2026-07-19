@@ -505,9 +505,9 @@ export default function SidebarApp() {
     let intentos = 0;
     const readyInterval = setInterval(() => {
       intentos += 1;
-      if (contactLoadedRef.current || intentos >= 20) { clearInterval(readyInterval); return; }
+      if (contactLoadedRef.current || intentos >= 40) { clearInterval(readyInterval); return; }
       notifyReady();
-    }, 1500);
+    }, 250);
     timers.push(readyInterval);
 
     // ── URL params: solo carga inicial si no llega postMessage ─────────────
