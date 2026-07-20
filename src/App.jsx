@@ -22909,6 +22909,26 @@ export default function App() {
                 <div><span style={{ fontWeight: 700, color: "#64748b" }}>Cliente</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.nombre}</div></div>
                 <div><span style={{ fontWeight: 700, color: "#64748b" }}>Dirección</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.direccion}</div></div>
                 <div><span style={{ fontWeight: 700, color: "#64748b" }}>Técnico</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.tecnico || "—"}</div></div>
+                <div>
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Nodo</span>
+                  <input
+                    type="text"
+                    value={ordenEnLiquidacion.nodo || ""}
+                    onChange={(e) => setOrdenEnLiquidacion((prev) => ({ ...prev, nodo: e.target.value }))}
+                    style={{ ...inputStyle, marginTop: "2px", padding: "6px 10px", fontSize: "14px" }}
+                    placeholder="Nodo"
+                  />
+                </div>
+                <div>
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Usuario</span>
+                  <input
+                    type="text"
+                    value={ordenEnLiquidacion.usuarioNodo || ""}
+                    onChange={(e) => setOrdenEnLiquidacion((prev) => ({ ...prev, usuarioNodo: e.target.value }))}
+                    style={{ ...inputStyle, marginTop: "2px", padding: "6px 10px", fontSize: "14px" }}
+                    placeholder="Usuario"
+                  />
+                </div>
               </div>
 
               {/* Caja NAP */}
