@@ -23842,9 +23842,9 @@ export default function App() {
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
                   <div style={{ width: "40px", height: "40px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><RefreshCw size={20} color="#fff" /></div>
-                  <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#111827", margin: 0 }}>Recuperaciones</h1>
+                  <h1 style={{ fontSize: "22px", fontWeight: 800, color: isDark ? "#e6ecf7" : "#111827", margin: 0 }}>Recuperaciones</h1>
                 </div>
-                <p style={{ color: "#6b7280", fontSize: "13px", margin: "0 0 0 50px" }}>Historial de ejecuciones y custodia técnica de equipos</p>
+                <p style={{ color: isDark ? "#93a2bd" : "#6b7280", fontSize: "13px", margin: "0 0 0 50px" }}>Historial de ejecuciones y custodia técnica de equipos</p>
               </div>
               {rolSesion === "Administrador" && (
                 <button
@@ -23865,18 +23865,18 @@ export default function App() {
                 { label: "Completadas este mes", valor: completadasMesRecuperacionCount, Icon: CheckCircle2, color: "#166534", bg: "#dcfce7" },
                 { label: "Equipos en custodia", valor: stockTecnico.filter((s) => !s.ingresado_almacen).length, Icon: Package, color: "#1e40af", bg: "#dbeafe" },
               ].map((s) => (
-                <div key={s.label} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
+                <div key={s.label} style={{ background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
                   <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><s.Icon size={18} color={s.color} /></div>
                   <div>
                     <div style={{ fontSize: "20px", fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.valor}</div>
-                    <div style={{ fontSize: "11px", color: "#6b7280", fontWeight: 600, marginTop: "2px" }}>{s.label}</div>
+                    <div style={{ fontSize: "11px", color: isDark ? "#93a2bd" : "#6b7280", fontWeight: 600, marginTop: "2px" }}>{s.label}</div>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* ── Tabs ── */}
-            <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "14px", padding: "5px", gap: "4px" }}>
+            <div style={{ display: "flex", background: isDark ? "#16213a" : "#f1f5f9", borderRadius: "14px", padding: "5px", gap: "4px" }}>
               {[
                 { key: "pendientes", label: "Pendientes", Icon: Clock, badge: pendientesRecuperacion.length, badgeVencidas: vencidasRecuperacionCount },
                 { key: "ejecuciones", label: "Ejecuciones", Icon: ClipboardList },
@@ -23889,8 +23889,8 @@ export default function App() {
                     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "7px",
                     padding: "10px 18px", borderRadius: "10px", border: "none", cursor: "pointer",
                     fontSize: "13px", fontWeight: 700, transition: "all 0.15s",
-                    background: recuperacionesSubmenu === tab.key ? "#fff" : "transparent",
-                    color: recuperacionesSubmenu === tab.key ? "#1e40af" : "#64748b",
+                    background: recuperacionesSubmenu === tab.key ? (isDark ? "#1a2740" : "#fff") : "transparent",
+                    color: recuperacionesSubmenu === tab.key ? "#1e40af" : (isDark ? "#93a2bd" : "#64748b"),
                     boxShadow: recuperacionesSubmenu === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none",
                   }}
                 >
@@ -23908,7 +23908,7 @@ export default function App() {
 
             {/* ── Filtro por gestor (quién creó la orden) ── */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>👤 Gestor:</span>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280" }}>👤 Gestor:</span>
               {esGestorSesion ? (
                 <span style={{ fontSize: "12px", fontWeight: 700, background: "#eff6ff", color: "#1d4ed8", borderRadius: "8px", padding: "5px 12px" }}>
                   {usuarioSesion?.nombre || "—"} (mis órdenes)
@@ -23917,7 +23917,7 @@ export default function App() {
                 <select
                   value={filtroGestorRecuperacionAdmin}
                   onChange={(e) => setFiltroGestorRecuperacionAdmin(e.target.value)}
-                  style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600, color: "#374151", background: "#fff" }}
+                  style={{ padding: "6px 10px", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", background: isDark ? "#1a2740" : "#fff" }}
                 >
                   <option value="">Todos</option>
                   {gestoresRecuperacionDisponibles.map((g) => (
@@ -23931,15 +23931,15 @@ export default function App() {
             {recuperacionesSubmenu === "pendientes" && (
               <div style={{ display: "grid", gap: "16px" }}>
                 <div>
-                  <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#111827", margin: "0 0 2px" }}>Recojos de equipo pendientes</h2>
-                  <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>{pendientesRecuperacion.length} registro{pendientesRecuperacion.length !== 1 ? "s" : ""} aún sin ejecutar</p>
+                  <h2 style={{ fontSize: "16px", fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827", margin: "0 0 2px" }}>Recojos de equipo pendientes</h2>
+                  <p style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", margin: 0 }}>{pendientesRecuperacion.length} registro{pendientesRecuperacion.length !== 1 ? "s" : ""} aún sin ejecutar</p>
                 </div>
 
                 {pendientesRecuperacion.length === 0 ? (
-                  <div style={{ background: "#fff", borderRadius: "16px", border: "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
+                  <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: isDark ? "1.5px dashed #2c3c58" : "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
                     <div style={{ fontSize: "32px", marginBottom: "8px" }}>✅</div>
-                    <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Sin pendientes</div>
-                    <div style={{ fontSize: "13px", color: "#9ca3af" }}>No hay órdenes de recojo de equipo por ejecutar.</div>
+                    <div style={{ fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "4px" }}>Sin pendientes</div>
+                    <div style={{ fontSize: "13px", color: isDark ? "#93a2bd" : "#9ca3af" }}>No hay órdenes de recojo de equipo por ejecutar.</div>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
@@ -23947,18 +23947,18 @@ export default function App() {
                       const vencida = o.fechaActuacion && o.fechaActuacion < todayIsoLocal();
                       const editandoFecha = editandoFechaRecuperacionId === o.id;
                       return (
-                      <div key={o.id} style={{ background: "#fff", borderRadius: "16px", border: vencida ? "1px solid #fca5a5" : "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
+                      <div key={o.id} style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: vencida ? "1px solid #fca5a5" : (isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb"), overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
                         <div style={{ height: "4px", background: vencida ? "#dc2626" : "#f59e0b" }} />
                         <div style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, fontSize: "15px", color: "#111827", marginBottom: "3px" }}>{o.nombre || "—"}</div>
+                            <div style={{ fontWeight: 800, fontSize: "15px", color: isDark ? "#e6ecf7" : "#111827", marginBottom: "3px" }}>{o.nombre || "—"}</div>
                             {o.direccion && (
-                              <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                              <div style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}>
                                 {o.direccion}
-                                {o.nodo && <span style={{ marginLeft: "6px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{o.nodo}</span>}
+                                {o.nodo && <span style={{ marginLeft: "6px", background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#c3d3ee" : "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{o.nodo}</span>}
                               </div>
                             )}
-                            {o.autorOrden && <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "2px" }}>Creado por: <strong style={{ color: "#6b7280" }}>{o.autorOrden}</strong></div>}
+                            {o.autorOrden && <div style={{ fontSize: "11px", color: isDark ? "#93a2bd" : "#9ca3af", marginTop: "2px" }}>Creado por: <strong style={{ color: isDark ? "#93a2bd" : "#6b7280" }}>{o.autorOrden}</strong></div>}
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
                               {o.codigo && (
                                 <span
@@ -23975,7 +23975,7 @@ export default function App() {
                                     type="date"
                                     defaultValue={o.fechaActuacion || todayIsoLocal()}
                                     onChange={(e) => { o._nuevaFechaTemp = e.target.value; }}
-                                    style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                                    style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "6px", border: isDark ? "1px solid #3a4d78" : "1px solid #cbd5e1" }}
                                   />
                                   <button
                                     onClick={async () => { await reprogramarFechaRecuperacion(o.id, o._nuevaFechaTemp || o.fechaActuacion); setEditandoFechaRecuperacionId(null); }}
@@ -23985,7 +23985,7 @@ export default function App() {
                                   </button>
                                   <button
                                     onClick={() => setEditandoFechaRecuperacionId(null)}
-                                    style={{ fontSize: "11px", color: "#6b7280", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
+                                    style={{ fontSize: "11px", color: isDark ? "#93a2bd" : "#6b7280", background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
                                   >
                                     Cancelar
                                   </button>
@@ -24010,7 +24010,7 @@ export default function App() {
                             <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#fef3c7", color: "#92400e", borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>
                               <Clock size={12} /> Pendiente
                             </span>
-                            {o.tecnico && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6b7280" }}><User size={12} /> {o.tecnico}</span>}
+                            {o.tecnico && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}><User size={12} /> {o.tecnico}</span>}
                           </div>
                         </div>
                       </div>
@@ -24027,11 +24027,11 @@ export default function App() {
                 {/* Header */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                   <div>
-                    <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#111827", margin: "0 0 2px" }}>Historial de ejecuciones</h2>
-                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>{historialRecuperacionesFiltrado.length} registro{historialRecuperacionesFiltrado.length !== 1 ? "s" : ""}</p>
+                    <h2 style={{ fontSize: "16px", fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827", margin: "0 0 2px" }}>Historial de ejecuciones</h2>
+                    <p style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", margin: 0 }}>{historialRecuperacionesFiltrado.length} registro{historialRecuperacionesFiltrado.length !== 1 ? "s" : ""}</p>
                   </div>
                   <button
-                    style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                    style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", background: isDark ? "#1a2740" : "#fff", color: isDark ? "#c3d3ee" : "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
                     onClick={cargarHistorialRecuperaciones}
                     disabled={cargandoRecuperaciones}
                   >
@@ -24040,15 +24040,15 @@ export default function App() {
                 </div>
 
                 {cargandoRecuperaciones ? (
-                  <div style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", padding: "48px", textAlign: "center", color: "#9ca3af" }}>
+                  <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", padding: "48px", textAlign: "center", color: isDark ? "#93a2bd" : "#9ca3af" }}>
                     <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
                     <div style={{ fontWeight: 600 }}>Cargando registros…</div>
                   </div>
                 ) : historialRecuperacionesFiltrado.length === 0 ? (
-                  <div style={{ background: "#fff", borderRadius: "16px", border: "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
-                    <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px", color: "#9ca3af" }}><ClipboardList size={32} /></div>
-                    <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Sin registros aún</div>
-                    <div style={{ fontSize: "13px", color: "#9ca3af" }}>Las ejecuciones de recuperación aparecerán aquí.</div>
+                  <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: isDark ? "1.5px dashed #2c3c58" : "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
+                    <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px", color: isDark ? "#93a2bd" : "#9ca3af" }}><ClipboardList size={32} /></div>
+                    <div style={{ fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "4px" }}>Sin registros aún</div>
+                    <div style={{ fontSize: "13px", color: isDark ? "#93a2bd" : "#9ca3af" }}>Las ejecuciones de recuperación aparecerán aquí.</div>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
@@ -24063,18 +24063,18 @@ export default function App() {
                       const recId = rec.id || idx;
                       const expandido = verRecuperacionId === recId;
                       return (
-                        <div key={recId} style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
+                        <div key={recId} style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
                           <div style={{ height: "4px", background: accentColor }} />
                           <div style={{ padding: "16px 18px" }}>
 
                             {/* Fila superior — siempre visible */}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 800, fontSize: "15px", color: "#111827", marginBottom: "3px" }}>{rec.nombre_cliente || "—"}</div>
+                                <div style={{ fontWeight: 800, fontSize: "15px", color: isDark ? "#e6ecf7" : "#111827", marginBottom: "3px" }}>{rec.nombre_cliente || "—"}</div>
                                 {rec.direccion && (
-                                  <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                                  <div style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}>
                                     {rec.direccion}
-                                    {rec.nodo && <span style={{ marginLeft: "6px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{rec.nodo}</span>}
+                                    {rec.nodo && <span style={{ marginLeft: "6px", background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#c3d3ee" : "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{rec.nodo}</span>}
                                   </div>
                                 )}
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
@@ -24087,14 +24087,14 @@ export default function App() {
                                       {rec.orden_codigo}
                                     </span>
                                   )}
-                                  {fecha && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#9ca3af" }}><Clock size={11} /> {fecha}</span>}
+                                  {fecha && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", color: isDark ? "#93a2bd" : "#9ca3af" }}><Clock size={11} /> {fecha}</span>}
                                 </div>
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px", flexShrink: 0 }}>
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: resultadoBg, color: resultadoColor, borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>
                                   <ResultadoIcon size={12} /> {rec.resultado}
                                 </span>
-                                {rec.tecnico_ejecuta && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6b7280" }}><User size={12} /> {rec.tecnico_ejecuta}</span>}
+                                {rec.tecnico_ejecuta && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}><User size={12} /> {rec.tecnico_ejecuta}</span>}
                                 {/* Botón Ver / Ocultar */}
                                 <button
                                   onClick={() => setVerRecuperacionId(expandido ? null : recId)}
@@ -24102,7 +24102,7 @@ export default function App() {
                                     display: "inline-flex", alignItems: "center", gap: "5px",
                                     padding: "6px 14px", borderRadius: "8px", fontSize: "12px", fontWeight: 700,
                                     cursor: "pointer", border: "1px solid",
-                                    background: expandido ? "#1e40af" : "#fff",
+                                    background: expandido ? "#1e40af" : (isDark ? "#1a2740" : "#fff"),
                                     color: expandido ? "#fff" : "#1e40af",
                                     borderColor: "#1e40af",
                                   }}
@@ -24115,22 +24115,22 @@ export default function App() {
                             {/* Detalle expandible */}
                             {expandido && (
                               <div style={{ marginTop: "16px", display: "grid", gap: "12px" }}>
-                                <div style={{ height: "1px", background: "#f1f5f9" }} />
+                                <div style={{ height: "1px", background: isDark ? "#16213a" : "#f1f5f9" }} />
 
                                 {/* Equipos recuperados */}
                                 {equipos.length > 0 && (
                                   <div>
-                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Equipos recuperados ({equipos.length})</div>
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Equipos recuperados ({equipos.length})</div>
                                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                                       {equipos.map((eq, ei) => (
-                                        <div key={ei} style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: "10px", padding: "8px 12px", fontSize: "12px", minWidth: "100px" }}>
-                                          <div style={{ fontWeight: 700, color: "#111827", marginBottom: "2px" }}>{eq.tipo}</div>
+                                        <div key={ei} style={{ background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", borderRadius: "10px", padding: "8px 12px", fontSize: "12px", minWidth: "100px" }}>
+                                          <div style={{ fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827", marginBottom: "2px" }}>{eq.tipo}</div>
                                           <div style={{ fontSize: "11px", fontWeight: 600, color: eq.estado === "Bueno" ? "#16a34a" : eq.estado === "Dañado" ? "#dc2626" : "#d97706" }}>{eq.estado}</div>
                                           {eq.serial && <div style={{ fontSize: "10px", color: "#0369a1", fontFamily: "monospace", marginTop: "2px" }}>S/N: {eq.serial}</div>}
                                           {eq.fotos && eq.fotos.length > 0 && (
                                             <div style={{ display: "flex", gap: "3px", flexWrap: "wrap", marginTop: "6px" }}>
                                               {eq.fotos.map((f, fi) => (
-                                                <img key={fi} src={f} alt="equipo" style={{ width: "52px", height: "42px", objectFit: "cover", borderRadius: "6px", cursor: "pointer", border: "1px solid #e5e7eb" }} onClick={() => abrirFotoZoom(f, `${eq.tipo} foto ${fi + 1}`)} />
+                                                <img key={fi} src={f} alt="equipo" style={{ width: "52px", height: "42px", objectFit: "cover", borderRadius: "6px", cursor: "pointer", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb" }} onClick={() => abrirFotoZoom(f, `${eq.tipo} foto ${fi + 1}`)} />
                                               ))}
                                             </div>
                                           )}
@@ -24150,10 +24150,10 @@ export default function App() {
                                 {/* Fotos */}
                                 {fotos.length > 0 && (
                                   <div>
-                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Fotos ({fotos.length})</div>
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Fotos ({fotos.length})</div>
                                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                                       {fotos.map((f, fi) => (
-                                        <img key={fi} src={f} alt={`foto-${fi}`} style={{ width: "80px", height: "64px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `Foto ${fi + 1}`)} />
+                                        <img key={fi} src={f} alt={`foto-${fi}`} style={{ width: "80px", height: "64px", objectFit: "cover", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `Foto ${fi + 1}`)} />
                                       ))}
                                     </div>
                                   </div>
@@ -24162,7 +24162,7 @@ export default function App() {
                                 {/* Detalle de la orden */}
                                 {rec.orden_codigo && (
                                   <div>
-                                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Detalle de la orden</div>
+                                    <div style={{ fontSize: "11px", fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Detalle de la orden</div>
                                     {!ordenRecuperacionData[rec.orden_codigo] ? (
                                       <button
                                         disabled={ordenRecuperacionCargando[rec.orden_codigo]}
@@ -24177,38 +24177,38 @@ export default function App() {
                                         {ordenRecuperacionCargando[rec.orden_codigo] ? "⏳ Cargando…" : "🔍 Ver detalle de la orden"}
                                       </button>
                                     ) : ordenRecuperacionData[rec.orden_codigo] === null ? (
-                                      <div style={{ fontSize: "12px", color: "#9ca3af", background: "#f8fafc", borderRadius: "10px", padding: "10px 14px" }}>No se encontró la orden <strong>{rec.orden_codigo}</strong> en el sistema.</div>
+                                      <div style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", background: isDark ? "#16213a" : "#f8fafc", borderRadius: "10px", padding: "10px 14px" }}>No se encontró la orden <strong>{rec.orden_codigo}</strong> en el sistema.</div>
                                     ) : (() => {
                                       const o = deserializeOrderFromSupabase(ordenRecuperacionData[rec.orden_codigo]);
                                       const estadoColor = o.estado === "Completada" ? "#166534" : o.estado === "Pendiente" ? "#92400e" : o.estado === "Cancelada" ? "#991b1b" : "#1d4ed8";
                                       const estadoBg   = o.estado === "Completada" ? "#dcfce7" : o.estado === "Pendiente" ? "#fef3c7" : o.estado === "Cancelada" ? "#fee2e2" : "#dbeafe";
                                       return (
-                                        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "12px", padding: "14px 16px", display: "grid", gap: "10px" }}>
+                                        <div style={{ background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "12px", padding: "14px 16px", display: "grid", gap: "10px" }}>
                                           {/* Cabecera orden */}
                                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
                                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                               <span style={{ fontFamily: "monospace", fontWeight: 800, fontSize: "13px", color: "#1d4ed8" }}>{o.codigo}</span>
-                                              {o.orden && <span style={{ fontSize: "11px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 7px", fontWeight: 600 }}>{o.orden}</span>}
-                                              {o.tipoActuacion && <span style={{ fontSize: "11px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 7px", fontWeight: 600 }}>{o.tipoActuacion}</span>}
+                                              {o.orden && <span style={{ fontSize: "11px", background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#c3d3ee" : "#475569", borderRadius: "6px", padding: "1px 7px", fontWeight: 600 }}>{o.orden}</span>}
+                                              {o.tipoActuacion && <span style={{ fontSize: "11px", background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#c3d3ee" : "#475569", borderRadius: "6px", padding: "1px 7px", fontWeight: 600 }}>{o.tipoActuacion}</span>}
                                             </div>
                                             <span style={{ fontSize: "11px", fontWeight: 700, background: estadoBg, color: estadoColor, borderRadius: "999px", padding: "3px 10px" }}>{o.estado}</span>
                                           </div>
                                           {/* Grid de datos */}
                                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "6px 20px", fontSize: "12px" }}>
-                                            {o.nombre      && <div><span style={{ color: "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: "#111827" }}>{o.nombre}</span></div>}
-                                            {o.dni         && <div><span style={{ color: "#9ca3af" }}>DNI: </span><span style={{ fontWeight: 600 }}>{o.dni}</span></div>}
-                                            {o.celular     && <div><span style={{ color: "#9ca3af" }}>Celular: </span><span style={{ fontWeight: 600 }}>{o.celular}</span></div>}
-                                            {o.direccion   && <div><span style={{ color: "#9ca3af" }}>Dirección: </span><span style={{ fontWeight: 600 }}>{o.direccion}</span></div>}
-                                            {o.nodo        && <div><span style={{ color: "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600 }}>{o.nodo}</span></div>}
-                                            {o.tecnico     && <div><span style={{ color: "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600 }}>{o.tecnico}</span></div>}
-                                            {o.fechaActuacion && <div><span style={{ color: "#9ca3af" }}>Fecha programada: </span><span style={{ fontWeight: 600 }}>{o.fechaActuacion}{o.hora ? ` ${o.hora}` : ""}</span></div>}
-                                            {o.prioridad   && <div><span style={{ color: "#9ca3af" }}>Prioridad: </span><span style={{ fontWeight: 600 }}>{o.prioridad}</span></div>}
-                                            {o.velocidad   && <div><span style={{ color: "#9ca3af" }}>Plan: </span><span style={{ fontWeight: 600 }}>{o.velocidad}</span></div>}
-                                            {o.autorOrden  && <div><span style={{ color: "#9ca3af" }}>Creado por: </span><span style={{ fontWeight: 600 }}>{o.autorOrden}</span></div>}
-                                            {o.fechaCreacion && <div><span style={{ color: "#9ca3af" }}>Fecha creación: </span><span style={{ fontWeight: 600 }}>{o.fechaCreacion}</span></div>}
+                                            {o.nombre      && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: isDark ? "#e6ecf7" : "#111827" }}>{o.nombre}</span></div>}
+                                            {o.dni         && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>DNI: </span><span style={{ fontWeight: 600 }}>{o.dni}</span></div>}
+                                            {o.celular     && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Celular: </span><span style={{ fontWeight: 600 }}>{o.celular}</span></div>}
+                                            {o.direccion   && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Dirección: </span><span style={{ fontWeight: 600 }}>{o.direccion}</span></div>}
+                                            {o.nodo        && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600 }}>{o.nodo}</span></div>}
+                                            {o.tecnico     && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600 }}>{o.tecnico}</span></div>}
+                                            {o.fechaActuacion && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Fecha programada: </span><span style={{ fontWeight: 600 }}>{o.fechaActuacion}{o.hora ? ` ${o.hora}` : ""}</span></div>}
+                                            {o.prioridad   && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Prioridad: </span><span style={{ fontWeight: 600 }}>{o.prioridad}</span></div>}
+                                            {o.velocidad   && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Plan: </span><span style={{ fontWeight: 600 }}>{o.velocidad}</span></div>}
+                                            {o.autorOrden  && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Creado por: </span><span style={{ fontWeight: 600 }}>{o.autorOrden}</span></div>}
+                                            {o.fechaCreacion && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Fecha creación: </span><span style={{ fontWeight: 600 }}>{o.fechaCreacion}</span></div>}
                                           </div>
                                           {o.descripcion && (
-                                            <div style={{ display: "flex", gap: "8px", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", color: "#374151" }}>
+                                            <div style={{ display: "flex", gap: "8px", background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", color: isDark ? "#c3d3ee" : "#374151" }}>
                                               <span>📋</span><span>{o.descripcion}</span>
                                             </div>
                                           )}
@@ -24219,7 +24219,7 @@ export default function App() {
                                           )}
                                           <button
                                             onClick={() => setOrdenRecuperacionData((p) => ({ ...p, [rec.orden_codigo]: undefined }))}
-                                            style={{ alignSelf: "flex-start", padding: "4px 12px", borderRadius: "7px", border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
+                                            style={{ alignSelf: "flex-start", padding: "4px 12px", borderRadius: "7px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", background: isDark ? "#1a2740" : "#fff", color: isDark ? "#93a2bd" : "#6b7280", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}
                                           >
                                             Ocultar
                                           </button>
@@ -24232,7 +24232,7 @@ export default function App() {
                                 {/* Botón eliminar */}
                                 <div>
                                   <button
-                                    style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid #fca5a5", background: "#fff", color: "#dc2626", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                                    style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid #fca5a5", background: isDark ? "#1a2740" : "#fff", color: "#dc2626", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
                                     onClick={async () => {
                                       if (!window.confirm("¿Eliminar esta ejecución de recuperación?")) return;
                                       if (isSupabaseConfigured && rec.id) {
@@ -24277,7 +24277,7 @@ export default function App() {
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button
-                    style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
+                    style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", background: isDark ? "#1a2740" : "#fff", color: isDark ? "#c3d3ee" : "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
                     onClick={cargarStockTecnico}
                     disabled={cargandoStockTecnico}
                   >
@@ -24290,7 +24290,7 @@ export default function App() {
                   <div style={{ border: "1px dashed #bbf7d0", borderRadius: "14px", padding: "32px", color: "#166534", background: "#f0fdf4", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "28px" }}>✓</span>
                     <span style={{ fontWeight: 700, fontSize: "14px" }}>Todo al día</span>
-                    <span style={{ fontSize: "12px", color: "#6b7280" }}>No hay equipos pendientes de ingreso a almacén.</span>
+                    <span style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}>No hay equipos pendientes de ingreso a almacén.</span>
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "14px" }}>
@@ -24323,14 +24323,14 @@ export default function App() {
                             const solicitado = Boolean(item.codigo_entrega);
                             const accentColor = solicitado ? "#22c55e" : "#f59e0b";
                             return (
-                              <div key={item.id} style={{ borderRadius: "14px", border: `1px solid ${solicitado ? "#d1fae5" : "#fde68a"}`, background: "#fff", overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+                              <div key={item.id} style={{ borderRadius: "14px", border: `1px solid ${solicitado ? (isDark ? "#1f4d3a" : "#d1fae5") : (isDark ? "#5c4a1a" : "#fde68a")}`, background: isDark ? "#1a2740" : "#fff", overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
                                 {/* Accent top */}
                                 <div style={{ height: "3px", background: accentColor }} />
                                 <div style={{ padding: "16px" }}>
                                   {/* Header */}
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "12px", flexWrap: "wrap" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                                      <span style={{ fontWeight: 800, fontSize: "15px", color: "#111827" }}>{item.tipo}</span>
+                                      <span style={{ fontWeight: 800, fontSize: "15px", color: isDark ? "#e6ecf7" : "#111827" }}>{item.tipo}</span>
                                       <span style={{ fontSize: "11px", fontWeight: 700, background: item.estado === "Bueno" ? "#dcfce7" : item.estado === "Dañado" ? "#fee2e2" : "#fef3c7", color: item.estado === "Bueno" ? "#166534" : item.estado === "Dañado" ? "#991b1b" : "#92400e", borderRadius: "999px", padding: "2px 9px" }}>{item.estado}</span>
                                       {solicitado && <span style={{ fontSize: "11px", fontWeight: 700, background: "#dbeafe", color: "#1e40af", borderRadius: "999px", padding: "2px 9px", fontFamily: "monospace" }}>{item.codigo_entrega}</span>}
                                     </div>
@@ -24340,20 +24340,20 @@ export default function App() {
                                     }
                                   </div>
                                   {/* Info grid */}
-                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "6px 16px", background: "#f8fafc", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px", fontSize: "12px" }}>
-                                    {item.serial && <div><span style={{ color: "#9ca3af" }}>Serial: </span><span style={{ fontFamily: "monospace", fontWeight: 700, color: "#0369a1" }}>{item.serial}</span></div>}
-                                    <div><span style={{ color: "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nombre_cliente || "-"}</span></div>
-                                    <div><span style={{ color: "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nodo || "-"}</span></div>
-                                    <div><span style={{ color: "#9ca3af" }}>Orden: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.orden_codigo || "-"}</span></div>
-                                    <div><span style={{ color: "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.tecnico_recupera || "-"}</span></div>
-                                    <div><span style={{ color: "#9ca3af" }}>Recogido: </span><span style={{ color: "#6b7280" }}>{item.created_at ? new Date(item.created_at).toLocaleDateString("es-PE") : "-"}</span></div>
-                                    {solicitado && <div style={{ color: "#166534" }}><span style={{ color: "#9ca3af" }}>Solicitó: </span><span style={{ fontWeight: 700 }}>{item.solicitado_por || "-"}</span>{item.fecha_solicitud_entrega ? ` · ${new Date(item.fecha_solicitud_entrega).toLocaleDateString("es-PE")}` : ""}</div>}
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "6px 16px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: "10px", padding: "10px 14px", marginBottom: "12px", fontSize: "12px" }}>
+                                    {item.serial && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Serial: </span><span style={{ fontFamily: "monospace", fontWeight: 700, color: "#0369a1" }}>{item.serial}</span></div>}
+                                    <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nombre_cliente || "-"}</span></div>
+                                    <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nodo || "-"}</span></div>
+                                    <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Orden: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.orden_codigo || "-"}</span></div>
+                                    <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.tecnico_recupera || "-"}</span></div>
+                                    <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Recogido: </span><span style={{ color: isDark ? "#93a2bd" : "#6b7280" }}>{item.created_at ? new Date(item.created_at).toLocaleDateString("es-PE") : "-"}</span></div>
+                                    {solicitado && <div style={{ color: "#166534" }}><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Solicitó: </span><span style={{ fontWeight: 700 }}>{item.solicitado_por || "-"}</span>{item.fecha_solicitud_entrega ? ` · ${new Date(item.fecha_solicitud_entrega).toLocaleDateString("es-PE")}` : ""}</div>}
                                   </div>
                                   {/* Fotos del equipo */}
                                   {Array.isArray(item.fotos) && item.fotos.length > 0 && (
                                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
                                       {item.fotos.map((f, fi) => (
-                                        <img key={fi} src={f} alt="foto" style={{ width: "72px", height: "58px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${item.tipo} foto ${fi + 1}`)} />
+                                        <img key={fi} src={f} alt="foto" style={{ width: "72px", height: "58px", objectFit: "cover", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", cursor: "pointer" }} onClick={() => abrirFotoZoom(f, `${item.tipo} foto ${fi + 1}`)} />
                                       ))}
                                     </div>
                                   )}
@@ -24376,10 +24376,10 @@ export default function App() {
                                       </button>
                                     )
                                   ) : ingresandoStockId === item.id ? (
-                                    <div style={{ display: "grid", gap: "10px", borderTop: "1px solid #e5e7eb", paddingTop: "12px" }}>
+                                    <div style={{ display: "grid", gap: "10px", borderTop: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", paddingTop: "12px" }}>
                                       <textarea style={{ ...textareaStyle, minHeight: "60px", fontSize: "12px" }} placeholder="Observación de ingreso (opcional)" value={observacionIngreso} onChange={(e) => setObservacionIngreso(e.target.value)} />
                                       <div>
-                                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "6px" }}>📷 Foto de recepción <span style={{ color: "#ef4444" }}>*requerida</span></div>
+                                        <div style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "6px" }}>📷 Foto de recepción <span style={{ color: "#ef4444" }}>*requerida</span></div>
                                         <label style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
                                           {fotoRecepcion ? "🔄 Cambiar foto" : "📷 Subir foto"}
                                           <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
@@ -24427,13 +24427,13 @@ export default function App() {
                     <div style={{ flex: 1, height: "1.5px", background: "#d1fae5" }} />
                   </div>
                   {stockTecnico.filter((s) => s.ingresado_almacen).length === 0 ? (
-                    <div style={{ border: "1px dashed #bbf7d0", borderRadius: "12px", padding: "16px", color: "#6b7280", textAlign: "center", fontSize: "13px" }}>
+                    <div style={{ border: "1px dashed #bbf7d0", borderRadius: "12px", padding: "16px", color: isDark ? "#93a2bd" : "#6b7280", textAlign: "center", fontSize: "13px" }}>
                       Aún no hay equipos confirmados como ingresados.
                     </div>
                   ) : (
                   <div style={{ display: "grid", gap: "10px" }}>
                     {/* Filtros + PDF */}
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", padding: "10px 14px", background: "#f8fafc", borderRadius: "10px", border: "1px solid #e5e7eb" }}>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", padding: "10px 14px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: "10px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb" }}>
                       <input
                         style={{ ...inputStyle, flex: "1 1 160px", fontSize: "12px", padding: "5px 10px" }}
                         placeholder="Buscar cliente, tipo, serial, orden..."
@@ -24509,7 +24509,7 @@ export default function App() {
                       }
                       return true;
                     }).length === 0 && (
-                      <div style={{ color: "#6b7280", textAlign: "center", fontSize: "13px", padding: "16px" }}>No hay resultados para los filtros aplicados.</div>
+                      <div style={{ color: isDark ? "#93a2bd" : "#6b7280", textAlign: "center", fontSize: "13px", padding: "16px" }}>No hay resultados para los filtros aplicados.</div>
                     )}
                     {stockTecnico.filter((s) => {
                       if (!s.ingresado_almacen) return false;
@@ -24525,40 +24525,40 @@ export default function App() {
                       // Fix foto bug: solo mostrar fotos con URI válido (data: o http)
                       const fotoValida = item.foto_recepcion && (item.foto_recepcion.startsWith("data:") || item.foto_recepcion.startsWith("http"));
                       return (
-                      <div key={item.id} style={{ border: "1px solid #d1fae5", borderRadius: "14px", background: "#fff", overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
+                      <div key={item.id} style={{ border: "1px solid #d1fae5", borderRadius: "14px", background: isDark ? "#1a2740" : "#fff", overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
                         <div style={{ height: "3px", background: "#22c55e" }} />
                         <div style={{ padding: "14px 16px" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", alignItems: "flex-start" }}>
                             {/* Info lado izquierdo */}
                             <div style={{ display: "grid", gap: "4px", flex: 1 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 800, fontSize: "14px", color: "#111827" }}>{item.tipo}</span>
+                                <span style={{ fontWeight: 800, fontSize: "14px", color: isDark ? "#e6ecf7" : "#111827" }}>{item.tipo}</span>
                                 <span style={{ fontSize: "11px", fontWeight: 700, background: item.estado === "Bueno" ? "#dcfce7" : item.estado === "Dañado" ? "#fee2e2" : "#fef3c7", color: item.estado === "Bueno" ? "#166534" : item.estado === "Dañado" ? "#991b1b" : "#92400e", borderRadius: "999px", padding: "1px 8px" }}>{item.estado}</span>
                                 {item.codigo_entrega && <span style={{ fontSize: "10px", fontWeight: 700, background: "#dbeafe", color: "#1e40af", borderRadius: "999px", padding: "1px 8px", fontFamily: "monospace" }}>{item.codigo_entrega}</span>}
                                 <span style={{ background: "#dcfce7", color: "#166534", borderRadius: "999px", padding: "2px 9px", fontSize: "11px", fontWeight: 700 }}>✓ Ingresado</span>
                                 {item.catalogado && <span style={{ background: "#dbeafe", color: "#1d4ed8", borderRadius: "999px", padding: "2px 9px", fontSize: "11px", fontWeight: 700 }}>📋 En catálogo</span>}
                               </div>
                               {item.serial && <div style={{ fontSize: "12px", color: "#0369a1", fontFamily: "monospace", fontWeight: 600 }}>S/N: {item.serial}</div>}
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "3px 16px", background: "#f8fafc", borderRadius: "8px", padding: "8px 10px", fontSize: "11px", marginTop: "4px" }}>
-                                <div><span style={{ color: "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nombre_cliente || "-"}</span></div>
-                                <div><span style={{ color: "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.nodo || "-"}</span></div>
-                                <div><span style={{ color: "#9ca3af" }}>Orden: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.orden_codigo || "-"}</span></div>
-                                <div><span style={{ color: "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600, color: "#374151" }}>{item.tecnico_recupera || "-"}</span></div>
-                                {item.solicitado_por && <div><span style={{ color: "#9ca3af" }}>Solicitó: </span><span style={{ color: "#0369a1" }}>{item.solicitado_por}</span></div>}
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "3px 16px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: "8px", padding: "8px 10px", fontSize: "11px", marginTop: "4px" }}>
+                                <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Cliente: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nombre_cliente || "-"}</span></div>
+                                <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Nodo: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nodo || "-"}</span></div>
+                                <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Orden: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.orden_codigo || "-"}</span></div>
+                                <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Técnico: </span><span style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{item.tecnico_recupera || "-"}</span></div>
+                                {item.solicitado_por && <div><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Solicitó: </span><span style={{ color: "#0369a1" }}>{item.solicitado_por}</span></div>}
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f0fdf4", borderRadius: "8px", padding: "6px 10px", fontSize: "11px", marginTop: "2px" }}>
-                                <span><span style={{ color: "#9ca3af" }}>Ingresado por: </span><span style={{ fontWeight: 700, color: "#166534" }}>{item.ingresado_por || "-"}</span></span>
+                                <span><span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Ingresado por: </span><span style={{ fontWeight: 700, color: "#166534" }}>{item.ingresado_por || "-"}</span></span>
                                 <span style={{ color: "#d1d5db" }}>·</span>
-                                <span style={{ color: "#6b7280" }}>{item.fecha_ingreso ? new Date(item.fecha_ingreso).toLocaleString("es-PE") : "-"}</span>
+                                <span style={{ color: isDark ? "#93a2bd" : "#6b7280" }}>{item.fecha_ingreso ? new Date(item.fecha_ingreso).toLocaleString("es-PE") : "-"}</span>
                               </div>
                               {item.observacion_ingreso && (
                                 <div style={{ display: "flex", gap: "6px", background: "#fffbeb", borderRadius: "8px", padding: "6px 10px", border: "1px solid #fde68a", fontSize: "11px" }}>
-                                  <span style={{ color: "#9ca3af" }}>Obs:</span>
+                                  <span style={{ color: isDark ? "#93a2bd" : "#9ca3af" }}>Obs:</span>
                                   <span style={{ color: "#78350f" }}>{item.observacion_ingreso}</span>
                                 </div>
                               )}
                               {item.catalogado && (
-                                <div style={{ fontSize: "10px", color: "#6b7280" }}>
+                                <div style={{ fontSize: "10px", color: isDark ? "#93a2bd" : "#6b7280" }}>
                                   Catálogo: <span style={{ fontWeight: 600, color: "#1d4ed8" }}>{item.estado_catalogado || "-"}</span>{item.fecha_catalogado ? ` · ${new Date(item.fecha_catalogado).toLocaleDateString("es-PE")}` : ""}
                                 </div>
                               )}
@@ -24599,7 +24599,7 @@ export default function App() {
                                   </label>
                                 </div>
                               ) : rolSesion !== "Tecnico" ? (
-                                <label style={{ cursor: "pointer", fontSize: "10px", color: "#6b7280", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "3px 7px" }}
+                                <label style={{ cursor: "pointer", fontSize: "10px", color: isDark ? "#93a2bd" : "#6b7280", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "6px", padding: "3px 7px" }}
                                   title="Agregar foto de recepción">
                                   📷 Agregar foto
                                   <input type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
@@ -24675,7 +24675,7 @@ export default function App() {
                             {!item.serial && rolSesion !== "Tecnico" && (
                               vinculandoSerialId === item.id ? (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "180px" }}>
-                                  <div style={{ fontSize: "11px", color: "#374151" }}>
+                                  <div style={{ fontSize: "11px", color: isDark ? "#c3d3ee" : "#374151" }}>
                                     Ingresa o escanea el serial/QR asignado en Inventario:
                                   </div>
                                   <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
@@ -24739,7 +24739,7 @@ export default function App() {
                                     Ir a Inventario →
                                   </button>
                                   <button
-                                    style={{ ...secondaryButton, fontSize: "11px", padding: "4px 10px", borderColor: "#6b7280", color: "#6b7280" }}
+                                    style={{ ...secondaryButton, fontSize: "11px", padding: "4px 10px", borderColor: "#6b7280", color: isDark ? "#93a2bd" : "#6b7280" }}
                                     onClick={() => { setVinculandoSerialId(item.id); setVinculandoSerialValor(""); }}
                                   >
                                     Vincular serial registrado
