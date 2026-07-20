@@ -2103,6 +2103,7 @@ export default function App() {
   const [cargandoStockTecnico, setCargandoStockTecnico] = useState(false);
   const [recuperacionesSubmenu, setRecuperacionesSubmenu] = useState("ejecuciones");
   const [verRecuperacionId, setVerRecuperacionId] = useState(null);
+  const [editandoFechaRecuperacionId, setEditandoFechaRecuperacionId] = useState(null);
   const [ordenRecuperacionData, setOrdenRecuperacionData] = useState({});
   const [ordenRecuperacionCargando, setOrdenRecuperacionCargando] = useState({});
   const [ingresandoStockId, setIngresandoStockId] = useState(null);
@@ -3095,11 +3096,36 @@ export default function App() {
     return clientesFiltrados.slice(start, start + CLIENTES_PAGE_SIZE);
   }, [clientesFiltrados, clientesPagina]);
 
+  // ── Recuperaciones: filtro por gestor (quien creó la orden) ──────────────
+  // Un Gestor solo ve lo suyo (bloqueado); el Admin puede ver todo o filtrar por cualquiera.
+  const [filtroGestorRecuperacionAdmin, setFiltroGestorRecuperacionAdmin] = useState("");
+  const gestorFiltroRecuperacionEfectivo = esGestorSesion ? (usuarioSesion?.nombre || "") : filtroGestorRecuperacionAdmin;
+
   // Órdenes de Recojo de equipo aún no ejecutadas (para tab "Pendientes" en Recuperaciones)
-  const pendientesRecuperacion = useMemo(
-    () => (Array.isArray(ordenes) ? ordenes : []).filter((o) => o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente"),
-    [ordenes]
-  );
+  const pendientesRecuperacion = useMemo(() => {
+    const base = (Array.isArray(ordenes) ? ordenes : []).filter((o) => o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente");
+    return gestorFiltroRecuperacionEfectivo ? base.filter((o) => o.autorOrden === gestorFiltroRecuperacionEfectivo) : base;
+  }, [ordenes, gestorFiltroRecuperacionEfectivo]);
+
+  // Mapa código de orden -> autor (para poder filtrar el historial de ejecuciones por gestor,
+  // ya que ese registro no guarda quien creo la orden original, solo quien la ejecuto).
+  const codigoAutorOrdenMap = useMemo(() => {
+    const map = {};
+    (Array.isArray(ordenes) ? ordenes : []).forEach((o) => { if (o.codigo) map[o.codigo] = o.autorOrden || ""; });
+    return map;
+  }, [ordenes]);
+
+  const historialRecuperacionesFiltrado = useMemo(() => {
+    if (!gestorFiltroRecuperacionEfectivo) return historialRecuperaciones;
+    return historialRecuperaciones.filter((rec) => codigoAutorOrdenMap[rec.orden_codigo] === gestorFiltroRecuperacionEfectivo);
+  }, [historialRecuperaciones, codigoAutorOrdenMap, gestorFiltroRecuperacionEfectivo]);
+
+  const gestoresRecuperacionDisponibles = useMemo(() => {
+    const set = new Set();
+    (Array.isArray(ordenes) ? ordenes : []).forEach((o) => { if (o.tipoActuacion === "Recojo de equipo" && o.autorOrden) set.add(o.autorOrden); });
+    historialRecuperaciones.forEach((rec) => { const a = codigoAutorOrdenMap[rec.orden_codigo]; if (a) set.add(a); });
+    return [...set].sort();
+  }, [ordenes, historialRecuperaciones, codigoAutorOrdenMap]);
 
   // Mapa DNI -> cantidad de servicios (para badge "múltiples servicios")
   const dniServiciosCount = useMemo(() => {
@@ -10179,6 +10205,19 @@ export default function App() {
     setOrdenEnLiquidacion(null);
     setLiquidacionRecojo(initialLiquidacionRecojo);
     setVistaActiva("recuperaciones");
+  };
+
+  const reprogramarFechaRecuperacion = async (ordenId, nuevaFecha) => {
+    if (!ordenId || !nuevaFecha) return;
+    try {
+      if (isSupabaseConfigured) {
+        const { error } = await supabase.from(ORDENES_TABLE).update({ fecha_actuacion: nuevaFecha }).eq("id", Number(ordenId));
+        if (error) throw error;
+      }
+      setOrdenes((prev) => prev.map((o) => (o.id === ordenId ? { ...o, fechaActuacion: nuevaFecha } : o)));
+    } catch (e) {
+      alert("No se pudo actualizar la fecha: " + (e?.message || "error desconocido"));
+    }
   };
 
   const cargarHistorialRecuperaciones = async () => {
@@ -23822,6 +23861,27 @@ export default function App() {
               ))}
             </div>
 
+            {/* ── Filtro por gestor (quién creó la orden) ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280" }}>👤 Gestor:</span>
+              {esGestorSesion ? (
+                <span style={{ fontSize: "12px", fontWeight: 700, background: "#eff6ff", color: "#1d4ed8", borderRadius: "8px", padding: "5px 12px" }}>
+                  {usuarioSesion?.nombre || "—"} (mis órdenes)
+                </span>
+              ) : (
+                <select
+                  value={filtroGestorRecuperacionAdmin}
+                  onChange={(e) => setFiltroGestorRecuperacionAdmin(e.target.value)}
+                  style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600, color: "#374151", background: "#fff" }}
+                >
+                  <option value="">Todos</option>
+                  {gestoresRecuperacionDisponibles.map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             {/* ── PENDIENTES ── */}
             {recuperacionesSubmenu === "pendientes" && (
               <div style={{ display: "grid", gap: "16px" }}>
@@ -23838,9 +23898,12 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
-                    {pendientesRecuperacion.map((o) => (
-                      <div key={o.id} style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
-                        <div style={{ height: "4px", background: "#f59e0b" }} />
+                    {pendientesRecuperacion.map((o) => {
+                      const vencida = o.fechaActuacion && o.fechaActuacion < todayIsoLocal();
+                      const editandoFecha = editandoFechaRecuperacionId === o.id;
+                      return (
+                      <div key={o.id} style={{ background: "#fff", borderRadius: "16px", border: vencida ? "1px solid #fca5a5" : "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
+                        <div style={{ height: "4px", background: vencida ? "#dc2626" : "#f59e0b" }} />
                         <div style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontWeight: 800, fontSize: "15px", color: "#111827", marginBottom: "3px" }}>{o.nombre || "—"}</div>
@@ -23850,6 +23913,7 @@ export default function App() {
                                 {o.nodo && <span style={{ marginLeft: "6px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{o.nodo}</span>}
                               </div>
                             )}
+                            {o.autorOrden && <div style={{ fontSize: "11px", color: "#9ca3af", marginTop: "2px" }}>Creado por: <strong style={{ color: "#6b7280" }}>{o.autorOrden}</strong></div>}
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
                               {o.codigo && (
                                 <span
@@ -23860,7 +23924,40 @@ export default function App() {
                                   {o.codigo}
                                 </span>
                               )}
-                              {o.fechaActuacion && <span style={{ fontSize: "11px", color: "#9ca3af" }}>📅 {o.fechaActuacion}{o.hora ? ` ${o.hora}` : ""}</span>}
+                              {editandoFecha ? (
+                                <>
+                                  <input
+                                    type="date"
+                                    defaultValue={o.fechaActuacion || todayIsoLocal()}
+                                    onChange={(e) => { o._nuevaFechaTemp = e.target.value; }}
+                                    style={{ fontSize: "11px", padding: "2px 6px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+                                  />
+                                  <button
+                                    onClick={async () => { await reprogramarFechaRecuperacion(o.id, o._nuevaFechaTemp || o.fechaActuacion); setEditandoFechaRecuperacionId(null); }}
+                                    style={{ fontSize: "11px", fontWeight: 700, color: "#166534", background: "#dcfce7", border: "1px solid #86efac", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
+                                  >
+                                    ✓ Guardar
+                                  </button>
+                                  <button
+                                    onClick={() => setEditandoFechaRecuperacionId(null)}
+                                    style={{ fontSize: "11px", color: "#6b7280", background: "#fff", border: "1px solid #e5e7eb", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span style={{ fontSize: "11px", color: vencida ? "#dc2626" : "#9ca3af", fontWeight: vencida ? 700 : 400 }}>
+                                    {vencida ? "⚠ " : "📅 "}{o.fechaActuacion || "sin fecha"}{o.hora ? ` ${o.hora}` : ""}{vencida ? " (vencida)" : ""}
+                                  </span>
+                                  <button
+                                    onClick={() => setEditandoFechaRecuperacionId(o.id)}
+                                    style={{ fontSize: "11px", fontWeight: 600, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
+                                  >
+                                    📅 Cambiar fecha
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", flexShrink: 0 }}>
@@ -23871,7 +23968,8 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -23884,7 +23982,7 @@ export default function App() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                   <div>
                     <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#111827", margin: "0 0 2px" }}>Historial de ejecuciones</h2>
-                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>{historialRecuperaciones.length} registro{historialRecuperaciones.length !== 1 ? "s" : ""}</p>
+                    <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>{historialRecuperacionesFiltrado.length} registro{historialRecuperacionesFiltrado.length !== 1 ? "s" : ""}</p>
                   </div>
                   <button
                     style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
@@ -23900,7 +23998,7 @@ export default function App() {
                     <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
                     <div style={{ fontWeight: 600 }}>Cargando registros…</div>
                   </div>
-                ) : historialRecuperaciones.length === 0 ? (
+                ) : historialRecuperacionesFiltrado.length === 0 ? (
                   <div style={{ background: "#fff", borderRadius: "16px", border: "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
                     <div style={{ fontSize: "32px", marginBottom: "8px" }}>📋</div>
                     <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Sin registros aún</div>
@@ -23908,7 +24006,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
-                    {historialRecuperaciones.map((rec, idx) => {
+                    {historialRecuperacionesFiltrado.map((rec, idx) => {
                       const equipos = Array.isArray(rec.equipos_recuperados) ? rec.equipos_recuperados : [];
                       const fotos = Array.isArray(rec.fotos) ? rec.fotos : [];
                       const fecha = rec.fecha_ejecucion ? new Date(rec.fecha_ejecucion).toLocaleString("es-PE") : "";
