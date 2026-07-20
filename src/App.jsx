@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -23841,7 +23841,7 @@ export default function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                  <div style={{ width: "40px", height: "40px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", flexShrink: 0 }}>🔄</div>
+                  <div style={{ width: "40px", height: "40px", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><RefreshCw size={20} color="#fff" /></div>
                   <h1 style={{ fontSize: "22px", fontWeight: 800, color: "#111827", margin: 0 }}>Recuperaciones</h1>
                 </div>
                 <p style={{ color: "#6b7280", fontSize: "13px", margin: "0 0 0 50px" }}>Historial de ejecuciones y custodia técnica de equipos</p>
@@ -23860,13 +23860,13 @@ export default function App() {
             {/* ── Resumen rápido ── */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px" }}>
               {[
-                { label: "Pendientes", valor: pendientesRecuperacion.length, icon: "⏳", color: "#92400e", bg: "#fef3c7" },
-                { label: "Vencidas", valor: vencidasRecuperacionCount, icon: "⚠️", color: "#991b1b", bg: "#fee2e2" },
-                { label: "Completadas este mes", valor: completadasMesRecuperacionCount, icon: "✅", color: "#166534", bg: "#dcfce7" },
-                { label: "Equipos en custodia", valor: stockTecnico.filter((s) => !s.ingresado_almacen).length, icon: "📦", color: "#1e40af", bg: "#dbeafe" },
+                { label: "Pendientes", valor: pendientesRecuperacion.length, Icon: Clock, color: "#92400e", bg: "#fef3c7" },
+                { label: "Vencidas", valor: vencidasRecuperacionCount, Icon: AlertTriangle, color: "#991b1b", bg: "#fee2e2" },
+                { label: "Completadas este mes", valor: completadasMesRecuperacionCount, Icon: CheckCircle2, color: "#166534", bg: "#dcfce7" },
+                { label: "Equipos en custodia", valor: stockTecnico.filter((s) => !s.ingresado_almacen).length, Icon: Package, color: "#1e40af", bg: "#dbeafe" },
               ].map((s) => (
                 <div key={s.label} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
-                  <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px", flexShrink: 0 }}>{s.icon}</div>
+                  <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><s.Icon size={18} color={s.color} /></div>
                   <div>
                     <div style={{ fontSize: "20px", fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.valor}</div>
                     <div style={{ fontSize: "11px", color: "#6b7280", fontWeight: 600, marginTop: "2px" }}>{s.label}</div>
@@ -23878,9 +23878,9 @@ export default function App() {
             {/* ── Tabs ── */}
             <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "14px", padding: "5px", gap: "4px" }}>
               {[
-                { key: "pendientes", label: "Pendientes", icon: "⏳", badge: pendientesRecuperacion.length, badgeVencidas: vencidasRecuperacionCount },
-                { key: "ejecuciones", label: "Ejecuciones", icon: "📋" },
-                { key: "stock", label: "Custodia Técnica", icon: "📦", badge: stockTecnico.filter((s) => !s.ingresado_almacen).length },
+                { key: "pendientes", label: "Pendientes", Icon: Clock, badge: pendientesRecuperacion.length, badgeVencidas: vencidasRecuperacionCount },
+                { key: "ejecuciones", label: "Ejecuciones", Icon: ClipboardList },
+                { key: "stock", label: "Custodia Técnica", Icon: Package, badge: stockTecnico.filter((s) => !s.ingresado_almacen).length },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -23894,13 +23894,13 @@ export default function App() {
                     boxShadow: recuperacionesSubmenu === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none",
                   }}
                 >
-                  <span>{tab.icon}</span>
+                  <tab.Icon size={15} />
                   <span>{tab.label}</span>
                   {tab.badge > 0 && (
                     <span style={{ background: "#f59e0b", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px", fontWeight: 800, lineHeight: "18px" }}>{tab.badge}</span>
                   )}
                   {tab.badgeVencidas > 0 && (
-                    <span title="Vencidas" style={{ background: "#dc2626", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px", fontWeight: 800, lineHeight: "18px" }}>⚠ {tab.badgeVencidas}</span>
+                    <span title="Vencidas" style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "#dc2626", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px", fontWeight: 800, lineHeight: "18px" }}><AlertTriangle size={10} />{tab.badgeVencidas}</span>
                   )}
                 </button>
               ))}
@@ -23979,9 +23979,9 @@ export default function App() {
                                   />
                                   <button
                                     onClick={async () => { await reprogramarFechaRecuperacion(o.id, o._nuevaFechaTemp || o.fechaActuacion); setEditandoFechaRecuperacionId(null); }}
-                                    style={{ fontSize: "11px", fontWeight: 700, color: "#166534", background: "#dcfce7", border: "1px solid #86efac", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 700, color: "#166534", background: "#dcfce7", border: "1px solid #86efac", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
                                   >
-                                    ✓ Guardar
+                                    <Check size={11} /> Guardar
                                   </button>
                                   <button
                                     onClick={() => setEditandoFechaRecuperacionId(null)}
@@ -23992,14 +23992,15 @@ export default function App() {
                                 </>
                               ) : (
                                 <>
-                                  <span style={{ fontSize: "11px", color: vencida ? "#dc2626" : "#9ca3af", fontWeight: vencida ? 700 : 400 }}>
-                                    {vencida ? "⚠ " : "📅 "}{o.fechaActuacion || "sin fecha"}{o.hora ? ` ${o.hora}` : ""}{vencida ? " (vencida)" : ""}
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", color: vencida ? "#dc2626" : "#9ca3af", fontWeight: vencida ? 700 : 400 }}>
+                                    {vencida ? <AlertTriangle size={12} /> : <Calendar size={12} />}
+                                    {o.fechaActuacion || "sin fecha"}{o.hora ? ` ${o.hora}` : ""}{vencida ? " (vencida)" : ""}
                                   </span>
                                   <button
                                     onClick={() => setEditandoFechaRecuperacionId(o.id)}
-                                    style={{ fontSize: "11px", fontWeight: 600, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
+                                    style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", fontWeight: 600, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", padding: "2px 8px", cursor: "pointer" }}
                                   >
-                                    📅 Cambiar fecha
+                                    <Calendar size={11} /> Cambiar fecha
                                   </button>
                                 </>
                               )}
@@ -24007,9 +24008,9 @@ export default function App() {
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", flexShrink: 0 }}>
                             <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#fef3c7", color: "#92400e", borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>
-                              ⏳ Pendiente
+                              <Clock size={12} /> Pendiente
                             </span>
-                            {o.tecnico && <span style={{ fontSize: "12px", color: "#6b7280" }}>👤 {o.tecnico}</span>}
+                            {o.tecnico && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6b7280" }}><User size={12} /> {o.tecnico}</span>}
                           </div>
                         </div>
                       </div>
@@ -24045,7 +24046,7 @@ export default function App() {
                   </div>
                 ) : historialRecuperacionesFiltrado.length === 0 ? (
                   <div style={{ background: "#fff", borderRadius: "16px", border: "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
-                    <div style={{ fontSize: "32px", marginBottom: "8px" }}>📋</div>
+                    <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px", color: "#9ca3af" }}><ClipboardList size={32} /></div>
                     <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Sin registros aún</div>
                     <div style={{ fontSize: "13px", color: "#9ca3af" }}>Las ejecuciones de recuperación aparecerán aquí.</div>
                   </div>
@@ -24057,7 +24058,7 @@ export default function App() {
                       const fecha = rec.fecha_ejecucion ? new Date(rec.fecha_ejecucion).toLocaleString("es-PE") : "";
                       const resultadoColor = rec.resultado === "Completada" ? "#166534" : rec.resultado === "Reprogramada" ? "#92400e" : "#991b1b";
                       const resultadoBg = rec.resultado === "Completada" ? "#dcfce7" : rec.resultado === "Reprogramada" ? "#fef3c7" : "#fee2e2";
-                      const resultadoIcon = rec.resultado === "Completada" ? "✓" : rec.resultado === "Reprogramada" ? "↻" : "✗";
+                      const ResultadoIcon = rec.resultado === "Completada" ? Check : rec.resultado === "Reprogramada" ? RotateCcw : XCircle;
                       const accentColor = rec.resultado === "Completada" ? "#22c55e" : rec.resultado === "Reprogramada" ? "#f59e0b" : "#ef4444";
                       const recId = rec.id || idx;
                       const expandido = verRecuperacionId === recId;
@@ -24086,14 +24087,14 @@ export default function App() {
                                       {rec.orden_codigo}
                                     </span>
                                   )}
-                                  {fecha && <span style={{ fontSize: "11px", color: "#9ca3af" }}>🕐 {fecha}</span>}
+                                  {fecha && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#9ca3af" }}><Clock size={11} /> {fecha}</span>}
                                 </div>
                               </div>
                               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px", flexShrink: 0 }}>
                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: resultadoBg, color: resultadoColor, borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>
-                                  {resultadoIcon} {rec.resultado}
+                                  <ResultadoIcon size={12} /> {rec.resultado}
                                 </span>
-                                {rec.tecnico_ejecuta && <span style={{ fontSize: "12px", color: "#6b7280" }}>👤 {rec.tecnico_ejecuta}</span>}
+                                {rec.tecnico_ejecuta && <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6b7280" }}><User size={12} /> {rec.tecnico_ejecuta}</span>}
                                 {/* Botón Ver / Ocultar */}
                                 <button
                                   onClick={() => setVerRecuperacionId(expandido ? null : recId)}
