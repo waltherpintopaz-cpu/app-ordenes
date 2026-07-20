@@ -352,6 +352,7 @@ export default function SidebarApp() {
   const [convId,  setConvId]      = useState(null);
   const [acctId,  setAcctId]      = useState("1");
   const [cliente, setCliente]     = useState(null);  // datos Supabase/Mikrowisp
+  const [recojoInfo, setRecojoInfo] = useState(null); // ultimo recojo de equipo completado del cliente (si existe)
   const [serviciosTelefono, setServiciosTelefono] = useState([]); // [{tipo:"mikrowisp"|"local", row}] cuando el telefono tiene 2+ servicios
   const [detalle, setDetalle]     = useState(null);  // GetClientsDetails
   const [facturas, setFacturas]   = useState([]);
@@ -670,6 +671,26 @@ export default function SidebarApp() {
     setDniResultados([]); setDniSel(null); setDniBusq("");
     setOrdenCreada(null);
     setOrdenesCliente([]); setLiquidacionesCliente([]);
+    setRecojoInfo(null);
+  }
+
+  // ── Consultar si a este cliente ya se le recogio el equipo antes ──────────
+  async function cargarRecojoInfo(dni) {
+    const dniLimpio = String(dni || "").replace(/\D/g, "");
+    if (!dniLimpio) { setRecojoInfo(null); return; }
+    try {
+      const { data } = await supabase
+        .from("ordenes_recuperacion_ejecucion")
+        .select("orden_codigo,fecha_ejecucion,resultado")
+        .eq("dni", dniLimpio)
+        .eq("resultado", "Completada")
+        .order("fecha_ejecucion", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setRecojoInfo(data || null);
+    } catch (_) {
+      setRecojoInfo(null);
+    }
   }
 
   // ── Cargar datos completos a partir de una row de mikrowisp_clientes ────────
@@ -740,7 +761,7 @@ export default function SidebarApp() {
     setAutoLoad(Date.now());
 
     // Cargar historial de órdenes y liquidaciones del cliente
-    if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); cargarIPTV(row.cedula); }
+    if (row.cedula) { cargarHistorialOrdenes(row.cedula); cargarNotas(row.cedula); cargarIPTV(row.cedula); cargarRecojoInfo(row.cedula); }
   }
 
   async function guardarVlanCliente(nuevoVlan) {
@@ -792,7 +813,7 @@ export default function SidebarApp() {
     setAutoLoad(Date.now());
     setTab("orden");
 
-    if (row.dni) { cargarHistorialOrdenes(row.dni); cargarNotas(row.dni); cargarIPTV(row.dni); }
+    if (row.dni) { cargarHistorialOrdenes(row.dni); cargarNotas(row.dni); cargarIPTV(row.dni); cargarRecojoInfo(row.dni); }
   }
 
   // ── Buscar cliente por teléfono ───────────────────────────────────────────
@@ -3631,6 +3652,22 @@ export default function SidebarApp() {
             </div>
           )}
         </div>
+        )}
+
+        {/* ══ BANNER EQUIPO YA RECOGIDO ══ */}
+        {recojoInfo && (
+          <div style={{ padding:"8px 8px 0" }}>
+            <div style={{ background:isDark ? "#1e2b45" : "#eff6ff", borderLeft:`3px solid ${T.blue}`, borderRadius:5,
+              border:`1px solid ${T.blue}55`, display:"flex", alignItems:"center", gap:10, padding:"9px 12px" }}>
+              <span style={{ fontSize:16 }}>📦</span>
+              <div>
+                <div style={{ fontWeight:700, color:isDark ? "#7fa1d4" : T.blue, fontSize:12 }}>
+                  Equipo ya recogido{recojoInfo.fecha_ejecucion ? ` el ${new Date(recojoInfo.fecha_ejecucion).toLocaleDateString("es-PE")}` : ""}
+                </div>
+                {recojoInfo.orden_codigo && <span style={{ fontSize:11, color:T.muted }}>Orden {recojoInfo.orden_codigo}</span>}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ══ HISTORIAL COLAPSABLE ══ */}
