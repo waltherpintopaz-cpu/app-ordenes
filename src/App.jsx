@@ -15468,7 +15468,16 @@ export default function App() {
 
                   <div>
                     <label style={labelStyle}>Autor de la orden</label>
-                    <input style={{ ...inputStyle, background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#93a2bd" : "#64748b", cursor: "not-allowed" }} value={orden.autorOrden || usuarioSesion?.nombre || ""} readOnly />
+                    {esAdminSesion ? (
+                      <input
+                        style={inputStyle}
+                        value={orden.autorOrden || usuarioSesion?.nombre || ""}
+                        onChange={(e) => handleChange("autorOrden", e.target.value)}
+                        placeholder="Nombre del autor"
+                      />
+                    ) : (
+                      <input style={{ ...inputStyle, background: isDark ? "#16213a" : "#f1f5f9", color: isDark ? "#93a2bd" : "#64748b", cursor: "not-allowed" }} value={orden.autorOrden || usuarioSesion?.nombre || ""} readOnly />
+                    )}
                   </div>
 
                   <div>
