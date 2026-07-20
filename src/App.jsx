@@ -9147,7 +9147,7 @@ export default function App() {
     setEnviarWhatsappOrden(true);
     setOrdenIncluirIptv(false);
     setClienteEnDB(false);
-    setVistaActiva("pendientes");
+    setVistaActiva(estadoFinal === "Liquidada" ? "historial" : "pendientes");
   };
 
   const editarOrden = (ordenItem = {}) => {
@@ -9395,6 +9395,26 @@ export default function App() {
   const abrirEditarLiquidacionHistorial = async (liquidacionItem) => {
     const enriched = await enriquecerLiquidacionDesdeSupabase(liquidacionItem);
     abrirEditarLiquidacion(enriched);
+  };
+
+  const editarOrdenDesdeHistorial = async (liquidacionItem) => {
+    const ordenOriginalId = Number(liquidacionItem?.ordenOriginalId) || Number(liquidacionItem?.id);
+    if (!Number.isFinite(ordenOriginalId)) {
+      alert("No se pudo identificar la orden original.");
+      return;
+    }
+    let ordenReal = (Array.isArray(ordenes) ? ordenes : []).find((o) => Number(o.id) === ordenOriginalId);
+    if (!ordenReal && isSupabaseConfigured) {
+      try {
+        const { data } = await supabase.from(ORDENES_TABLE).select("*").eq("id", ordenOriginalId).maybeSingle();
+        if (data) ordenReal = deserializeOrderFromSupabase(data);
+      } catch {}
+    }
+    if (!ordenReal) {
+      alert("No se encontró la orden original para editar.");
+      return;
+    }
+    editarOrden(ordenReal);
   };
 
   const eliminarLiquidacion = async (liquidacionItem) => {
@@ -15912,6 +15932,11 @@ export default function App() {
                             {puedeEditarLiquidacion && (
                               <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
                                 Editar
+                              </button>
+                            )}
+                            {puedeEditarLiquidacion && (
+                              <button onClick={() => void editarOrdenDesdeHistorial(item)} style={{ padding: "7px 12px", background: isDark ? "#1e2b45" : "#EEF2FF", border: isDark ? "1px solid #3a4d78" : "1px solid #C7D2FE", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#a5b8ea" : "#3730A3", cursor: "pointer" }} title="Corregir datos de la orden (nodo, usuario, etc.)">
+                                Editar orden
                               </button>
                             )}
                             {esAdminSesion && (
