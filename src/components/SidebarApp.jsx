@@ -133,6 +133,7 @@ const getGlobalCSS = (T) => `
   .sb-hora-num::-webkit-outer-spin-button, .sb-hora-num::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
   .sb-hora-num[type=number] { -moz-appearance:textfield; }
   .sb-tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #fff; background: ${T.blue}; border-bottom: none; white-space: nowrap; }
+  .sb-panel .sb-fact-th { background: ${T.bg} !important; color: ${T.slate} !important; }
   .sb-tbl td { font-size: 12px; color: ${T.navy}; border-bottom: 1px solid ${T.border}; }
   .sb-tbl tr:last-child td { border-bottom: none; }
   .sb-tbl tr:nth-child(even) td { background: ${T.bg}; }
@@ -3431,19 +3432,19 @@ export default function SidebarApp() {
           const ultima = activas[0];
           return (
             <div style={{ padding:"8px 8px 0" }}>
-              <div style={{ background:"#eff6ff", borderLeft:`3px solid #3b82f6`, border:`1px solid #bfdbfe`,
+              <div style={{ background: isDark ? "#132340" : "#eff6ff", borderLeft:`3px solid ${T.blue}`, border:`1px solid ${isDark ? "#28417a" : "#bfdbfe"}`,
                 borderRadius:5, padding:"10px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
                 <div>
-                  <div style={{ fontSize:11, fontWeight:700, color:"#1d4ed8", textTransform:"uppercase", letterSpacing:"0.3px", marginBottom:2 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color: isDark ? "#8fb4ff" : "#1d4ed8", textTransform:"uppercase", letterSpacing:"0.3px", marginBottom:2 }}>
                     {activas.length === 1 ? "Orden activa" : `${activas.length} órdenes activas`}
                   </div>
-                  <div style={{ fontFamily:"monospace", fontWeight:700, fontSize:12, color:"#1e3a8a" }}>{ultima.codigo}</div>
-                  <div style={{ fontSize:11, color:"#3b82f6", marginTop:1 }}>
+                  <div style={{ fontFamily:"monospace", fontWeight:700, fontSize:12, color: isDark ? "#dbe6ff" : "#1e3a8a" }}>{ultima.codigo}</div>
+                  <div style={{ fontSize:11, color: isDark ? "#7ea6f0" : "#3b82f6", marginTop:1 }}>
                     {ultima.tipo_actuacion} · {ultima.tecnico || "Sin técnico"} · {(ultima.fecha_actuacion||"").slice(0,10)}
                   </div>
                 </div>
                 <button onClick={() => setShowHistorial(true)}
-                  style={{ background:"#3b82f6", color:"#fff", border:"none", borderRadius:5,
+                  style={{ background:T.blue, color:"#fff", border:"none", borderRadius:5,
                     padding:"6px 12px", fontWeight:700, fontSize:11, cursor:"pointer", flexShrink:0 }}>
                   Ver →
                 </button>
@@ -3605,11 +3606,18 @@ export default function SidebarApp() {
                 <table className="sb-tbl" style={{ width:"100%", borderCollapse:"collapse" }}>
                   <thead>
                     <tr>
-                      <th style={{ textAlign:"left", padding:"6px 6px" }}>#Fac.</th>
-                      <th style={{ textAlign:"left", padding:"6px 6px" }}>Estado</th>
-                      <th style={{ textAlign:"right", padding:"6px 6px" }}>Total</th>
-                      <th style={{ textAlign:"left", padding:"6px 6px" }}>Vence</th>
-                      <th style={{ textAlign:"left", padding:"6px 6px" }}>Pago</th>
+                      {(() => {
+                        const thSt = { textAlign:"left", padding:"7px 6px", fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.4px", borderBottom:`1px solid ${T.border}` };
+                        return (
+                          <>
+                            <th className="sb-fact-th" style={thSt}>#Fac.</th>
+                            <th className="sb-fact-th" style={thSt}>Estado</th>
+                            <th className="sb-fact-th" style={{ ...thSt, textAlign:"right" }}>Total</th>
+                            <th className="sb-fact-th" style={thSt}>Vence</th>
+                            <th className="sb-fact-th" style={thSt}>Pago</th>
+                          </>
+                        );
+                      })()}
                     </tr>
                   </thead>
                   <tbody>
