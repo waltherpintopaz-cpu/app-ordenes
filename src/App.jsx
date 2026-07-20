@@ -9055,6 +9055,40 @@ export default function App() {
       return;
     }
 
+    // Evitar solicitar de nuevo un recojo de equipo ya pendiente o ya completado para el mismo DNI
+    if (!ordenEditandoId && orden.tipoActuacion === "Recojo de equipo") {
+      const dniLimpioRecojo = String(orden.dni || "").replace(/\D/g, "");
+      const pendienteExistente = (Array.isArray(ordenes) ? ordenes : []).find(
+        (o) => String(o.dni || "").replace(/\D/g, "") === dniLimpioRecojo && o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente"
+      );
+      if (pendienteExistente) {
+        const continuar = window.confirm(
+          `⚠ Este cliente ya tiene una orden de Recojo de equipo pendiente sin ejecutar.\n\nOrden: ${pendienteExistente.codigo}\nFecha: ${pendienteExistente.fechaActuacion || "-"}\n\n¿Deseas crear otra de todas formas?`
+        );
+        if (!continuar) return;
+      } else if (isSupabaseConfigured) {
+        try {
+          const { data: recojoCompletado } = await supabase
+            .from("ordenes_recuperacion_ejecucion")
+            .select("orden_codigo,fecha_ejecucion,resultado")
+            .eq("dni", dniLimpioRecojo)
+            .eq("resultado", "Completada")
+            .order("fecha_ejecucion", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (recojoCompletado) {
+            const fechaTxt = recojoCompletado.fecha_ejecucion ? new Date(recojoCompletado.fecha_ejecucion).toLocaleDateString("es-PE") : "-";
+            const continuar = window.confirm(
+              `⚠ A este cliente ya se le recogió el equipo antes.\n\nOrden: ${recojoCompletado.orden_codigo}\nFecha: ${fechaTxt}\n\n¿Deseas crear otra solicitud de todas formas?`
+            );
+            if (!continuar) return;
+          }
+        } catch (_) {
+          // Si falla la verificación, no bloquear el guardado de la orden.
+        }
+      }
+    }
+
     // Crear cuenta IPTV junto con la orden (si se marcó la opción)
     let descripcionFinal = orden.descripcion || "";
     if (ordenIncluirIptv && !descripcionFinal.includes("Cuenta IPTV MaxPlayer")) {
