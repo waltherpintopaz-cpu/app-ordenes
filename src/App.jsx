@@ -3102,10 +3102,17 @@ export default function App() {
   const gestorFiltroRecuperacionEfectivo = esGestorSesion ? (usuarioSesion?.nombre || "") : filtroGestorRecuperacionAdmin;
 
   // Órdenes de Recojo de equipo aún no ejecutadas (para tab "Pendientes" en Recuperaciones)
+  // Ordenadas por fecha ascendente: las vencidas y mas urgentes primero.
   const pendientesRecuperacion = useMemo(() => {
     const base = (Array.isArray(ordenes) ? ordenes : []).filter((o) => o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente");
-    return gestorFiltroRecuperacionEfectivo ? base.filter((o) => o.autorOrden === gestorFiltroRecuperacionEfectivo) : base;
+    const filtrado = gestorFiltroRecuperacionEfectivo ? base.filter((o) => o.autorOrden === gestorFiltroRecuperacionEfectivo) : base;
+    return [...filtrado].sort((a, b) => String(a.fechaActuacion || "9999-99-99").localeCompare(String(b.fechaActuacion || "9999-99-99")));
   }, [ordenes, gestorFiltroRecuperacionEfectivo]);
+
+  const vencidasRecuperacionCount = useMemo(
+    () => pendientesRecuperacion.filter((o) => o.fechaActuacion && o.fechaActuacion < todayIsoLocal()).length,
+    [pendientesRecuperacion]
+  );
 
   // Mapa código de orden -> autor (para poder filtrar el historial de ejecuciones por gestor,
   // ya que ese registro no guarda quien creo la orden original, solo quien la ejecuto).
@@ -3119,6 +3126,14 @@ export default function App() {
     if (!gestorFiltroRecuperacionEfectivo) return historialRecuperaciones;
     return historialRecuperaciones.filter((rec) => codigoAutorOrdenMap[rec.orden_codigo] === gestorFiltroRecuperacionEfectivo);
   }, [historialRecuperaciones, codigoAutorOrdenMap, gestorFiltroRecuperacionEfectivo]);
+
+  const completadasMesRecuperacionCount = useMemo(() => {
+    const hoy = new Date();
+    const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+    return (Array.isArray(historialRecuperacionesFiltrado) ? historialRecuperacionesFiltrado : []).filter(
+      (rec) => rec.resultado === "Completada" && String(rec.fecha_ejecucion || "").slice(0, 10) >= inicioMes
+    ).length;
+  }, [historialRecuperacionesFiltrado]);
 
   const gestoresRecuperacionDisponibles = useMemo(() => {
     const set = new Set();
@@ -23842,10 +23857,28 @@ export default function App() {
               )}
             </div>
 
+            {/* ── Resumen rápido ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px" }}>
+              {[
+                { label: "Pendientes", valor: pendientesRecuperacion.length, icon: "⏳", color: "#92400e", bg: "#fef3c7" },
+                { label: "Vencidas", valor: vencidasRecuperacionCount, icon: "⚠️", color: "#991b1b", bg: "#fee2e2" },
+                { label: "Completadas este mes", valor: completadasMesRecuperacionCount, icon: "✅", color: "#166534", bg: "#dcfce7" },
+                { label: "Equipos en custodia", valor: stockTecnico.filter((s) => !s.ingresado_almacen).length, icon: "📦", color: "#1e40af", bg: "#dbeafe" },
+              ].map((s) => (
+                <div key={s.label} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "17px", flexShrink: 0 }}>{s.icon}</div>
+                  <div>
+                    <div style={{ fontSize: "20px", fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.valor}</div>
+                    <div style={{ fontSize: "11px", color: "#6b7280", fontWeight: 600, marginTop: "2px" }}>{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* ── Tabs ── */}
             <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "14px", padding: "5px", gap: "4px" }}>
               {[
-                { key: "pendientes", label: "Pendientes", icon: "⏳", badge: pendientesRecuperacion.length },
+                { key: "pendientes", label: "Pendientes", icon: "⏳", badge: pendientesRecuperacion.length, badgeVencidas: vencidasRecuperacionCount },
                 { key: "ejecuciones", label: "Ejecuciones", icon: "📋" },
                 { key: "stock", label: "Custodia Técnica", icon: "📦", badge: stockTecnico.filter((s) => !s.ingresado_almacen).length },
               ].map((tab) => (
@@ -23865,6 +23898,9 @@ export default function App() {
                   <span>{tab.label}</span>
                   {tab.badge > 0 && (
                     <span style={{ background: "#f59e0b", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px", fontWeight: 800, lineHeight: "18px" }}>{tab.badge}</span>
+                  )}
+                  {tab.badgeVencidas > 0 && (
+                    <span title="Vencidas" style={{ background: "#dc2626", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px", fontWeight: 800, lineHeight: "18px" }}>⚠ {tab.badgeVencidas}</span>
                   )}
                 </button>
               ))}
