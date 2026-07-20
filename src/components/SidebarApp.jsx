@@ -216,7 +216,7 @@ const getS = (T) => ({
 function Splash({ title, subtitle, loading, onRetry }) {
   return (
     <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-      background:"linear-gradient(145deg,#1a6fbc 0%,#0d5a9e 50%,#0a4882 100%)", overflow:"hidden", fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif" }}>
+      background:"#0A2E5F", overflow:"hidden", fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif" }}>
       {/* Burbujas decorativas */}
       <div style={{ position:"absolute", width:220, height:220, borderRadius:"50%", background:"rgba(255,255,255,0.06)", top:-60, left:-70 }} />
       <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", bottom:40, right:-50 }} />
@@ -226,7 +226,7 @@ function Splash({ title, subtitle, loading, onRetry }) {
       <div style={{ position:"relative", zIndex:10, display:"flex", flexDirection:"column", alignItems:"center", gap:0 }}>
         <img src={logoAmericanet} alt="Americanet" style={{ height:90, marginBottom:24, filter:"brightness(0) invert(1)", opacity:0.95 }} />
 
-        <div style={{ background:"#22c55e", borderRadius:20, padding:"4px 16px", marginBottom:6 }}>
+        <div style={{ background:"rgba(255,255,255,0.15)", borderRadius:20, padding:"4px 16px", marginBottom:6 }}>
           <span style={{ fontWeight:700, fontSize:11, color:"#fff", letterSpacing:0.8 }}>Panel de Agentes</span>
         </div>
         <div style={{ color:"rgba(255,255,255,0.45)", fontSize:10, letterSpacing:3, fontWeight:500, textTransform:"uppercase", marginBottom:36 }}>
@@ -293,7 +293,7 @@ function SplashAgente({ onSelect }) {
   const [sel, setSel] = useState("");
   return (
     <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-      background:"linear-gradient(145deg,#1a6fbc 0%,#0d5a9e 50%,#0a4882 100%)", overflow:"hidden",
+      background:"#0A2E5F", overflow:"hidden",
       fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif", padding:24 }}>
       <div style={{ position:"absolute", width:220, height:220, borderRadius:"50%", background:"rgba(255,255,255,0.06)", top:-60, left:-70 }} />
       <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", bottom:40, right:-50 }} />
@@ -2502,9 +2502,9 @@ export default function SidebarApp() {
           onClick={() => setModalSelectorServicio(null)}>
           <div style={{ background: T.card, borderRadius:16, width:"100%", maxWidth:320, maxHeight:"80vh", overflow:"auto", boxShadow:"0 20px 50px rgba(0,0,0,0.3)" }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ background:"#7c3aed", padding:"14px 16px", borderRadius:"16px 16px 0 0" }}>
+            <div style={{ background:T.blue, padding:"14px 16px", borderRadius:"16px 16px 0 0" }}>
               <div style={{ color:"#fff", fontWeight:800, fontSize:13 }}>Seleccionar servicio</div>
-              <div style={{ color:"#e9d5ff", fontSize:11, marginTop:2 }}>
+              <div style={{ color:T.border, fontSize:11, marginTop:2 }}>
                 DNI {modalSelectorServicio.dni} — {modalSelectorServicio.servicios.length} servicio{modalSelectorServicio.servicios.length===1?"":"s"} encontrado{modalSelectorServicio.servicios.length===1?"":"s"}
               </div>
             </div>
@@ -2648,7 +2648,7 @@ export default function SidebarApp() {
           {/* ── Mini-wizard Mikrowisp ── */}
           <div style={S.divider} />
           <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
-            style={{ ...S.btn(mwOpen?"#6b7280":"#d97706"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
+            style={{ ...S.btn(mwOpen?T.slate:T.blue), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
             🚀 {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
           </button>
 
@@ -2712,7 +2712,7 @@ export default function SidebarApp() {
                             <div>
                               <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
                               <div style={{ fontSize:10, color:"#64748b", marginTop:1 }}>
-                                DNI {c.dni} · <span style={{ color:"#0369a1", fontWeight:600 }}>{c.nodo}</span> · {String(c.fecha_registro||"").split("T")[0]}
+                                DNI {c.dni} · <span style={{ color:T.blue, fontWeight:600 }}>{c.nodo}</span> · {String(c.fecha_registro||"").split("T")[0]}
                               </div>
                             </div>
                             <span style={{ fontSize:10, color:"#d97706", fontWeight:700 }}>Setup →</span>
@@ -2758,8 +2758,8 @@ export default function SidebarApp() {
 
                 {/* Panel liquidaciones — visible en pasos 2 y 3 */}
                 {(mwStep===2 || mwStep===3) && mwWizardLiq.length > 0 && (
-                  <div style={{ background:"#f5f3ff", border:"1.5px solid #d8b4fe", borderRadius:10, padding:"10px 14px", marginBottom:4 }}>
-                    <div style={{ fontSize:10, fontWeight:800, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
+                  <div style={{ background:T.accent, border:"1.5px solid #d8b4fe", borderRadius:10, padding:"10px 14px", marginBottom:4 }}>
+                    <div style={{ fontSize:10, fontWeight:800, color:T.blue, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
                     <div style={{ display:"grid", gap:6 }}>
                       {mwWizardLiq.map((l,i) => {
                         const cobrado = l.cobro_realizado===true || l.cobro_realizado==="SI" || l.cobro_realizado===1;
@@ -2767,7 +2767,7 @@ export default function SidebarApp() {
                           <div key={i} style={{ background:"#fff", border:`1px solid ${cobrado?"#86efac":"#fde047"}`, borderRadius:8, padding:"8px 10px" }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                <span style={{ fontWeight:800, fontSize:12, color:"#7c3aed" }}>{l.codigo}</span>
+                                <span style={{ fontWeight:800, fontSize:12, color:T.blue }}>{l.codigo}</span>
                                 <span style={{ fontSize:10, background: cobrado?"#dcfce7":"#fef9c3", color: cobrado?"#15803d":"#854d0e", padding:"1px 6px", borderRadius:99, fontWeight:700 }}>{cobrado?"✓ Cobrado":"Pendiente"}</span>
                               </div>
                               {l.monto_cobrado && <span style={{ fontWeight:800, fontSize:12, color: cobrado?"#16a34a":"#92400e" }}>S/{l.monto_cobrado}</span>}
@@ -2866,7 +2866,7 @@ export default function SidebarApp() {
 
                 {/* PASO 3 — Facturas */}
                 {mwStep===3 && (() => {
-                  const c = "#7c3aed", bo = "#d8b4fe";
+                  const c = T.blue, bo = T.border;
                   const empresa = mwEsDim(mwCliSupa?.nodo) ? "dimfiber" : "americanet";
                   const pasarelas = PASARELAS[empresa] || PASARELAS.americanet;
                   // Cálculo prorrateo
@@ -2887,7 +2887,7 @@ export default function SidebarApp() {
                         {[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(
                           <button key={s} onClick={()=>setMwFactSub(s)}
                             style={{ flex:1, padding:"6px", borderRadius:6, border:"none", fontSize:10, fontWeight:700, cursor:"pointer",
-                              background: mwFactSub===s?c:"#f5f3ff", color: mwFactSub===s?"#fff":c }}>
+                              background: mwFactSub===s?c:T.accent, color: mwFactSub===s?"#fff":c }}>
                             {mwFactDone && s===1 ? "✓ "+l : l}
                           </button>
                         ))}
@@ -2900,7 +2900,7 @@ export default function SidebarApp() {
                             {[{m:"normal",l:"📄 Normal"},{m:"libre",l:"🎁 Libre/Promo"}].map(({m,l})=>(
                               <button key={m} onClick={()=>setMwFactModo(m)}
                                 style={{ flex:1, padding:"5px", borderRadius:5, border:"none", fontSize:10, fontWeight:700, cursor:"pointer",
-                                  background: mwFactModo===m?c:"#f5f3ff", color: mwFactModo===m?"#fff":c }}>{l}
+                                  background: mwFactModo===m?c:T.accent, color: mwFactModo===m?"#fff":c }}>{l}
                               </button>
                             ))}
                           </div>
@@ -2958,7 +2958,7 @@ export default function SidebarApp() {
                             </div>
                           </div>
                           {montoAuto && (
-                            <div style={{ background:"#f5f3ff", border:`1px solid ${bo}`, borderRadius:6, padding:"8px 10px", fontSize:11, color:c, fontWeight:700 }}>
+                            <div style={{ background:T.accent, border:`1px solid ${bo}`, borderRadius:6, padding:"8px 10px", fontSize:11, color:c, fontWeight:700 }}>
                               S/{prec.toFixed(2)} × {diasSvc}d / {diasPer}d = <span style={{ fontSize:14 }}>S/{montoAuto}</span>
                             </div>
                           )}
@@ -2993,12 +2993,12 @@ export default function SidebarApp() {
                       </div>
                     ) : (
                       <button onClick={mwSincronizar} disabled={mwSyncLoad}
-                        style={{ ...S.btn("#0369a1"), opacity:mwSyncLoad?0.6:1 }}>
+                        style={{ ...S.btn(T.blue), opacity:mwSyncLoad?0.6:1 }}>
                         {mwSyncLoad?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}
                       </button>
                     )}
                     <button onClick={mwEnviarSms} disabled={mwSmsSent}
-                      style={{ ...S.btn("#7c3aed"), opacity:mwSmsSent?0.6:1 }}>
+                      style={{ ...S.btn(T.blue), opacity:mwSmsSent?0.6:1 }}>
                       {mwSmsSent?"✓ SMS enviado":"💬 Enviar SMS Bienvenida"}
                     </button>
                     {mwMsg && <div style={{ fontSize:11, color:mwMsg.startsWith("✓")? T.green : T.red, fontWeight:600 }}>{mwMsg}</div>}
@@ -3016,7 +3016,7 @@ export default function SidebarApp() {
           {/* ── Orden nueva para cliente no registrado ── */}
           <div style={S.divider} />
           <button onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }}
-            style={{ ...S.btn(showOrdenNuevo ? "#6b7280" : "#7c3aed"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            style={{ ...S.btn(showOrdenNuevo ? "#6b7280" : T.blue), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
             📋 {showOrdenNuevo ? "Cancelar" : "Crear orden de instalación"}
           </button>
 
@@ -3027,7 +3027,7 @@ export default function SidebarApp() {
                 <button onClick={() => { setOrdenCreada(null); setShowOrdenNuevo(false); }} style={{ ...S.btnOut, fontSize:11 }}>Cerrar</button>
               </div>
             ) : (() => {
-              const LBL = "#7c3aed"; const BG = "#faf5ff";
+              const LBL = T.blue; const BG = T.accent;
               const fila = (label, content, last=false) => (
                 <div style={{ display:"grid", gridTemplateColumns:"90px 1fr", borderBottom:last?"none":`1px solid ${T.border}` }}>
                   <div style={{ padding:"7px 10px", background:BG, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:LBL, display:"flex", alignItems:"center" }}>{label}</div>
@@ -3060,9 +3060,9 @@ export default function SidebarApp() {
               const esInst = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
               const empAutoNodo = ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa;
               return (
-                <div style={{ border:`2px solid #7c3aed33`, borderRadius:8, overflow:"hidden", marginTop:10 }}>
+                <div style={{ border:`2px solid ${T.blue}33`, borderRadius:8, overflow:"hidden", marginTop:10 }}>
                   {/* Encabezado */}
-                  <div style={{ background:"#7c3aed", padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
+                  <div style={{ background:T.blue, padding:"8px 12px", display:"flex", alignItems:"center", gap:8 }}>
                     <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>📋 PASO 1 · Datos de la orden</span>
                   </div>
                   <div style={{ background:"#fff" }}>
@@ -3094,7 +3094,7 @@ export default function SidebarApp() {
                     {ordenForm.solicitarPago === "SI" && fila("Monto S/", inp("montoCobrar", "0.00", "number"))}
                   </div>
 
-                  <div style={{ background:"#7c3aed", padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div style={{ background:T.blue, padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                     <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>👤 PASO 2 · Datos del cliente</span>
                     <button onClick={extraerDatosDeChat} disabled={buscandoDatosChat}
                       style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.4)", borderRadius:5,
@@ -3110,7 +3110,7 @@ export default function SidebarApp() {
                           value={ordenForm.dni} onChange={e=>setOrdenForm(p=>({...p,dni:e.target.value.replace(/\D/g,"")}))}
                           onKeyDown={e=>e.key==="Enter"&&buscarDniNuevo()} />
                         <button onClick={buscarDniNuevo} disabled={buscandoDniNew||ordenForm.dni.length!==8}
-                          style={{...S.btnSm(buscandoDniNew?"#9ca3af":"#7c3aed"),borderRadius:0,padding:"0 12px",height:"100%",fontSize:11,flexShrink:0,opacity:ordenForm.dni.length!==8?0.5:1}}>
+                          style={{...S.btnSm(buscandoDniNew?"#9ca3af":T.blue),borderRadius:0,padding:"0 12px",height:"100%",fontSize:11,flexShrink:0,opacity:ordenForm.dni.length!==8?0.5:1}}>
                           {buscandoDniNew?"...":"🔍 Buscar"}
                         </button>
                       </div>
@@ -3121,7 +3121,7 @@ export default function SidebarApp() {
                     {fila("Dirección", inp("direccion","Av. ..."))}
                   </div>
 
-                  <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
+                  <div style={{ background:T.blue, padding:"8px 12px" }}>
                     <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>🌐 PASO 3 · Servicio</span>
                   </div>
                   <div style={{ background:"#fff" }}>
@@ -3143,7 +3143,7 @@ export default function SidebarApp() {
                         onChange={e=>setOrdenForm(p=>({...p,vlan:e.target.value.replace(/\D/g,"")}))}
                         placeholder="VLAN" />
                     )}
-                    {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?"#7c3aed":T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
+                    {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?T.blue:T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
                     {esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))}
                     {esInst && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
                     {fila("Usuario nodo",
@@ -3212,7 +3212,7 @@ export default function SidebarApp() {
                     )}
                   </div>
 
-                  <div style={{ background:"#7c3aed", padding:"8px 12px" }}>
+                  <div style={{ background:T.blue, padding:"8px 12px" }}>
                     <span style={{ color:"#fff", fontWeight:800, fontSize:12 }}>👷 PASO 4 · Asignación</span>
                   </div>
                   <div style={{ background:"#fff" }}>
@@ -3258,13 +3258,13 @@ export default function SidebarApp() {
                     const ok = checks.filter(c=>c.ok).length;
                     const pct = Math.round(ok/checks.length*100);
                     return (
-                      <div style={{padding:"10px 12px",background:"#faf5ff",borderTop:`1px solid #7c3aed33`}}>
+                      <div style={{padding:"10px 12px",background:T.accent,borderTop:`1px solid ${T.blue}33`}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                          <span style={{fontSize:11,fontWeight:700,color:"#7c3aed"}}>Progreso del formulario</span>
-                          <span style={{fontSize:13,fontWeight:800,color:"#7c3aed"}}>{pct}%</span>
+                          <span style={{fontSize:11,fontWeight:700,color:T.blue}}>Progreso del formulario</span>
+                          <span style={{fontSize:13,fontWeight:800,color:T.blue}}>{pct}%</span>
                         </div>
-                        <div style={{background:"#e9d5ff",borderRadius:4,height:6,overflow:"hidden",marginBottom:8}}>
-                          <div style={{width:`${pct}%`,height:"100%",background:"#7c3aed",borderRadius:4,transition:"width .3s"}} />
+                        <div style={{background:T.border,borderRadius:4,height:6,overflow:"hidden",marginBottom:8}}>
+                          <div style={{width:`${pct}%`,height:"100%",background:T.blue,borderRadius:4,transition:"width .3s"}} />
                         </div>
                         <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
                           {checks.map(c=>(
@@ -3277,7 +3277,7 @@ export default function SidebarApp() {
                         </div>
                         <button onClick={crearOrden}
                           disabled={creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo}
-                          style={{...S.btn("#7c3aed"),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo)?0.55:1}}>
+                          style={{...S.btn(T.blue),opacity:(creandoOrden||!ordenForm.tecnico.trim()||!ordenForm.autorOrden.trim()||!ordenForm.nombre.trim()||!ordenForm.dni.trim()||!ordenForm.nodo)?0.55:1}}>
                           {creandoOrden ? "Creando orden..." : `Guardar orden · ${ok}/${checks.length} campos`}
                         </button>
                       </div>
@@ -3526,7 +3526,7 @@ export default function SidebarApp() {
                           notify("✅ Diagnóstico enviado al cliente");
                         }}
                         style={{ display:"flex", alignItems:"center", gap:6, marginTop:10, padding:"7px 12px",
-                          border:"none", borderRadius:6, background:"#0369a1", cursor:"pointer", fontSize:11,
+                          border:"none", borderRadius:6, background:T.blue, cursor:"pointer", fontSize:11,
                           fontWeight:600, color:"#fff", fontFamily:"inherit" }}>
                         <Send size={13}/> Enviar al cliente
                       </button>
@@ -3883,23 +3883,23 @@ export default function SidebarApp() {
                                     <button onClick={() => { eliminarPago(fid); setMenuAbierto(null); }}
                                       disabled={deletingPago===fid}
                                       style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
-                                        border:"none", borderRadius:6, background:"#b45309", cursor:"pointer", fontSize:11, fontWeight:600,
-                                        color:"#fff", fontFamily:"inherit", opacity:deletingPago===fid?0.5:1 }}>
+                                        border:`1px solid ${T.border}`, borderRadius:6, background:T.card, cursor:"pointer", fontSize:11, fontWeight:600,
+                                        color:T.slate, fontFamily:"inherit", opacity:deletingPago===fid?0.5:1 }}>
                                       <XCircle size={13}/> {deletingPago===fid?"Eliminando...":"Anular pago"}
                                     </button>
                                   )}
                                   <button onClick={() => { eliminarFactura(fid); setMenuAbierto(null); }}
                                     disabled={deletingFact===fid}
                                     style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
-                                      border:"none", borderRadius:6, background:"#b91c1c", cursor:"pointer", fontSize:11, fontWeight:600,
+                                      border:"none", borderRadius:6, background:T.red, cursor:"pointer", fontSize:11, fontWeight:600,
                                       color:"#fff", fontFamily:"inherit", opacity:deletingFact===fid?0.5:1 }}>
                                     <Trash2 size={13}/> {deletingFact===fid?"Eliminando...":"Eliminar factura"}
                                   </button>
                                   {f.urlpdf && (
                                     <a href={f.urlpdf} target="_blank" rel="noopener noreferrer"
                                       style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
-                                        border:"none", borderRadius:6, background:"#059669", cursor:"pointer", fontSize:11, fontWeight:600,
-                                        color:"#fff", fontFamily:"inherit", textDecoration:"none" }}>
+                                        border:`1px solid ${T.border}`, borderRadius:6, background:T.card, cursor:"pointer", fontSize:11, fontWeight:600,
+                                        color:T.slate, fontFamily:"inherit", textDecoration:"none" }}>
                                       <FileText size={13}/> Ver PDF
                                     </a>
                                   )}
@@ -3921,7 +3921,7 @@ export default function SidebarApp() {
                                         notify("✅ PDF enviado al cliente");
                                       }}
                                       style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
-                                        border:"none", borderRadius:6, background:"#0369a1", cursor:"pointer", fontSize:11, fontWeight:600,
+                                        border:"none", borderRadius:6, background:T.blue, cursor:"pointer", fontSize:11, fontWeight:600,
                                         color:"#fff", fontFamily:"inherit" }}>
                                       <Send size={13}/> Enviar PDF
                                     </button>
@@ -4395,7 +4395,7 @@ export default function SidebarApp() {
               </div>
               <div style={{ padding:"12px 14px" }}>
                 <button onClick={editarServicio} disabled={guardandoSvc || !svcForm.id_perfil} className="sb-btn-action"
-                  style={{ ...S.btn(guardandoSvc || !svcForm.id_perfil ? "#9ca3af" : "#7c3aed"), opacity: guardandoSvc || !svcForm.id_perfil ? 0.55 : 1 }}>
+                  style={{ ...S.btn(guardandoSvc || !svcForm.id_perfil ? "#9ca3af" : T.blue), opacity: guardandoSvc || !svcForm.id_perfil ? 0.55 : 1 }}>
                   {guardandoSvc ? "Guardando..." : "Actualizar servicio"}
                 </button>
               </div>
@@ -4824,7 +4824,7 @@ export default function SidebarApp() {
         <div style={{ padding:"8px 8px 0" }}>
           <div style={S.divider} />
           <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
-            style={{ ...S.btn(mwOpen?"#6b7280":"#d97706"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
+            style={{ ...S.btn(mwOpen?T.slate:T.blue), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
             🚀 {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
           </button>
           {mwOpen && (
@@ -4869,7 +4869,7 @@ export default function SidebarApp() {
                               display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                             <div>
                               <div style={{ fontWeight:700, fontSize:12, color:"#0f172a" }}>{c.nombre}</div>
-                              <div style={{ fontSize:10, color:"#64748b", marginTop:1 }}>DNI {c.dni} · <span style={{ color:"#0369a1", fontWeight:600 }}>{c.nodo}</span> · {String(c.fecha_registro||"").split("T")[0]}</div>
+                              <div style={{ fontSize:10, color:"#64748b", marginTop:1 }}>DNI {c.dni} · <span style={{ color:T.blue, fontWeight:600 }}>{c.nodo}</span> · {String(c.fecha_registro||"").split("T")[0]}</div>
                             </div>
                             <span style={{ fontSize:10, color:"#d97706", fontWeight:700 }}>Setup →</span>
                           </div>
@@ -4910,8 +4910,8 @@ export default function SidebarApp() {
 
                 {/* Panel liquidaciones — visible en pasos 2 y 3 (instancia cliente encontrado) */}
                 {(mwStep===2 || mwStep===3) && mwWizardLiq.length > 0 && (
-                  <div style={{ background:"#f5f3ff", border:"1.5px solid #d8b4fe", borderRadius:10, padding:"10px 14px", marginBottom:4 }}>
-                    <div style={{ fontSize:10, fontWeight:800, color:"#7c3aed", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
+                  <div style={{ background:T.accent, border:"1.5px solid #d8b4fe", borderRadius:10, padding:"10px 14px", marginBottom:4 }}>
+                    <div style={{ fontSize:10, fontWeight:800, color:T.blue, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>📋 Liquidaciones del cliente</div>
                     <div style={{ display:"grid", gap:6 }}>
                       {mwWizardLiq.map((l,i) => {
                         const cobrado = l.cobro_realizado===true || l.cobro_realizado==="SI" || l.cobro_realizado===1;
@@ -4919,7 +4919,7 @@ export default function SidebarApp() {
                           <div key={i} style={{ background:"#fff", border:`1px solid ${cobrado?"#86efac":"#fde047"}`, borderRadius:8, padding:"8px 10px" }}>
                             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                               <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                <span style={{ fontWeight:800, fontSize:12, color:"#7c3aed" }}>{l.codigo}</span>
+                                <span style={{ fontWeight:800, fontSize:12, color:T.blue }}>{l.codigo}</span>
                                 <span style={{ fontSize:10, background: cobrado?"#dcfce7":"#fef9c3", color: cobrado?"#15803d":"#854d0e", padding:"1px 6px", borderRadius:99, fontWeight:700 }}>{cobrado?"✓ Cobrado":"Pendiente"}</span>
                               </div>
                               {l.monto_cobrado && <span style={{ fontWeight:800, fontSize:12, color: cobrado?"#16a34a":"#92400e" }}>S/{l.monto_cobrado}</span>}
@@ -5000,7 +5000,7 @@ export default function SidebarApp() {
 
                 {/* PASO 3 — Facturas */}
                 {mwStep===3 && (() => {
-                  const c="#7c3aed", bo="#d8b4fe";
+                  const c=T.blue, bo=T.border;
                   const empresa=mwEsDim(mwCliSupa?.nodo)?"dimfiber":"americanet";
                   const pasarelas=PASARELAS[empresa]||PASARELAS.americanet;
                   const instDate=mwProrrFecha?new Date(mwProrrFecha+"T00:00:00"):null;
@@ -5009,9 +5009,9 @@ export default function SidebarApp() {
                   let diasSvc=0,diasPer=0,montoAuto="";
                   if(instDate&&venceDate&&venceDate>instDate){diasSvc=Math.round((venceDate-instDate)/86400000);const ini=new Date(venceDate);ini.setMonth(ini.getMonth()-1);diasPer=Math.round((venceDate-ini)/86400000);if(prec>0&&diasPer>0)montoAuto=String(Math.round(prec*diasSvc/diasPer));}
                   return(<div style={{display:"grid",gap:8}}>
-                    <div style={{display:"flex",gap:4}}>{[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(<button key={s} onClick={()=>setMwFactSub(s)} style={{flex:1,padding:"6px",borderRadius:6,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",background:mwFactSub===s?c:"#f5f3ff",color:mwFactSub===s?"#fff":c}}>{mwFactDone&&s===1?"✓ "+l:l}</button>))}</div>
+                    <div style={{display:"flex",gap:4}}>{[{s:1,l:"1️⃣ Pago instalación"},{s:2,l:"2️⃣ Prorrateo"}].map(({s,l})=>(<button key={s} onClick={()=>setMwFactSub(s)} style={{flex:1,padding:"6px",borderRadius:6,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",background:mwFactSub===s?c:T.accent,color:mwFactSub===s?"#fff":c}}>{mwFactDone&&s===1?"✓ "+l:l}</button>))}</div>
                     {mwFactSub===1&&(<div style={{display:"grid",gap:8}}>
-                      <div style={{display:"flex",gap:4}}>{[{m:"normal",l:"📄 Normal"},{m:"libre",l:"🎁 Libre/Promo"}].map(({m,l})=>(<button key={m} onClick={()=>setMwFactModo(m)} style={{flex:1,padding:"5px",borderRadius:5,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",background:mwFactModo===m?c:"#f5f3ff",color:mwFactModo===m?"#fff":c}}>{l}</button>))}</div>
+                      <div style={{display:"flex",gap:4}}>{[{m:"normal",l:"📄 Normal"},{m:"libre",l:"🎁 Libre/Promo"}].map(({m,l})=>(<button key={m} onClick={()=>setMwFactModo(m)} style={{flex:1,padding:"5px",borderRadius:5,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",background:mwFactModo===m?c:T.accent,color:mwFactModo===m?"#fff":c}}>{l}</button>))}</div>
                       {mwFactModo==="libre"&&<input style={{...S.input,fontSize:12}} placeholder="Ej: Instalación Plan 100Mbps" value={mwFactDesc} onChange={e=>setMwFactDesc(e.target.value)} />}
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                         <div><label style={S.label}>Monto S/ *</label><input type="number" step="0.01" style={{...S.input,fontSize:12}} placeholder="50.00" value={mwFactMonto} onChange={e=>setMwFactMonto(e.target.value)} /></div>
@@ -5030,7 +5030,7 @@ export default function SidebarApp() {
                         <div><label style={S.label}>Próx. Vence *</label><input type="date" style={{...S.input,fontSize:11}} value={mwProrrVence} onChange={e=>setMwProrrVence(e.target.value)} /></div>
                         <div><label style={S.label}>Precio S/</label><input type="number" step="0.01" style={{...S.input,fontSize:11}} value={mwProrrPrec} onChange={e=>setMwProrrPrec(e.target.value)} /></div>
                       </div>
-                      {montoAuto&&<div style={{background:"#f5f3ff",border:`1px solid ${bo}`,borderRadius:6,padding:"8px 10px",fontSize:11,color:c,fontWeight:700}}>S/{prec.toFixed(2)} × {diasSvc}d / {diasPer}d = <span style={{fontSize:14}}>S/{montoAuto}</span></div>}
+                      {montoAuto&&<div style={{background:T.accent,border:`1px solid ${bo}`,borderRadius:6,padding:"8px 10px",fontSize:11,color:c,fontWeight:700}}>S/{prec.toFixed(2)} × {diasSvc}d / {diasPer}d = <span style={{fontSize:14}}>S/{montoAuto}</span></div>}
                       <div><label style={S.label}>Monto prorrateo S/ <span style={{fontWeight:400,textTransform:"none"}}>(editable)</span></label><input type="number" step="0.01" style={{...S.input,fontSize:12}} placeholder={montoAuto||"Auto-calculado"} value={mwProrrMonto} onChange={e=>setMwProrrMonto(e.target.value)} /></div>
                       <div style={{display:"flex",gap:6}}>
                         <button onClick={mwCrearProrrateo} disabled={mwFactCreando||!mwProrrVence||!(parseFloat(mwProrrMonto||montoAuto)>0)} style={{...S.btn(c),flex:1,opacity:(mwFactCreando||!mwProrrVence)?0.5:1}}>{mwFactCreando?"Creando...":"✓ Crear prorrateo →"}</button>
@@ -5045,8 +5045,8 @@ export default function SidebarApp() {
                 {mwStep===4 && (
                   <div style={{ display:"grid", gap:10 }}>
                     <div style={{ fontSize:11, color:"#64748b" }}>Sincroniza los datos del cliente entre Supabase y Mikrowisp para que n8n los use.</div>
-                    {mwSyncDone?(<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:8,padding:"12px",display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>✅</span><div style={{fontWeight:800,fontSize:12,color:"#c2410c"}}>Sincronizado correctamente</div></div>):(<button onClick={mwSincronizar} disabled={mwSyncLoad} style={{...S.btn("#0369a1"),opacity:mwSyncLoad?0.6:1}}>{mwSyncLoad?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}</button>)}
-                    <button onClick={mwEnviarSms} disabled={mwSmsSent} style={{...S.btn("#7c3aed"),opacity:mwSmsSent?0.6:1}}>{mwSmsSent?"✓ SMS enviado":"💬 Enviar SMS Bienvenida"}</button>
+                    {mwSyncDone?(<div style={{background:"#fff7ed",border:"1.5px solid #fdba74",borderRadius:8,padding:"12px",display:"flex",alignItems:"center",gap:10}}><span style={{fontSize:22}}>✅</span><div style={{fontWeight:800,fontSize:12,color:"#c2410c"}}>Sincronizado correctamente</div></div>):(<button onClick={mwSincronizar} disabled={mwSyncLoad} style={{...S.btn(T.blue),opacity:mwSyncLoad?0.6:1}}>{mwSyncLoad?"⏳ Sincronizando...":"📱 Sincronizar con Mikrowisp"}</button>)}
+                    <button onClick={mwEnviarSms} disabled={mwSmsSent} style={{...S.btn(T.blue),opacity:mwSmsSent?0.6:1}}>{mwSmsSent?"✓ SMS enviado":"💬 Enviar SMS Bienvenida"}</button>
                     {mwMsg&&<div style={{fontSize:11,color:mwMsg.startsWith("✓")?T.green:T.red,fontWeight:600}}>{mwMsg}</div>}
                     <button onClick={mwReset} style={{...S.btn(mwSyncDone?"#16a34a":"#6b7280")}}>{mwSyncDone?"✅ Finalizar":"Cerrar"}</button>
                   </div>
@@ -5088,7 +5088,7 @@ export default function SidebarApp() {
                 </div>
 
                 <button onClick={enviarIPTV} disabled={iptvEnviando || !contact?.phone_number}
-                  style={{ ...S.btn(iptvEnviando ? "#9ca3af" : "#7c3aed"), opacity: iptvEnviando ? 0.6 : 1, marginBottom: 6 }}>
+                  style={{ ...S.btn(iptvEnviando ? "#9ca3af" : T.blue), opacity: iptvEnviando ? 0.6 : 1, marginBottom: 6 }}>
                   {iptvEnviando ? "Enviando..." : "📲 Enviar credenciales al cliente"}
                 </button>
                 {iptvCambioPass ? (
@@ -5102,7 +5102,7 @@ export default function SidebarApp() {
                     />
                     <div style={{ display:"flex", gap:4 }}>
                       <button onClick={cambiarPassIPTV} disabled={iptvCreando}
-                        style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), flex:1, opacity: iptvCreando ? 0.6 : 1 }}>
+                        style={{ ...S.btn(iptvCreando ? "#9ca3af" : T.blue), flex:1, opacity: iptvCreando ? 0.6 : 1 }}>
                         {iptvCreando ? "Guardando..." : "✅ Confirmar"}
                       </button>
                       <button onClick={() => { setIptvCambioPass(false); setIptvNuevaPass(""); }}
@@ -5113,7 +5113,7 @@ export default function SidebarApp() {
                   </div>
                 ) : (
                   <button onClick={() => setIptvCambioPass(true)} disabled={iptvCreando}
-                    style={{ ...S.btn(iptvCreando ? "#9ca3af" : "#b45309"), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
+                    style={{ ...S.btn(iptvCreando ? "#9ca3af" : T.blue), opacity: iptvCreando ? 0.6 : 1, marginBottom: 6 }}>
                     🔑 Cambiar contraseña
                   </button>
                 )}
@@ -5158,13 +5158,13 @@ export default function SidebarApp() {
               border:`1px solid ${T.border}`, borderRadius:5, padding:"7px 12px",
               display:"flex", alignItems:"center", justifyContent:"space-between",
               cursor:"pointer", fontFamily:"inherit" }}>
-            <span style={{ fontSize:11, fontWeight:700, color:"#7c3aed" }}>
-              📝 Notas del cliente {notasCliente.length > 0 && <span style={{ background:"#7c3aed", color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, marginLeft:4 }}>{notasCliente.length}</span>}
+            <span style={{ fontSize:11, fontWeight:700, color:T.blue }}>
+              📝 Notas del cliente {notasCliente.length > 0 && <span style={{ background:T.blue, color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, marginLeft:4 }}>{notasCliente.length}</span>}
             </span>
             <span style={{ fontSize:12, color:T.muted, fontWeight:700 }}>{showNotas ? "▲ Ocultar" : "▼ Ver"}</span>
           </button>
           {showNotas && (
-            <div style={{ background:"#faf5ff", border:`1px solid #e9d5ff`, borderRadius:"0 0 6px 6px", padding:"10px 10px 8px" }}>
+            <div style={{ background:T.accent, border:`1px solid #e9d5ff`, borderRadius:"0 0 6px 6px", padding:"10px 10px 8px" }}>
               {/* Formulario nueva nota */}
               <div style={{ display:"flex", gap:6, marginBottom:10 }}>
                 <textarea
@@ -5176,7 +5176,7 @@ export default function SidebarApp() {
                 />
                 <button onClick={() => guardarNota(cliente.cedula || detalle?.cedula)}
                   disabled={notaGuardando || !notaNueva.trim()}
-                  style={{ padding:"0 12px", background: notaNueva.trim() ? "#7c3aed" : "#e9d5ff", color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor: notaNueva.trim() ? "pointer" : "default", alignSelf:"stretch" }}>
+                  style={{ padding:"0 12px", background: notaNueva.trim() ? T.blue : T.border, color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor: notaNueva.trim() ? "pointer" : "default", alignSelf:"stretch" }}>
                   {notaGuardando ? "..." : "✓"}
                 </button>
               </div>
@@ -5188,7 +5188,7 @@ export default function SidebarApp() {
                   {notasCliente.map(n => (
                     <div key={n.id} style={{ background:"#fff", border:"1px solid #e9d5ff", borderRadius:6, padding:"8px 10px" }}>
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
-                        <div style={{ fontSize:10, color:"#7c3aed", fontWeight:700 }}>
+                        <div style={{ fontSize:10, color:T.blue, fontWeight:700 }}>
                           {n.autor} · {new Date(n.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"short",year:"numeric"})} {new Date(n.created_at).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
                         </div>
                         <button onClick={() => eliminarNota(n.id)}
