@@ -15931,7 +15931,7 @@ export default function App() {
                             </button>
                             {puedeEditarLiquidacion && (
                               <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
-                                Editar
+                                Editar liquidación
                               </button>
                             )}
                             {puedeEditarLiquidacion && (
