@@ -8786,6 +8786,12 @@ export default function App() {
     setFotosClienteDni(todasFotos);
   };
 
+  const usarComoServicioNuevo = () => {
+    const nombreExistente = modalSelectorServicio?.servicios?.[0]?.nombre || modalSelectorServicio?.nombreReniec || "";
+    setOrden((prev) => ({ ...prev, nombre: nombreExistente || prev.nombre }));
+    setModalSelectorServicio(null);
+  };
+
   const buscarDni = async () => {
     const dni = orden.dni.trim();
 
@@ -8827,10 +8833,9 @@ export default function App() {
         todosServiciosDB = srvs || [];
       }
 
-      if (todosServiciosDB.length > 1) {
-        setModalSelectorServicio({ servicios: todosServiciosDB, dni });
-      } else if (todosServiciosDB.length === 1) {
-        await _aplicarClienteInternoAOrden(todosServiciosDB[0], dni);
+      if (todosServiciosDB.length >= 1) {
+        const nombreReniec = (result?.estado && result?.resultado?.nombre_completo) || "";
+        setModalSelectorServicio({ servicios: todosServiciosDB, dni, nombreReniec });
       } else if (result.estado && result.resultado) {
         setOrden((prev) => ({
           ...prev,
@@ -22078,18 +22083,22 @@ export default function App() {
               <div style={{ background: "linear-gradient(135deg,#0369a1,#0284c7)", padding: "20px 22px", borderRadius: "20px 20px 0 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ color: "#fff", fontWeight: 800, fontSize: 15 }}>Seleccionar servicio</div>
-                  <div style={{ color: "#bae6fd", fontSize: 12, marginTop: 2 }}>DNI {modalSelectorServicio.dni} — {modalSelectorServicio.servicios.length} servicios encontrados</div>
+                  <div style={{ color: "#bae6fd", fontSize: 12, marginTop: 2 }}>
+                    DNI {modalSelectorServicio.dni} — {modalSelectorServicio.servicios.length} servicio{modalSelectorServicio.servicios.length === 1 ? "" : "s"} encontrado{modalSelectorServicio.servicios.length === 1 ? "" : "s"}
+                  </div>
                 </div>
                 <button onClick={() => setModalSelectorServicio(null)} style={{ background: "rgba(255,255,255,0.2)", border: "none", color: "#fff", borderRadius: 8, width: 32, height: 32, fontSize: 18, cursor: "pointer", fontWeight: 700 }}>×</button>
               </div>
               <div style={{ padding: "16px 20px", display: "grid", gap: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Elige el servicio para esta orden</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Este DNI ya tiene {modalSelectorServicio.servicios.length === 1 ? "un servicio" : "servicios"} registrado{modalSelectorServicio.servicios.length === 1 ? "" : "s"}
+                </div>
                 {modalSelectorServicio.servicios.map((srv) => (
                   <button key={srv.id} onClick={async () => { setModalSelectorServicio(null); await _aplicarClienteInternoAOrden(srv, modalSelectorServicio.dni); }}
                     style={{ textAlign: "left", padding: "14px 16px", background: "#f8fafc", border: "2px solid #e2e8f0", borderRadius: 14, cursor: "pointer", transition: "border-color 0.15s" }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = "#0369a1"}
                     onMouseLeave={e => e.currentTarget.style.borderColor = "#e2e8f0"}>
-                    <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>{srv.codigo_cliente || "Sin código"}</div>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a" }}>Usar: {srv.codigo_cliente || "Sin código"}</div>
                     <div style={{ fontSize: 12, color: "#475569", marginTop: 3, display: "flex", gap: 12, flexWrap: "wrap" }}>
                       {srv.nodo && <span>📡 {srv.nodo}</span>}
                       {srv.velocidad && <span>⚡ {srv.velocidad}</span>}
@@ -22098,6 +22107,13 @@ export default function App() {
                     </div>
                   </button>
                 ))}
+                <button onClick={usarComoServicioNuevo}
+                  style={{ textAlign: "left", padding: "14px 16px", background: "#f0fdf4", border: "2px dashed #86efac", borderRadius: 14, cursor: "pointer" }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: "#166534" }}>+ Es un servicio nuevo</div>
+                  <div style={{ fontSize: 12, color: "#15803d", marginTop: 3 }}>
+                    Deja el formulario en blanco (solo el nombre). Úsalo si es una instalación en otra dirección/punto para el mismo DNI.
+                  </div>
+                </button>
                 <button onClick={() => setModalSelectorServicio(null)}
                   style={{ marginTop: 4, padding: "10px", background: "none", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, color: "#64748b", cursor: "pointer" }}>
                   Cancelar
