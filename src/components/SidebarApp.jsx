@@ -1923,17 +1923,24 @@ export default function SidebarApp() {
         codigo = `ORD-${String(Date.now()).slice(-4)}-${new Date().getFullYear()}`;
       }
 
-      const empresaOrden = cliente
-        ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet")
-        : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa);
       const esInstalacion = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
+      // Para instalaciones (posible segundo servicio del mismo cliente) usar lo que el
+      // agente ingreso en el formulario en vez de copiar el servicio actualmente cargado.
+      const nodoFinal = esInstalacion ? (ordenForm.nodo.trim() || (cliente ? String(cliente.nodo) : "")) : (cliente ? String(cliente.nodo) : ordenForm.nodo.trim());
+      const direccionFinal = esInstalacion ? (ordenForm.direccion.trim() || detalle?.direccion_principal || "") : (cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim());
+      const usuarioNodoFinal = esInstalacion ? ordenForm.usuarioNodo.trim() : (cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim());
+      const passwordUsuarioFinal = esInstalacion ? ordenForm.passwordUsuario.trim() : (cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim());
+      const snOnuFinal = esInstalacion ? ordenForm.snOnu.trim() : (cliente ? (snOnu || "") : ordenForm.snOnu.trim());
+      const empresaOrden = esInstalacion && ordenForm.nodo.trim()
+        ? empresaPorNodo(ordenForm.nodo)
+        : (cliente ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet") : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa));
 
       // Crear cuenta IPTV junto con la orden (si se marcó la opción)
       let iptvInfo = null;
       if (ordenIncluirIptv) {
         try {
           const dniOrden  = cliente ? (cliente.cedula || "") : ordenForm.dni.trim();
-          const nodoOrden = cliente ? cliente.nodo : ordenForm.nodo.trim();
+          const nodoOrden = nodoFinal;
           iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden);
           setIptvData({ iptv_usuario: iptvInfo.iptv_usuario, iptv_password: iptvInfo.iptv_password, iptv_user_id: iptvInfo.iptv_user_id, created_at: new Date().toISOString(), creado_por: agente });
         } catch (e) {
@@ -1953,17 +1960,17 @@ export default function SidebarApp() {
         prioridad:      ordenForm.prioridad || "Normal",
         dni:            cliente ? (cliente.cedula || "") : ordenForm.dni.trim(),
         nombre:         cliente ? (cliente.nombre || "") : ordenForm.nombre.trim(),
-        direccion:      cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim(),
+        direccion:      direccionFinal,
         celular:        cliente ? (detalle?.movil || (contact?.phone_number||"").replace(/[^\d]/g,"") || "") : ((contact?.phone_number||"").replace(/[^\d]/g,"") || ordenForm.celular.trim()),
         email:          cliente ? (detalle?.correo || "") : ordenForm.email.trim(),
         contacto:       ordenForm.contacto || "",
         velocidad:      ordenForm.velocidad || "",
         precio_plan:    ordenForm.precioPlan ? Number(ordenForm.precioPlan) : null,
-        nodo:           cliente ? String(cliente.nodo) : ordenForm.nodo.trim(),
+        nodo:           nodoFinal,
         vlan:           ordenForm.vlan ? Number(ordenForm.vlan) : (VLAN_POR_NODO[ordenForm.nodo] ? Number(VLAN_POR_NODO[ordenForm.nodo]) : null),
-        usuario_nodo:   cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim(),
-        password_usuario: cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim(),
-        sn_onu:         cliente ? (snOnu || "") : ordenForm.snOnu.trim(),
+        usuario_nodo:   usuarioNodoFinal,
+        password_usuario: passwordUsuarioFinal,
+        sn_onu:         snOnuFinal,
         caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
         descripcion:    [
@@ -4482,6 +4489,16 @@ export default function SidebarApp() {
                 )}
                 {/* Campos solo para instalación */}
                 {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && (<>
+                  {/* Dirección — editable para instalaciones (puede ser un segundo servicio en otro punto) */}
+                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Dirección</div>
+                    <div>
+                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="text"
+                        placeholder={detalle?.direccion_principal || "Dirección de la instalación"}
+                        value={ordenForm.direccion}
+                        onChange={e => setOrdenForm(p=>({...p, direccion:e.target.value}))} />
+                    </div>
+                  </div>
                   {/* Nodo — seleccionable para instalaciones */}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Nodo</div>
