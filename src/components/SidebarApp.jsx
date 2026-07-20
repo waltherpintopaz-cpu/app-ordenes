@@ -352,6 +352,7 @@ export default function SidebarApp() {
   const [convId,  setConvId]      = useState(null);
   const [acctId,  setAcctId]      = useState("1");
   const [cliente, setCliente]     = useState(null);  // datos Supabase/Mikrowisp
+  const [serviciosTelefono, setServiciosTelefono] = useState([]); // [{tipo:"mikrowisp"|"local", row}] cuando el telefono tiene 2+ servicios
   const [detalle, setDetalle]     = useState(null);  // GetClientsDetails
   const [facturas, setFacturas]   = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -660,7 +661,7 @@ export default function SidebarApp() {
   }
 
   function resetEstado() {
-    setCliente(null); setDetalle(null); setFacturas([]);
+    setCliente(null); setServiciosTelefono([]); setDetalle(null); setFacturas([]);
     setAnalisis(null); setImgFile(null); setImgPrev(null);
     setProrrInfo(null); setProrrForm({ fecha: "" });
     setSnOnu(null); setNodoReal(null); setSenal(null);
@@ -837,16 +838,28 @@ export default function SidebarApp() {
 
         if (!localRows.length) { setError("Cliente no encontrado para este número"); setLoading(false); return; }
 
+        if (localRows.length > 1) setServiciosTelefono(localRows.map(row => ({ tipo:"local", row })));
         await cargarDesdeClienteLocal(localRows[0]);
         setLoading(false);
         return;
       }
 
+      if (rows.length > 1) setServiciosTelefono(rows.map(row => ({ tipo:"mikrowisp", row })));
       const row = rows.find(r => r.estado === "ACTIVO") || rows[0];
       await cargarDesdeRow(row);
     } catch(e) {
       setError("Error al cargar datos: " + e.message);
     }
+    setLoading(false);
+  }
+
+  async function cambiarServicioTelefono(item) {
+    setLoading(true);
+    const lista = serviciosTelefono;
+    resetEstado();
+    setServiciosTelefono(lista);
+    if (item.tipo === "mikrowisp") await cargarDesdeRow(item.row);
+    else await cargarDesdeClienteLocal(item.row);
     setLoading(false);
   }
 
@@ -3251,6 +3264,30 @@ export default function SidebarApp() {
               title="Recargar"><RefreshCw size={13} /></button>
           </div>
         </div>
+
+        {/* ══ AVISO: TELEFONO CON VARIOS SERVICIOS ══ */}
+        {serviciosTelefono.length > 1 && (
+          <div style={{ background:"#fef3c7", borderBottom:"1px solid #fde68a", padding:"8px 14px" }}>
+            <div style={{ fontSize:11, fontWeight:700, color:"#92400e", marginBottom:6 }}>
+              ⚠ Este teléfono tiene {serviciosTelefono.length} servicios registrados
+            </div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {serviciosTelefono.map((item, i) => {
+                const activo = item.tipo === "mikrowisp"
+                  ? String(item.row.mikrowisp_id) === String(cliente.mikrowisp_id)
+                  : String(item.row.id) === String(clienteIdReal);
+                return (
+                  <button key={i} onClick={() => !activo && cambiarServicioTelefono(item)}
+                    style={{ padding:"4px 10px", borderRadius:20, border: activo ? "1.5px solid #92400e" : "1px solid #fbbf24",
+                      background: activo ? "#92400e" : "#fff", color: activo ? "#fff" : "#92400e",
+                      fontSize:11, fontWeight:700, cursor: activo ? "default" : "pointer" }}>
+                    📡 Nodo {item.row.nodo || "—"}{activo ? " (viendo)" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ══ AVISO: CLIENTE SIN MIKROWISP ══ */}
         {cliente.sinMikrowisp && (
