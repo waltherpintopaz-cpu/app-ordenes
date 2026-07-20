@@ -9978,6 +9978,7 @@ export default function App() {
       // Equipos
       const equiposPayload = (liquidacion.equipos || []).map(eq => ({
         liquidacion_id: liquidacionId,
+        id_inventario: eq?.idInventario || null,
         tipo: String(eq?.tipo || ""),
         codigo: String(eq?.codigo || ""),
         serial: String(eq?.serial || ""),
@@ -9987,6 +9988,37 @@ export default function App() {
         foto_referencia: String(eq?.fotoReferencia || ""),
       }));
       if (equiposPayload.length > 0) await _insertRows("liquidacion_equipos", equiposPayload);
+
+      // Anclar/liberar en el catálogo de equipos (equipos_catalogo) los que vienen de un escaneo QR/inventario
+      for (const eq of equiposPayload) {
+        if (!eq.id_inventario) continue;
+        const accionEq = eq.accion.toLowerCase();
+        const esRetiro = accionEq === "retirado" || accionEq === "devuelto";
+        const updateCatalogo = esRetiro
+          ? {
+              estado: "almacen",
+              cliente_dni: null,
+              cliente_nombre: null,
+              orden_codigo: null,
+              pendiente_retorno_almacen: true,
+              fecha_retiro_cliente: nowPeruTs(),
+            }
+          : {
+              estado: "instalado",
+              cliente_dni: String(ordenEnLiquidacion.dni || ""),
+              cliente_nombre: String(ordenEnLiquidacion.nombre || ""),
+              orden_codigo: codigoOrden,
+              fecha_ultima_instalacion: nowPeruTs(),
+              tecnico_asignado: "",
+              pendiente_retorno_almacen: false,
+              fecha_retiro_cliente: null,
+            };
+        try {
+          await supabase.from("equipos_catalogo").update(updateCatalogo).eq("id", eq.id_inventario);
+        } catch (_) {
+          avisos.push(`No se pudo actualizar el catálogo para el equipo ${eq.serial || eq.codigo || eq.id_inventario}`);
+        }
+      }
 
       // Materiales
       const materialesPayload = (liquidacion.materiales || []).map(m => ({
