@@ -8833,9 +8833,13 @@ export default function App() {
         todosServiciosDB = srvs || [];
       }
 
-      if (todosServiciosDB.length >= 1) {
+      const esInstalacionActual = ["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV"].includes(orden.tipoActuacion);
+
+      if (todosServiciosDB.length > 1 || (todosServiciosDB.length === 1 && esInstalacionActual)) {
         const nombreReniec = (result?.estado && result?.resultado?.nombre_completo) || "";
-        setModalSelectorServicio({ servicios: todosServiciosDB, dni, nombreReniec });
+        setModalSelectorServicio({ servicios: todosServiciosDB, dni, nombreReniec, permitirNuevo: esInstalacionActual });
+      } else if (todosServiciosDB.length === 1) {
+        await _aplicarClienteInternoAOrden(todosServiciosDB[0], dni);
       } else if (result.estado && result.resultado) {
         setOrden((prev) => ({
           ...prev,
@@ -22107,13 +22111,15 @@ export default function App() {
                     </div>
                   </button>
                 ))}
-                <button onClick={usarComoServicioNuevo}
-                  style={{ textAlign: "left", padding: "14px 16px", background: "#f0fdf4", border: "2px dashed #86efac", borderRadius: 14, cursor: "pointer" }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: "#166534" }}>+ Es un servicio nuevo</div>
-                  <div style={{ fontSize: 12, color: "#15803d", marginTop: 3 }}>
-                    Deja el formulario en blanco (solo el nombre). Úsalo si es una instalación en otra dirección/punto para el mismo DNI.
-                  </div>
-                </button>
+                {modalSelectorServicio.permitirNuevo && (
+                  <button onClick={usarComoServicioNuevo}
+                    style={{ textAlign: "left", padding: "14px 16px", background: "#f0fdf4", border: "2px dashed #86efac", borderRadius: 14, cursor: "pointer" }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: "#166534" }}>+ Es un servicio nuevo</div>
+                    <div style={{ fontSize: 12, color: "#15803d", marginTop: 3 }}>
+                      Deja el formulario en blanco (solo el nombre). Úsalo si es una instalación en otra dirección/punto para el mismo DNI.
+                    </div>
+                  </button>
+                )}
                 <button onClick={() => setModalSelectorServicio(null)}
                   style={{ marginTop: 4, padding: "10px", background: "none", border: "1px solid #e2e8f0", borderRadius: 10, fontSize: 13, color: "#64748b", cursor: "pointer" }}>
                   Cancelar
