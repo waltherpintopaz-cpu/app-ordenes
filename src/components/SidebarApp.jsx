@@ -1913,6 +1913,45 @@ export default function SidebarApp() {
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
     if (!cliente && (!ordenForm.nombre.trim() || !ordenForm.dni.trim())) return notify("Ingresa nombre y DNI del cliente nuevo", false);
+
+    // Evitar solicitar de nuevo un recojo de equipo ya pendiente o ya completado para el mismo DNI
+    if (ordenForm.tipoActuacion === "Recojo de equipo") {
+      const dniLimpioRecojo = String(cliente ? (cliente.cedula || "") : (ordenForm.dni || "")).replace(/\D/g, "");
+      if (dniLimpioRecojo) {
+        try {
+          const { data: pendienteExistente } = await supabase
+            .from("ordenes")
+            .select("codigo,fecha_actuacion")
+            .eq("dni", dniLimpioRecojo)
+            .eq("tipo_actuacion", "Recojo de equipo")
+            .eq("estado", "Pendiente")
+            .order("id", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (pendienteExistente) {
+            const seguir = window.confirm(`⚠ Este cliente ya tiene una orden de Recojo de equipo pendiente (${pendienteExistente.codigo}, ${pendienteExistente.fecha_actuacion || "-"}).\n\n¿Crear otra de todas formas?`);
+            if (!seguir) return;
+          } else {
+            const { data: recojoCompletado } = await supabase
+              .from("ordenes_recuperacion_ejecucion")
+              .select("orden_codigo,fecha_ejecucion,resultado")
+              .eq("dni", dniLimpioRecojo)
+              .eq("resultado", "Completada")
+              .order("fecha_ejecucion", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (recojoCompletado) {
+              const fechaTxt = recojoCompletado.fecha_ejecucion ? new Date(recojoCompletado.fecha_ejecucion).toLocaleDateString("es-PE") : "-";
+              const seguir = window.confirm(`⚠ A este cliente ya se le recogió el equipo antes (orden ${recojoCompletado.orden_codigo}, ${fechaTxt}).\n\n¿Crear otra solicitud de todas formas?`);
+              if (!seguir) return;
+            }
+          }
+        } catch (_) {
+          // Si falla la verificación, no bloquear la creación de la orden.
+        }
+      }
+    }
+
     setCreandoOrden(true);
     try {
       let codigo = "";
