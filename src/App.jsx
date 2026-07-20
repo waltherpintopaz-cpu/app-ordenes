@@ -9560,12 +9560,15 @@ export default function App() {
       let clienteResultado = null;
       setClientes((prev) => {
         // Un DNI puede tener varios servicios (mismo codigoCliente = dni en todos).
-        // Preferir el que coincide en nodo con la orden liquidada para no actualizar el servicio equivocado.
+        // Preferir el que coincide en usuario_nodo (unico por servicio) y luego en nodo,
+        // para no actualizar el servicio equivocado cuando hay varios.
         const candidatos = prev.filter(
           (c) => String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
         );
+        const usuarioOrden = String(registroLiquidado.usuarioNodo || "").trim();
         const nodoOrden = String(registroLiquidado.nodo || "").trim();
         const existente =
+          (usuarioOrden && candidatos.find((c) => String(c.usuarioNodo || "").trim() === usuarioOrden)) ||
           (nodoOrden && candidatos.find((c) => String(c.nodo || "").trim() === nodoOrden)) ||
           candidatos[0];
         if (existente) {
