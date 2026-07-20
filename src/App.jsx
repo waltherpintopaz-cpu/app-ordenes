@@ -3095,6 +3095,12 @@ export default function App() {
     return clientesFiltrados.slice(start, start + CLIENTES_PAGE_SIZE);
   }, [clientesFiltrados, clientesPagina]);
 
+  // Órdenes de Recojo de equipo aún no ejecutadas (para tab "Pendientes" en Recuperaciones)
+  const pendientesRecuperacion = useMemo(
+    () => (Array.isArray(ordenes) ? ordenes : []).filter((o) => o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente"),
+    [ordenes]
+  );
+
   // Mapa DNI -> cantidad de servicios (para badge "múltiples servicios")
   const dniServiciosCount = useMemo(() => {
     const map = {};
@@ -23791,6 +23797,7 @@ export default function App() {
             {/* ── Tabs ── */}
             <div style={{ display: "flex", background: "#f1f5f9", borderRadius: "14px", padding: "5px", gap: "4px" }}>
               {[
+                { key: "pendientes", label: "Pendientes", icon: "⏳", badge: pendientesRecuperacion.length },
                 { key: "ejecuciones", label: "Ejecuciones", icon: "📋" },
                 { key: "stock", label: "Custodia Técnica", icon: "📦", badge: stockTecnico.filter((s) => !s.ingresado_almacen).length },
               ].map((tab) => (
@@ -23814,6 +23821,61 @@ export default function App() {
                 </button>
               ))}
             </div>
+
+            {/* ── PENDIENTES ── */}
+            {recuperacionesSubmenu === "pendientes" && (
+              <div style={{ display: "grid", gap: "16px" }}>
+                <div>
+                  <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#111827", margin: "0 0 2px" }}>Recojos de equipo pendientes</h2>
+                  <p style={{ fontSize: "12px", color: "#9ca3af", margin: 0 }}>{pendientesRecuperacion.length} registro{pendientesRecuperacion.length !== 1 ? "s" : ""} aún sin ejecutar</p>
+                </div>
+
+                {pendientesRecuperacion.length === 0 ? (
+                  <div style={{ background: "#fff", borderRadius: "16px", border: "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
+                    <div style={{ fontSize: "32px", marginBottom: "8px" }}>✅</div>
+                    <div style={{ fontWeight: 700, color: "#374151", marginBottom: "4px" }}>Sin pendientes</div>
+                    <div style={{ fontSize: "13px", color: "#9ca3af" }}>No hay órdenes de recojo de equipo por ejecutar.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: "12px" }}>
+                    {pendientesRecuperacion.map((o) => (
+                      <div key={o.id} style={{ background: "#fff", borderRadius: "16px", border: "1px solid #e5e7eb", overflow: "hidden", boxShadow: "0 1px 8px rgba(0,0,0,0.05)" }}>
+                        <div style={{ height: "4px", background: "#f59e0b" }} />
+                        <div style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, fontSize: "15px", color: "#111827", marginBottom: "3px" }}>{o.nombre || "—"}</div>
+                            {o.direccion && (
+                              <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                                {o.direccion}
+                                {o.nodo && <span style={{ marginLeft: "6px", background: "#f1f5f9", color: "#475569", borderRadius: "6px", padding: "1px 6px", fontSize: "11px", fontWeight: 600 }}>{o.nodo}</span>}
+                              </div>
+                            )}
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
+                              {o.codigo && (
+                                <span
+                                  title="Ver orden en Pendientes"
+                                  onClick={() => { setBusquedaPendientes(o.codigo); setVistaActiva("pendientes"); }}
+                                  style={{ fontSize: "11px", fontFamily: "monospace", background: "#eff6ff", color: "#1d4ed8", borderRadius: "6px", padding: "1px 7px", fontWeight: 700, cursor: "pointer", textDecoration: "underline dotted" }}
+                                >
+                                  {o.codigo}
+                                </span>
+                              )}
+                              {o.fechaActuacion && <span style={{ fontSize: "11px", color: "#9ca3af" }}>📅 {o.fechaActuacion}{o.hora ? ` ${o.hora}` : ""}</span>}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", flexShrink: 0 }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: "#fef3c7", color: "#92400e", borderRadius: "999px", padding: "4px 12px", fontSize: "12px", fontWeight: 700 }}>
+                              ⏳ Pendiente
+                            </span>
+                            {o.tecnico && <span style={{ fontSize: "12px", color: "#6b7280" }}>👤 {o.tecnico}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── EJECUCIONES ── */}
             {recuperacionesSubmenu === "ejecuciones" && (
