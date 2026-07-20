@@ -9559,9 +9559,15 @@ export default function App() {
     if (!esInstalacion) {
       let clienteResultado = null;
       setClientes((prev) => {
-        const existente = prev.find(
+        // Un DNI puede tener varios servicios (mismo codigoCliente = dni en todos).
+        // Preferir el que coincide en nodo con la orden liquidada para no actualizar el servicio equivocado.
+        const candidatos = prev.filter(
           (c) => String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
         );
+        const nodoOrden = String(registroLiquidado.nodo || "").trim();
+        const existente =
+          (nodoOrden && candidatos.find((c) => String(c.nodo || "").trim() === nodoOrden)) ||
+          candidatos[0];
         if (existente) {
           const cajaNapLiq = String(registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "").trim();
           const ubicacionLiq = String(registroLiquidado.liquidacion?.actualizarUbicacion === "SI" ? registroLiquidado.liquidacion?.nuevaUbicacion : "" || registroLiquidado.ubicacion || "").trim();
