@@ -15929,12 +15929,12 @@ export default function App() {
                             <button onClick={() => void abrirDetalleLiquidacionHistorial(item)} style={{ ...infoButton, padding: "7px 14px", fontSize: 12 }}>
                               Ver detalle
                             </button>
-                            {puedeEditarLiquidacion && (
+                            {esAdminSesion && (
                               <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
                                 Editar liquidación
                               </button>
                             )}
-                            {puedeEditarLiquidacion && (
+                            {esAdminSesion && (
                               <button onClick={() => void editarOrdenDesdeHistorial(item)} style={{ padding: "7px 12px", background: isDark ? "#1e2b45" : "#EEF2FF", border: isDark ? "1px solid #3a4d78" : "1px solid #C7D2FE", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#a5b8ea" : "#3730A3", cursor: "pointer" }} title="Corregir datos de la orden (nodo, usuario, etc.)">
                                 Editar orden
                               </button>
