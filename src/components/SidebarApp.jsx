@@ -3276,12 +3276,19 @@ export default function SidebarApp() {
                 const activo = item.tipo === "mikrowisp"
                   ? String(item.row.mikrowisp_id) === String(cliente.mikrowisp_id)
                   : String(item.row.id) === String(clienteIdReal);
+                // Si 2+ servicios comparten el mismo nodo, el nodo solo no los distingue —
+                // agregar un identificador extra (usuario_nodo o mikrowisp_id) para diferenciarlos.
+                const nodosIguales = serviciosTelefono.filter(x => String(x.row.nodo) === String(item.row.nodo)).length > 1;
+                const extra = !nodosIguales ? "" :
+                  item.tipo === "local"
+                    ? (item.row.usuario_nodo ? ` · ${item.row.usuario_nodo}` : ` · #${item.row.id}`)
+                    : ` · #${item.row.mikrowisp_id}`;
                 return (
                   <button key={i} onClick={() => !activo && cambiarServicioTelefono(item)}
                     style={{ padding:"4px 10px", borderRadius:20, border: activo ? "1.5px solid #92400e" : "1px solid #fbbf24",
                       background: activo ? "#92400e" : "#fff", color: activo ? "#fff" : "#92400e",
                       fontSize:11, fontWeight:700, cursor: activo ? "default" : "pointer" }}>
-                    📡 Nodo {item.row.nodo || "—"}{activo ? " (viendo)" : ""}
+                    📡 Nodo {item.row.nodo || "—"}{extra}{activo ? " (viendo)" : ""}
                   </button>
                 );
               })}
