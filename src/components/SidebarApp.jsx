@@ -419,6 +419,7 @@ export default function SidebarApp() {
   const [buscandoCoords,    setBuscandoCoords]    = useState(false);
   const [coordsLista,       setCoordsLista]       = useState([]);
   const [buscandoDatosChat, setBuscandoDatosChat] = useState(false);
+  const [modalSelectorServicio, setModalSelectorServicio] = useState(null); // { servicios: [], dni, permitirNuevo }
   // ── IPTV ─────────────────────────────────────────────────────────────────
   const [iptvData,        setIptvData]        = useState(null);
   const [iptvCreando,     setIptvCreando]     = useState(false);
@@ -2009,45 +2010,63 @@ export default function SidebarApp() {
   }
 
   // ── Búsqueda DNI RENIEC para orden nueva ─────────────────────────────────
+  function _aplicarClienteAOrdenForm(c) {
+    setOrdenForm(p=>({ ...p,
+      nombre:    c.nombre    || p.nombre,
+      direccion: c.direccion || p.direccion,
+      celular:   c.celular   || p.celular,
+      email:     c.email     || p.email,
+      nodo:      c.nodo      || p.nodo,
+      usuarioNodo: c.usuario_nodo || p.usuarioNodo,
+      cajaNap:   c.caja_nap  || p.cajaNap,
+      snOnu:     c.sn_onu    || p.snOnu,
+      empresa:   c.nodo ? empresaPorNodo(c.nodo) : p.empresa,
+    }));
+    notify("✅ Cliente encontrado en base de datos");
+  }
+
+  function usarComoServicioNuevo() {
+    const nombreExistente = modalSelectorServicio?.servicios?.[0]?.nombre || "";
+    if (nombreExistente) setOrdenForm(p=>({ ...p, nombre: nombreExistente }));
+    setModalSelectorServicio(null);
+  }
+
   async function buscarDniNuevo() {
     const dni = ordenForm.dni.trim();
     if (dni.length !== 8) return notify("El DNI debe tener 8 dígitos", false);
     setBuscandoDniNew(true);
     try {
-      // Primero busca en Supabase clientes internos
+      // Buscar TODOS los servicios del DNI en Supabase (un DNI puede tener varios)
       const { data: srvs } = await supabase.from("clientes")
         .select("nombre,direccion,celular,email,nodo,usuario_nodo,caja_nap,sn_onu")
-        .eq("dni", dni).order("id",{ascending:false}).limit(1);
-      if (srvs?.[0]) {
-        const c = srvs[0];
-        setOrdenForm(p=>({ ...p,
-          nombre:    c.nombre    || p.nombre,
-          direccion: c.direccion || p.direccion,
-          celular:   c.celular   || p.celular,
-          email:     c.email     || p.email,
-          nodo:      c.nodo      || p.nodo,
-          usuarioNodo: c.usuario_nodo || p.usuarioNodo,
-          cajaNap:   c.caja_nap  || p.cajaNap,
-          snOnu:     c.sn_onu    || p.snOnu,
-          empresa:   c.nodo ? empresaPorNodo(c.nodo) : p.empresa,
-        }));
-        notify("✅ Cliente encontrado en base de datos");
-      } else {
-        // Consultar RENIEC via perudevs
-        const ctrl = new AbortController();
-        const timer = setTimeout(()=>ctrl.abort(), 8000);
-        try {
-          const res = await fetch(`https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=${DNI_API_KEY}`, { signal:ctrl.signal });
-          const data = await res.json();
-          clearTimeout(timer);
-          if (data?.estado && data?.resultado?.nombre_completo) {
-            setOrdenForm(p=>({ ...p, nombre: data.resultado.nombre_completo }));
-            notify("✅ Nombre obtenido de RENIEC");
-          } else {
-            notify("DNI no encontrado en RENIEC", false);
-          }
-        } finally { clearTimeout(timer); }
+        .eq("dni", dni).order("id",{ascending:false});
+      const todosServicios = srvs || [];
+      const esInstalacionActual = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
+
+      if (todosServicios.length > 1 || (todosServicios.length === 1 && esInstalacionActual)) {
+        setModalSelectorServicio({ servicios: todosServicios, dni, permitirNuevo: esInstalacionActual });
+        setBuscandoDniNew(false);
+        return;
       }
+      if (todosServicios.length === 1) {
+        _aplicarClienteAOrdenForm(todosServicios[0]);
+        setBuscandoDniNew(false);
+        return;
+      }
+      // Consultar RENIEC via perudevs
+      const ctrl = new AbortController();
+      const timer = setTimeout(()=>ctrl.abort(), 8000);
+      try {
+        const res = await fetch(`https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=${DNI_API_KEY}`, { signal:ctrl.signal });
+        const data = await res.json();
+        clearTimeout(timer);
+        if (data?.estado && data?.resultado?.nombre_completo) {
+          setOrdenForm(p=>({ ...p, nombre: data.resultado.nombre_completo }));
+          notify("✅ Nombre obtenido de RENIEC");
+        } else {
+          notify("DNI no encontrado en RENIEC", false);
+        }
+      } finally { clearTimeout(timer); }
     } catch(e) { notify("Error al buscar DNI: " + e.message, false); }
     setBuscandoDniNew(false);
   }
@@ -2372,6 +2391,46 @@ export default function SidebarApp() {
   return (
     <div style={S.root} className="sb-panel">
       <style>{getGlobalCSS(T)}</style>
+
+      {/* ── Modal selector de servicio (mismo DNI) ── */}
+      {modalSelectorServicio && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center", padding:14 }}
+          onClick={() => setModalSelectorServicio(null)}>
+          <div style={{ background: T.card, borderRadius:16, width:"100%", maxWidth:320, maxHeight:"80vh", overflow:"auto", boxShadow:"0 20px 50px rgba(0,0,0,0.3)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ background:"#7c3aed", padding:"14px 16px", borderRadius:"16px 16px 0 0" }}>
+              <div style={{ color:"#fff", fontWeight:800, fontSize:13 }}>Seleccionar servicio</div>
+              <div style={{ color:"#e9d5ff", fontSize:11, marginTop:2 }}>
+                DNI {modalSelectorServicio.dni} — {modalSelectorServicio.servicios.length} servicio{modalSelectorServicio.servicios.length===1?"":"s"} encontrado{modalSelectorServicio.servicios.length===1?"":"s"}
+              </div>
+            </div>
+            <div style={{ padding:12, display:"grid", gap:8 }}>
+              {modalSelectorServicio.servicios.map((srv, i) => (
+                <div key={i} onClick={() => { _aplicarClienteAOrdenForm(srv); setModalSelectorServicio(null); }}
+                  style={{ textAlign:"left", padding:"10px 12px", background: T.bg, border:`2px solid ${T.border}`, borderRadius:10, cursor:"pointer" }}>
+                  <div style={{ fontWeight:800, fontSize:12, color:T.navy }}>Usar: {srv.nombre || "Sin nombre"}</div>
+                  <div style={{ fontSize:11, color:T.muted, marginTop:3, display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {srv.nodo && <span>📡 {srv.nodo}</span>}
+                    {srv.usuario_nodo && <span>👤 {srv.usuario_nodo}</span>}
+                    {srv.caja_nap && <span>📦 {srv.caja_nap}</span>}
+                  </div>
+                </div>
+              ))}
+              {modalSelectorServicio.permitirNuevo && (
+                <div onClick={usarComoServicioNuevo}
+                  style={{ textAlign:"left", padding:"10px 12px", background: T.greenLt || "#f0fdf4", border:"2px dashed #86efac", borderRadius:10, cursor:"pointer" }}>
+                  <div style={{ fontWeight:800, fontSize:12, color:"#166534" }}>+ Es un servicio nuevo</div>
+                  <div style={{ fontSize:11, color:"#15803d", marginTop:3 }}>Deja el formulario en blanco (solo nombre). Úsalo si es otra dirección/punto.</div>
+                </div>
+              )}
+              <button onClick={() => setModalSelectorServicio(null)}
+                style={{ marginTop:2, padding:9, background:"none", border:`1px solid ${T.border}`, borderRadius:8, fontSize:12, color:T.muted, cursor:"pointer" }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Splash selección de agente (obligatorio) ── */}
       {!agente && <SplashAgente onSelect={nombre => {
