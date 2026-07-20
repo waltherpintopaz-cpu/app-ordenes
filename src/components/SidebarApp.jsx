@@ -353,6 +353,7 @@ export default function SidebarApp() {
   const [acctId,  setAcctId]      = useState("1");
   const [cliente, setCliente]     = useState(null);  // datos Supabase/Mikrowisp
   const [recojoInfo, setRecojoInfo] = useState(null); // ultimo recojo de equipo completado del cliente (si existe)
+  const [fotoZoomUrl, setFotoZoomUrl] = useState(null); // foto de liquidacion ampliada en pantalla completa
   const [serviciosTelefono, setServiciosTelefono] = useState([]); // [{tipo:"mikrowisp"|"local", row}] cuando el telefono tiene 2+ servicios
   const [detalle, setDetalle]     = useState(null);  // GetClientsDetails
   const [facturas, setFacturas]   = useState([]);
@@ -1820,16 +1821,27 @@ export default function SidebarApp() {
     if (ordRes.data) setOrdenesCliente(ordRes.data);
     if (liqRes.data) {
       const liqIds = liqRes.data.map((l) => l.id).filter(Boolean);
-      const eqRes = liqIds.length
-        ? await supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo,accion").in("liquidacion_id", liqIds)
-        : { data: [] };
+      const [eqRes, fotoRes] = await Promise.all([
+        liqIds.length
+          ? supabase.from("liquidacion_equipos").select("liquidacion_id,tipo,marca,modelo,serial,codigo,accion").in("liquidacion_id", liqIds)
+          : Promise.resolve({ data: [] }),
+        liqIds.length
+          ? supabase.from("liquidacion_fotos").select("liquidacion_id,foto_url").in("liquidacion_id", liqIds)
+          : Promise.resolve({ data: [] }),
+      ]);
       const equiposPorLiq = new Map();
       for (const eq of (eqRes.data || [])) {
         const arr = equiposPorLiq.get(eq.liquidacion_id) || [];
         arr.push(eq);
         equiposPorLiq.set(eq.liquidacion_id, arr);
       }
-      setLiquidacionesCliente(liqRes.data.map((l) => ({ ...l, equipos: equiposPorLiq.get(l.id) || [] })));
+      const fotosPorLiq = new Map();
+      for (const f of (fotoRes.data || [])) {
+        const arr = fotosPorLiq.get(f.liquidacion_id) || [];
+        if (f.foto_url) arr.push(f.foto_url);
+        fotosPorLiq.set(f.liquidacion_id, arr);
+      }
+      setLiquidacionesCliente(liqRes.data.map((l) => ({ ...l, equipos: equiposPorLiq.get(l.id) || [], fotos: fotosPorLiq.get(l.id) || [] })));
     }
     setHistorialLoad(false);
   }
@@ -2471,6 +2483,18 @@ export default function SidebarApp() {
   return (
     <div style={S.root} className="sb-panel">
       <style>{getGlobalCSS(T)}</style>
+
+      {/* ── Zoom de foto de liquidacion ── */}
+      {fotoZoomUrl && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+          onClick={() => setFotoZoomUrl(null)}>
+          <img src={fotoZoomUrl} alt="Foto ampliada" style={{ maxWidth:"100%", maxHeight:"100%", borderRadius:8, objectFit:"contain" }} />
+          <button onClick={() => setFotoZoomUrl(null)}
+            style={{ position:"absolute", top:14, right:14, background:"rgba(255,255,255,0.2)", border:"none", color:"#fff", borderRadius:8, width:34, height:34, fontSize:18, cursor:"pointer", fontWeight:700 }}>
+            ×
+          </button>
+        </div>
+      )}
 
       {/* ── Modal selector de servicio (mismo DNI) ── */}
       {modalSelectorServicio && (
@@ -3721,7 +3745,7 @@ export default function SidebarApp() {
                   <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                     {liquidacionesCliente.map((l, i) => {
                       const abierto = liqDetalleAbierto === (l.id ?? i);
-                      const tieneDetalle = Boolean(l.observacion_final || l.sn_onu || l.caja_nap || l.codigo_etiqueta || (l.equipos||[]).length);
+                      const tieneDetalle = Boolean(l.observacion_final || l.sn_onu || l.caja_nap || l.codigo_etiqueta || (l.equipos||[]).length || (l.fotos||[]).length);
                       return (
                       <div key={i} style={{ background:T.greenLt, border:`1px solid #86efac`, borderRadius:5, padding:"8px 10px" }}>
                         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:3 }}>
@@ -3747,6 +3771,18 @@ export default function SidebarApp() {
                               </div>
                             )}
                             {l.observacion_final && <div style={{ fontSize:10, color:T.navy }}><strong>Obs:</strong> {l.observacion_final}</div>}
+                            {(l.fotos||[]).length > 0 && (
+                              <div>
+                                <div style={{ fontSize:10, color:T.navy, marginBottom:4 }}><strong>Fotos ({l.fotos.length}):</strong></div>
+                                <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                                  {l.fotos.map((url, fi) => (
+                                    <img key={fi} src={url} alt={`Foto ${fi+1}`}
+                                      onClick={() => setFotoZoomUrl(url)}
+                                      style={{ width:48, height:38, objectFit:"cover", borderRadius:5, border:`1px solid ${T.border}`, cursor:"pointer" }} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
