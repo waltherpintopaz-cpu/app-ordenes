@@ -196,7 +196,7 @@ const DARK_T = {
 };
 
 const getS = (T) => ({
-  root:   { fontFamily:"'Inter',system-ui,-apple-system,sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
+  root:   { fontFamily:"'Inter','Segoe UI',sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
   card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, marginBottom:8, overflow:"hidden" },
   label:  { fontSize:11, fontWeight:700, color:T.slate, marginBottom:3, display:"block", textTransform:"uppercase", letterSpacing:"0.4px" },
   val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
@@ -216,7 +216,7 @@ const getS = (T) => ({
 function Splash({ title, subtitle, loading, onRetry }) {
   return (
     <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-      background:"#0A2E5F", overflow:"hidden", fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif" }}>
+      background:"#0A2E5F", overflow:"hidden", fontFamily:"'Inter','Segoe UI',sans-serif" }}>
       {/* Burbujas decorativas */}
       <div style={{ position:"absolute", width:220, height:220, borderRadius:"50%", background:"rgba(255,255,255,0.06)", top:-60, left:-70 }} />
       <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", bottom:40, right:-50 }} />
@@ -294,7 +294,7 @@ function SplashAgente({ onSelect }) {
   return (
     <div style={{ position:"fixed", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
       background:"#0A2E5F", overflow:"hidden",
-      fontFamily:"'Plus Jakarta Sans','Inter',system-ui,sans-serif", padding:24 }}>
+      fontFamily:"'Inter','Segoe UI',sans-serif", padding:24 }}>
       <div style={{ position:"absolute", width:220, height:220, borderRadius:"50%", background:"rgba(255,255,255,0.06)", top:-60, left:-70 }} />
       <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", background:"rgba(255,255,255,0.04)", bottom:40, right:-50 }} />
 
@@ -3293,35 +3293,38 @@ export default function SidebarApp() {
       {/* ── Cliente cargado ── */}
       {cliente && !loading && (<>
 
-        {/* ══ HEADER CLIENTE — fondo azul oscuro ══ */}
-        <div style={{ background:T.blue, padding:"14px 14px 12px", position:"relative" }}>
+        {/* ══ HEADER CLIENTE — fondo claro con acento azul ══ */}
+        <div style={{ background:T.card, borderBottom:`2px solid ${T.blue}`, padding:"14px 14px 12px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
             <div style={{ minWidth:0 }}>
-              <div style={{ fontWeight:700, fontSize:15, color:"#fff", lineHeight:1.2, wordBreak:"break-word", letterSpacing:"-0.2px" }}>
+              <div style={{ fontWeight:700, fontSize:15, color:T.navy, lineHeight:1.2, wordBreak:"break-word", letterSpacing:"-0.2px" }}>
                 {cliente.nombre}
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap" }}>
-                <span style={{ fontSize:12, color:"rgba(255,255,255,0.65)" }}>#{cliente.mikrowisp_id}</span>
+                <span style={{ fontSize:12, color:T.muted }}>#{cliente.mikrowisp_id}</span>
                 <span style={{ background:
+                  estadoServicio === "ACTIVO" ? T.greenLt :
+                  estadoServicio === "SUSPENDIDO" ? T.amberLt : T.redLt,
+                  color:
                   estadoServicio === "ACTIVO" ? T.green :
-                  estadoServicio === "SUSPENDIDO" ? "#d97706" : T.red,
-                  color:"#fff", borderRadius:3, padding:"2px 8px", fontSize:11, fontWeight:700 }}>
+                  estadoServicio === "SUSPENDIDO" ? T.amber : T.red,
+                  borderRadius:3, padding:"2px 8px", fontSize:11, fontWeight:700 }}>
                   {estadoServicio || "ACTIVO"}
                 </span>
                 {svc && (
                   <span style={{ display:"flex", alignItems:"center", gap:4 }}>
                     <span style={{ position:"relative", width:7, height:7, display:"inline-block" }}>
-                      <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#4ade80":"rgba(255,255,255,0.4)" }} />
-                      {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#4ade80" }} />}
+                      <span style={{ position:"absolute", inset:0, borderRadius:"50%", background:isOnline?"#22c55e":T.border }} />
+                      {isOnline && <span className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:"#22c55e" }} />}
                     </span>
-                    <span style={{ fontSize:11, color:"rgba(255,255,255,0.65)" }}>{isOnline?"Online":"Offline"}</span>
+                    <span style={{ fontSize:11, color:T.muted }}>{isOnline?"Online":"Offline"}</span>
                   </span>
                 )}
               </div>
               <div style={{ display:"flex", gap:12, marginTop:6, flexWrap:"wrap" }}>
-                <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>Nodo <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.nodo}</strong></span>
-                <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)" }}>
-                  <strong style={{ color:"rgba(255,255,255,0.9)", textTransform:"capitalize" }}>
+                <span style={{ fontSize:11, color:T.muted }}>Nodo <strong style={{ color:T.navy }}>{cliente.nodo}</strong></span>
+                <span style={{ fontSize:11, color:T.muted }}>
+                  <strong style={{ color:T.navy, textTransform:"capitalize" }}>
                     {cliente.empresa === "dimfiber" ? "DimFiber" : "Americanet"}
                   </strong>
                 </span>
@@ -3329,29 +3332,29 @@ export default function SidebarApp() {
                   <span
                     onClick={() => copiarAlPortapapeles(cliente.cedula, "DNI")}
                     title="Click para copiar DNI"
-                    style={{ fontSize:11, color:"rgba(255,255,255,0.55)", cursor:"pointer" }}
-                  >DNI <strong style={{ color:"rgba(255,255,255,0.9)" }}>{cliente.cedula}</strong></span>
+                    style={{ fontSize:11, color:T.muted, cursor:"pointer" }}
+                  >DNI <strong style={{ color:T.navy }}>{cliente.cedula}</strong></span>
                 )}
                 {String(nodoReal || cliente.nodo || "") === "Nod_03" && clienteIdReal && (
-                  <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:"rgba(255,255,255,0.55)" }}>
+                  <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:11, color:T.muted }}>
                     VLAN
                     <select
                       value={clienteVlan ?? ""}
                       disabled={guardandoVlan}
                       onChange={(e) => guardarVlanCliente(e.target.value)}
-                      style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", borderRadius:4, color:"#fff", fontSize:11, fontWeight:700, padding:"1px 4px" }}
+                      style={{ background:T.bg, border:`1px solid ${T.border}`, borderRadius:4, color:T.navy, fontSize:11, fontWeight:700, padding:"1px 4px" }}
                     >
-                      <option value="" style={{ color:"#000" }}>— Sin VLAN —</option>
-                      <option value="100" style={{ color:"#000" }}>100 (viejo)</option>
-                      <option value="102" style={{ color:"#000" }}>102 (nuevo)</option>
+                      <option value="">— Sin VLAN —</option>
+                      <option value="100">100 (viejo)</option>
+                      <option value="102">102 (nuevo)</option>
                     </select>
                   </span>
                 )}
               </div>
             </div>
             <button onClick={() => buscarCliente(contact?.phone_number || "")}
-              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)",
-                borderRadius:4, padding:"5px 9px", cursor:"pointer", color:"#fff", fontSize:13, flexShrink:0 }}
+              style={{ background:T.bg, border:`1px solid ${T.border}`,
+                borderRadius:4, padding:"5px 9px", cursor:"pointer", color:T.blue, fontSize:13, flexShrink:0 }}
               title="Recargar"><RefreshCw size={13} /></button>
           </div>
         </div>
@@ -3847,14 +3850,15 @@ export default function SidebarApp() {
                       const isPag = ["pagado","PAGADO","paid"].includes(f.estado);
                       const isAnu = ["anulado","ANULADO","cancelled","canceled"].includes(f.estado);
                       const fid   = f.idfactura || f.id;
-                      const badgeBg = isPag ? T.green : isAnu ? "#9ca3af" : T.blue;
+                      const badgeBg = isPag ? T.greenLt : isAnu ? T.bg : T.accent;
+                      const badgeColor = isPag ? T.green : isAnu ? T.muted : T.blue;
                       return (
                         <React.Fragment key={fid}>
                           <tr onClick={e => { e.stopPropagation(); setMenuAbierto(menuAbierto === fid ? null : fid); }}
                             style={{ cursor:"pointer", background: menuAbierto === fid ? T.accent : "transparent" }}>
                             <td style={{ fontWeight:600, color:T.blue, fontSize:11, padding:"7px 6px" }}>#{fid}</td>
                             <td style={{ padding:"7px 6px" }}>
-                              <span style={{ background:badgeBg, color:"#fff", borderRadius:3, padding:"2px 6px", fontSize:9, fontWeight:700, display:"inline-block" }}>
+                              <span style={{ background:badgeBg, color:badgeColor, borderRadius:3, padding:"2px 6px", fontSize:9, fontWeight:700, display:"inline-block" }}>
                                 {isPag ? "PAGADO" : isAnu ? "ANULADO" : "PENDIENTE"}
                               </span>
                             </td>
