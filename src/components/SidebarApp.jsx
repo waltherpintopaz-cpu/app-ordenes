@@ -1996,14 +1996,15 @@ export default function SidebarApp() {
       }
 
       const esInstalacion = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
-      // Para instalaciones (posible segundo servicio del mismo cliente) usar lo que el
-      // agente ingreso en el formulario en vez de copiar el servicio actualmente cargado.
-      const nodoFinal = esInstalacion ? (ordenForm.nodo.trim() || (cliente ? String(cliente.nodo) : "")) : (cliente ? String(cliente.nodo) : ordenForm.nodo.trim());
-      const direccionFinal = esInstalacion ? (ordenForm.direccion.trim() || detalle?.direccion_principal || "") : (cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim());
-      const usuarioNodoFinal = esInstalacion ? ordenForm.usuarioNodo.trim() : (cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim());
-      const passwordUsuarioFinal = esInstalacion ? ordenForm.passwordUsuario.trim() : (cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim());
-      const snOnuFinal = esInstalacion ? ordenForm.snOnu.trim() : (cliente ? (snOnu || "") : ordenForm.snOnu.trim());
-      const empresaOrden = esInstalacion && ordenForm.nodo.trim()
+      // Un Traslado usa datos nuevos (destino) igual que una instalación, pero no debe
+      // generar usuario PPPoE automatico (eso solo aplica a instalaciones reales).
+      const usaDatosDelFormulario = esInstalacion || ordenForm.tipoActuacion === "Traslado";
+      const nodoFinal = usaDatosDelFormulario ? (ordenForm.nodo.trim() || (cliente ? String(cliente.nodo) : "")) : (cliente ? String(cliente.nodo) : ordenForm.nodo.trim());
+      const direccionFinal = usaDatosDelFormulario ? (ordenForm.direccion.trim() || detalle?.direccion_principal || "") : (cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim());
+      const usuarioNodoFinal = usaDatosDelFormulario ? ordenForm.usuarioNodo.trim() : (cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim());
+      const passwordUsuarioFinal = usaDatosDelFormulario ? ordenForm.passwordUsuario.trim() : (cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim());
+      const snOnuFinal = usaDatosDelFormulario ? ordenForm.snOnu.trim() : (cliente ? (snOnu || "") : ordenForm.snOnu.trim());
+      const empresaOrden = usaDatosDelFormulario && ordenForm.nodo.trim()
         ? empresaPorNodo(ordenForm.nodo)
         : (cliente ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet") : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa));
 
@@ -4496,11 +4497,12 @@ export default function SidebarApp() {
                           "Incidencia Internet":          "INCIDENCIA",
                           "Mantenimiento":                "MANTENIMIENTO",
                           "Visita Tecnica":               "ORDEN DE SERVICIO",
+                          "Traslado":                     "ORDEN DE SERVICIO",
                           "Recojo de equipo":             "RECUPERACION DE EQUIPO",
                         };
                         const cobrarMap = {
                           "Instalacion Internet": "SI", "Instalacion Internet y Cable": "SI", "Instalacion TV": "SI",
-                          "Incidencia Internet": "NO", "Mantenimiento": "NO", "Visita Tecnica": "NO", "Recojo de equipo": "NO",
+                          "Incidencia Internet": "NO", "Mantenimiento": "NO", "Visita Tecnica": "NO", "Traslado": "NO", "Recojo de equipo": "NO",
                         };
                         const cobrar = cobrarMap[ta] ?? p.solicitarPago;
                         setOrdenForm(p => ({...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo, solicitarPago: cobrar, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar }));
@@ -4510,6 +4512,7 @@ export default function SidebarApp() {
                       <option>Instalacion Internet y Cable</option>
                       <option>Instalacion TV</option>
                       <option>Mantenimiento</option>
+                      <option>Traslado</option>
                       <option>Visita Tecnica</option>
                       <option>Recojo de equipo</option>
                     </select>
@@ -4603,8 +4606,8 @@ export default function SidebarApp() {
                     </div>
                   </div>
                 )}
-                {/* Campos solo para instalación */}
-                {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && (<>
+                {/* Campos solo para instalación (y Traslado, que tambien necesita destino nuevo) */}
+                {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV","Traslado"].includes(ordenForm.tipoActuacion) && (<>
                   {/* Dirección — editable para instalaciones (puede ser un segundo servicio en otro punto) */}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Dirección</div>

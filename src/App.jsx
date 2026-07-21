@@ -9929,6 +9929,15 @@ export default function App() {
     const avisos = [];
     try {
       const codigoOrden = String(ordenEnLiquidacion.codigo || "").trim();
+
+      // Traslado: dejar registro de la dirección/nodo/usuario anterior antes de sobreescribirlos
+      let observacionFinalConHistorial = String(liquidacion.observacionFinal || "");
+      if (String(ordenEnLiquidacion.tipoActuacion || "") === "Traslado") {
+        const ordenOriginal = (Array.isArray(ordenes) ? ordenes : []).find((o) => o.id === ordenEnLiquidacion.id);
+        const notaTraslado = `Traslado: de "${ordenOriginal?.direccion || "-"}" (Nodo ${ordenOriginal?.nodo || "-"}, Usuario ${ordenOriginal?.usuarioNodo || "-"}) a "${ordenEnLiquidacion.direccion || "-"}" (Nodo ${ordenEnLiquidacion.nodo || "-"}, Usuario ${ordenEnLiquidacion.usuarioNodo || "-"}).`;
+        observacionFinalConHistorial = [notaTraslado, observacionFinalConHistorial].filter(Boolean).join("\n");
+      }
+
       const payload = {
         orden_original_id: ordenEnLiquidacion.id,
         codigo: codigoOrden,
@@ -9948,7 +9957,7 @@ export default function App() {
         tecnico: String(ordenEnLiquidacion.tecnico || ""),
         tecnico_liquida: String(liquidacion.tecnicoLiquida || ""),
         resultado_final: String(liquidacion.resultadoFinal || "Completada"),
-        observacion_final: String(liquidacion.observacionFinal || ""),
+        observacion_final: observacionFinalConHistorial,
         cobro_realizado: String(liquidacion.cobroRealizado || "NO"),
         monto_cobrado: Number.isFinite(Number(liquidacion.montoCobrado)) ? Number(liquidacion.montoCobrado) : 0,
         medio_pago: String(liquidacion.medioPago || ""),
@@ -15104,6 +15113,7 @@ export default function App() {
                       <option>Incidencia Internet</option>
                       <option>Instalacion TV</option>
                       <option>Mantenimiento</option>
+                      <option>Traslado</option>
                       <option>Recojo de equipo</option>
                     </select>
                   </div>
@@ -15573,7 +15583,7 @@ export default function App() {
                     </select>
                   </div>
 
-                  {["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV", "Incidencia Internet"].includes(orden.tipoActuacion) && (
+                  {["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV", "Incidencia Internet", "Traslado"].includes(orden.tipoActuacion) && (
                     <div
                       onClick={() => setOrdenIncluirIptv((v) => !v)}
                       title="Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden"
@@ -23073,7 +23083,16 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "8px", fontSize: "14px" }}>
                 <div><span style={{ fontWeight: 700, color: "#64748b" }}>Código</span><div style={{ color: "#0f172a", fontWeight: 700, fontSize: "15px" }}>{ordenEnLiquidacion.codigo}</div></div>
                 <div><span style={{ fontWeight: 700, color: "#64748b" }}>Cliente</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.nombre}</div></div>
-                <div><span style={{ fontWeight: 700, color: "#64748b" }}>Dirección</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.direccion}</div></div>
+                <div>
+                  <span style={{ fontWeight: 700, color: "#64748b" }}>Dirección</span>
+                  <input
+                    type="text"
+                    value={ordenEnLiquidacion.direccion || ""}
+                    onChange={(e) => setOrdenEnLiquidacion((prev) => ({ ...prev, direccion: e.target.value }))}
+                    style={{ ...inputStyle, marginTop: "2px", padding: "6px 10px", fontSize: "14px" }}
+                    placeholder="Dirección"
+                  />
+                </div>
                 <div><span style={{ fontWeight: 700, color: "#64748b" }}>Técnico</span><div style={{ color: "#0f172a" }}>{ordenEnLiquidacion.tecnico || "—"}</div></div>
                 <div>
                   <span style={{ fontWeight: 700, color: "#64748b" }}>Nodo</span>
