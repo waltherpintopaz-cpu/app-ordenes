@@ -71,7 +71,24 @@ const PASARELAS = {
 };
 
 const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
-const empresaPorNodo = (n) => DIM_NODOS.has(String(n||"").trim().toLowerCase()) ? "DIM" : "Americanet";
+// Reverso: numero crudo de router Mikrowisp -> etiqueta "Nod_XX" (mismo mapeo que usan web y mobile).
+const NODO_POR_ROUTER_MIKROWISP = {
+  "1": "Nod_01", "7": "Nod_01", "8": "Nod_01", "9": "Nod_01",
+  "2": "Nod_02",
+  "3": "Nod_03", "10": "Nod_03", "12": "Nod_03",
+  "5": "Nod_04",
+  "11": "Nod_06",
+};
+const normalizarEtiquetaNodo = (valor) => {
+  const raw = String(valor || "").trim();
+  if (!raw) return "";
+  if (/^Nod_0[1-6]$/i.test(raw)) return raw.replace(/^nod_/i, "Nod_");
+  return NODO_POR_ROUTER_MIKROWISP[raw] || raw;
+};
+// Algunos clientes (sincronizados desde Mikrowisp) guardan el nodo como el
+// numero crudo de router ("5") en vez de la etiqueta "Nod_04" — normalizar
+// antes de comparar.
+const empresaPorNodo = (n) => DIM_NODOS.has(String(normalizarEtiquetaNodo(n) || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 const NODOS_OLT_SSH = new Set(["Nod_04", "Nod_05", "Nod_06"]);
 const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"];
@@ -1859,7 +1876,7 @@ export default function SidebarApp() {
     setContratoGenerando(true);
     setContratoMsg("");
     try {
-      const empresa = empresaPorNodo(l.nodo);
+      const empresa = cliente?.empresa === "dimfiber" ? "DIM" : empresaPorNodo(l.nodo);
       const { blob, filename } = generarContratoPdf({
         empresa,
         nombre: l.nombre,
@@ -1886,7 +1903,7 @@ export default function SidebarApp() {
     setContratoEnviando(true);
     setContratoMsg("");
     try {
-      const empresa = empresaPorNodo(l.nodo);
+      const empresa = cliente?.empresa === "dimfiber" ? "DIM" : empresaPorNodo(l.nodo);
       const res = await enviarContratoWhatsapp({
         empresa,
         celular: l.celular,

@@ -139,7 +139,10 @@ const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen"];
 const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
 const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
 const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06"]);
-const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(nodo || "").trim().toLowerCase()) ? "DIM" : "Americanet";
+// Algunos clientes (sincronizados desde Mikrowisp) guardan el nodo como el
+// numero crudo de router ("5") en vez de la etiqueta "Nod_04" — normalizar
+// con el mismo mapeo que usa normalizarEtiquetaNodo antes de comparar.
+const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(normalizarEtiquetaNodo(nodo) || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 // VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
 const VLAN_POR_NODO_WEB = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
 // ID de router MikroWisp por nodo. Nod_03 esta en migracion: clientes que ya
@@ -9495,7 +9498,11 @@ export default function App() {
     setContratoGenerando(true);
     setContratoMsg("");
     try {
-      const empresa = empresaPorNodo(liquidacionSeleccionada.nodo);
+      const dniLiq = String(liquidacionSeleccionada.dni || "").trim();
+      const clienteRef = (Array.isArray(clientes) ? clientes : []).find(
+        (c) => String(c.dni || "").trim() === dniLiq || String(c.codigoCliente || "").trim() === dniLiq
+      );
+      const empresa = clienteRef?.empresa === "dimfiber" ? "DIM" : empresaPorNodo(liquidacionSeleccionada.nodo);
       const { blob, filename } = generarContratoPdf({
         empresa,
         nombre: liquidacionSeleccionada.nombre,
@@ -9522,7 +9529,11 @@ export default function App() {
     setContratoEnviando(true);
     setContratoMsg("");
     try {
-      const empresa = empresaPorNodo(liquidacionSeleccionada.nodo);
+      const dniLiq = String(liquidacionSeleccionada.dni || "").trim();
+      const clienteRef = (Array.isArray(clientes) ? clientes : []).find(
+        (c) => String(c.dni || "").trim() === dniLiq || String(c.codigoCliente || "").trim() === dniLiq
+      );
+      const empresa = clienteRef?.empresa === "dimfiber" ? "DIM" : empresaPorNodo(liquidacionSeleccionada.nodo);
       const res = await enviarContratoWhatsapp({
         empresa,
         celular: liquidacionSeleccionada.celular,
