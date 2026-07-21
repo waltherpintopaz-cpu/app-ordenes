@@ -3052,7 +3052,7 @@ export default function SidebarApp() {
               const horaPicker = () => {
                 const h24str=ordenForm.hora||""; const [hhStr,mmStr]=h24str.split(":"); const hh24=parseInt(hhStr||"0",10);
                 const cur12=hh24===0?12:hh24>12?hh24-12:hh24; const curAmpm=hh24>=12?"PM":"AM"; const curMm=mmStr||"00";
-                const aA=(h)=>{const n=parseInt(h,10);if(isNaN(n))return"AM";return(n>=1&&n<=6)?"PM":"AM";};
+                const aA=(h)=>{const n=parseInt(h,10);if(isNaN(n))return"AM";if(n>=1&&n<=6)return"PM";if(n===12)return"PM";return"AM";};
                 const sH=(h,mm,ampm)=>{let h2=parseInt(h,10);if(isNaN(h2)||h2<1||h2>12)return"";if(ampm==="PM")h2=h2===12?12:h2+12;else h2=h2===12?0:h2;return`${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`;};
                 return(<div style={{display:"flex",gap:4,alignItems:"center",padding:"6px 8px"}}>
                   <input type="number" min="1" max="12" style={{...S.input,width:44,textAlign:"center",padding:"4px",fontSize:13,fontWeight:700,border:`1px solid ${T.border}`,borderRadius:4}} value={h24str?cur12:""} placeholder="H" onChange={e=>{setOrdenForm(p=>({...p,hora:sH(e.target.value,curMm,aA(e.target.value))}));}} />
@@ -4554,7 +4554,7 @@ export default function SidebarApp() {
                       const cur12 = hh24 === 0 ? 12 : hh24 > 12 ? hh24 - 12 : hh24;
                       const curAmpm = hh24 >= 12 ? "PM" : "AM";
                       const curMm = mmStr || "00";
-                      const aA = (h) => { const n=parseInt(h,10); if(isNaN(n)) return "AM"; return (n>=1&&n<=6)?"PM":"AM"; };
+                      const aA = (h) => { const n=parseInt(h,10); if(isNaN(n)) return "AM"; if(n>=1&&n<=6) return "PM"; if(n===12) return "PM"; return "AM"; };
                       const sH = (h,mm,ampm) => { let h2=parseInt(h,10); if(isNaN(h2)||h2<1||h2>12) return ""; if(ampm==="PM") h2=h2===12?12:h2+12; else h2=h2===12?0:h2; return `${String(h2).padStart(2,"0")}:${String(parseInt(mm||"0",10)).padStart(2,"0")}`; };
                       return (
                         <div style={{ display:"flex", gap:4, alignItems:"center" }}>
