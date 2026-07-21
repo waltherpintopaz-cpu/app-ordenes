@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } from "lucide-react";
+import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
+import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 
 // ─── Captura temprana de postMessage ─────────────────────────────────────────
 // Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
@@ -446,6 +448,11 @@ export default function SidebarApp() {
   const [historialLoad, setHistorialLoad] = useState(false);
   const [showHistorial, setShowHistorial] = useState(false);
   const [liqDetalleAbierto, setLiqDetalleAbierto] = useState(null); // id de la liquidación expandida
+  const [contratoLiqId, setContratoLiqId] = useState(null); // liquidacion para la que se genero/subio el contrato
+  const [contratoPdfUrl, setContratoPdfUrl] = useState("");
+  const [contratoGenerando, setContratoGenerando] = useState(false);
+  const [contratoEnviando, setContratoEnviando] = useState(false);
+  const [contratoMsg, setContratoMsg] = useState("");
   const [notasCliente,  setNotasCliente]  = useState([]);
   const [showNotas,     setShowNotas]     = useState(false);
   const [notaNueva,     setNotaNueva]     = useState("");
@@ -1815,7 +1822,7 @@ export default function SidebarApp() {
         .select("id,codigo,tipo_actuacion,estado,fecha_actuacion,tecnico,autor_orden,descripcion,fecha_creacion")
         .eq("dni", cedula).order("fecha_creacion", { ascending: false }).limit(8),
       supabase.from("liquidaciones")
-        .select("id,codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,cobro_realizado,observacion_final,sn_onu,caja_nap,codigo_etiqueta")
+        .select("id,codigo,tipo_actuacion,fecha_liquidacion,tecnico_liquida,resultado_final,monto_cobrado,cobro_realizado,observacion_final,sn_onu,caja_nap,codigo_etiqueta,dni,nombre,direccion,celular,email,velocidad,precio_plan,nodo")
         .eq("dni", cedula).order("fecha_liquidacion", { ascending: false }).limit(8),
     ]);
     if (ordRes.data) setOrdenesCliente(ordRes.data);
@@ -1845,6 +1852,55 @@ export default function SidebarApp() {
     }
     setHistorialLoad(false);
   }
+
+  const generarYSubirContrato = async (l) => {
+    setContratoLiqId(l.id ?? null);
+    setContratoPdfUrl("");
+    setContratoGenerando(true);
+    setContratoMsg("");
+    try {
+      const empresa = empresaPorNodo(l.nodo);
+      const { blob, filename } = generarContratoPdf({
+        empresa,
+        nombre: l.nombre,
+        dni: l.dni,
+        direccion: l.direccion,
+        email: l.email,
+        celular: l.celular,
+        velocidad: l.velocidad,
+        precioPlan: l.precio_plan,
+        codigo: l.codigo,
+      });
+      const url = await subirContratoPdf(blob, filename);
+      setContratoPdfUrl(url);
+      setContratoMsg("✓ Contrato generado.");
+    } catch (e) {
+      setContratoMsg("Error generando el contrato: " + (e?.message || ""));
+    } finally {
+      setContratoGenerando(false);
+    }
+  };
+
+  const enviarContratoPorWhatsappHandler = async (l) => {
+    if (!contratoPdfUrl) return;
+    setContratoEnviando(true);
+    setContratoMsg("");
+    try {
+      const empresa = empresaPorNodo(l.nodo);
+      const res = await enviarContratoWhatsapp({
+        empresa,
+        celular: l.celular,
+        urlPdf: contratoPdfUrl,
+        filename: `Contrato-${l.dni || ""}.pdf`,
+        caption: "📄 Contrato de servicio — " + empresaInfoContrato(empresa).nombreCorto,
+      });
+      setContratoMsg(res.ok ? "✓ Contrato enviado por WhatsApp." : "No se pudo enviar: " + (res.msg || ""));
+    } catch (e) {
+      setContratoMsg("Error enviando el contrato: " + (e?.message || ""));
+    } finally {
+      setContratoEnviando(false);
+    }
+  };
 
   // ── Cargar técnicos y usuarios activos desde Supabase ────────────────────
   useEffect(() => {
@@ -3779,6 +3835,23 @@ export default function SidebarApp() {
                               </div>
                             )}
                             {l.observacion_final && <div style={{ fontSize:10, color:T.navy }}><strong>Obs:</strong> {l.observacion_final}</div>}
+                            <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap", marginTop:2 }}>
+                              <button onClick={() => void generarYSubirContrato(l)} disabled={contratoGenerando}
+                                style={{ ...S.btnSm(T.blue), fontSize:10, opacity:contratoGenerando?0.6:1, display:"flex", alignItems:"center", gap:4 }}>
+                                <FileText size={11} /> {contratoGenerando && contratoLiqId === (l.id ?? i) ? "Generando..." : "Contrato"}
+                              </button>
+                              {contratoLiqId === (l.id ?? i) && contratoPdfUrl && (<>
+                                <a href={contratoPdfUrl} target="_blank" rel="noopener noreferrer"
+                                  style={{ ...S.btnSm("#6b7280"), fontSize:10, textDecoration:"none" }}>Ver PDF</a>
+                                <button onClick={() => void enviarContratoPorWhatsappHandler(l)} disabled={contratoEnviando}
+                                  style={{ ...S.btnSm("#16a34a"), fontSize:10, opacity:contratoEnviando?0.6:1 }}>
+                                  {contratoEnviando ? "Enviando..." : "📲 Enviar WhatsApp"}
+                                </button>
+                              </>)}
+                            </div>
+                            {contratoLiqId === (l.id ?? i) && contratoMsg && (
+                              <div style={{ fontSize:10, fontWeight:600, color: contratoMsg.startsWith("✓") ? "#16a34a" : "#dc2626" }}>{contratoMsg}</div>
+                            )}
                             {(l.fotos||[]).length > 0 && (
                               <div>
                                 <div style={{ fontSize:10, color:T.navy, marginBottom:4 }}><strong>Fotos ({l.fotos.length}):</strong></div>
