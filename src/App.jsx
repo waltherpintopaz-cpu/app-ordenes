@@ -41,6 +41,8 @@ import AgentesDashboard from "./components/AgentesDashboard";
 import logoAmericanet from "./assets/americanet-logo-new-trimmed.png";
 import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
+import { generarContratoPdf, empresaInfoContrato } from "./utils/contratoPdf.js";
+import { subirContratoPdf, enviarContratoWhatsapp } from "./utils/contratoEnvio.js";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -2122,6 +2124,10 @@ export default function App() {
   const [liquidacionSeleccionada, setLiquidacionSeleccionada] = useState(null);
   const [liquidacionEditandoId, setLiquidacionEditandoId] = useState(null);
   const [detalleLiquidacionTab, setDetalleLiquidacionTab] = useState("orden");
+  const [contratoPdfUrl, setContratoPdfUrl] = useState("");
+  const [contratoGenerando, setContratoGenerando] = useState(false);
+  const [contratoEnviando, setContratoEnviando] = useState(false);
+  const [contratoMsg, setContratoMsg] = useState("");
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [clienteDiagnosticoRapido, setClienteDiagnosticoRapido] = useState(null);
@@ -9479,7 +9485,57 @@ export default function App() {
     const enriched = await enriquecerLiquidacionDesdeSupabase(liquidacionItem);
     setLiquidacionSeleccionada(enriched);
     setDetalleLiquidacionTab("orden");
+    setContratoPdfUrl("");
+    setContratoMsg("");
     setVistaActiva("detalleLiquidacion");
+  };
+
+  const generarYSubirContrato = async () => {
+    if (!liquidacionSeleccionada) return;
+    setContratoGenerando(true);
+    setContratoMsg("");
+    try {
+      const empresa = empresaPorNodo(liquidacionSeleccionada.nodo);
+      const { blob, filename } = generarContratoPdf({
+        empresa,
+        nombre: liquidacionSeleccionada.nombre,
+        dni: liquidacionSeleccionada.dni,
+        direccion: liquidacionSeleccionada.direccion,
+        email: liquidacionSeleccionada.email,
+        celular: liquidacionSeleccionada.celular,
+        velocidad: liquidacionSeleccionada.velocidad,
+        precioPlan: liquidacionSeleccionada.precioPlan,
+        codigo: liquidacionSeleccionada.codigo,
+      });
+      const url = await subirContratoPdf(blob, filename);
+      setContratoPdfUrl(url);
+      setContratoMsg("✓ Contrato generado.");
+    } catch (e) {
+      setContratoMsg("Error generando el contrato: " + (e?.message || ""));
+    } finally {
+      setContratoGenerando(false);
+    }
+  };
+
+  const enviarContratoPorWhatsappHandler = async () => {
+    if (!liquidacionSeleccionada || !contratoPdfUrl) return;
+    setContratoEnviando(true);
+    setContratoMsg("");
+    try {
+      const empresa = empresaPorNodo(liquidacionSeleccionada.nodo);
+      const res = await enviarContratoWhatsapp({
+        empresa,
+        celular: liquidacionSeleccionada.celular,
+        urlPdf: contratoPdfUrl,
+        filename: `Contrato-${liquidacionSeleccionada.dni || ""}.pdf`,
+        caption: "📄 Contrato de servicio — " + empresaInfoContrato(empresa).nombreCorto,
+      });
+      setContratoMsg(res.ok ? "✓ Contrato enviado por WhatsApp." : "No se pudo enviar: " + (res.msg || ""));
+    } catch (e) {
+      setContratoMsg("Error enviando el contrato: " + (e?.message || ""));
+    } finally {
+      setContratoEnviando(false);
+    }
   };
 
   const abrirEditarLiquidacionHistorial = async (liquidacionItem) => {
@@ -24877,6 +24933,23 @@ export default function App() {
                     Volver
                   </button>
                 </div>
+              </div>
+
+              <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <button onClick={() => void generarYSubirContrato()} disabled={contratoGenerando} style={{ ...secondaryButton, opacity: contratoGenerando ? 0.6 : 1 }}>
+                  {contratoGenerando ? "Generando..." : "📄 Generar contrato"}
+                </button>
+                {contratoPdfUrl && (
+                  <>
+                    <a href={contratoPdfUrl} target="_blank" rel="noopener noreferrer" style={{ ...secondaryButton, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                      Ver PDF
+                    </a>
+                    <button onClick={() => void enviarContratoPorWhatsappHandler()} disabled={contratoEnviando} style={{ ...primaryButton, opacity: contratoEnviando ? 0.6 : 1 }}>
+                      {contratoEnviando ? "Enviando..." : "📲 Enviar por WhatsApp"}
+                    </button>
+                  </>
+                )}
+                {contratoMsg && <span style={{ fontSize: "12px", color: contratoMsg.startsWith("✓") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{contratoMsg}</span>}
               </div>
 
               <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
