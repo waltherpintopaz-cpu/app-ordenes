@@ -9639,6 +9639,7 @@ export default function App() {
     // Si NO es instalación: actualizar cliente existente por DNI, o crear uno básico si no existe
     if (!esInstalacion) {
       let clienteResultado = null;
+      let clienteAnteriorTraslado = null;
       setClientes((prev) => {
         // Un DNI puede tener varios servicios (mismo codigoCliente = dni en todos).
         // Preferir el que coincide en usuario_nodo (unico por servicio) y luego en nodo,
@@ -9653,6 +9654,7 @@ export default function App() {
           (nodoOrden && candidatos.find((c) => String(c.nodo || "").trim() === nodoOrden)) ||
           candidatos[0];
         if (existente) {
+          clienteAnteriorTraslado = existente;
           const cajaNapLiq = String(registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "").trim();
           const ubicacionLiq = String(registroLiquidado.liquidacion?.actualizarUbicacion === "SI" ? registroLiquidado.liquidacion?.nuevaUbicacion : "" || registroLiquidado.ubicacion || "").trim();
           const actualizado = {
@@ -9744,6 +9746,16 @@ export default function App() {
         const liquidacionIdWEB = registroLiquidado.liquidacion?.id || registroLiquidado.id || null;
         if (fotosLiq.length > 0 && liquidacionIdWEB) {
           void registrarFotosClienteRelacionSupabase(dni, fotosLiq, liquidacionIdWEB, registroLiquidado.id);
+        }
+        // Traslado: dejar en observacion_final un registro de la dirección/nodo/usuario anterior
+        if (String(registroLiquidado.tipoActuacion || "") === "Traslado" && clienteAnteriorTraslado) {
+          const notaTraslado = `Traslado: de "${clienteAnteriorTraslado.direccion || "-"}" (Nodo ${clienteAnteriorTraslado.nodo || "-"}, Usuario ${clienteAnteriorTraslado.usuarioNodo || "-"}) a "${registroLiquidado.direccion || "-"}" (Nodo ${registroLiquidado.nodo || "-"}, Usuario ${registroLiquidado.usuarioNodo || "-"}).`;
+          const obsPrevia = String(registroLiquidado.liquidacion?.observacionFinal ?? registroLiquidado.observacionFinal ?? "");
+          const obsConHistorial = [notaTraslado, obsPrevia].filter(Boolean).join("\n");
+          const codigoOrdenTraslado = String(registroLiquidado.codigo || "").trim();
+          if (codigoOrdenTraslado) {
+            void supabase.from("liquidaciones").update({ observacion_final: obsConHistorial }).eq("codigo", codigoOrdenTraslado);
+          }
         }
       }
       return clienteResultado;
@@ -9930,14 +9942,6 @@ export default function App() {
     try {
       const codigoOrden = String(ordenEnLiquidacion.codigo || "").trim();
 
-      // Traslado: dejar registro de la dirección/nodo/usuario anterior antes de sobreescribirlos
-      let observacionFinalConHistorial = String(liquidacion.observacionFinal || "");
-      if (String(ordenEnLiquidacion.tipoActuacion || "") === "Traslado") {
-        const ordenOriginal = (Array.isArray(ordenes) ? ordenes : []).find((o) => o.id === ordenEnLiquidacion.id);
-        const notaTraslado = `Traslado: de "${ordenOriginal?.direccion || "-"}" (Nodo ${ordenOriginal?.nodo || "-"}, Usuario ${ordenOriginal?.usuarioNodo || "-"}) a "${ordenEnLiquidacion.direccion || "-"}" (Nodo ${ordenEnLiquidacion.nodo || "-"}, Usuario ${ordenEnLiquidacion.usuarioNodo || "-"}).`;
-        observacionFinalConHistorial = [notaTraslado, observacionFinalConHistorial].filter(Boolean).join("\n");
-      }
-
       const payload = {
         orden_original_id: ordenEnLiquidacion.id,
         codigo: codigoOrden,
@@ -9957,7 +9961,7 @@ export default function App() {
         tecnico: String(ordenEnLiquidacion.tecnico || ""),
         tecnico_liquida: String(liquidacion.tecnicoLiquida || ""),
         resultado_final: String(liquidacion.resultadoFinal || "Completada"),
-        observacion_final: observacionFinalConHistorial,
+        observacion_final: String(liquidacion.observacionFinal || ""),
         cobro_realizado: String(liquidacion.cobroRealizado || "NO"),
         monto_cobrado: Number.isFinite(Number(liquidacion.montoCobrado)) ? Number(liquidacion.montoCobrado) : 0,
         medio_pago: String(liquidacion.medioPago || ""),
