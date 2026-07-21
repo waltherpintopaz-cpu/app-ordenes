@@ -1996,14 +1996,18 @@ export default function SidebarApp() {
       }
 
       const esInstalacion = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);
+      const esTraslado = ordenForm.tipoActuacion === "Traslado";
       // Un Traslado usa datos nuevos (destino) igual que una instalación, pero no debe
       // generar usuario PPPoE automatico (eso solo aplica a instalaciones reales).
-      const usaDatosDelFormulario = esInstalacion || ordenForm.tipoActuacion === "Traslado";
+      const usaDatosDelFormulario = esInstalacion || esTraslado;
       const nodoFinal = usaDatosDelFormulario ? (ordenForm.nodo.trim() || (cliente ? String(cliente.nodo) : "")) : (cliente ? String(cliente.nodo) : ordenForm.nodo.trim());
       const direccionFinal = usaDatosDelFormulario ? (ordenForm.direccion.trim() || detalle?.direccion_principal || "") : (cliente ? (detalle?.direccion_principal || "") : ordenForm.direccion.trim());
-      const usuarioNodoFinal = usaDatosDelFormulario ? ordenForm.usuarioNodo.trim() : (cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim());
-      const passwordUsuarioFinal = usaDatosDelFormulario ? ordenForm.passwordUsuario.trim() : (cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim());
-      const snOnuFinal = usaDatosDelFormulario ? ordenForm.snOnu.trim() : (cliente ? (snOnu || "") : ordenForm.snOnu.trim());
+      // En un Traslado, si el nodo/usuario/password/SN-ONU no cambian (solo cambia la
+      // dirección), dejarlos en blanco debe conservar los datos actuales del cliente,
+      // no vaciarlos. En una instalación real siempre se exige escribirlos de nuevo.
+      const usuarioNodoFinal = esInstalacion ? ordenForm.usuarioNodo.trim() : esTraslado ? (ordenForm.usuarioNodo.trim() || (cliente ? (svc?.pppuser || "") : "")) : (cliente ? (svc?.pppuser || "") : ordenForm.usuarioNodo.trim());
+      const passwordUsuarioFinal = esInstalacion ? ordenForm.passwordUsuario.trim() : esTraslado ? (ordenForm.passwordUsuario.trim() || (cliente ? (detalle?._servicio?.ppppass || "") : "")) : (cliente ? (detalle?._servicio?.ppppass || "") : ordenForm.passwordUsuario.trim());
+      const snOnuFinal = esInstalacion ? ordenForm.snOnu.trim() : esTraslado ? (ordenForm.snOnu.trim() || (cliente ? (snOnu || "") : "")) : (cliente ? (snOnu || "") : ordenForm.snOnu.trim());
       const empresaOrden = usaDatosDelFormulario && ordenForm.nodo.trim()
         ? empresaPorNodo(ordenForm.nodo)
         : (cliente ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet") : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa));
@@ -4505,7 +4509,20 @@ export default function SidebarApp() {
                           "Incidencia Internet": "NO", "Mantenimiento": "NO", "Visita Tecnica": "NO", "Traslado": "NO", "Recojo de equipo": "NO",
                         };
                         const cobrar = cobrarMap[ta] ?? p.solicitarPago;
-                        setOrdenForm(p => ({...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo, solicitarPago: cobrar, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar }));
+                        setOrdenForm(p => {
+                          const next = {...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo, solicitarPago: cobrar, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar };
+                          // Traslado: precargar los datos actuales del cliente para que el
+                          // agente solo tenga que cambiar lo que realmente cambia (ej. solo
+                          // la dirección si el nodo y el usuario se mantienen igual).
+                          if (ta === "Traslado") {
+                            if (!next.nodo && cliente?.nodo) next.nodo = String(cliente.nodo);
+                            if (!next.direccion && detalle?.direccion_principal) next.direccion = detalle.direccion_principal;
+                            if (!next.usuarioNodo && svc?.pppuser) next.usuarioNodo = svc.pppuser;
+                            if (!next.passwordUsuario && detalle?._servicio?.ppppass) next.passwordUsuario = detalle._servicio.ppppass;
+                            if (!next.snOnu && snOnu) next.snOnu = snOnu;
+                          }
+                          return next;
+                        });
                       }}>
                       <option>Incidencia Internet</option>
                       <option>Instalacion Internet</option>
