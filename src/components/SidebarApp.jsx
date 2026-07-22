@@ -393,6 +393,7 @@ export default function SidebarApp() {
   const [showTitularModal, setShowTitularModal] = useState(false);
   const [titularForm, setTitularForm] = useState({ dni:"", nombre:"", celular:"", correo:"" });
   const [cambiandoTitular, setCambiandoTitular] = useState(false);
+  const [buscandoDniTitular, setBuscandoDniTitular] = useState(false);
   // Comprobante Vision
   const [imgFile,  setImgFile]    = useState(null);
   const [imgPrev,  setImgPrev]    = useState(null);
@@ -1099,6 +1100,30 @@ export default function SidebarApp() {
       else { notify("✅ Datos actualizados correctamente"); await buscarCliente(contact?.phone_number || ""); setTab("info"); }
     } catch(e) { notify("Error: " + e.message, false); }
     setGuardando(false);
+  }
+
+  // ── Buscar en RENIEC el nombre del nuevo titular a partir del DNI ─────────
+  async function buscarDniTitular() {
+    const dni = titularForm.dni.trim();
+    if (!/^\d{8}$/.test(dni)) return notify("Ingresa un DNI valido de 8 digitos", false);
+    setBuscandoDniTitular(true);
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(`https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=${DNI_API_KEY}`, { signal: ctrl.signal });
+        const data = await res.json();
+        if (data?.estado && data?.resultado?.nombre_completo) {
+          setTitularForm(f => ({ ...f, nombre: data.resultado.nombre_completo }));
+          notify("✅ Nombre obtenido de RENIEC");
+        } else {
+          notify("DNI no encontrado en RENIEC", false);
+        }
+      } finally { clearTimeout(timer); }
+    } catch (e) {
+      notify("Error al buscar DNI: " + e.message, false);
+    }
+    setBuscandoDniTitular(false);
   }
 
   // ── Cambio de titularidad: mismo servicio/nodo/direccion, cambia el titular ──
@@ -2776,8 +2801,14 @@ export default function SidebarApp() {
             <div style={{ padding:14, display:"grid", gap:10 }}>
               <div>
                 <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>DNI nuevo titular</label>
-                <input style={{ ...S.input, fontSize:13 }} type="text" maxLength={8} placeholder="Ej: 12345678"
-                  value={titularForm.dni} onChange={e => setTitularForm(f => ({...f, dni: e.target.value.replace(/\D/g,"")}))} />
+                <div style={{ display:"flex", gap:6 }}>
+                  <input style={{ ...S.input, fontSize:13, flex:1 }} type="text" maxLength={8} placeholder="Ej: 12345678"
+                    value={titularForm.dni} onChange={e => setTitularForm(f => ({...f, dni: e.target.value.replace(/\D/g,"")}))} />
+                  <button type="button" onClick={buscarDniTitular} disabled={buscandoDniTitular || titularForm.dni.length !== 8}
+                    style={{ ...S.btnSm(T.blue), fontSize:12, whiteSpace:"nowrap", opacity:(buscandoDniTitular || titularForm.dni.length !== 8)?0.5:1 }}>
+                    {buscandoDniTitular ? "..." : "🔍 RENIEC"}
+                  </button>
+                </div>
               </div>
               <div>
                 <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Nombre nuevo titular</label>

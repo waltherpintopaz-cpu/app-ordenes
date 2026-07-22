@@ -2136,6 +2136,7 @@ export default function App() {
   const [showTitularModal, setShowTitularModal] = useState(false);
   const [titularForm, setTitularForm] = useState({ dni: "", nombre: "", celular: "", correo: "" });
   const [cambiandoTitular, setCambiandoTitular] = useState(false);
+  const [buscandoDniTitular, setBuscandoDniTitular] = useState(false);
   const [clienteDiagnosticoRapido, setClienteDiagnosticoRapido] = useState(null);
   const [clienteDiagnosticoRapidoLoading, setClienteDiagnosticoRapidoLoading] = useState(false);
   const [clienteDiagnosticoRapidoError, setClienteDiagnosticoRapidoError] = useState("");
@@ -3741,6 +3742,29 @@ export default function App() {
       } else window.alert(`Error al guardar: ${msg}`);
     } catch (e) { window.alert(e.message); }
     finally { setMkwCliLoading((p) => ({ ...p, [cid]: false })); }
+  };
+
+  // ── Buscar en RENIEC el nombre del nuevo titular a partir del DNI ─────────
+  const buscarDniTitular = async () => {
+    const dni = titularForm.dni.trim();
+    if (!/^\d{8}$/.test(dni)) { window.alert("Ingresa un DNI válido de 8 dígitos."); return; }
+    setBuscandoDniTitular(true);
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(`https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx`, { signal: ctrl.signal });
+        const data = await res.json();
+        if (data?.estado && data?.resultado?.nombre_completo) {
+          setTitularForm((f) => ({ ...f, nombre: data.resultado.nombre_completo }));
+        } else {
+          window.alert("DNI no encontrado en RENIEC.");
+        }
+      } finally { clearTimeout(timer); }
+    } catch (e) {
+      window.alert("Error al buscar DNI: " + e.message);
+    }
+    setBuscandoDniTitular(false);
   };
 
   // ── Cambio de titularidad: mismo servicio/nodo/direccion, cambia el titular ──
@@ -22590,8 +22614,14 @@ export default function App() {
               <div style={{ padding: "18px 22px", display: "grid", gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>DNI nuevo titular</label>
-                  <input style={{ ...inputStyle, width: "100%" }} type="text" maxLength={8} placeholder="Ej: 12345678"
-                    value={titularForm.dni} onChange={(e) => setTitularForm((f) => ({ ...f, dni: e.target.value.replace(/\D/g, "") }))} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input style={{ ...inputStyle, flex: 1 }} type="text" maxLength={8} placeholder="Ej: 12345678"
+                      value={titularForm.dni} onChange={(e) => setTitularForm((f) => ({ ...f, dni: e.target.value.replace(/\D/g, "") }))} />
+                    <button type="button" onClick={buscarDniTitular} disabled={buscandoDniTitular || titularForm.dni.length !== 8}
+                      style={{ ...secondaryButton, whiteSpace: "nowrap", opacity: (buscandoDniTitular || titularForm.dni.length !== 8) ? 0.5 : 1 }}>
+                      {buscandoDniTitular ? "..." : "🔍 RENIEC"}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Nombre nuevo titular</label>
