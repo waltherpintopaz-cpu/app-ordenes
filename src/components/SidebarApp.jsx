@@ -1111,8 +1111,14 @@ export default function SidebarApp() {
 
     const dniAnterior = String(cliente.cedula || "");
     const nombreAnterior = String(cliente.nombre || "");
+    let iptvExistente = null;
+    try {
+      const { data } = await supabase.from("iptv_clientes").select("iptv_user_id,iptv_usuario").eq("dni", dniAnterior).maybeSingle();
+      iptvExistente = data || null;
+    } catch (_) { /* si falla la consulta, se sigue sin advertencia de IPTV */ }
+    const avisoIptv = iptvExistente?.iptv_user_id ? `\n\n⚠ Este cliente tiene cuenta IPTV (${iptvExistente.iptv_usuario}) — se eliminará, el nuevo titular deberá pedir una nueva si la necesita.` : "";
     const confirmado = window.confirm(
-      `¿Confirmar cambio de titularidad?\n\nDe: "${nombreAnterior}" (DNI ${dniAnterior || "-"})\nA: "${nombreNuevo}" (DNI ${dniNuevo})\n\nEsto actualiza el registro real en Mikrowisp. El nodo, dirección y equipo no cambian.`
+      `¿Confirmar cambio de titularidad?\n\nDe: "${nombreAnterior}" (DNI ${dniAnterior || "-"})\nA: "${nombreNuevo}" (DNI ${dniNuevo})\n\nEsto actualiza el registro real en Mikrowisp. El nodo, dirección y equipo no cambian.${avisoIptv}`
     );
     if (!confirmado) return;
 
@@ -1140,6 +1146,26 @@ export default function SidebarApp() {
         await supabase.from("mikrowisp_clientes").update(updateLocal).eq("mikrowisp_id", cliente.mikrowisp_id).eq("nodo", Number(cliente.nodo));
       } catch (_) {
         // No critico: el dato real ya quedo correcto en Mikrowisp.
+      }
+
+      // 1.c) El titular anterior ya no debe conservar acceso a la cuenta IPTV — se elimina
+      // (no se migra), asi no puede seguir usandola en otro lado. Si el nuevo titular pide
+      // IPTV despues, se crea una cuenta nueva por el flujo normal.
+      try {
+        if (iptvExistente?.iptv_user_id) {
+          const delRes = await fetch(`https://api.maxplayer.tv/v3/api/public/users/${iptvExistente.iptv_user_id}`, {
+            method: "DELETE",
+            headers: { "Api-Token": MP_TOKEN },
+          });
+          if (delRes.ok) {
+            await supabase.from("iptv_clientes").delete().eq("dni", dniAnterior);
+            if (iptvData?.iptv_user_id === iptvExistente.iptv_user_id) setIptvData(null);
+          } else {
+            notify("No se pudo eliminar la cuenta IPTV anterior en MaxPlayer, revisala manualmente.", false);
+          }
+        }
+      } catch (_) {
+        notify("No se pudo eliminar la cuenta IPTV anterior, revisala manualmente.", false);
       }
 
       // 2) Dejar historial visible: una orden+liquidacion ya completada con la nota del cambio
