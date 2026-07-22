@@ -3752,10 +3752,15 @@ export default function App() {
     if (!/^\d{8}$/.test(dniNuevo)) { window.alert("Ingresa un DNI válido de 8 dígitos."); return; }
     if (!nombreNuevo) { window.alert("Ingresa el nombre del nuevo titular."); return; }
 
+    const dniAnterior = String(cli.dni || "");
+    const nombreAnterior = String(cli.nombre || "");
+    const confirmado = window.confirm(
+      `¿Confirmar cambio de titularidad?\n\nDe: "${nombreAnterior}" (DNI ${dniAnterior || "-"})\nA: "${nombreNuevo}" (DNI ${dniNuevo})\n\nEsto actualiza el registro real en Mikrowisp. El nodo, dirección y equipo no cambian.`
+    );
+    if (!confirmado) return;
+
     setCambiandoTitular(true);
     try {
-      const dniAnterior = String(cli.dni || "");
-      const nombreAnterior = String(cli.nombre || "");
       const nodo = normalizarEtiquetaNodo(cli.nodo || "");
       const esDim = esDimNodo(nodo);
 

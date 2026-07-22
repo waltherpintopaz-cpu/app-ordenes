@@ -1109,10 +1109,15 @@ export default function SidebarApp() {
     if (!/^\d{8}$/.test(dniNuevo)) return notify("Ingresa un DNI valido de 8 digitos", false);
     if (!nombreNuevo) return notify("Ingresa el nombre del nuevo titular", false);
 
+    const dniAnterior = String(cliente.cedula || "");
+    const nombreAnterior = String(cliente.nombre || "");
+    const confirmado = window.confirm(
+      `¿Confirmar cambio de titularidad?\n\nDe: "${nombreAnterior}" (DNI ${dniAnterior || "-"})\nA: "${nombreNuevo}" (DNI ${dniNuevo})\n\nEsto actualiza el registro real en Mikrowisp. El nodo, dirección y equipo no cambian.`
+    );
+    if (!confirmado) return;
+
     setCambiandoTitular(true);
     try {
-      const dniAnterior = String(cliente.cedula || "");
-      const nombreAnterior = String(cliente.nombre || "");
 
       // 1) Actualizar el titular en Mikrowisp (misma accion que usa "Editar datos del cliente")
       const tkn = getToken(cliente.empresa, agente);
