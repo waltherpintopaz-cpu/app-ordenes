@@ -1126,6 +1126,17 @@ export default function SidebarApp() {
         return;
       }
 
+      // 1.b) Actualizar tambien nuestra copia local (mikrowisp_clientes), que es de donde
+      // el Sidebar lee al buscar por telefono — si no se actualiza aca, el panel sigue
+      // mostrando el titular anterior hasta la proxima sincronizacion masiva manual.
+      try {
+        const updateLocal = { cedula: dniNuevo, nombre: nombreNuevo, updated_at: new Date().toISOString() };
+        if (titularForm.celular.trim()) updateLocal.telefonos = titularForm.celular.trim();
+        await supabase.from("mikrowisp_clientes").update(updateLocal).eq("mikrowisp_id", cliente.mikrowisp_id).eq("nodo", Number(cliente.nodo));
+      } catch (_) {
+        // No critico: el dato real ya quedo correcto en Mikrowisp.
+      }
+
       // 2) Dejar historial visible: una orden+liquidacion ya completada con la nota del cambio
       try {
         let codigo = "";
