@@ -2133,6 +2133,9 @@ export default function App() {
   const [contratoMsg, setContratoMsg] = useState("");
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [showTitularModal, setShowTitularModal] = useState(false);
+  const [titularForm, setTitularForm] = useState({ dni: "", nombre: "", celular: "", correo: "" });
+  const [cambiandoTitular, setCambiandoTitular] = useState(false);
   const [clienteDiagnosticoRapido, setClienteDiagnosticoRapido] = useState(null);
   const [clienteDiagnosticoRapidoLoading, setClienteDiagnosticoRapidoLoading] = useState(false);
   const [clienteDiagnosticoRapidoError, setClienteDiagnosticoRapidoError] = useState("");
@@ -3738,6 +3741,124 @@ export default function App() {
       } else window.alert(`Error al guardar: ${msg}`);
     } catch (e) { window.alert(e.message); }
     finally { setMkwCliLoading((p) => ({ ...p, [cid]: false })); }
+  };
+
+  // ── Cambio de titularidad: mismo servicio/nodo/direccion, cambia el titular ──
+  const cambiarTitularidad = async () => {
+    const cli = clienteSeleccionado;
+    if (!cli) return;
+    const dniNuevo = titularForm.dni.trim();
+    const nombreNuevo = titularForm.nombre.trim();
+    if (!/^\d{8}$/.test(dniNuevo)) { window.alert("Ingresa un DNI válido de 8 dígitos."); return; }
+    if (!nombreNuevo) { window.alert("Ingresa el nombre del nuevo titular."); return; }
+
+    setCambiandoTitular(true);
+    try {
+      const dniAnterior = String(cli.dni || "");
+      const nombreAnterior = String(cli.nombre || "");
+      const nodo = normalizarEtiquetaNodo(cli.nodo || "");
+      const esDim = esDimNodo(nodo);
+
+      // 1) Actualizar el titular en Mikrowisp (buscar idcliente por el DNI actual)
+      const datosLookup = await mkwConsultarCedula(dniAnterior, nodo);
+      const mkwId = datosLookup?.[0]?.id;
+      if (!mkwId) throw new Error("No se encontró el cliente en Mikrowisp para actualizar.");
+      const datosUpdate = { nombre: nombreNuevo, cedula: dniNuevo };
+      if (titularForm.celular.trim()) datosUpdate.movil = titularForm.celular.trim();
+      if (titularForm.correo.trim()) datosUpdate.correo = titularForm.correo.trim();
+      const upd = esDim
+        ? await mkFetchNod04("UpdateUser", { idcliente: mkwId, datos: datosUpdate })
+        : await mkFetch("UpdateUser", { idcliente: mkwId, datos: datosUpdate });
+      if (upd.json?.estado === "error") throw new Error(upd.json?.mensaje || "Error actualizando Mikrowisp");
+      if (!upd.ok) throw new Error(upd.json?.mensaje || upd.json?.message || `HTTP ${upd.status}`);
+
+      // 2) Actualizar nuestra copia interna del cliente
+      if (isSupabaseConfigured && cli.id) {
+        await supabase.from(CLIENTES_TABLE).update({
+          dni: dniNuevo,
+          nombre: nombreNuevo,
+          celular: titularForm.celular.trim() || cli.celular || "",
+          email: titularForm.correo.trim() || cli.email || "",
+          ultima_actualizacion: new Date().toISOString(),
+        }).eq("id", cli.id);
+      }
+      setClientes((prev) => prev.map((c) => c.id === cli.id ? { ...c, dni: dniNuevo, nombre: nombreNuevo, celular: titularForm.celular.trim() || c.celular, email: titularForm.correo.trim() || c.email } : c));
+      setClienteSeleccionado((prev) => prev ? { ...prev, dni: dniNuevo, nombre: nombreNuevo, celular: titularForm.celular.trim() || prev.celular, email: titularForm.correo.trim() || prev.email } : prev);
+
+      // 3) Dejar historial visible: una orden+liquidacion ya completada con la nota del cambio
+      try {
+        let codigo = "";
+        if (isSupabaseConfigured) {
+          const { data: codigoData } = await supabase.rpc("generar_codigo_orden");
+          codigo = codigoData ? String(codigoData) : "";
+        }
+        if (!codigo) codigo = `ORD-${String(Date.now()).slice(-4)}-${new Date().getFullYear()}`;
+        const ordenPayload = {
+          empresa: esDim ? "DIM" : "Americanet",
+          codigo,
+          generar_usuario: "NO",
+          orden_tipo: "ORDEN DE SERVICIO",
+          tipo_actuacion: "Cambio de Titularidad",
+          fecha_actuacion: new Date().toISOString().split("T")[0],
+          estado: "Liquidada",
+          prioridad: "Normal",
+          dni: dniNuevo,
+          nombre: nombreNuevo,
+          direccion: cli.direccion || "",
+          celular: titularForm.celular.trim() || cli.celular || "",
+          email: titularForm.correo.trim() || cli.email || "",
+          velocidad: cli.velocidad || "",
+          precio_plan: cli.precioPlan ? Number(cli.precioPlan) : null,
+          nodo,
+          usuario_nodo: cli.usuarioNodo || "",
+          password_usuario: cli.passwordUsuario || "",
+          sn_onu: cli.snOnu || "",
+          ubicacion: cli.ubicacion || "",
+          autor_orden: usuarioSesion?.nombre || "",
+          tecnico: usuarioSesion?.nombre || "",
+          fecha_creacion: new Date().toISOString(),
+        };
+        const ordenIns = await supabase.from(ORDENES_TABLE).insert([ordenPayload]).select("id").single();
+        const notaTitular = `Cambio de titularidad: de "${nombreAnterior}" (DNI ${dniAnterior || "-"}) a "${nombreNuevo}" (DNI ${dniNuevo}).`;
+        await supabase.from("liquidaciones").insert([{
+          orden_original_id: ordenIns.data?.id || null,
+          codigo,
+          codigo_orden: codigo,
+          dni: dniNuevo,
+          nombre: nombreNuevo,
+          direccion: ordenPayload.direccion,
+          celular: ordenPayload.celular,
+          tipo_actuacion: "Cambio de Titularidad",
+          nodo,
+          usuario_nodo: ordenPayload.usuario_nodo,
+          password_usuario: ordenPayload.password_usuario,
+          velocidad: ordenPayload.velocidad,
+          precio_plan: ordenPayload.precio_plan,
+          ubicacion: ordenPayload.ubicacion,
+          autor_orden: ordenPayload.autor_orden,
+          tecnico: ordenPayload.tecnico,
+          tecnico_liquida: ordenPayload.autor_orden,
+          resultado_final: "Completada",
+          observacion_final: notaTitular,
+          cobro_realizado: "NO",
+          monto_cobrado: 0,
+          sn_onu: ordenPayload.sn_onu,
+          sn_onu_liquidacion: ordenPayload.sn_onu,
+          estado: "Liquidada",
+          fecha_liquidacion: nowPeruTs(),
+        }]);
+      } catch (_) {
+        window.alert("Titular actualizado en Mikrowisp, pero no se pudo guardar el historial interno.");
+      }
+
+      window.alert("✅ Titularidad actualizada correctamente.");
+      setShowTitularModal(false);
+      setTitularForm({ dni: "", nombre: "", celular: "", correo: "" });
+    } catch (e) {
+      window.alert("Error: " + (e?.message || String(e)));
+    } finally {
+      setCambiandoTitular(false);
+    }
   };
 
   const abrirLiquidacionCliente = async (cliente) => {
@@ -20774,6 +20895,7 @@ export default function App() {
                     <span style={{ padding: "8px 14px", background: "#fef9c3", border: "1px solid #fde047", borderRadius: 10, color: "#854d0e", fontSize: 12, fontWeight: 700 }}>⚠ Pendiente SN</span>
                   )}
                   <button onClick={() => crearOrdenDesdeCliente(cli)} style={{ padding: "8px 15px", background: "#f97316", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Crear orden</button>
+                  <button onClick={() => { setTitularForm({ dni: "", nombre: "", celular: "", correo: "" }); setShowTitularModal(true); }} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }} title="Cambiar el titular de este servicio (mismo nodo/dirección)">🔄 Cambio de titularidad</button>
                   {/* ── Wizard Mikrowisp ── */}
                   {(() => {
                     const wid = String(cli.id || cli.dni || "");
@@ -22424,6 +22546,47 @@ export default function App() {
         )}
 
         {/* ── Modal editar cliente (admin) ── */}
+        {showTitularModal && clienteSeleccionado && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+            onClick={() => !cambiandoTitular && setShowTitularModal(false)}>
+            <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 380, boxShadow: "0 25px 60px rgba(0,0,0,0.25)" }}
+              onClick={(e) => e.stopPropagation()}>
+              <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid #f1f5f9" }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>🔄 Cambio de titularidad</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>El nodo, dirección y equipo se mantienen igual. Solo cambia el titular.</div>
+              </div>
+              <div style={{ padding: "18px 22px", display: "grid", gap: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>DNI nuevo titular</label>
+                  <input style={{ ...inputStyle, width: "100%" }} type="text" maxLength={8} placeholder="Ej: 12345678"
+                    value={titularForm.dni} onChange={(e) => setTitularForm((f) => ({ ...f, dni: e.target.value.replace(/\D/g, "") }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Nombre nuevo titular</label>
+                  <input style={{ ...inputStyle, width: "100%" }} type="text" placeholder="Ej: RAMIREZ GARCIA, JUAN CARLOS"
+                    value={titularForm.nombre} onChange={(e) => setTitularForm((f) => ({ ...f, nombre: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Celular <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                  <input style={{ ...inputStyle, width: "100%" }} type="text" placeholder="Ej: 987654321"
+                    value={titularForm.celular} onChange={(e) => setTitularForm((f) => ({ ...f, celular: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>Correo <span style={{ fontWeight: 400 }}>(opcional)</span></label>
+                  <input style={{ ...inputStyle, width: "100%" }} type="email" placeholder="Ej: cliente@correo.com"
+                    value={titularForm.correo} onChange={(e) => setTitularForm((f) => ({ ...f, correo: e.target.value }))} />
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                  <button onClick={() => setShowTitularModal(false)} disabled={cambiandoTitular} style={{ ...secondaryButton, flex: 1 }}>Cancelar</button>
+                  <button onClick={() => void cambiarTitularidad()} disabled={cambiandoTitular} style={{ ...primaryButton, flex: 1, opacity: cambiandoTitular ? 0.6 : 1 }}>
+                    {cambiandoTitular ? "Guardando..." : "Confirmar cambio"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {modalEditarCliente && esAdminSesion && (() => {
           const f = formEditarCliente;
           const set = (k, v) => setFormEditarCliente(prev => ({ ...prev, [k]: v }));
