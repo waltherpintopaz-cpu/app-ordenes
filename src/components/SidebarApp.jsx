@@ -394,6 +394,9 @@ export default function SidebarApp() {
   const [titularForm, setTitularForm] = useState({ dni:"", nombre:"", celular:"", correo:"" });
   const [cambiandoTitular, setCambiandoTitular] = useState(false);
   const [buscandoDniTitular, setBuscandoDniTitular] = useState(false);
+  const [titularExito, setTitularExito] = useState(null); // { mkwId, nodo, empresa, dni, nombre }
+  const [titularSmsEnviado, setTitularSmsEnviado] = useState(false);
+  const [enviandoSmsTitular, setEnviandoSmsTitular] = useState(false);
   // Comprobante Vision
   const [imgFile,  setImgFile]    = useState(null);
   const [imgPrev,  setImgPrev]    = useState(null);
@@ -1126,6 +1129,28 @@ export default function SidebarApp() {
     setBuscandoDniTitular(false);
   }
 
+  // ── SMS de bienvenida al nuevo titular (mismo mensaje/accion que ya usa el wizard Mikrowisp) ──
+  async function enviarSmsBienvenidaTitular() {
+    if (!titularExito) return;
+    setEnviandoSmsTitular(true);
+    try {
+      const tkn = getToken(titularExito.empresa, agente);
+      const dni = String(titularExito.dni || "").replace(/\D/g, "");
+      const msg = `BIENVENIDA ${String(titularExito.nombre || "").trim()} ${dni} ${dni}`;
+      const res = await mkwProxy(titularExito.nodo, "NewSMS", { idcliente: parseInt(titularExito.mkwId, 10), mensaje: msg }, tkn);
+      const ok = res?.estado === "exito" || res?.success === true || String(res?.code) === "200" || res?.id;
+      if (ok) {
+        setTitularSmsEnviado(true);
+        notify("✅ SMS de bienvenida enviado");
+      } else {
+        notify("Respuesta inesperada: " + (res?.mensaje || res?.message || JSON.stringify(res)), false);
+      }
+    } catch (e) {
+      notify("Error al enviar SMS: " + e.message, false);
+    }
+    setEnviandoSmsTitular(false);
+  }
+
   // ── Cambio de titularidad: mismo servicio/nodo/direccion, cambia el titular ──
   async function cambiarTitularidad() {
     if (!cliente) return;
@@ -1260,7 +1285,8 @@ export default function SidebarApp() {
       }
 
       notify("✅ Titularidad actualizada correctamente");
-      setShowTitularModal(false);
+      setTitularExito({ mkwId: cliente.mikrowisp_id, nodo: Number(cliente.nodo), empresa: cliente.empresa, dni: dniNuevo, nombre: nombreNuevo });
+      setTitularSmsEnviado(false);
       setTitularForm({ dni:"", nombre:"", celular:"", correo:"" });
       await buscarCliente(contact?.phone_number || "");
     } catch (e) {
@@ -2795,47 +2821,64 @@ export default function SidebarApp() {
             <div style={{ background:T.blue, padding:"14px 16px", borderRadius:"16px 16px 0 0" }}>
               <div style={{ color:"#fff", fontWeight:800, fontSize:13 }}>🔄 Cambio de titularidad</div>
               <div style={{ color:T.border, fontSize:11, marginTop:2 }}>
-                El nodo, dirección y equipo se mantienen igual. Solo cambia el titular.
+                {titularExito ? "Titular actualizado correctamente." : "El nodo, dirección y equipo se mantienen igual. Solo cambia el titular."}
               </div>
             </div>
-            <div style={{ padding:14, display:"grid", gap:10 }}>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>DNI nuevo titular</label>
-                <div style={{ display:"flex", gap:6 }}>
-                  <input style={{ ...S.input, fontSize:13, flex:1 }} type="text" maxLength={8} placeholder="Ej: 12345678"
-                    value={titularForm.dni} onChange={e => setTitularForm(f => ({...f, dni: e.target.value.replace(/\D/g,"")}))} />
-                  <button type="button" onClick={buscarDniTitular} disabled={buscandoDniTitular || titularForm.dni.length !== 8}
-                    style={{ ...S.btnSm(T.blue), fontSize:12, whiteSpace:"nowrap", opacity:(buscandoDniTitular || titularForm.dni.length !== 8)?0.5:1 }}>
-                    {buscandoDniTitular ? "..." : "🔍 RENIEC"}
+            {!titularExito ? (
+              <div style={{ padding:14, display:"grid", gap:10 }}>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>DNI nuevo titular</label>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <input style={{ ...S.input, fontSize:13, flex:1 }} type="text" maxLength={8} placeholder="Ej: 12345678"
+                      value={titularForm.dni} onChange={e => setTitularForm(f => ({...f, dni: e.target.value.replace(/\D/g,"")}))} />
+                    <button type="button" onClick={buscarDniTitular} disabled={buscandoDniTitular || titularForm.dni.length !== 8}
+                      style={{ ...S.btnSm(T.blue), fontSize:12, whiteSpace:"nowrap", opacity:(buscandoDniTitular || titularForm.dni.length !== 8)?0.5:1 }}>
+                      {buscandoDniTitular ? "..." : "🔍 RENIEC"}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Nombre nuevo titular</label>
+                  <input style={{ ...S.input, fontSize:13 }} type="text" placeholder="Ej: RAMIREZ GARCIA, JUAN CARLOS"
+                    value={titularForm.nombre} onChange={e => setTitularForm(f => ({...f, nombre: e.target.value}))} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Celular <span style={{fontWeight:400}}>(opcional)</span></label>
+                  <input style={{ ...S.input, fontSize:13 }} type="text" placeholder="Ej: 987654321"
+                    value={titularForm.celular} onChange={e => setTitularForm(f => ({...f, celular: e.target.value}))} />
+                </div>
+                <div>
+                  <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Correo <span style={{fontWeight:400}}>(opcional)</span></label>
+                  <input style={{ ...S.input, fontSize:13 }} type="email" placeholder="Ej: cliente@correo.com"
+                    value={titularForm.correo} onChange={e => setTitularForm(f => ({...f, correo: e.target.value}))} />
+                </div>
+                <div style={{ display:"flex", gap:8, marginTop:4 }}>
+                  <button onClick={() => setShowTitularModal(false)} disabled={cambiandoTitular}
+                    style={{ flex:1, padding:9, background:"none", border:`1px solid ${T.border}`, borderRadius:8, fontSize:12, color:T.muted, cursor:"pointer" }}>
+                    Cancelar
+                  </button>
+                  <button onClick={cambiarTitularidad} disabled={cambiandoTitular}
+                    style={{ flex:1, padding:9, background:T.blue, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:"#fff", cursor:"pointer", opacity:cambiandoTitular?0.6:1 }}>
+                    {cambiandoTitular ? "Guardando..." : "Confirmar cambio"}
                   </button>
                 </div>
               </div>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Nombre nuevo titular</label>
-                <input style={{ ...S.input, fontSize:13 }} type="text" placeholder="Ej: RAMIREZ GARCIA, JUAN CARLOS"
-                  value={titularForm.nombre} onChange={e => setTitularForm(f => ({...f, nombre: e.target.value}))} />
-              </div>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Celular <span style={{fontWeight:400}}>(opcional)</span></label>
-                <input style={{ ...S.input, fontSize:13 }} type="text" placeholder="Ej: 987654321"
-                  value={titularForm.celular} onChange={e => setTitularForm(f => ({...f, celular: e.target.value}))} />
-              </div>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:T.muted, display:"block", marginBottom:3 }}>Correo <span style={{fontWeight:400}}>(opcional)</span></label>
-                <input style={{ ...S.input, fontSize:13 }} type="email" placeholder="Ej: cliente@correo.com"
-                  value={titularForm.correo} onChange={e => setTitularForm(f => ({...f, correo: e.target.value}))} />
-              </div>
-              <div style={{ display:"flex", gap:8, marginTop:4 }}>
-                <button onClick={() => setShowTitularModal(false)} disabled={cambiandoTitular}
-                  style={{ flex:1, padding:9, background:"none", border:`1px solid ${T.border}`, borderRadius:8, fontSize:12, color:T.muted, cursor:"pointer" }}>
-                  Cancelar
+            ) : (
+              <div style={{ padding:14, display:"grid", gap:10 }}>
+                <div style={{ background:T.greenLt || "#f0fdf4", border:"1px solid #86efac", borderRadius:8, padding:"10px 12px" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#166534" }}>✅ {titularExito.nombre}</div>
+                  <div style={{ fontSize:11, color:"#15803d", marginTop:2 }}>DNI {titularExito.dni}</div>
+                </div>
+                <button onClick={enviarSmsBienvenidaTitular} disabled={enviandoSmsTitular || titularSmsEnviado}
+                  style={{ padding:9, background: titularSmsEnviado ? "#16a34a" : "#7c3aed", border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:"#fff", cursor:"pointer", opacity:enviandoSmsTitular?0.6:1 }}>
+                  {enviandoSmsTitular ? "Enviando..." : titularSmsEnviado ? "✓ SMS enviado" : "💬 Enviar SMS Bienvenida"}
                 </button>
-                <button onClick={cambiarTitularidad} disabled={cambiandoTitular}
-                  style={{ flex:1, padding:9, background:T.blue, border:"none", borderRadius:8, fontSize:12, fontWeight:700, color:"#fff", cursor:"pointer", opacity:cambiandoTitular?0.6:1 }}>
-                  {cambiandoTitular ? "Guardando..." : "Confirmar cambio"}
+                <button onClick={() => { setShowTitularModal(false); setTitularExito(null); }}
+                  style={{ padding:9, background:"none", border:`1px solid ${T.border}`, borderRadius:8, fontSize:12, color:T.muted, cursor:"pointer" }}>
+                  Cerrar
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -3640,7 +3683,7 @@ export default function SidebarApp() {
                   >DNI <strong style={{ color:T.navy }}>{cliente.cedula}</strong></span>
                 )}
                 <button
-                  onClick={() => { setTitularForm({ dni:"", nombre:"", celular:"", correo:"" }); setShowTitularModal(true); }}
+                  onClick={() => { setTitularForm({ dni:"", nombre:"", celular:"", correo:"" }); setTitularExito(null); setTitularSmsEnviado(false); setShowTitularModal(true); }}
                   title="Cambiar el titular de este servicio (mismo nodo/direccion)"
                   style={{ background:"none", border:`1px solid ${T.border}`, borderRadius:4, padding:"2px 7px", cursor:"pointer", color:T.blue, fontSize:11, fontWeight:600 }}
                 >
