@@ -7,7 +7,7 @@ export const NODO_POR_ROUTER_MIKROWISP = {
   "1": "Nod_01", "7": "Nod_01", "8": "Nod_01", "9": "Nod_01",
   "2": "Nod_02",
   "3": "Nod_03", "10": "Nod_03", "12": "Nod_03",
-  "5": "Nod_04",
+  "5": "Nod_04", "6": "Nod_04",
   "11": "Nod_06",
 };
 

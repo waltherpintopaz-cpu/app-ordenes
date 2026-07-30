@@ -1,21 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
+import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-const NODO_LABELS = {
-  5:  "Nod_04",
-  6:  "Nod_04",
-  10: "Nod_03",
-  3:  "Nod_03",
-  9:  "Nod_01",
-  1:  "Nod_01",
-  8:  "Nod_01",
-  7:  "Nod_01",
-  2:  "Nod_02",
-  11: "Nod_06",
-};
-const formatNodo = (n) => n != null ? (NODO_LABELS[n] || `Nod_${String(n).padStart(2, "0")}`) : "Sin nodo";
+const formatNodo = (n) => n != null ? normalizarEtiquetaNodo(n) : "Sin nodo";
 
 export default function ChatwootReportesPanel({ cardStyle, sectionTitleStyle }) {
   const [stats, setStats] = useState([]);
