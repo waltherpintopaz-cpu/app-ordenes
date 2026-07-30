@@ -286,7 +286,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   const totalLiquidadas    = filtrados.filter(o => o.estado === "Liquidada").length;
   const totalOrdenes       = filtrados.length;
   const totalMetrosGlobal  = dropFiltrado.reduce((s, d) => s + (Number(d.cantidad) || 0), 0);
-  const totalRecuperaciones = filtrados.filter(o => (o.tipo_actuacion || "").toLowerCase().includes("recup")).length;
+  const totalRecuperaciones = filtrados.filter(o => o.estado === "Liquidada" && (o.tipo_actuacion || "").toLowerCase().includes("recup")).length;
   const promedioEficiencia = totalTecnicos > 0
     ? Math.round(porTecnico.filter(t => t.tecnico !== "Sin asignar").reduce((s, t) => s + t.pct_liq, 0) / totalTecnicos)
     : 0;
@@ -330,7 +330,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
     doc.setFontSize(10);
     let y = 26;
     doc.text(`Período: ${fechaDesde} al ${fechaHasta}`, 14, y); y += 6;
-    if (filtroNodos.length)     { doc.text(`Nodos: ${filtroNodos.join(", ")}`, 14, y); y += 6; }
+    if (filtroNodos.length)     { doc.text(`Nodos: ${[...filtroNodos].sort().join(", ")}`, 14, y); y += 6; }
     if (filtroTecnicos.length)  { doc.text(`Técnicos: ${filtroTecnicos.join(", ")}`, 14, y); y += 6; }
     doc.text(`Total órdenes: ${totalOrdenes} | Liquidadas: ${totalLiquidadas} | Recuperaciones: ${totalRecuperaciones} | Eficiencia: ${promedioEficiencia}% | Metros drop: ${totalMetrosGlobal}m`, 14, y); y += 4;
     autoTable(doc, {
@@ -339,6 +339,18 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       body: porTecnico.map(t => {
         const drop = dropMap[t.tecnico];
         return [t.tecnico, t.total, t.liquidadas, t.pct_liq + "%", t.instalaciones, t.incidencias, t.recuperaciones, t.canceladas, drop ? drop.totalMetros + "m" : "-", drop ? drop.promMetros + "m" : "-"];
+      }),
+      styles: { fontSize: 8 },
+    });
+    doc.setFontSize(12); doc.setFont("helvetica", "bold");
+    doc.text("Detalle por Nodo", 14, doc.lastAutoTable.finalY + 10);
+    doc.setFont("helvetica", "normal");
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 14,
+      head: [["Nodo", "Total", "Liq.", "% Efic.", "Instal.", "Incid.", "Recup.", "Cancel.", "Metros Drop", "Prom. m/trab."]],
+      body: porNodo.map(n => {
+        const drop = dropMapNodo[n.nodo];
+        return [n.nodo, n.total, n.liquidadas, n.pct_liq + "%", n.instalaciones, n.incidencias, n.recuperaciones, n.canceladas, drop ? drop.totalMetros + "m" : "-", drop ? drop.promMetros + "m" : "-"];
       }),
       styles: { fontSize: 8 },
     });
