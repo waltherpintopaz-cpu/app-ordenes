@@ -764,7 +764,10 @@ function deserializeOrderFromSupabase(row = {}) {
     contacto: String(row.contacto || "").trim(),
     velocidad: String(row.velocidad || "").trim(),
     precioPlan: row.precio_plan == null ? "" : String(row.precio_plan),
-    nodo: String(row.nodo || "").trim(),
+    // Algunas ordenes guardan el nodo como numero crudo de router ("5") en vez
+    // de la etiqueta "Nod_04" — normalizar aca, en el unico punto de donde sale
+    // el objeto orden para toda la app (Pendientes, Historial, reportes, etc.).
+    nodo: normalizarEtiquetaNodo(row.nodo),
     vlan: row.vlan == null ? "" : String(row.vlan),
     usuarioNodo: String(row.usuario_nodo || "").trim(),
     passwordUsuario: String(row.password_usuario || "").trim(),
@@ -815,7 +818,10 @@ function deserializeLiquidacionFromSupabase(row = {}) {
     nombre: String(row.nombre || row.cliente || "").trim(),
     direccion: String(row.direccion || "").trim(),
     celular: String(row.celular || "").trim(),
-    nodo: String(row.nodo || "").trim(),
+    // Algunas liquidaciones guardan el nodo como numero crudo de router ("5") en
+    // vez de la etiqueta "Nod_04" — normalizar aca, en el unico punto de donde
+    // sale el objeto liquidacion para toda la app (listas, filtros, exports).
+    nodo: normalizarEtiquetaNodo(row.nodo),
     usuarioNodo: String(row.usuario_nodo || row.user_hotspot || payload?.user_pppoe || payload?.["UserPPoe"] || payload?.usuarioNodo || payload?.["Usuario Nodo"] || "").trim(),
     passwordUsuario: String(row.password_usuario || "").trim(),
     velocidad: String(row.velocidad || "").trim(),
@@ -11942,7 +11948,7 @@ export default function App() {
         }
         return true;
       })
-      .filter((item) => (reporteNodo === "TODOS" ? true : String(item.nodo || "") === reporteNodo))
+      .filter((item) => (reporteNodo === "TODOS" ? true : normalizarEtiquetaNodo(item.nodo) === reporteNodo))
       .filter((item) =>
         reporteTecnico === "TODOS"
           ? true
@@ -12005,7 +12011,10 @@ export default function App() {
   }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden, reporteConfigCostoRecuperacion]);
 
   const nodosReporte = useMemo(() => {
-    const fromData = new Set(liquidaciones.map((x) => String(x.nodo || "").trim()).filter(Boolean));
+    // Algunas liquidaciones guardan el nodo como numero crudo de router ("5") en
+    // vez de la etiqueta "Nod_04" — normalizar antes de listar, si no el filtro
+    // muestra el mismo nodo duplicado bajo dos valores distintos.
+    const fromData = new Set(liquidaciones.map((x) => normalizarEtiquetaNodo(x.nodo)).filter(Boolean));
     const all = new Set([...NODOS_BASE_WEB, ...fromData]);
     return Array.from(all).sort();
   }, [liquidaciones]);
