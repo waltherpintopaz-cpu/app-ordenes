@@ -4,6 +4,7 @@ import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
+import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 
 // ─── Captura temprana de postMessage ─────────────────────────────────────────
 // Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
@@ -71,20 +72,6 @@ const PASARELAS = {
 };
 
 const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
-// Reverso: numero crudo de router Mikrowisp -> etiqueta "Nod_XX" (mismo mapeo que usan web y mobile).
-const NODO_POR_ROUTER_MIKROWISP = {
-  "1": "Nod_01", "7": "Nod_01", "8": "Nod_01", "9": "Nod_01",
-  "2": "Nod_02",
-  "3": "Nod_03", "10": "Nod_03", "12": "Nod_03",
-  "5": "Nod_04",
-  "11": "Nod_06",
-};
-const normalizarEtiquetaNodo = (valor) => {
-  const raw = String(valor || "").trim();
-  if (!raw) return "";
-  if (/^Nod_0[1-6]$/i.test(raw)) return raw.replace(/^nod_/i, "Nod_");
-  return NODO_POR_ROUTER_MIKROWISP[raw] || raw;
-};
 // Algunos clientes (sincronizados desde Mikrowisp) guardan el nodo como el
 // numero crudo de router ("5") en vez de la etiqueta "Nod_04" — normalizar
 // antes de comparar.

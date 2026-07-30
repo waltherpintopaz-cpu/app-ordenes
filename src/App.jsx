@@ -43,6 +43,7 @@ import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
 import { generarContratoPdf, empresaInfoContrato } from "./utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "./utils/contratoEnvio.js";
+import { normalizarEtiquetaNodo } from "./utils/nodos.js";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -153,23 +154,6 @@ function mikrowispRouterIdParaCliente(nodo, vlan) {
   const n = String(nodo || "").trim();
   if (n === "Nod_03" && Number(vlan) === 102) return MW_ROUTER_ID_NOD03_NUEVO;
   return MW_NODO_MAP_BASE_WEB[n] ?? 1;
-}
-// Reverso: numero crudo de router Mikrowisp -> etiqueta visual "Nod_XX".
-// Un mismo Nod_XX puede tener varios IDs historicos de Mikrowisp (routers
-// reemplazados/migrados con el tiempo). Se usa para traducir datos que
-// llegan con el numero crudo en vez de la etiqueta (ej: import CSV/Sheet).
-const NODO_POR_ROUTER_MIKROWISP = {
-  "1": "Nod_01", "7": "Nod_01", "8": "Nod_01", "9": "Nod_01",
-  "2": "Nod_02",
-  "3": "Nod_03", "10": "Nod_03", "12": "Nod_03",
-  "5": "Nod_04",
-  "11": "Nod_06",
-};
-function normalizarEtiquetaNodo(valor) {
-  const raw = String(valor || "").trim();
-  if (!raw) return "";
-  if (/^Nod_0[1-6]$/i.test(raw)) return raw.replace(/^nod_/i, "Nod_");
-  return NODO_POR_ROUTER_MIKROWISP[raw] || raw;
 }
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {

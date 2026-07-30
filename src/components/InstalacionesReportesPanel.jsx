@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
+import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -116,7 +117,7 @@ export default function InstalacionesReportesPanel({ cardStyle, sectionTitleStyl
       .order("fecha_actuacion", { ascending: true })
       .limit(10000);
     if (error) setError(error.message);
-    else setOrdenes(data || []);
+    else setOrdenes((data || []).map((o) => ({ ...o, nodo: normalizarEtiquetaNodo(o.nodo) })));
     setLoading(false);
   }
 

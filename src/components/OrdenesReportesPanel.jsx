@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
+import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -101,7 +102,10 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
       .lte("fecha_actuacion", fechaHasta)
       .order("fecha_actuacion", { ascending: false });
     if (error) setError(error.message);
-    else setOrdenes(data || []);
+    // Algunos registros guardan el nodo como numero crudo de router ("5") en vez
+    // de la etiqueta "Nod_04" — normalizar aca para que el filtro y los conteos
+    // por nodo no dupliquen el mismo nodo bajo dos valores distintos.
+    else setOrdenes((data || []).map((o) => ({ ...o, nodo: normalizarEtiquetaNodo(o.nodo) })));
     setLoading(false);
   }
 

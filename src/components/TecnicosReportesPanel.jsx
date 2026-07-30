@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../supabaseClient";
+import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -129,13 +130,13 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         .limit(10000),
     ]);
     if (resOrdenes.error) setError(resOrdenes.error.message);
-    else setOrdenes(resOrdenes.data || []);
+    else setOrdenes((resOrdenes.data || []).map((o) => ({ ...o, nodo: normalizarEtiquetaNodo(o.nodo) })));
 
     const liqMap = Object.fromEntries((resLiqs.data || []).map(l => [l.id, l]));
     const mats = (resMats.data || []).map(m => ({
       ...m,
       tecnico: liqMap[m.liquidacion_id]?.tecnico_liquida || null,
-      nodo:    liqMap[m.liquidacion_id]?.nodo            || null,
+      nodo:    normalizarEtiquetaNodo(liqMap[m.liquidacion_id]?.nodo) || null,
       fecha:   liqMap[m.liquidacion_id]?.fecha_liquidacion || null,
     }));
     setDropData(mats);
