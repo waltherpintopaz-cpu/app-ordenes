@@ -171,11 +171,17 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       else if (o.estado === "Pendiente") map[k].pendientes++;
       else if (o.estado === "Cancelada") map[k].canceladas++;
       const tipo = o.tipo_actuacion || "Sin tipo";
-      map[k].tipos[tipo] = (map[k].tipos[tipo] || 0) + 1;
-      const tipoLow = tipo.toLowerCase();
-      if (tipoLow.includes("instalac")) map[k].instalaciones++;
-      else if (tipoLow.includes("incidencia") || tipoLow.includes("avería") || tipoLow.includes("averia")) map[k].incidencias++;
-      else if (tipoLow.includes("recup")) map[k].recuperaciones++;
+      // El desglose por tipo (chips "Tipos") e Instalaciones/Incidencias/Recuperaciones
+      // solo cuentan trabajo ya liquidado, para que coincidan entre si y con el resto
+      // de la tabla (Liquidadas) — antes sumaban tambien pendientes y canceladas,
+      // inflando el conteo.
+      if (o.estado === "Liquidada") {
+        map[k].tipos[tipo] = (map[k].tipos[tipo] || 0) + 1;
+        const tipoLow = tipo.toLowerCase();
+        if (tipoLow.includes("instalac")) map[k].instalaciones++;
+        else if (tipoLow.includes("incidencia") || tipoLow.includes("avería") || tipoLow.includes("averia")) map[k].incidencias++;
+        else if (tipoLow.includes("recup")) map[k].recuperaciones++;
+      }
     }
     return Object.values(map)
       .map(r => ({ ...r, pct_liq: pct(r.liquidadas, r.total) }))
