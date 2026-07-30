@@ -94,6 +94,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   const [analisisIA, setAnalisisIA]   = useState("");
   const [loadingIA, setLoadingIA]     = useState(false);
   const [tecnicoDetalle, setTecnicoDetalle] = useState(null);
+  const [nodoDetalle, setNodoDetalle] = useState(null);
 
   const hoy    = new Date().toLocaleDateString("en-CA", { timeZone: "America/Lima" });
   const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: "America/Lima" });
@@ -202,6 +203,46 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   }, [dropFiltrado]);
 
   const dropMap = useMemo(() => Object.fromEntries(dropPorTecnico.map(d => [d.tecnico, d])), [dropPorTecnico]);
+
+  const porNodo = useMemo(() => {
+    const map = {};
+    for (const o of filtrados) {
+      const k = o.nodo || "Sin nodo";
+      if (!map[k]) map[k] = { nodo: k, total: 0, liquidadas: 0, pendientes: 0, canceladas: 0, tipos: {}, instalaciones: 0, incidencias: 0, recuperaciones: 0 };
+      map[k].total++;
+      if (o.estado === "Liquidada") map[k].liquidadas++;
+      else if (o.estado === "Pendiente") map[k].pendientes++;
+      else if (o.estado === "Cancelada") map[k].canceladas++;
+      // Mismo criterio que Detalle por Tecnico: solo contar tipo/instalaciones/
+      // incidencias/recuperaciones sobre trabajo ya liquidado.
+      if (o.estado === "Liquidada") {
+        const tipo = o.tipo_actuacion || "Sin tipo";
+        map[k].tipos[tipo] = (map[k].tipos[tipo] || 0) + 1;
+        const tipoLow = tipo.toLowerCase();
+        if (tipoLow.includes("instalac")) map[k].instalaciones++;
+        else if (tipoLow.includes("incidencia") || tipoLow.includes("avería") || tipoLow.includes("averia")) map[k].incidencias++;
+        else if (tipoLow.includes("recup")) map[k].recuperaciones++;
+      }
+    }
+    return Object.values(map)
+      .map(r => ({ ...r, pct_liq: pct(r.liquidadas, r.total) }))
+      .sort((a, b) => b.liquidadas - a.liquidadas);
+  }, [filtrados]);
+
+  const dropPorNodo = useMemo(() => {
+    const map = {};
+    for (const d of dropFiltrado) {
+      const k = d.nodo || "Sin nodo";
+      if (!map[k]) map[k] = { nodo: k, totalMetros: 0, registros: 0 };
+      map[k].totalMetros += Number(d.cantidad) || 0;
+      map[k].registros++;
+    }
+    return Object.values(map)
+      .map(r => ({ ...r, promMetros: r.registros > 0 ? Math.round(r.totalMetros / r.registros) : 0 }))
+      .sort((a, b) => b.totalMetros - a.totalMetros);
+  }, [dropFiltrado]);
+
+  const dropMapNodo = useMemo(() => Object.fromEntries(dropPorNodo.map(d => [d.nodo, d])), [dropPorNodo]);
 
   const instVsIncChart = useMemo(() =>
     porTecnico.filter(t => t.tecnico !== "Sin asignar" && (t.instalaciones > 0 || t.incidencias > 0 || t.recuperaciones > 0))
@@ -603,6 +644,78 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
                     <div><span style={{ color: "#6b7280" }}>Incidencias:</span> <strong style={{ color: "#d97706" }}>{t.incidencias}</strong></div>
                     <div><span style={{ color: "#6b7280" }}>Recuperaciones:</span> <strong style={{ color: "#059669" }}>{t.recuperaciones}</strong></div>
                     <div><span style={{ color: "#6b7280" }}>Canceladas:</span> <strong style={{ color: "#dc2626" }}>{t.canceladas}</strong></div>
+                    {drop && <>
+                      <div><span style={{ color: "#6b7280" }}>Total metros drop:</span> <strong style={{ color: "#7c3aed" }}>{drop.totalMetros}m</strong></div>
+                      <div><span style={{ color: "#6b7280" }}>Prom. por trabajo:</span> <strong style={{ color: "#0891b2" }}>{drop.promMetros}m</strong></div>
+                    </>}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Tabla detallada por nodo */}
+          <div style={{ ...cardStyle }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14, color: "#1e293b" }}>Detalle por Nodo</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc" }}>
+                    {["#","Nodo","Total","Liquidadas","Instal.","Incid.","Recup.","Pendientes","Canceladas","% Eficiencia","Metros Drop","Prom. m/trabajo","Tipos"].map(h => (
+                      <th key={h} style={{ padding: "10px 12px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "2px solid #e5e7eb", whiteSpace: "nowrap", fontSize: 12 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {porNodo.map((n, i) => {
+                    const drop = dropMapNodo[n.nodo];
+                    return (
+                      <tr key={n.nodo} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", cursor: "pointer" }}
+                        onClick={() => setNodoDetalle(nodoDetalle === n.nodo ? null : n.nodo)}>
+                        <td style={{ padding: "9px 12px", color: "#9ca3af", fontWeight: 600 }}>{i + 1}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#1e293b" }}>{n.nodo}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#2563eb" }}>{n.total}</td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#16a34a" }}>{n.liquidadas}</td>
+                        <td style={{ padding: "9px 12px", color: "#2563eb", fontWeight: 600 }}>{n.instalaciones}</td>
+                        <td style={{ padding: "9px 12px", color: "#d97706", fontWeight: 600 }}>{n.incidencias}</td>
+                        <td style={{ padding: "9px 12px", color: "#059669", fontWeight: 600 }}>{n.recuperaciones || 0}</td>
+                        <td style={{ padding: "9px 12px", color: "#d97706" }}>{n.pendientes}</td>
+                        <td style={{ padding: "9px 12px", color: "#dc2626" }}>{n.canceladas}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <span style={{ background: badgeColor(n.pct_liq) + "20", color: badgeColor(n.pct_liq), borderRadius: 6, padding: "3px 10px", fontWeight: 700, fontSize: 12 }}>
+                            {n.pct_liq}%
+                          </span>
+                        </td>
+                        <td style={{ padding: "9px 12px", fontWeight: 700, color: "#7c3aed" }}>{drop ? drop.totalMetros + "m" : "—"}</td>
+                        <td style={{ padding: "9px 12px", color: "#0891b2", fontWeight: 600 }}>{drop ? drop.promMetros + "m" : "—"}</td>
+                        <td style={{ padding: "9px 12px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {Object.entries(n.tipos).sort((a,b) => b[1]-a[1]).map(([tipo, cnt]) => (
+                              <span key={tipo} style={{ background: "#eff6ff", color: "#1d4ed8", borderRadius: 5, padding: "2px 7px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>
+                                {tipo} ({cnt})
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {nodoDetalle && (() => {
+              const n = porNodo.find(x => x.nodo === nodoDetalle);
+              const drop = dropMapNodo[nodoDetalle];
+              if (!n) return null;
+              return (
+                <div style={{ marginTop: 16, padding: 14, background: "#eff6ff", borderRadius: 10, border: "1px solid #bfdbfe" }}>
+                  <div style={{ fontWeight: 700, color: "#1d4ed8", marginBottom: 10 }}>{n.nodo} — resumen</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13 }}>
+                    <div><span style={{ color: "#6b7280" }}>Instalaciones:</span> <strong style={{ color: "#2563eb" }}>{n.instalaciones}</strong></div>
+                    <div><span style={{ color: "#6b7280" }}>Incidencias:</span> <strong style={{ color: "#d97706" }}>{n.incidencias}</strong></div>
+                    <div><span style={{ color: "#6b7280" }}>Recuperaciones:</span> <strong style={{ color: "#059669" }}>{n.recuperaciones}</strong></div>
+                    <div><span style={{ color: "#6b7280" }}>Canceladas:</span> <strong style={{ color: "#dc2626" }}>{n.canceladas}</strong></div>
                     {drop && <>
                       <div><span style={{ color: "#6b7280" }}>Total metros drop:</span> <strong style={{ color: "#7c3aed" }}>{drop.totalMetros}m</strong></div>
                       <div><span style={{ color: "#6b7280" }}>Prom. por trabajo:</span> <strong style={{ color: "#0891b2" }}>{drop.promMetros}m</strong></div>
