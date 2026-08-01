@@ -42,6 +42,91 @@ function suavizarPuntos(points) {
   return out;
 }
 
+// Icono circular con la foto real del vehiculo (con anillo de color) — igual
+// que en el panel interno, para que el cliente vea el vehiculo real, no un
+// punto generico.
+const circleIconCache = new Map();
+function crearIconoVehiculo(fotoUrl, color, onReady) {
+  const cacheKey = `${fotoUrl}|${color}`;
+  if (circleIconCache.has(cacheKey)) return circleIconCache.get(cacheKey);
+  if (!fotoUrl) return null;
+
+  const size = 60;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    try {
+      ctx.clearRect(0, 0, size, size);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(img, 0, 0, size, size);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      const dataUrl = canvas.toDataURL("image/png");
+      circleIconCache.set(cacheKey, dataUrl);
+      onReady?.(dataUrl);
+    } catch {
+      // canvas "tainted" por CORS u otro fallo — se queda con el circulo simple
+    }
+  };
+  img.onerror = () => {};
+  img.src = fotoUrl;
+  return null;
+}
+
+// Icono de "casa" (Lucide) para la direccion del cliente — vector, no emoji.
+const HOUSE_PATHS = [
+  "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8",
+  "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+];
+let casaIconCache = null;
+function crearIconoCasa(color) {
+  if (casaIconCache) return casaIconCache;
+  const size = 40;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowColor = "rgba(15,23,42,0.35)";
+  ctx.shadowBlur = 4;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+
+  ctx.save();
+  const iconSize = size * 0.52;
+  const scale = iconSize / 24;
+  ctx.translate(size / 2 - iconSize / 2, size / 2 - iconSize / 2);
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  HOUSE_PATHS.forEach((d) => ctx.stroke(new Path2D(d)));
+  ctx.restore();
+
+  casaIconCache = canvas.toDataURL("image/png");
+  return casaIconCache;
+}
+
 const loadGoogleMapsSdk = () => {
   if (typeof window === "undefined") return Promise.reject(new Error("Sin navegador."));
   if (window.google?.maps) return Promise.resolve(window.google.maps);
@@ -71,9 +156,11 @@ export default function SeguimientoCompartidoPage() {
 
   const [estado, setEstado] = useState("cargando"); // cargando | activo | expirado | completado | invalido
   const [enlace, setEnlace] = useState(null);
+  const vehiculoRef = useRef(null);
   const [ultimaPosicion, setUltimaPosicion] = useState(null);
   const [distanciaKm, setDistanciaKm] = useState(null);
   const [mapReady, setMapReady] = useState(false);
+  const [, forceRedraw] = useState(0);
 
   const token = new URLSearchParams(window.location.search).get("t") || "";
 
@@ -87,6 +174,12 @@ export default function SeguimientoCompartidoPage() {
     setEstado("activo");
     return data;
   }, [token]);
+
+  const cargarVehiculo = useCallback(async (vehiculoId) => {
+    if (!vehiculoId) return;
+    const { data } = await supabase.from("vehiculos").select("placa,foto_url,color").eq("id", vehiculoId).maybeSingle();
+    if (data) vehiculoRef.current = data;
+  }, []);
 
   const marcarCompletado = useCallback(async (id) => {
     await supabase.from("enlaces_seguimiento").update({ completado: true, completado_en: new Date().toISOString() }).eq("id", id);
@@ -137,15 +230,17 @@ export default function SeguimientoCompartidoPage() {
 
     if (actual && isValidCoord(Number(actual.lat), Number(actual.lng))) {
       const pos = { lat: Number(actual.lat), lng: Number(actual.lng) };
+      const fotoUrl = vehiculoRef.current?.foto_url || null;
+      const iconDataUrl = fotoUrl ? crearIconoVehiculo(fotoUrl, "#1E4F9C", () => forceRedraw((v) => v + 1)) : null;
+      const size = 56;
+      const icon = iconDataUrl
+        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
+        : { path: maps.SymbolPath.CIRCLE, fillColor: "#1E4F9C", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 };
       if (!markerRef.current) {
-        markerRef.current = new maps.Marker({
-          map,
-          position: pos,
-          icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#1E4F9C", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
-          zIndex: 999
-        });
+        markerRef.current = new maps.Marker({ map, position: pos, icon, title: vehiculoRef.current?.placa || "", zIndex: 999 });
       } else {
         markerRef.current.setPosition(pos);
+        markerRef.current.setIcon(icon);
       }
       if (!autoFitDoneRef.current) {
         map.panTo(pos);
@@ -164,10 +259,11 @@ export default function SeguimientoCompartidoPage() {
 
     const tieneCliente = isValidCoord(Number(enlaceActual.cliente_lat), Number(enlaceActual.cliente_lng));
     if (tieneCliente && !clienteMarkerRef.current) {
+      const size = 40;
       clienteMarkerRef.current = new maps.Marker({
         map,
         position: { lat: Number(enlaceActual.cliente_lat), lng: Number(enlaceActual.cliente_lng) },
-        icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#16A34A", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 8 },
+        icon: { url: crearIconoCasa("#16A34A"), scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) },
         title: "Tu direccion",
         zIndex: 500
       });
@@ -186,6 +282,7 @@ export default function SeguimientoCompartidoPage() {
     (async () => {
       const data = await cargarEnlace();
       if (cancelled || !data || data.completado || new Date(data.expira_en).getTime() < Date.now()) return;
+      await cargarVehiculo(data.vehiculo_id);
       try {
         const maps = await loadGoogleMapsSdk();
         if (cancelled || !mapCanvasRef.current) return;
