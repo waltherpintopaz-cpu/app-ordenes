@@ -878,21 +878,23 @@ export default function SeguimientoVehiculosPanel() {
     const maps = mapsRef.current;
     clearSnapOverlays();
 
-    Object.entries(snappedPathByVehiculo).forEach(([id, points]) => {
-      if (!Array.isArray(points) || points.length < 2) return;
-      const line = new maps.Polyline({
-        map,
-        path: points,
-        strokeColor: colorForVehiculoId(id),
-        strokeOpacity: 0.95,
-        strokeWeight: 5,
-        zIndex: 200
+    if (showTrail) {
+      Object.entries(snappedPathByVehiculo).forEach(([id, points]) => {
+        if (!Array.isArray(points) || points.length < 2) return;
+        const line = new maps.Polyline({
+          map,
+          path: points,
+          strokeColor: colorForVehiculoId(id),
+          strokeOpacity: 0.95,
+          strokeWeight: 5,
+          zIndex: 200
+        });
+        snapPolylinesRef.current.push(line);
       });
-      snapPolylinesRef.current.push(line);
-    });
+    }
 
     return () => clearSnapOverlays();
-  }, [snappedPathByVehiculo, clearSnapOverlays]);
+  }, [snappedPathByVehiculo, showTrail, clearSnapOverlays]);
 
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
