@@ -13,6 +13,14 @@ const STALE_MIN_THRESHOLD = 3;
 
 const toText = (value) => String(value ?? "").trim();
 const isValidCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+const parseUbicacion = (value) => {
+  const m = String(value ?? "").match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lng = Number(m[2]);
+  return isValidCoord(lat, lng) ? { lat, lng } : null;
+};
+const ESTADO_ORDEN_COLOR = { Pendiente: "#F59E0B", Liquidada: "#16A34A", Cancelada: "#94A3B8" };
 const formatDateTime = (value) => {
   const d = new Date(value || Date.now());
   if (!Number.isFinite(d.getTime())) return "-";
@@ -46,6 +54,70 @@ const haversineKm = (a, b) => {
     Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 };
+
+// Suavizado puramente visual (sin llamar a ninguna API): asi es como apps
+// como Uber/InDrive hacen que el trazo en vivo se vea fluido sin pagar por
+// ajustarlo a la calle en tiempo real — solo interpola una curva suave entre
+// los puntos GPS ya capturados, gratis y al instante.
+function suavizarPuntos(points) {
+  if (!Array.isArray(points) || points.length < 3) return points || [];
+  const pts = points;
+  const out = [pts[0]];
+  const segmentsPerGap = 6;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    for (let s = 1; s <= segmentsPerGap; s++) {
+      const t = s / segmentsPerGap;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const lat =
+        0.5 *
+        (2 * p1.lat +
+          (-p0.lat + p2.lat) * t +
+          (2 * p0.lat - 5 * p1.lat + 4 * p2.lat - p3.lat) * t2 +
+          (-p0.lat + 3 * p1.lat - 3 * p2.lat + p3.lat) * t3);
+      const lng =
+        0.5 *
+        (2 * p1.lng +
+          (-p0.lng + p2.lng) * t +
+          (2 * p0.lng - 5 * p1.lng + 4 * p2.lng - p3.lng) * t2 +
+          (-p0.lng + 3 * p1.lng - 3 * p2.lng + p3.lng) * t3);
+      out.push({ lat, lng });
+    }
+  }
+  return out;
+}
+
+// Ajuste real a calles (Google Roads API) — solo se usa bajo demanda para
+// revisar el recorrido de un dia especifico ("Detalle de recorrido"), nunca
+// para el mapa en vivo, para mantenerse dentro del rango gratuito mensual.
+const ROADS_API_BATCH = 100;
+async function snapToRoadsBatched(points) {
+  if (!Array.isArray(points) || points.length === 0) return [];
+  const out = [];
+  for (let i = 0; i < points.length; i += ROADS_API_BATCH) {
+    const batch = points.slice(i, i + ROADS_API_BATCH);
+    if (batch.length < 2) continue;
+    const path = batch.map((p) => `${p.lat},${p.lng}`).join("|");
+    const url = `https://roads.googleapis.com/v1/snapToRoads?interpolate=true&path=${encodeURIComponent(path)}&key=${GOOGLE_MAPS_API_KEY}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      const snapped = Array.isArray(data?.snappedPoints) ? data.snappedPoints : [];
+      snapped.forEach((sp) => {
+        const lat = Number(sp?.location?.latitude);
+        const lng = Number(sp?.location?.longitude);
+        if (isValidCoord(lat, lng)) out.push({ lat, lng });
+      });
+    } catch {
+      // si un lote falla, seguir con el resto en vez de perder todo el recorrido
+    }
+  }
+  return out;
+}
 const todayLocalDateStr = () => {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -179,11 +251,18 @@ export default function SeguimientoVehiculosPanel() {
   const [editError, setEditError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
 
+  const [ordenesHoy, setOrdenesHoy] = useState([]);
+  const [showOrdenes, setShowOrdenes] = useState(true);
+  const orderMarkersRef = useRef([]);
+
   const [iconVersion, setIconVersion] = useState(0);
   const [analyticsDate, setAnalyticsDate] = useState(() => todayLocalDateStr());
   const [analyticsByVehiculo, setAnalyticsByVehiculo] = useState({});
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [analyticsError, setAnalyticsError] = useState("");
+  const [snappedPathByVehiculo, setSnappedPathByVehiculo] = useState({});
+  const [loadingSnap, setLoadingSnap] = useState(false);
+  const snapPolylinesRef = useRef([]);
 
   const vehiculoById = useMemo(() => {
     const map = {};
@@ -227,6 +306,28 @@ export default function SeguimientoVehiculosPanel() {
       throw fetchError;
     }
     setCurrentRows(Array.isArray(data) ? data : []);
+  }, []);
+
+  const cargarOrdenesHoy = useCallback(async () => {
+    const hoy = todayLocalDateStr();
+    const manana = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const mananaStr = `${manana.getFullYear()}-${String(manana.getMonth() + 1).padStart(2, "0")}-${String(manana.getDate()).padStart(2, "0")}`;
+    const { data, error: fetchError } = await supabase
+      .from("ordenes")
+      .select("id,codigo,nombre,direccion,tecnico,estado,tipo_actuacion,ubicacion,fecha_actuacion")
+      .gte("fecha_actuacion", hoy)
+      .lt("fecha_actuacion", mananaStr)
+      .limit(2000);
+    if (fetchError) {
+      if (tableMissing(fetchError, "ordenes")) { setOrdenesHoy([]); return; }
+      // No bloquear el resto del panel si esto falla — es informativo, no critico.
+      setOrdenesHoy([]);
+      return;
+    }
+    const rows = (Array.isArray(data) ? data : [])
+      .map((row) => ({ ...row, coords: parseUbicacion(row.ubicacion) }))
+      .filter((row) => row.coords);
+    setOrdenesHoy(rows);
   }, []);
 
   const abrirEdicion = useCallback((v) => {
@@ -439,6 +540,23 @@ export default function SeguimientoVehiculosPanel() {
         };
       });
       setAnalyticsByVehiculo(resultado);
+      setSnappedPathByVehiculo({});
+
+      // Ajuste real a calles — solo para este recorrido puntual ya calculado,
+      // nunca para el mapa en vivo. Se hace despues de mostrar las
+      // estadisticas para no demorar el resto del panel.
+      setLoadingSnap(true);
+      const snappedEntries = await Promise.all(
+        Object.entries(porVehiculo).map(async ([id, rows]) => {
+          const puntos = rows
+            .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng) }))
+            .filter((p) => isValidCoord(p.lat, p.lng));
+          const snapped = await snapToRoadsBatched(puntos);
+          return [id, snapped];
+        })
+      );
+      setSnappedPathByVehiculo(Object.fromEntries(snappedEntries));
+      setLoadingSnap(false);
     } catch (e) {
       setAnalyticsError(String(e?.message || "No se pudo calcular el recorrido."));
     } finally {
@@ -450,26 +568,26 @@ export default function SeguimientoVehiculosPanel() {
     if (!isSupabaseConfigured) { setError("Supabase no esta configurado."); setLoading(false); return; }
     if (!silent) setError("");
     try {
-      await Promise.all([cargarVehiculos(), cargarUbicacionActual()]);
+      await Promise.all([cargarVehiculos(), cargarUbicacionActual(), cargarOrdenesHoy()]);
       setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo cargar seguimiento de vehiculos."));
     } finally {
       setLoading(false);
     }
-  }, [cargarVehiculos, cargarUbicacionActual]);
+  }, [cargarVehiculos, cargarUbicacionActual, cargarOrdenesHoy]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([cargarUbicacionActual(), cargarTrayectorias()]);
+      await Promise.all([cargarUbicacionActual(), cargarTrayectorias(), cargarOrdenesHoy()]);
       setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo actualizar."));
     } finally {
       setRefreshing(false);
     }
-  }, [cargarUbicacionActual, cargarTrayectorias]);
+  }, [cargarUbicacionActual, cargarTrayectorias, cargarOrdenesHoy]);
 
   useEffect(() => { void cargarTodo(); }, [cargarTodo]);
 
@@ -506,7 +624,11 @@ export default function SeguimientoVehiculosPanel() {
     const visibles = new Set(ubicacionesVisibles.map((row) => row?.vehiculo_id).filter(Boolean));
     return Object.entries(trailByVehiculo || {})
       .filter(([id, pts]) => visibles.has(Number(id)) && Array.isArray(pts) && pts.length > 1)
-      .map(([id, pts]) => ({ id, color: colorForVehiculoId(id), points: pts.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) })) }));
+      .map(([id, pts]) => ({
+        id,
+        color: colorForVehiculoId(id),
+        points: suavizarPuntos(pts.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) })))
+      }));
   }, [showTrail, trailByVehiculo, ubicacionesVisibles]);
 
   const kpi = useMemo(() => {
@@ -520,6 +642,16 @@ export default function SeguimientoVehiculosPanel() {
     polylinesRef.current.forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
     markersRef.current = [];
     polylinesRef.current = [];
+  }, []);
+
+  const clearOrderOverlays = useCallback(() => {
+    orderMarkersRef.current.forEach((m) => { try { m.setMap(null); } catch { /* noop */ } });
+    orderMarkersRef.current = [];
+  }, []);
+
+  const clearSnapOverlays = useCallback(() => {
+    snapPolylinesRef.current.forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
+    snapPolylinesRef.current = [];
   }, []);
 
   const fitMap = useCallback(() => {
@@ -604,6 +736,69 @@ export default function SeguimientoVehiculosPanel() {
     return () => clearOverlays();
   }, [rowsList, selectedId, trailPolylines, clearOverlays, fitMap, iconVersion]);
 
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    clearOrderOverlays();
+
+    if (showOrdenes) {
+      ordenesHoy.forEach((orden) => {
+        const color = ESTADO_ORDEN_COLOR[orden.estado] || "#7C3AED";
+        const marker = new maps.Marker({
+          map,
+          position: orden.coords,
+          title: `${orden.codigo || "Orden"} · ${orden.nombre || ""} · ${orden.estado || ""}`,
+          icon: {
+            path: "M 0,-10 C -6,-10 -10,-6 -10,0 C -10,7 0,16 0,16 C 0,16 10,7 10,0 C 10,-6 6,-10 0,-10 Z",
+            fillColor: color,
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff",
+            strokeWeight: 1.4,
+            scale: 1.1,
+            anchor: new maps.Point(0, 16)
+          },
+          zIndex: 500
+        });
+        const info = new maps.InfoWindow({
+          content: `<div style="font-size:12px;max-width:220px">
+            <strong>${orden.codigo || "Orden"}</strong><br/>
+            ${orden.nombre || ""}<br/>
+            ${orden.direccion || ""}<br/>
+            Tecnico: ${orden.tecnico || "-"}<br/>
+            <span style="color:${color};font-weight:700">${orden.estado || ""}</span>
+          </div>`
+        });
+        marker.addListener("click", () => info.open({ map, anchor: marker }));
+        orderMarkersRef.current.push(marker);
+      });
+    }
+
+    return () => clearOrderOverlays();
+  }, [ordenesHoy, showOrdenes, clearOrderOverlays, mapReady]);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    clearSnapOverlays();
+
+    Object.entries(snappedPathByVehiculo).forEach(([id, points]) => {
+      if (!Array.isArray(points) || points.length < 2) return;
+      const line = new maps.Polyline({
+        map,
+        path: points,
+        strokeColor: colorForVehiculoId(id),
+        strokeOpacity: 0.95,
+        strokeWeight: 5,
+        zIndex: 200
+      });
+      snapPolylinesRef.current.push(line);
+    });
+
+    return () => clearSnapOverlays();
+  }, [snappedPathByVehiculo, clearSnapOverlays]);
+
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
@@ -649,6 +844,10 @@ export default function SeguimientoVehiculosPanel() {
           <span>Total vehiculos</span>
           <strong>{vehiculos.length}</strong>
         </article>
+        <article className="orders-kpi-card">
+          <span>Ordenes hoy</span>
+          <strong>{ordenesHoy.length}</strong>
+        </article>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" }}>
@@ -670,6 +869,10 @@ export default function SeguimientoVehiculosPanel() {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b", marginLeft: 8 }}>
           <input type="checkbox" checked={showTrail} onChange={(e) => setShowTrail(e.target.checked)} />
           Mostrar recorrido ({TRAIL_WINDOW_HOURS}h)
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b" }}>
+          <input type="checkbox" checked={showOrdenes} onChange={(e) => setShowOrdenes(e.target.checked)} />
+          Mostrar ordenes del dia ({ordenesHoy.length})
         </label>
       </div>
 
@@ -709,6 +912,12 @@ export default function SeguimientoVehiculosPanel() {
         </div>
 
         {analyticsError ? <p className="warn-text">{analyticsError}</p> : null}
+
+        {loadingSnap ? (
+          <p style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>🛣️ Ajustando el recorrido a las calles reales...</p>
+        ) : Object.keys(snappedPathByVehiculo).length > 0 ? (
+          <p style={{ fontSize: 12, color: "#16a34a", marginTop: 8 }}>✓ Recorrido ajustado a calles dibujado en el mapa (linea gruesa).</p>
+        ) : null}
 
         {selectedIds.length === 0 ? (
           <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 10 }}>Selecciona al menos un vehiculo arriba para ver su recorrido.</p>
