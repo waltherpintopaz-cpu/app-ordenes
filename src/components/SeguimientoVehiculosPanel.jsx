@@ -8,7 +8,7 @@ const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const TRAIL_COLORS = ["#1E4F9C", "#F47A20", "#00C853", "#EC4899", "#0EA5E9", "#7C3AED"];
 const TRAIL_WINDOW_HOURS = 4;
 const TRAIL_MAX_POINTS = 300;
-const AUTO_REFRESH_MS = 15_000;
+const AUTO_REFRESH_MS = 6_000;
 const STALE_MIN_THRESHOLD = 3;
 
 const toText = (value) => String(value ?? "").trim();
@@ -35,6 +35,83 @@ const colorForVehiculoId = (value) => {
   for (let i = 0; i < id.length; i += 1) acc = (acc + id.charCodeAt(i) * (i + 11)) % 997;
   return TRAIL_COLORS[acc % TRAIL_COLORS.length];
 };
+const HARSH_BRAKE_KMH_DROP = 15;
+const HARSH_BRAKE_MAX_SECONDS = 5;
+const EARTH_RADIUS_KM = 6371;
+const haversineKm = (a, b) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+};
+const todayLocalDateStr = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+const ACTIVITY_LABELS = {
+  en_vehiculo: "🚗 En vehiculo",
+  en_bicicleta: "🚲 En bicicleta",
+  a_pie: "🚶 A pie",
+  corriendo: "🏃 Corriendo",
+  quieto: "⏸️ Quieto",
+  inclinando: "↕️ Inclinando",
+  caminando: "🚶 Caminando",
+  desconocido: "❓ Desconocido"
+};
+
+// Icono circular con la foto del vehiculo (con un anillo del color asignado)
+// para que el marcador en el mapa se vea como el vehiculo real, no un punto
+// generico. Se cachea por url+color para no re-dibujar en cada refresco.
+const circleIconCache = new Map();
+function crearIconoCircular(fotoUrl, color, onReady) {
+  const cacheKey = `${fotoUrl}|${color}`;
+  if (circleIconCache.has(cacheKey)) return circleIconCache.get(cacheKey);
+  if (!fotoUrl) return null;
+
+  const size = 56;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, 0, 0, size, size);
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    const dataUrl = canvas.toDataURL("image/png");
+    circleIconCache.set(cacheKey, dataUrl);
+    onReady?.(dataUrl);
+  };
+  img.onerror = () => {
+    circleIconCache.set(cacheKey, null);
+  };
+  img.src = fotoUrl;
+  return null;
+}
+
+const s = {
+  statBlock: { display: "flex", flexDirection: "column", gap: 2, minWidth: 90 },
+  statLabel: { fontSize: 11, color: "#94a3b8", fontWeight: 600 },
+  statValue: { fontSize: 14, color: "#1e293b" }
+};
+
 const tableMissing = (err, tableName) => {
   const code = String(err?.code || "").trim();
   const msg = String(err?.message || "").toLowerCase();
@@ -87,6 +164,18 @@ export default function SeguimientoVehiculosPanel() {
   const [showTrail, setShowTrail] = useState(true);
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
 
+  const [editVehiculo, setEditVehiculo] = useState(null);
+  const [editForm, setEditForm] = useState({ placa: "", alias: "", marca: "", modelo: "", color: "", activo: true });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+
+  const [iconVersion, setIconVersion] = useState(0);
+  const [analyticsDate, setAnalyticsDate] = useState(() => todayLocalDateStr());
+  const [analyticsByVehiculo, setAnalyticsByVehiculo] = useState({});
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState("");
+
   const vehiculoById = useMemo(() => {
     const map = {};
     (Array.isArray(vehiculos) ? vehiculos : []).forEach((v) => { map[v.id] = v; });
@@ -131,6 +220,74 @@ export default function SeguimientoVehiculosPanel() {
     setCurrentRows(Array.isArray(data) ? data : []);
   }, []);
 
+  const abrirEdicion = useCallback((v) => {
+    setEditError("");
+    setEditVehiculo(v);
+    setEditForm({
+      placa: toText(v?.placa),
+      alias: toText(v?.alias),
+      marca: toText(v?.marca),
+      modelo: toText(v?.modelo),
+      color: toText(v?.color),
+      activo: v?.activo !== false
+    });
+  }, []);
+
+  const cerrarEdicion = useCallback(() => {
+    setEditVehiculo(null);
+    setEditError("");
+  }, []);
+
+  const guardarEdicion = useCallback(async () => {
+    if (!editVehiculo?.id) return;
+    const placaLimpia = toText(editForm.placa).toUpperCase();
+    if (!placaLimpia) { setEditError("La placa es obligatoria."); return; }
+    setSavingEdit(true);
+    setEditError("");
+    try {
+      const { error: updError } = await supabase
+        .from("vehiculos")
+        .update({
+          placa: placaLimpia,
+          alias: toText(editForm.alias) || null,
+          marca: toText(editForm.marca) || null,
+          modelo: toText(editForm.modelo) || null,
+          color: toText(editForm.color) || null,
+          activo: !!editForm.activo
+        })
+        .eq("id", editVehiculo.id);
+      if (updError) throw updError;
+      setEditVehiculo(null);
+      await cargarVehiculos();
+    } catch (e) {
+      setEditError(String(e?.message || "No se pudo guardar el vehiculo."));
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [editVehiculo, editForm, cargarVehiculos]);
+
+  const eliminarVehiculo = useCallback(async (v) => {
+    if (!v?.id) return;
+    const ok = window.confirm(
+      `¿Eliminar el vehiculo ${v.placa || ""}${v.alias ? " (" + v.alias + ")" : ""}? Esto borra tambien su historial de ubicaciones.`
+    );
+    if (!ok) return;
+    setDeletingId(v.id);
+    try {
+      await supabase.from("vehiculo_ubicaciones").delete().eq("vehiculo_id", v.id);
+      await supabase.from("vehiculo_ubicacion_actual").delete().eq("vehiculo_id", v.id);
+      const { error: delError } = await supabase.from("vehiculos").delete().eq("id", v.id);
+      if (delError) throw delError;
+      if (selectedId === v.id) setSelectedId(null);
+      await cargarVehiculos();
+      await cargarUbicacionActual();
+    } catch (e) {
+      setError(String(e?.message || "No se pudo eliminar el vehiculo."));
+    } finally {
+      setDeletingId(null);
+    }
+  }, [selectedId, cargarVehiculos, cargarUbicacionActual]);
+
   const cargarTrayectorias = useCallback(async () => {
     if (!showTrail || selectedIds.length === 0) {
       setTrailByVehiculo({});
@@ -166,6 +323,95 @@ export default function SeguimientoVehiculosPanel() {
     setTrailByVehiculo(grouped);
   }, [showTrail, selectedIds]);
 
+  const calcularAnalitica = useCallback(async () => {
+    if (!analyticsDate || selectedIds.length === 0) {
+      setAnalyticsByVehiculo({});
+      return;
+    }
+    setLoadingAnalytics(true);
+    setAnalyticsError("");
+    try {
+      const desde = new Date(`${analyticsDate}T00:00:00`).toISOString();
+      const hasta = new Date(`${analyticsDate}T23:59:59.999`).toISOString();
+      const res = await supabase
+        .from("vehiculo_ubicaciones")
+        .select("vehiculo_id,lat,lng,speed_mps,activity_type,created_at")
+        .in("vehiculo_id", selectedIds)
+        .gte("created_at", desde)
+        .lte("created_at", hasta)
+        .order("created_at", { ascending: true })
+        .limit(30000);
+      if (res.error) {
+        if (tableMissing(res.error, "vehiculo_ubicaciones")) { setAnalyticsByVehiculo({}); return; }
+        throw res.error;
+      }
+
+      const porVehiculo = {};
+      (Array.isArray(res.data) ? res.data : []).forEach((row) => {
+        const id = row?.vehiculo_id;
+        if (!id) return;
+        if (!porVehiculo[id]) porVehiculo[id] = [];
+        porVehiculo[id].push(row);
+      });
+
+      const resultado = {};
+      Object.entries(porVehiculo).forEach(([id, rows]) => {
+        let distanciaKm = 0;
+        let maxSpeedKmh = 0;
+        let sumaSpeed = 0;
+        let countSpeed = 0;
+        let frenadasBruscas = 0;
+        let prev = null;
+        const activityMinutes = {};
+
+        rows.forEach((row) => {
+          const lat = Number(row.lat);
+          const lng = Number(row.lng);
+          const speedMps = Number(row.speed_mps);
+          const speedKmh = Number.isFinite(speedMps) && speedMps >= 0 ? speedMps * 3.6 : null;
+          const t = new Date(row.created_at).getTime();
+
+          if (isValidCoord(lat, lng) && prev && isValidCoord(prev.lat, prev.lng)) {
+            distanciaKm += haversineKm(prev, { lat, lng });
+          }
+          if (speedKmh != null) {
+            maxSpeedKmh = Math.max(maxSpeedKmh, speedKmh);
+            sumaSpeed += speedKmh;
+            countSpeed += 1;
+          }
+          if (prev && prev.speedKmh != null && speedKmh != null && Number.isFinite(prev.t)) {
+            const dtSec = (t - prev.t) / 1000;
+            const dropKmh = prev.speedKmh - speedKmh;
+            if (dtSec > 0 && dtSec <= HARSH_BRAKE_MAX_SECONDS && dropKmh >= HARSH_BRAKE_KMH_DROP) {
+              frenadasBruscas += 1;
+            }
+          }
+          if (prev && Number.isFinite(prev.t)) {
+            const minutos = Math.max(0, (t - prev.t) / 60000);
+            const key = row.activity_type || "desconocido";
+            activityMinutes[key] = (activityMinutes[key] || 0) + minutos;
+          }
+
+          prev = { lat, lng, speedKmh, t };
+        });
+
+        resultado[id] = {
+          distanciaKm,
+          maxSpeedKmh,
+          avgSpeedKmh: countSpeed > 0 ? sumaSpeed / countSpeed : 0,
+          frenadasBruscas,
+          puntos: rows.length,
+          activityMinutes
+        };
+      });
+      setAnalyticsByVehiculo(resultado);
+    } catch (e) {
+      setAnalyticsError(String(e?.message || "No se pudo calcular el recorrido."));
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, [analyticsDate, selectedIds]);
+
   const cargarTodo = useCallback(async (silent = false) => {
     if (!isSupabaseConfigured) { setError("Supabase no esta configurado."); setLoading(false); return; }
     if (!silent) setError("");
@@ -200,6 +446,7 @@ export default function SeguimientoVehiculosPanel() {
   }, [onRefresh]);
 
   useEffect(() => { void cargarTrayectorias(); }, [cargarTrayectorias]);
+  useEffect(() => { void calcularAnalitica(); }, [calcularAnalitica]);
 
   const ubicacionesVisibles = useMemo(() => {
     const base = (Array.isArray(currentRows) ? currentRows : []).filter((row) => isValidCoord(Number(row?.lat), Number(row?.lng)));
@@ -288,13 +535,31 @@ export default function SeguimientoVehiculosPanel() {
       if (!isValidCoord(lat, lng)) return;
       const selected = row?.vehiculo_id === selectedId;
       const staleMin = Number(row?.staleMin || 0);
-      const fillColor = staleMin > STALE_MIN_THRESHOLD ? "#7A8699" : colorForVehiculoId(row?.vehiculo_id);
-      const marker = new maps.Marker({
-        map,
-        position: { lat, lng },
-        title: `${row.placaLabel}${row.alias ? " — " + row.alias : ""}`,
-        icon: { path: maps.SymbolPath.CIRCLE, fillColor, fillOpacity: 0.95, strokeColor: "#ffffff", strokeWeight: selected ? 2.2 : 1.4, scale: selected ? 9 : 7.4 },
-      });
+      const color = staleMin > STALE_MIN_THRESHOLD ? "#7A8699" : colorForVehiculoId(row?.vehiculo_id);
+      const size = selected ? 54 : 44;
+      const iconDataUrl = row.fotoUrl
+        ? crearIconoCircular(row.fotoUrl, color, () => setIconVersion((v) => v + 1))
+        : null;
+      const icon = iconDataUrl
+        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
+        : {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor: color,
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff",
+            strokeWeight: selected ? 2.2 : 1.4,
+            scale: selected ? 9 : 7.4
+          };
+      const activityLabel = row.activity_type ? ACTIVITY_LABELS[row.activity_type] || row.activity_type : "";
+      const title = [
+        `${row.placaLabel}${row.alias ? " — " + row.alias : ""}`,
+        row.speedKmh != null ? `${Math.round(row.speedKmh)} km/h` : null,
+        row.battery_pct != null ? `Bateria ${row.battery_pct}%` : null,
+        activityLabel || null
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, zIndex: selected ? 999 : undefined });
       marker.addListener("click", () => setSelectedId(row?.vehiculo_id));
       markersRef.current.push(marker);
     });
@@ -303,7 +568,7 @@ export default function SeguimientoVehiculosPanel() {
     if (rowsList.length > 0 && !autoFitDoneRef.current) { fitMap(); autoFitDoneRef.current = true; }
 
     return () => clearOverlays();
-  }, [rowsList, selectedId, trailPolylines, clearOverlays, fitMap]);
+  }, [rowsList, selectedId, trailPolylines, clearOverlays, fitMap, iconVersion]);
 
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -374,11 +639,97 @@ export default function SeguimientoVehiculosPanel() {
         </label>
       </div>
 
-      <div style={{ position: "relative", width: "100%", height: 460, borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+      <div
+        style={{
+          position: "relative", width: "100%", height: 480, borderRadius: 16, overflow: "hidden",
+          border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)"
+        }}
+      >
         <div ref={mapCanvasRef} style={{ width: "100%", height: "100%" }} />
         {!mapReady && !mapError && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc", color: "#64748b", fontSize: 13 }}>
             Cargando mapa...
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: 20, padding: 16, borderRadius: 14, border: "1px solid #e2e8f0",
+          background: "linear-gradient(135deg,#f8fafc,#f1f5f9)"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <h3 style={{ margin: 0, fontSize: 15, color: "#1e293b" }}>📊 Detalle de recorrido</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="date"
+              value={analyticsDate}
+              onChange={(e) => setAnalyticsDate(e.target.value)}
+              style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}
+            />
+            <button type="button" className="secondary-btn small" onClick={() => void calcularAnalitica()} disabled={loadingAnalytics}>
+              {loadingAnalytics ? "Calculando..." : "Calcular"}
+            </button>
+          </div>
+        </div>
+
+        {analyticsError ? <p className="warn-text">{analyticsError}</p> : null}
+
+        {selectedIds.length === 0 ? (
+          <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 10 }}>Selecciona al menos un vehiculo arriba para ver su recorrido.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {selectedIds.map((id) => {
+              const veh = vehiculoById[id];
+              const a = analyticsByVehiculo[id];
+              const actividadTop = a?.activityMinutes
+                ? Object.entries(a.activityMinutes).sort((x, y) => y[1] - x[1])[0]
+                : null;
+              return (
+                <div
+                  key={id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+                    padding: "10px 14px", borderRadius: 10, background: "#fff", border: "1px solid #e2e8f0"
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b", minWidth: 120 }}>
+                    {veh?.placa || "-"} {veh?.alias ? <span style={{ fontWeight: 500, color: "#64748b" }}>· {veh.alias}</span> : null}
+                  </div>
+                  {!a ? (
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos para esta fecha.</span>
+                  ) : (
+                    <>
+                      <div style={s.statBlock}>
+                        <span style={s.statLabel}>Recorrido</span>
+                        <strong style={s.statValue}>{a.distanciaKm.toFixed(1)} km</strong>
+                      </div>
+                      <div style={s.statBlock}>
+                        <span style={s.statLabel}>Vel. maxima</span>
+                        <strong style={s.statValue}>{Math.round(a.maxSpeedKmh)} km/h</strong>
+                      </div>
+                      <div style={s.statBlock}>
+                        <span style={s.statLabel}>Vel. promedio</span>
+                        <strong style={s.statValue}>{Math.round(a.avgSpeedKmh)} km/h</strong>
+                      </div>
+                      <div style={s.statBlock}>
+                        <span style={s.statLabel}>Frenadas bruscas</span>
+                        <strong style={{ ...s.statValue, color: a.frenadasBruscas > 0 ? "#dc2626" : "#1e293b" }}>
+                          {a.frenadasBruscas}
+                        </strong>
+                      </div>
+                      {actividadTop ? (
+                        <div style={s.statBlock}>
+                          <span style={s.statLabel}>Actividad principal</span>
+                          <strong style={s.statValue}>{ACTIVITY_LABELS[actividadTop[0]] || actividadTop[0]}</strong>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -408,6 +759,7 @@ export default function SeguimientoVehiculosPanel() {
                   Ultima actualizacion: hace {formatAgo(row.updated_at)}
                   {row.speedKmh != null ? ` · ${Math.round(row.speedKmh)} km/h` : ""}
                   {row.battery_pct != null ? ` · Bateria ${row.battery_pct}%` : ""}
+                  {row.activity_type ? ` · ${ACTIVITY_LABELS[row.activity_type] || row.activity_type}` : ""}
                 </div>
               </div>
               <span style={{ width: 10, height: 10, borderRadius: 5, background: row.staleMin > STALE_MIN_THRESHOLD ? "#94a3b8" : "#16a34a", flexShrink: 0 }} />
@@ -415,6 +767,134 @@ export default function SeguimientoVehiculosPanel() {
           ))
         )}
       </div>
+
+      <div style={{ marginTop: 24 }}>
+        <h3 style={{ fontSize: 15, color: "#1e293b", marginBottom: 8 }}>Vehiculos registrados</h3>
+        {vehiculos.length === 0 ? (
+          <p style={{ color: "#94a3b8", fontSize: 13 }}>No hay vehiculos registrados todavia.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 6 }}>
+            {vehiculos.map((v) => (
+              <div
+                key={v.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 10,
+                  border: "1px solid #e2e8f0", background: v.activo === false ? "#f8fafc" : "#fff"
+                }}
+              >
+                {v.foto_url ? (
+                  <img src={v.foto_url} alt={v.placa} style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover" }} />
+                ) : (
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🚗</div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: "#1e293b" }}>
+                    {v.placa} {v.alias ? <span style={{ fontWeight: 500, color: "#64748b" }}>· {v.alias}</span> : null}
+                    {v.activo === false ? <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#dc2626" }}>INACTIVO</span> : null}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                    {[v.marca, v.modelo, v.color].filter(Boolean).join(" · ") || "Sin datos adicionales"}
+                  </div>
+                </div>
+                <button type="button" className="secondary-btn small" onClick={() => abrirEdicion(v)}>
+                  ✏️ Editar
+                </button>
+                <button
+                  type="button"
+                  className="secondary-btn small"
+                  onClick={() => void eliminarVehiculo(v)}
+                  disabled={deletingId === v.id}
+                  style={{ color: "#dc2626", borderColor: "#fecaca" }}
+                >
+                  {deletingId === v.id ? "Eliminando..." : "🗑️ Eliminar"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editVehiculo ? (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16
+          }}
+          onClick={cerrarEdicion}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420 }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 14, color: "#1e293b" }}>Editar vehiculo</h3>
+
+            {editError ? <p className="warn-text" style={{ marginTop: 0 }}>{editError}</p> : null}
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Placa</label>
+            <input
+              type="text"
+              value={editForm.placa}
+              onChange={(e) => setEditForm((f) => ({ ...f, placa: e.target.value }))}
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
+            />
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Alias</label>
+            <input
+              type="text"
+              value={editForm.alias}
+              onChange={(e) => setEditForm((f) => ({ ...f, alias: e.target.value }))}
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Marca</label>
+                <input
+                  type="text"
+                  value={editForm.marca}
+                  onChange={(e) => setEditForm((f) => ({ ...f, marca: e.target.value }))}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Modelo</label>
+                <input
+                  type="text"
+                  value={editForm.modelo}
+                  onChange={(e) => setEditForm((f) => ({ ...f, modelo: e.target.value }))}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
+                />
+              </div>
+            </div>
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Color</label>
+            <input
+              type="text"
+              value={editForm.color}
+              onChange={(e) => setEditForm((f) => ({ ...f, color: e.target.value }))}
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
+            />
+
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#334155", marginTop: 6, marginBottom: 16 }}>
+              <input
+                type="checkbox"
+                checked={editForm.activo}
+                onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
+              />
+              Vehiculo activo (desmarcar detiene el rastreo remotamente)
+            </label>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button type="button" className="secondary-btn small" onClick={cerrarEdicion} disabled={savingEdit}>
+                Cancelar
+              </button>
+              <button type="button" className="secondary-btn small" onClick={() => void guardarEdicion()} disabled={savingEdit}>
+                {savingEdit ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
