@@ -94,11 +94,11 @@ export default function SeguimientoCompartidoPage() {
   }, []);
 
   const refrescarPosicion = useCallback(async (enlaceActual) => {
-    if (!enlaceActual?.tecnico_id) return;
+    if (!enlaceActual?.vehiculo_id) return;
     const { data: actual } = await supabase
-      .from("tecnico_ubicacion_actual")
+      .from("vehiculo_ubicacion_actual")
       .select("lat,lng,updated_at,battery_pct")
-      .eq("tecnico_id", String(enlaceActual.tecnico_id))
+      .eq("vehiculo_id", enlaceActual.vehiculo_id)
       .maybeSingle();
     if (actual && isValidCoord(Number(actual.lat), Number(actual.lng))) {
       setUltimaPosicion(actual);
@@ -124,9 +124,9 @@ export default function SeguimientoCompartidoPage() {
 
     const desde = new Date(Date.now() - TRAIL_WINDOW_MIN * 60 * 1000).toISOString();
     const { data: trail } = await supabase
-      .from("tecnico_ubicaciones")
+      .from("vehiculo_ubicaciones")
       .select("lat,lng,created_at")
-      .eq("tecnico_id", String(enlaceActual.tecnico_id))
+      .eq("vehiculo_id", enlaceActual.vehiculo_id)
       .gte("created_at", desde)
       .order("created_at", { ascending: true })
       .limit(600);

@@ -9004,11 +9004,23 @@ export default function App() {
   // (cuando la orden tiene coordenadas guardadas), o por vencimiento de
   // tiempo / boton manual en caso contrario.
   const compartirUbicacionConCliente = async (item) => {
-    const tecnicoUser = usuarios.find((u) => String(u.nombre || "").trim() === String(item.tecnico || "").trim());
-    if (!tecnicoUser?.id) {
-      alert("No se encontro el usuario del tecnico asignado — no se puede compartir su ubicacion.");
+    // El rastreo se basa en el VEHICULO asignado al tecnico (mas confiable,
+    // corre en segundo plano de forma continua), no en el celular personal
+    // del tecnico. El vehiculo debe tener "Tecnico asignado" configurado
+    // (registro movil o editor web de "Seguimiento vehiculos").
+    const tecnicoNombre = String(item.tecnico || "").trim();
+    const { data: vehiculo, error: vehError } = await supabase
+      .from("vehiculos")
+      .select("id,placa")
+      .ilike("tecnico_asignado", tecnicoNombre)
+      .maybeSingle();
+    if (vehError || !vehiculo?.id) {
+      alert(
+        `No hay un vehiculo con "Tecnico asignado" = "${tecnicoNombre}". Configuralo en Seguimiento vehiculos (editar vehiculo) para poder compartir su ubicacion.`
+      );
       return;
     }
+
     const horasTxt = window.prompt("¿Por cuantas horas quieres que el enlace este activo?", "4");
     if (horasTxt === null) return;
     const horas = Number(horasTxt) > 0 ? Number(horasTxt) : 4;
@@ -9026,7 +9038,7 @@ export default function App() {
       const { data, error } = await supabase
         .from("enlaces_seguimiento")
         .insert({
-          tecnico_id: String(tecnicoUser.id),
+          vehiculo_id: vehiculo.id,
           tecnico_nombre: item.tecnico || "",
           orden_id: item.id || null,
           orden_codigo: item.codigo || "",

@@ -324,7 +324,7 @@ export default function SeguimientoVehiculosPanel() {
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
 
   const [editVehiculo, setEditVehiculo] = useState(null);
-  const [editForm, setEditForm] = useState({ placa: "", alias: "", marca: "", modelo: "", color: "", activo: true, fotoUrl: "" });
+  const [editForm, setEditForm] = useState({ placa: "", alias: "", marca: "", modelo: "", color: "", tecnicoAsignado: "", activo: true, fotoUrl: "" });
   const [editFotoFile, setEditFotoFile] = useState(null);
   const [editFotoPreview, setEditFotoPreview] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
@@ -421,6 +421,7 @@ export default function SeguimientoVehiculosPanel() {
       marca: toText(v?.marca),
       modelo: toText(v?.modelo),
       color: toText(v?.color),
+      tecnicoAsignado: toText(v?.tecnico_asignado),
       activo: v?.activo !== false,
       fotoUrl: toText(v?.foto_url)
     });
@@ -465,6 +466,7 @@ export default function SeguimientoVehiculosPanel() {
           marca: toText(editForm.marca) || null,
           modelo: toText(editForm.modelo) || null,
           color: toText(editForm.color) || null,
+          tecnico_asignado: toText(editForm.tecnicoAsignado) || null,
           activo: !!editForm.activo,
           foto_url: fotoUrl || null
         })
@@ -1115,6 +1117,7 @@ export default function SeguimientoVehiculosPanel() {
                   </div>
                   <div style={{ fontSize: 12, color: "#94a3b8" }}>
                     {[v.marca, v.modelo, v.color].filter(Boolean).join(" · ") || "Sin datos adicionales"}
+                    {v.tecnico_asignado ? ` · 👷 ${v.tecnico_asignado}` : ""}
                   </div>
                 </div>
                 <button type="button" className="secondary-btn small" onClick={() => abrirEdicion(v)}>
@@ -1218,6 +1221,18 @@ export default function SeguimientoVehiculosPanel() {
               onChange={(e) => setEditForm((f) => ({ ...f, color: e.target.value }))}
               style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
             />
+
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Tecnico asignado</label>
+            <input
+              type="text"
+              value={editForm.tecnicoAsignado}
+              onChange={(e) => setEditForm((f) => ({ ...f, tecnicoAsignado: e.target.value }))}
+              placeholder="Nombre exacto del tecnico (como aparece en sus ordenes)"
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
+            />
+            <p style={{ fontSize: 11, color: "#94a3b8", marginTop: -6, marginBottom: 10 }}>
+              Se usa para relacionar este vehiculo con las ordenes de ese tecnico (ej. compartir ubicacion con el cliente).
+            </p>
 
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#334155", marginTop: 6, marginBottom: 16 }}>
               <input
