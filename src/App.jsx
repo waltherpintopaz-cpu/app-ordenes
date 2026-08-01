@@ -8999,6 +8999,58 @@ export default function App() {
     window.open(url, "_blank");
   };
 
+  // Genera un enlace publico (sin login) para que el cliente vea al tecnico
+  // acercandose en vivo — se cierra solo si llega a la direccion del cliente
+  // (cuando la orden tiene coordenadas guardadas), o por vencimiento de
+  // tiempo / boton manual en caso contrario.
+  const compartirUbicacionConCliente = async (item) => {
+    const tecnicoUser = usuarios.find((u) => String(u.nombre || "").trim() === String(item.tecnico || "").trim());
+    if (!tecnicoUser?.id) {
+      alert("No se encontro el usuario del tecnico asignado — no se puede compartir su ubicacion.");
+      return;
+    }
+    const horasTxt = window.prompt("¿Por cuantas horas quieres que el enlace este activo?", "4");
+    if (horasTxt === null) return;
+    const horas = Number(horasTxt) > 0 ? Number(horasTxt) : 4;
+    const expiraEn = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
+
+    let clienteLat = null;
+    let clienteLng = null;
+    const m = String(item.ubicacion || "").match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (m) {
+      clienteLat = Number(m[1]);
+      clienteLng = Number(m[2]);
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("enlaces_seguimiento")
+        .insert({
+          tecnico_id: String(tecnicoUser.id),
+          tecnico_nombre: item.tecnico || "",
+          orden_id: item.id || null,
+          orden_codigo: item.codigo || "",
+          cliente_nombre: item.nombre || "",
+          cliente_lat: clienteLat,
+          cliente_lng: clienteLng,
+          expira_en: expiraEn,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+
+      const url = `${window.location.origin}/seguimiento?t=${data.id}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        alert(`Enlace copiado al portapapeles (valido ${horas}h):\n\n${url}`);
+      } catch {
+        window.prompt("Copia este enlace para el cliente:", url);
+      }
+    } catch (e) {
+      alert("No se pudo generar el enlace: " + (e?.message || "error desconocido"));
+    }
+  };
+
   const _aplicarClienteInternoAOrden = async (clienteInterno, dni) => {
     setClienteEnDB(true);
     setOrden((prev) => ({
@@ -16208,6 +16260,7 @@ export default function App() {
                           <button onClick={() => llamarCliente(item.celular)} title="Llamar" style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>📞</button>
                           <button onClick={() => abrirWhatsApp(item.celular)} title="WhatsApp" style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#16a34a", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>💬</button>
                           <button onClick={() => navegarRuta(item.ubicacion, item.direccion)} title="Navegar" style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗺️</button>
+                          <button onClick={() => compartirUbicacionConCliente(item)} title="Compartir ubicacion con el cliente" style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4338ca", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🔗</button>
                         </div>
                       </div>
 
