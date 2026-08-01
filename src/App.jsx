@@ -1,10 +1,11 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import SeguimientoTecnicosPanel from "./components/SeguimientoTecnicosPanel";
+import SeguimientoVehiculosPanel from "./components/SeguimientoVehiculosPanel";
 import PlantaExternaPanel from "./components/PlantaExternaPanel";
 import InventarioPanel from "./components/InventarioPanel";
 import MapaPanel from "./components/MapaPanel";
@@ -208,6 +209,7 @@ const MENU_VISTAS_WEB = [
   { key: "consultaCliente", label: "Consulta API" },
   { key: "smartOlt", label: "Smart OLT" },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
+  { key: "seguimientoVehiculos", label: "Seguimiento vehiculos" },
   { key: "plantaExterna", label: "Planta externa" },
   { key: "inventario", label: "Inventario" },
   { key: "almacenes", label: "Almacenes" },
@@ -290,6 +292,7 @@ const MENU_LUCIDE_ICONS = {
   consultaApi:         Search,
   smartOlt:            Signal,
   seguimientoTecnicos: Users2,
+  seguimientoVehiculos: Truck,
   plantaExterna:       MapPin,
   inventario:          Package,
   almacenes:           Warehouse,
@@ -19553,6 +19556,8 @@ export default function App() {
         {vistaActiva === "seguimientoTecnicos" && (
           <SeguimientoTecnicosPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
         )}
+
+        {vistaActiva === "seguimientoVehiculos" && <SeguimientoVehiculosPanel />}
 
         {puedeVerPlantaExterna && vistaActiva === "plantaExterna" ? (
           <PlantaExternaPanel sessionUser={usuarioSesion} />
