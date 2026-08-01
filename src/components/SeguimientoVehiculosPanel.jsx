@@ -82,25 +82,32 @@ function crearIconoCircular(fotoUrl, color, onReady) {
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = () => {
-    ctx.clearRect(0, 0, size, size);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(img, 0, 0, size, size);
-    ctx.restore();
-    ctx.beginPath();
-    ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-    const dataUrl = canvas.toDataURL("image/png");
-    circleIconCache.set(cacheKey, dataUrl);
-    onReady?.(dataUrl);
+    try {
+      ctx.clearRect(0, 0, size, size);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(img, 0, 0, size, size);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      const dataUrl = canvas.toDataURL("image/png");
+      circleIconCache.set(cacheKey, dataUrl);
+      onReady?.(dataUrl);
+    } catch (e) {
+      // Canvas "tainted" por CORS u otro fallo al exportar — no cachear el
+      // fallo para permitir reintentar en el siguiente refresco, y caer al
+      // circulo de color mientras tanto en vez de romper el mapa.
+      console.warn("No se pudo generar el icono circular del vehiculo:", e);
+    }
   };
   img.onerror = () => {
-    circleIconCache.set(cacheKey, null);
+    console.warn("No se pudo cargar la foto del vehiculo para el icono:", fotoUrl);
   };
   img.src = fotoUrl;
   return null;
@@ -165,7 +172,9 @@ export default function SeguimientoVehiculosPanel() {
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
 
   const [editVehiculo, setEditVehiculo] = useState(null);
-  const [editForm, setEditForm] = useState({ placa: "", alias: "", marca: "", modelo: "", color: "", activo: true });
+  const [editForm, setEditForm] = useState({ placa: "", alias: "", marca: "", modelo: "", color: "", activo: true, fotoUrl: "" });
+  const [editFotoFile, setEditFotoFile] = useState(null);
+  const [editFotoPreview, setEditFotoPreview] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
@@ -223,19 +232,30 @@ export default function SeguimientoVehiculosPanel() {
   const abrirEdicion = useCallback((v) => {
     setEditError("");
     setEditVehiculo(v);
+    setEditFotoFile(null);
+    setEditFotoPreview("");
     setEditForm({
       placa: toText(v?.placa),
       alias: toText(v?.alias),
       marca: toText(v?.marca),
       modelo: toText(v?.modelo),
       color: toText(v?.color),
-      activo: v?.activo !== false
+      activo: v?.activo !== false,
+      fotoUrl: toText(v?.foto_url)
     });
   }, []);
 
   const cerrarEdicion = useCallback(() => {
     setEditVehiculo(null);
     setEditError("");
+    setEditFotoFile(null);
+    setEditFotoPreview("");
+  }, []);
+
+  const onElegirFotoEdicion = useCallback((file) => {
+    if (!file) return;
+    setEditFotoFile(file);
+    setEditFotoPreview(URL.createObjectURL(file));
   }, []);
 
   const guardarEdicion = useCallback(async () => {
@@ -245,6 +265,17 @@ export default function SeguimientoVehiculosPanel() {
     setSavingEdit(true);
     setEditError("");
     try {
+      let fotoUrl = editForm.fotoUrl || null;
+      if (editFotoFile) {
+        const path = `vehiculos/${placaLimpia}/${Date.now()}.jpg`;
+        const { error: upError } = await supabase.storage
+          .from("liquidaciones")
+          .upload(path, editFotoFile, { contentType: editFotoFile.type || "image/jpeg", upsert: true });
+        if (upError) throw upError;
+        const { data: urlData } = supabase.storage.from("liquidaciones").getPublicUrl(path);
+        fotoUrl = String(urlData?.publicUrl || fotoUrl || "");
+      }
+
       const { error: updError } = await supabase
         .from("vehiculos")
         .update({
@@ -253,18 +284,21 @@ export default function SeguimientoVehiculosPanel() {
           marca: toText(editForm.marca) || null,
           modelo: toText(editForm.modelo) || null,
           color: toText(editForm.color) || null,
-          activo: !!editForm.activo
+          activo: !!editForm.activo,
+          foto_url: fotoUrl || null
         })
         .eq("id", editVehiculo.id);
       if (updError) throw updError;
       setEditVehiculo(null);
+      setEditFotoFile(null);
+      setEditFotoPreview("");
       await cargarVehiculos();
     } catch (e) {
       setEditError(String(e?.message || "No se pudo guardar el vehiculo."));
     } finally {
       setSavingEdit(false);
     }
-  }, [editVehiculo, editForm, cargarVehiculos]);
+  }, [editVehiculo, editForm, editFotoFile, cargarVehiculos]);
 
   const eliminarVehiculo = useCallback(async (v) => {
     if (!v?.id) return;
@@ -829,6 +863,29 @@ export default function SeguimientoVehiculosPanel() {
             <h3 style={{ marginTop: 0, marginBottom: 14, color: "#1e293b" }}>Editar vehiculo</h3>
 
             {editError ? <p className="warn-text" style={{ marginTop: 0 }}>{editError}</p> : null}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              {editFotoPreview || editForm.fotoUrl ? (
+                <img
+                  src={editFotoPreview || editForm.fotoUrl}
+                  alt="Foto vehiculo"
+                  style={{ width: 64, height: 64, borderRadius: 12, objectFit: "cover", border: "1px solid #e2e8f0" }}
+                />
+              ) : (
+                <div style={{ width: 64, height: 64, borderRadius: 12, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>
+                  🚗
+                </div>
+              )}
+              <label className="secondary-btn small" style={{ cursor: "pointer" }}>
+                📷 {editForm.fotoUrl || editFotoPreview ? "Cambiar foto" : "Subir foto"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => onElegirFotoEdicion(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
 
             <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Placa</label>
             <input
