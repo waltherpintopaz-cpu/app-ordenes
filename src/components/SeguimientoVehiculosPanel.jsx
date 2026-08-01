@@ -316,6 +316,7 @@ export default function SeguimientoVehiculosPanel() {
   const [mapReady, setMapReady] = useState(false);
 
   const [vehiculos, setVehiculos] = useState([]);
+  const [tecnicos, setTecnicos] = useState([]);
   const [currentRows, setCurrentRows] = useState([]);
   const [trailByVehiculo, setTrailByVehiculo] = useState({});
   const [selectedIds, setSelectedIds] = useState([]);
@@ -369,6 +370,20 @@ export default function SeguimientoVehiculosPanel() {
       }
       return rows.map((v) => v.id);
     });
+  }, []);
+
+  const cargarTecnicos = useCallback(async () => {
+    const { data, error: fetchError } = await supabase
+      .from("usuarios")
+      .select("nombre,rol,activo")
+      .eq("rol", "Tecnico")
+      .order("nombre", { ascending: true });
+    if (fetchError) { setTecnicos([]); return; }
+    const nombres = (Array.isArray(data) ? data : [])
+      .filter((u) => u.activo !== false)
+      .map((u) => toText(u.nombre))
+      .filter(Boolean);
+    setTecnicos(nombres);
   }, []);
 
   const cargarUbicacionActual = useCallback(async () => {
@@ -650,14 +665,14 @@ export default function SeguimientoVehiculosPanel() {
     if (!isSupabaseConfigured) { setError("Supabase no esta configurado."); setLoading(false); return; }
     if (!silent) setError("");
     try {
-      await Promise.all([cargarVehiculos(), cargarUbicacionActual(), cargarOrdenesHoy()]);
+      await Promise.all([cargarVehiculos(), cargarUbicacionActual(), cargarOrdenesHoy(), cargarTecnicos()]);
       setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo cargar seguimiento de vehiculos."));
     } finally {
       setLoading(false);
     }
-  }, [cargarVehiculos, cargarUbicacionActual, cargarOrdenesHoy]);
+  }, [cargarVehiculos, cargarUbicacionActual, cargarOrdenesHoy, cargarTecnicos]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1223,13 +1238,19 @@ export default function SeguimientoVehiculosPanel() {
             />
 
             <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Tecnico asignado</label>
-            <input
-              type="text"
+            <select
               value={editForm.tecnicoAsignado}
               onChange={(e) => setEditForm((f) => ({ ...f, tecnicoAsignado: e.target.value }))}
-              placeholder="Nombre exacto del tecnico (como aparece en sus ordenes)"
-              style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0" }}
-            />
+              style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginTop: 4, marginBottom: 10, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff" }}
+            >
+              <option value="">— Sin asignar —</option>
+              {tecnicos.map((nombre) => (
+                <option key={nombre} value={nombre}>{nombre}</option>
+              ))}
+              {editForm.tecnicoAsignado && !tecnicos.includes(editForm.tecnicoAsignado) ? (
+                <option value={editForm.tecnicoAsignado}>{editForm.tecnicoAsignado} (no esta en la lista de tecnicos activos)</option>
+              ) : null}
+            </select>
             <p style={{ fontSize: 11, color: "#94a3b8", marginTop: -6, marginBottom: 10 }}>
               Se usa para relacionar este vehiculo con las ordenes de ese tecnico (ej. compartir ubicacion con el cliente).
             </p>
