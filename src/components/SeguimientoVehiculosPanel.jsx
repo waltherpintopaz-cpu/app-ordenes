@@ -634,13 +634,29 @@ export default function SeguimientoVehiculosPanel() {
     setCompartirError("");
     setCompartirCopiado(false);
     try {
-      const expiraEn = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
       const veh = vehiculoById[compartirVehiculo.vehiculo_id];
+      const tecnicoNombre = toText(veh?.tecnico_asignado);
+      if (!tecnicoNombre) {
+        setCompartirError('Este vehiculo no tiene "Tecnico asignado" — configuralo en "Editar vehiculo" antes de compartir.');
+        return;
+      }
+      const { data: tecnicoRow, error: tecError } = await supabase
+        .from("usuarios")
+        .select("id")
+        .ilike("nombre", tecnicoNombre)
+        .maybeSingle();
+      if (tecError || !tecnicoRow?.id) {
+        setCompartirError(`No se encontro un usuario tecnico llamado "${tecnicoNombre}" — revisa el nombre en "Editar vehiculo".`);
+        return;
+      }
+
+      const expiraEn = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from("enlaces_seguimiento")
         .insert({
           vehiculo_id: compartirVehiculo.vehiculo_id,
-          tecnico_nombre: veh?.tecnico_asignado || "",
+          tecnico_id: tecnicoRow.id,
+          tecnico_nombre: tecnicoNombre,
           expira_en: expiraEn
         })
         .select("id")
