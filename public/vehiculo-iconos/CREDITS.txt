@@ -1,0 +1,10 @@
+Iconos de vehiculos (vista superior), recortados y con fondo removido a
+partir de ilustraciones de stock de Freepik:
+
+- sedan.png: de la coleccion "modern-car-collection" (Freepik)
+- pickup.png, furgon.png: de "city-transport-top-view-set" (Freepik)
+
+Descargados con cuenta Freepik Premium — no requieren atribucion visible
+(licencia premium, secciones 7 y 8 de los terminos de uso de Freepik:
+http://www.freepik.com/terms_of_use). Conservar la licencia personalizada
+descargada desde https://profile.freepik.com/my_downloads como respaldo.
