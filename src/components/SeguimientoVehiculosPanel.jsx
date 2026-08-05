@@ -259,16 +259,26 @@ const roundHeadingBucket = (bearing) => {
   if (bearing == null || !Number.isFinite(bearing)) return null;
   return Math.round(bearing / HEADING_BUCKET_DEG) * HEADING_BUCKET_DEG % 360;
 };
-function crearIconoVehiculoConRumbo(fotoUrl, color, bearing, onReady) {
+// Velocidad redondeada a intervalos de 5 km/h — igual que con el rumbo, para
+// que el badge no obligue a regenerar el icono con cada micro-fluctuacion.
+const SPEED_BADGE_BUCKET = 5;
+const roundSpeedBucket = (kmh) => {
+  if (kmh == null || !Number.isFinite(kmh) || kmh < 0) return null;
+  return Math.round(kmh / SPEED_BADGE_BUCKET) * SPEED_BADGE_BUCKET;
+};
+
+function crearIconoVehiculoConRumbo(fotoUrl, color, bearing, speedKmh, onReady) {
   const bucket = roundHeadingBucket(bearing);
-  const cacheKey = `${fotoUrl}|${color}|${bucket}`;
+  const speedBucket = roundSpeedBucket(speedKmh);
+  const cacheKey = `${fotoUrl}|${color}|${bucket}|${speedBucket}`;
   if (circleIconCache.has(cacheKey)) return circleIconCache.get(cacheKey);
   if (!fotoUrl) return null;
 
   const size = 60;
+  const badgeH = 18; // reservado siempre, asi el marcador tiene un tamaño/anchor fijo aunque no haya velocidad aun
   const canvas = document.createElement("canvas");
   canvas.width = size;
-  canvas.height = size;
+  canvas.height = size + badgeH;
   const ctx = canvas.getContext("2d");
   const radius = size / 2 - 5;
 
@@ -276,7 +286,7 @@ function crearIconoVehiculoConRumbo(fotoUrl, color, bearing, onReady) {
   img.crossOrigin = "anonymous";
   img.onload = () => {
     try {
-      ctx.clearRect(0, 0, size, size);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
       ctx.beginPath();
       ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
@@ -305,6 +315,33 @@ function crearIconoVehiculoConRumbo(fotoUrl, color, bearing, onReady) {
         ctx.strokeStyle = "#ffffff";
         ctx.stroke();
         ctx.restore();
+      }
+
+      if (speedBucket != null) {
+        const label = `${speedBucket} km/h`;
+        ctx.font = "bold 11px sans-serif";
+        const textW = ctx.measureText(label).width;
+        const pillW = textW + 14;
+        const pillX = size / 2 - pillW / 2;
+        const pillY = size - 2;
+        const pillH = badgeH;
+        const speedColor = colorForSpeedKmh(speedBucket);
+        ctx.beginPath();
+        ctx.moveTo(pillX + pillH / 2, pillY);
+        ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + pillH, pillH / 2);
+        ctx.arcTo(pillX + pillW, pillY + pillH, pillX, pillY + pillH, pillH / 2);
+        ctx.arcTo(pillX, pillY + pillH, pillX, pillY, pillH / 2);
+        ctx.arcTo(pillX, pillY, pillX + pillW, pillY, pillH / 2);
+        ctx.closePath();
+        ctx.fillStyle = speedColor;
+        ctx.fill();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, pillX + pillW / 2, pillY + pillH / 2 + 0.5);
       }
 
       const dataUrl = canvas.toDataURL("image/png");
@@ -420,6 +457,8 @@ export default function SeguimientoVehiculosPanel() {
   const [playbackSpeed, setPlaybackSpeed] = useState(20);
   const playbackMarkerRef = useRef(null);
   const playbackHeadingBucketRef = useRef(null);
+  const playbackSpeedBucketRef = useRef(null);
+  const playbackLastBearingRef = useRef(null);
   const playbackLineDoneRef = useRef([]);
   const playbackLineRestRef = useRef(null);
   const playbackLineActiveRef = useRef(null);
@@ -917,6 +956,29 @@ export default function SeguimientoVehiculosPanel() {
     snapPolylinesRef.current = [];
   }, []);
 
+  // Google Maps no tiene zoom animado nativo (setZoom es instantaneo) — se
+  // simula suave escalonando el zoom en pasos cortos, como el "salto" de
+  // camara al seleccionar un viaje en Uber/InDrive.
+  const zoomSuaveRef = useRef(null);
+  const zoomSuaveHacia = useCallback((map, targetZoom, targetPos) => {
+    if (!map) return;
+    if (zoomSuaveRef.current) clearInterval(zoomSuaveRef.current);
+    map.panTo(targetPos);
+    const startZoom = map.getZoom() ?? targetZoom;
+    const steps = 10;
+    const stepMs = 40;
+    let i = 0;
+    zoomSuaveRef.current = setInterval(() => {
+      i += 1;
+      const z = startZoom + (targetZoom - startZoom) * (i / steps);
+      map.setZoom(Math.round(z));
+      if (i >= steps) {
+        clearInterval(zoomSuaveRef.current);
+        zoomSuaveRef.current = null;
+      }
+    }, stepMs);
+  }, []);
+
   const fitMap = useCallback(() => {
     if (!mapRef.current || !mapsRef.current) return;
     const coords = rowsList.map((row) => ({ lat: Number(row?.lat), lng: Number(row?.lng) })).filter((p) => isValidCoord(p.lat, p.lng));
@@ -1015,10 +1077,10 @@ export default function SeguimientoVehiculosPanel() {
       }
 
       const iconDataUrl = row.fotoUrl
-        ? crearIconoVehiculoConRumbo(row.fotoUrl, color, heading, () => setIconVersion((v) => v + 1))
+        ? crearIconoVehiculoConRumbo(row.fotoUrl, color, heading, row.speedKmh, () => setIconVersion((v) => v + 1))
         : null;
       const icon = iconDataUrl
-        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
+        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size + 18), anchor: new maps.Point(size / 2, size / 2) }
         : {
             path: maps.SymbolPath.CIRCLE,
             fillColor: color,
@@ -1206,6 +1268,8 @@ export default function SeguimientoVehiculosPanel() {
       playbackLineActiveRef.current = null;
       playbackSegmentIdxRef.current = 0;
       playbackHeadingBucketRef.current = null;
+      playbackSpeedBucketRef.current = null;
+      playbackLastBearingRef.current = null;
     };
     clearPlayback();
 
@@ -1215,12 +1279,15 @@ export default function SeguimientoVehiculosPanel() {
       playbackLineActiveRef.current = new maps.Polyline({ map, path: [full[0], full[0]], strokeColor: colorForSpeedKmh(0), strokeOpacity: 0.95, strokeWeight: 5 });
 
       const veh = vehiculoById[playbackVehiculoId];
-      const iconDataUrl = veh?.foto_url ? crearIconoVehiculoConRumbo(veh.foto_url, "#7C3AED", null, () => setIconVersion((v) => v + 1)) : null;
+      const primerSpeedKmh = Number.isFinite(playbackPoints[0]?.speedMps) ? playbackPoints[0].speedMps * 3.6 : null;
+      const iconDataUrl = veh?.foto_url
+        ? crearIconoVehiculoConRumbo(veh.foto_url, "#7C3AED", null, primerSpeedKmh, () => setIconVersion((v) => v + 1))
+        : null;
       playbackMarkerRef.current = new maps.Marker({
         map,
         position: full[0],
         icon: iconDataUrl
-          ? { url: iconDataUrl, scaledSize: new maps.Size(52, 52), anchor: new maps.Point(26, 26) }
+          ? { url: iconDataUrl, scaledSize: new maps.Size(52, 70), anchor: new maps.Point(26, 26) }
           : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
         zIndex: 1000
       });
@@ -1244,16 +1311,20 @@ export default function SeguimientoVehiculosPanel() {
     const anterior = playbackPoints[idx];
     const siguiente = playbackPoints[Math.min(idx + 1, playbackPoints.length - 1)];
     if (haversineKm(anterior, siguiente) * 1000 > 1) {
-      const rumbo = bearingDeg(anterior, siguiente);
-      const bucket = roundHeadingBucket(rumbo);
-      if (bucket !== playbackHeadingBucketRef.current) {
-        playbackHeadingBucketRef.current = bucket;
-        const veh = vehiculoById[playbackVehiculoId];
-        if (veh?.foto_url) {
-          const iconDataUrl = crearIconoVehiculoConRumbo(veh.foto_url, "#7C3AED", rumbo, () => setIconVersion((v) => v + 1));
-          if (iconDataUrl) {
-            playbackMarkerRef.current.setIcon({ url: iconDataUrl, scaledSize: new maps.Size(52, 52), anchor: new maps.Point(26, 26) });
-          }
+      playbackLastBearingRef.current = bearingDeg(anterior, siguiente);
+    }
+    const rumboActual = playbackLastBearingRef.current;
+    const headingBucket = roundHeadingBucket(rumboActual);
+    const speedKmhActual = Number.isFinite(playbackCurrent.speedMps) && playbackCurrent.speedMps >= 0 ? playbackCurrent.speedMps * 3.6 : null;
+    const speedBucket = roundSpeedBucket(speedKmhActual);
+    if (headingBucket !== playbackHeadingBucketRef.current || speedBucket !== playbackSpeedBucketRef.current) {
+      playbackHeadingBucketRef.current = headingBucket;
+      playbackSpeedBucketRef.current = speedBucket;
+      const veh = vehiculoById[playbackVehiculoId];
+      if (veh?.foto_url) {
+        const iconDataUrl = crearIconoVehiculoConRumbo(veh.foto_url, "#7C3AED", rumboActual, speedKmhActual, () => setIconVersion((v) => v + 1));
+        if (iconDataUrl) {
+          playbackMarkerRef.current.setIcon({ url: iconDataUrl, scaledSize: new maps.Size(52, 70), anchor: new maps.Point(26, 26) });
         }
       }
     }
@@ -1626,7 +1697,12 @@ export default function SeguimientoVehiculosPanel() {
           rowsList.map((row) => (
             <div
               key={row.vehiculo_id}
-              onClick={() => { setSelectedId(row.vehiculo_id); if (mapRef.current && isValidCoord(Number(row.lat), Number(row.lng))) { mapRef.current.panTo({ lat: Number(row.lat), lng: Number(row.lng) }); mapRef.current.setZoom(16); } }}
+              onClick={() => {
+                setSelectedId(row.vehiculo_id);
+                if (isValidCoord(Number(row.lat), Number(row.lng))) {
+                  zoomSuaveHacia(mapRef.current, 16, { lat: Number(row.lat), lng: Number(row.lng) });
+                }
+              }}
               style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, cursor: "pointer",
                 border: `1px solid ${row.vehiculo_id === selectedId ? colorForVehiculoId(row.vehiculo_id) : "#e2e8f0"}`,
