@@ -17,6 +17,10 @@ const STALE_MIN_THRESHOLD = 3;
 // Velocidad urbana asumida para el ETA (no hay API de rutas de por medio,
 // solo distancia en linea recta / esta velocidad) — ajustable si hace falta.
 const ASSUMED_AVG_SPEED_KMH = 28;
+// Distancia y velocidad bajo las cuales se considera que el tecnico
+// "llego" a la orden (para el halo pulsante en el mapa).
+const ARRIVAL_KM = 0.08;
+const ARRIVAL_STOPPED_KMH = 5;
 
 const toText = (value) => String(value ?? "").trim();
 const isValidCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
@@ -439,6 +443,7 @@ export default function SeguimientoVehiculosPanel() {
   const [ordenesHoy, setOrdenesHoy] = useState([]);
   const [showOrdenes, setShowOrdenes] = useState(true);
   const orderMarkersRef = useRef([]);
+  const arrivedPulsesRef = useRef([]);
 
   const [iconVersion, setIconVersion] = useState(0);
   const [analyticsDate, setAnalyticsDate] = useState(() => todayLocalDateStr());
@@ -964,6 +969,23 @@ export default function SeguimientoVehiculosPanel() {
       .sort((a, b) => new Date(b?.updated_at || 0).getTime() - new Date(a?.updated_at || 0).getTime());
   }, [ubicacionesVisibles, vehiculoById, ordenesHoy]);
 
+  // Ordenes donde el vehiculo del tecnico asignado esta detenido justo al
+  // lado — se marcan como "en sitio" para encender el halo pulsante.
+  const arrivedOrderIds = useMemo(() => {
+    const ids = new Set();
+    ordenesHoy.forEach((orden) => {
+      if (orden.estado !== "Pendiente" || !orden.coords) return;
+      const tecnico = toText(orden.tecnico);
+      if (!tecnico) return;
+      const veh = rowsList.find((row) => toText(vehiculoById[row.vehiculo_id]?.tecnico_asignado) === tecnico);
+      if (!veh || !isValidCoord(Number(veh.lat), Number(veh.lng))) return;
+      if (veh.speedKmh != null && veh.speedKmh > ARRIVAL_STOPPED_KMH) return;
+      const distKm = haversineKm({ lat: Number(veh.lat), lng: Number(veh.lng) }, orden.coords);
+      if (distKm <= ARRIVAL_KM) ids.add(orden.id);
+    });
+    return ids;
+  }, [ordenesHoy, rowsList, vehiculoById]);
+
   const trailPolylines = useMemo(() => {
     if (!showTrail) return [];
     const visibles = new Set(ubicacionesVisibles.map((row) => row?.vehiculo_id).filter(Boolean));
@@ -985,6 +1007,7 @@ export default function SeguimientoVehiculosPanel() {
   const clearOrderOverlays = useCallback(() => {
     orderMarkersRef.current.forEach((m) => { try { m.setMap(null); } catch { /* noop */ } });
     orderMarkersRef.current = [];
+    arrivedPulsesRef.current = [];
   }, []);
 
   const clearSnapOverlays = useCallback(() => {
@@ -1210,6 +1233,20 @@ export default function SeguimientoVehiculosPanel() {
           entry.pulse.setOptions({ fillOpacity: opacity });
         } catch { /* noop */ }
       });
+
+      // Halo verde en las ordenes donde el tecnico ya llego — pulso mas lento
+      // y suave, distinto al de los vehiculos en movimiento.
+      const ARRIVAL_PULSE_PERIOD_MS = 2600;
+      const arrivalPhase = (now % ARRIVAL_PULSE_PERIOD_MS) / ARRIVAL_PULSE_PERIOD_MS;
+      arrivedPulsesRef.current.forEach((pulse) => {
+        const radius = 16 + arrivalPhase * 34;
+        const opacity = 0.32 * (1 - arrivalPhase);
+        try {
+          pulse.setRadius(radius);
+          pulse.setOptions({ fillOpacity: opacity });
+        } catch { /* noop */ }
+      });
+
       pulseRafRef.current = requestAnimationFrame(tick);
     };
     pulseRafRef.current = requestAnimationFrame(tick);
@@ -1265,11 +1302,26 @@ export default function SeguimientoVehiculosPanel() {
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
         orderMarkersRef.current.push(marker);
+
+        if (arrivedOrderIds.has(orden.id)) {
+          const pulse = new maps.Circle({
+            map,
+            center: orden.coords,
+            radius: 16,
+            fillColor: "#16A34A",
+            fillOpacity: 0.3,
+            strokeOpacity: 0,
+            clickable: false,
+            zIndex: 400
+          });
+          orderMarkersRef.current.push(pulse);
+          arrivedPulsesRef.current.push(pulse);
+        }
       });
     }
 
     return () => clearOrderOverlays();
-  }, [ordenesHoy, showOrdenes, clearOrderOverlays, mapReady]);
+  }, [ordenesHoy, showOrdenes, clearOrderOverlays, mapReady, arrivedOrderIds]);
 
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return undefined;
