@@ -276,54 +276,96 @@ const roundHeadingBucket = (bearing) => {
   if (bearing == null || !Number.isFinite(bearing)) return null;
   return Math.round(bearing / HEADING_BUCKET_DEG) * HEADING_BUCKET_DEG % 360;
 };
-// Velocidad redondeada a intervalos de 5 km/h — igual que con el rumbo, para
-// que el badge no obligue a regenerar el icono con cada micro-fluctuacion.
-const SPEED_BADGE_BUCKET = 5;
-const roundSpeedBucket = (kmh) => {
-  if (kmh == null || !Number.isFinite(kmh) || kmh < 0) return null;
-  return Math.round(kmh / SPEED_BADGE_BUCKET) * SPEED_BADGE_BUCKET;
+// Icono del vehiculo en el mapa: silueta vista desde arriba que gira segun
+// el rumbo — el mismo estilo que usan InDrive/Uber/Google Maps para mostrar
+// autos en movimiento, en vez de una foto de perfil o un icono con flecha
+// aparte. La foto real del vehiculo pasa a ser solo informativa (se ve al
+// tocar el marcador). El color del cuerpo es el mismo que ya se usaba para
+// distinguir el vehiculo/estado; el tipo de carroceria cambia la silueta;
+// la escalera se dibuja como una parrilla en el techo (no como insignia
+// aparte), asi se ve integrada al propio vehiculo.
+const roundedRectPath = (ctx, x, y, w, h, r) => {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arcTo(x + w, y, x + w, y + rr, rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y + rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
+  ctx.closePath();
 };
+const roundedRectCentered = (ctx, cx, cy, w, h, r) => roundedRectPath(ctx, cx - w / 2, cy - h / 2, w, h, r);
+const GLASS_FILL = "rgba(15,23,42,0.32)";
 
-// Icono del vehiculo en el mapa: en vez de la foto (que ahora es solo
-// informativa, visible al tocar el marcador), se dibuja un icono vectorial
-// segun el tipo de carroceria — igual tecnica que crearIconoOrden (paths
-// reales de Lucide con Path2D), asi se reconoce de un vistazo si es un
-// sedan, pickup, furgon o moto sin depender de que el tecnico haya subido
-// una foto nitida. Si el vehiculo tiene escalera, se agrega una pequeña
-// insignia circular en la esquina superior derecha.
 const VEHICLE_TYPE_ICON = {
   sedan: {
     label: "Sedan",
-    paths: [
-      "M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2",
-      "M9 17h6"
-    ],
-    circles: [{ cx: 7, cy: 17, r: 2 }, { cx: 17, cy: 17, r: 2 }]
+    w: 15,
+    l: 29,
+    r: 6,
+    draw(ctx, color) {
+      roundedRectCentered(ctx, 0, 0, this.w, this.l, 6);
+      ctx.fillStyle = color;
+      ctx.fill();
+      roundedRectCentered(ctx, 0, -1, 9, 14, 3);
+      ctx.fillStyle = GLASS_FILL;
+      ctx.fill();
+    }
   },
   pickup: {
     label: "Pickup / Camioneta",
-    paths: [
-      "M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2",
-      "M15 18H9",
-      "M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"
-    ],
-    circles: [{ cx: 17, cy: 18, r: 2 }, { cx: 7, cy: 18, r: 2 }]
+    w: 15,
+    l: 31,
+    r: 5,
+    draw(ctx, color) {
+      roundedRectCentered(ctx, 0, 0, this.w, this.l, 5);
+      ctx.fillStyle = color;
+      ctx.fill();
+      roundedRectCentered(ctx, 0, -9, 9, 10, 3);
+      ctx.fillStyle = GLASS_FILL;
+      ctx.fill();
+      roundedRectCentered(ctx, 0, 9, 12, 12, 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+    }
   },
   furgon: {
     label: "Furgon / Van",
-    paths: [
-      "M8 6v6",
-      "M15 6v6",
-      "M2 12h19.6",
-      "M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3",
-      "M9 18h5"
-    ],
-    circles: [{ cx: 7, cy: 18, r: 2 }, { cx: 16, cy: 18, r: 2 }]
+    w: 17,
+    l: 30,
+    r: 3,
+    draw(ctx, color) {
+      roundedRectCentered(ctx, 0, 0, this.w, this.l, 3);
+      ctx.fillStyle = color;
+      ctx.fill();
+      roundedRectCentered(ctx, 0, -1, 13, 24, 3);
+      ctx.fillStyle = GLASS_FILL;
+      ctx.fill();
+    }
   },
   moto: {
     label: "Moto",
-    paths: ["M12 17.5V14l-3-3 4-3 2 3h2"],
-    circles: [{ cx: 18.5, cy: 17.5, r: 3.5 }, { cx: 5.5, cy: 17.5, r: 3.5 }, { cx: 15, cy: 5, r: 1 }]
+    w: 6.5,
+    l: 24,
+    r: 3.2,
+    draw(ctx, color) {
+      roundedRectCentered(ctx, 0, 0, this.w, this.l, 3.2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 4, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = GLASS_FILL;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, -10, 1.3, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+    }
   }
 };
 const VEHICLE_TYPE_DEFAULT = "sedan";
@@ -334,137 +376,64 @@ const VEHICLE_TYPE_OPTIONS = [
   { value: "moto", label: "Moto" }
 ];
 
+// Parrilla/escalera en el techo: dos rieles a lo largo + travesaños, como
+// una baca real — gira junto con el vehiculo en vez de ser un sticker fijo.
+const drawLadderRack = (ctx, bodyW) => {
+  const railX = Math.min(bodyW * 0.32, 4.6);
+  const topY = -7;
+  const botY = 7;
+  ctx.strokeStyle = "#F59E0B";
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-railX, topY);
+  ctx.lineTo(-railX, botY);
+  ctx.moveTo(railX, topY);
+  ctx.lineTo(railX, botY);
+  for (let i = 0; i < 3; i++) {
+    const ry = topY + (botY - topY) * ((i + 1) / 4);
+    ctx.moveTo(-railX, ry);
+    ctx.lineTo(railX, ry);
+  }
+  ctx.stroke();
+};
+
 const vehicleTypeIconCache = new Map();
-function crearIconoVehiculoTipo(tipoVehiculo, tieneEscalera, color, bearing, speedKmh) {
+function crearIconoVehiculoTipo(tipoVehiculo, tieneEscalera, color, bearing) {
   const tipo = VEHICLE_TYPE_ICON[tipoVehiculo] ? tipoVehiculo : VEHICLE_TYPE_DEFAULT;
-  const icono = VEHICLE_TYPE_ICON[tipo];
-  const bucket = roundHeadingBucket(bearing);
-  const speedBucket = roundSpeedBucket(speedKmh);
-  const cacheKey = `${tipo}|${tieneEscalera ? 1 : 0}|${color}|${bucket}|${speedBucket}`;
+  const cuerpo = VEHICLE_TYPE_ICON[tipo];
+  const bucket = roundHeadingBucket(bearing) ?? 0;
+  const cacheKey = `${tipo}|${tieneEscalera ? 1 : 0}|${color}|${bucket}`;
   if (vehicleTypeIconCache.has(cacheKey)) return vehicleTypeIconCache.get(cacheKey);
 
   try {
-    const size = 60;
-    const badgeH = 18; // reservado siempre, asi el marcador tiene un tamaño/anchor fijo aunque no haya velocidad aun
+    const size = 46;
     const canvas = document.createElement("canvas");
     canvas.width = size;
-    canvas.height = size + badgeH;
+    canvas.height = size;
     const ctx = canvas.getContext("2d");
-    const radius = size / 2 - 5;
     const cx = size / 2;
     const cy = size / 2;
 
-    // Circulo de fondo: el color denota el estado (en vivo/detenido) o si
-    // esta seleccionado, igual que antes con la foto.
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.shadowColor = "rgba(15,23,42,0.35)";
-    ctx.shadowBlur = 4;
-    ctx.fill();
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((bucket * Math.PI) / 180);
+
+    ctx.shadowColor = "rgba(15,23,42,0.4)";
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 0.5;
+    cuerpo.draw(ctx, color);
+    ctx.shadowColor = "transparent";
     ctx.shadowBlur = 0;
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = "#ffffff";
+    // Contorno blanco fino para que se despegue del mapa base.
+    roundedRectCentered(ctx, 0, 0, cuerpo.w, cuerpo.l, cuerpo.r);
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
     ctx.stroke();
 
-    // Icono del tipo de vehiculo, en blanco, centrado (paths viewBox 24x24).
-    ctx.save();
-    const iconSize = radius * 1.3;
-    const scale = iconSize / 24;
-    ctx.translate(cx - iconSize / 2, cy - iconSize / 2);
-    ctx.scale(scale, scale);
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2.3;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    (icono.paths || []).forEach((d) => ctx.stroke(new Path2D(d)));
-    (icono.circles || []).forEach((c) => {
-      ctx.beginPath();
-      ctx.arc(c.cx, c.cy, c.r, 0, Math.PI * 2);
-      ctx.stroke();
-    });
+    if (tieneEscalera) drawLadderRack(ctx, cuerpo.w);
+
     ctx.restore();
-
-    if (bucket != null) {
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate((bucket * Math.PI) / 180);
-      ctx.beginPath();
-      ctx.moveTo(0, -radius - 7);
-      ctx.lineTo(-6, -radius + 3);
-      ctx.lineTo(6, -radius + 3);
-      ctx.closePath();
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.lineWidth = 1.3;
-      ctx.strokeStyle = "#ffffff";
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Insignia de "tiene escalera": circulo blanco con icono de escalera en
-    // ambar, en la esquina superior derecha — independiente del tipo de
-    // vehiculo (un sedan, pickup o furgon pueden traer escalera por igual).
-    if (tieneEscalera) {
-      const bx = cx + radius * 0.62;
-      const by = cy - radius * 0.62;
-      const br = 9.5;
-      ctx.beginPath();
-      ctx.arc(bx, by, br, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.shadowColor = "rgba(15,23,42,0.35)";
-      ctx.shadowBlur = 2;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = 1.4;
-      ctx.strokeStyle = "#F59E0B";
-      ctx.stroke();
-      ctx.strokeStyle = "#F59E0B";
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = "round";
-      const lx = bx - 3.4;
-      const rx = bx + 3.4;
-      const topY = by - 5;
-      const botY = by + 5;
-      ctx.beginPath();
-      ctx.moveTo(lx, topY);
-      ctx.lineTo(lx, botY);
-      ctx.moveTo(rx, topY);
-      ctx.lineTo(rx, botY);
-      for (let i = 0; i < 3; i++) {
-        const ry = topY + (botY - topY) * ((i + 1) / 4);
-        ctx.moveTo(lx, ry);
-        ctx.lineTo(rx, ry);
-      }
-      ctx.stroke();
-    }
-
-    if (speedBucket != null) {
-      const label = `${speedBucket} km/h`;
-      ctx.font = "bold 11px sans-serif";
-      const textW = ctx.measureText(label).width;
-      const pillW = textW + 14;
-      const pillX = cx - pillW / 2;
-      const pillY = size - 2;
-      const pillH = badgeH;
-      const speedColor = colorForSpeedKmh(speedBucket);
-      ctx.beginPath();
-      ctx.moveTo(pillX + pillH / 2, pillY);
-      ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + pillH, pillH / 2);
-      ctx.arcTo(pillX + pillW, pillY + pillH, pillX, pillY + pillH, pillH / 2);
-      ctx.arcTo(pillX, pillY + pillH, pillX, pillY, pillH / 2);
-      ctx.arcTo(pillX, pillY, pillX + pillW, pillY, pillH / 2);
-      ctx.closePath();
-      ctx.fillStyle = speedColor;
-      ctx.fill();
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = "#ffffff";
-      ctx.stroke();
-      ctx.fillStyle = "#ffffff";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, pillX + pillW / 2, pillY + pillH / 2 + 0.5);
-    }
 
     const dataUrl = canvas.toDataURL("image/png");
     vehicleTypeIconCache.set(cacheKey, dataUrl);
@@ -595,7 +564,6 @@ export default function SeguimientoVehiculosPanel() {
   const [playbackSpeed, setPlaybackSpeed] = useState(20);
   const playbackMarkerRef = useRef(null);
   const playbackHeadingBucketRef = useRef(null);
-  const playbackSpeedBucketRef = useRef(null);
   const playbackLastBearingRef = useRef(null);
   const playbackLineDoneRef = useRef([]);
   const playbackLineRestRef = useRef(null);
@@ -1355,9 +1323,9 @@ export default function SeguimientoVehiculosPanel() {
         if (movedM > 2) heading = bearingDeg(entry.pos, { lat, lng });
       }
 
-      const iconDataUrl = crearIconoVehiculoTipo(row.tipoVehiculo, row.tieneEscalera, color, heading, row.speedKmh);
+      const iconDataUrl = crearIconoVehiculoTipo(row.tipoVehiculo, row.tieneEscalera, color, heading);
       const icon = iconDataUrl
-        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size + 18), anchor: new maps.Point(size / 2, size / 2) }
+        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
         : {
             path: maps.SymbolPath.CIRCLE,
             fillColor: color,
@@ -1577,7 +1545,6 @@ export default function SeguimientoVehiculosPanel() {
       playbackLineActiveRef.current = null;
       playbackSegmentIdxRef.current = 0;
       playbackHeadingBucketRef.current = null;
-      playbackSpeedBucketRef.current = null;
       playbackLastBearingRef.current = null;
     };
     clearPlayback();
@@ -1588,13 +1555,12 @@ export default function SeguimientoVehiculosPanel() {
       playbackLineActiveRef.current = new maps.Polyline({ map, path: [full[0], full[0]], strokeColor: colorForSpeedKmh(0), strokeOpacity: 0.95, strokeWeight: 5 });
 
       const veh = vehiculoById[playbackVehiculoId];
-      const primerSpeedKmh = Number.isFinite(playbackPoints[0]?.speedMps) ? playbackPoints[0].speedMps * 3.6 : null;
-      const iconDataUrl = crearIconoVehiculoTipo(veh?.tipo_vehiculo, veh?.tiene_escalera, "#7C3AED", null, primerSpeedKmh);
+      const iconDataUrl = crearIconoVehiculoTipo(veh?.tipo_vehiculo, veh?.tiene_escalera, "#7C3AED", null);
       playbackMarkerRef.current = new maps.Marker({
         map,
         position: full[0],
         icon: iconDataUrl
-          ? { url: iconDataUrl, scaledSize: new maps.Size(52, 70), anchor: new maps.Point(26, 26) }
+          ? { url: iconDataUrl, scaledSize: new maps.Size(46, 46), anchor: new maps.Point(23, 23) }
           : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
         zIndex: 1000
       });
@@ -1622,15 +1588,12 @@ export default function SeguimientoVehiculosPanel() {
     }
     const rumboActual = playbackLastBearingRef.current;
     const headingBucket = roundHeadingBucket(rumboActual);
-    const speedKmhActual = Number.isFinite(playbackCurrent.speedMps) && playbackCurrent.speedMps >= 0 ? playbackCurrent.speedMps * 3.6 : null;
-    const speedBucket = roundSpeedBucket(speedKmhActual);
-    if (headingBucket !== playbackHeadingBucketRef.current || speedBucket !== playbackSpeedBucketRef.current) {
+    if (headingBucket !== playbackHeadingBucketRef.current) {
       playbackHeadingBucketRef.current = headingBucket;
-      playbackSpeedBucketRef.current = speedBucket;
       const veh = vehiculoById[playbackVehiculoId];
-      const iconDataUrl = crearIconoVehiculoTipo(veh?.tipo_vehiculo, veh?.tiene_escalera, "#7C3AED", rumboActual, speedKmhActual);
+      const iconDataUrl = crearIconoVehiculoTipo(veh?.tipo_vehiculo, veh?.tiene_escalera, "#7C3AED", rumboActual);
       if (iconDataUrl) {
-        playbackMarkerRef.current.setIcon({ url: iconDataUrl, scaledSize: new maps.Size(52, 70), anchor: new maps.Point(26, 26) });
+        playbackMarkerRef.current.setIcon({ url: iconDataUrl, scaledSize: new maps.Size(46, 46), anchor: new maps.Point(23, 23) });
       }
     }
 
