@@ -458,6 +458,15 @@ export default function SeguimientoVehiculosPanel() {
   const [editError, setEditError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
 
+  // Compartir ubicacion en vivo de un vehiculo por enlace publico, con
+  // duracion configurable — para mandarselo a un cliente o a quien lo pida.
+  const [compartirVehiculo, setCompartirVehiculo] = useState(null);
+  const [compartirHoras, setCompartirHoras] = useState(4);
+  const [compartirLink, setCompartirLink] = useState("");
+  const [compartirGenerando, setCompartirGenerando] = useState(false);
+  const [compartirError, setCompartirError] = useState("");
+  const [compartirCopiado, setCompartirCopiado] = useState(false);
+
   const [ordenesHoy, setOrdenesHoy] = useState([]);
   const [showOrdenes, setShowOrdenes] = useState(true);
   const orderMarkersRef = useRef([]);
@@ -601,6 +610,60 @@ export default function SeguimientoVehiculosPanel() {
     setEditFotoFile(file);
     setEditFotoPreview(URL.createObjectURL(file));
   }, []);
+
+  const abrirCompartir = useCallback((row) => {
+    setCompartirVehiculo(row);
+    setCompartirHoras(4);
+    setCompartirLink("");
+    setCompartirError("");
+    setCompartirCopiado(false);
+  }, []);
+
+  const cerrarCompartir = useCallback(() => {
+    setCompartirVehiculo(null);
+    setCompartirLink("");
+    setCompartirError("");
+    setCompartirGenerando(false);
+    setCompartirCopiado(false);
+  }, []);
+
+  const generarEnlaceCompartir = useCallback(async () => {
+    if (!compartirVehiculo?.vehiculo_id) return;
+    const horas = Number(compartirHoras) > 0 ? Number(compartirHoras) : 4;
+    setCompartirGenerando(true);
+    setCompartirError("");
+    setCompartirCopiado(false);
+    try {
+      const expiraEn = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
+      const veh = vehiculoById[compartirVehiculo.vehiculo_id];
+      const { data, error } = await supabase
+        .from("enlaces_seguimiento")
+        .insert({
+          vehiculo_id: compartirVehiculo.vehiculo_id,
+          tecnico_nombre: veh?.tecnico_asignado || "",
+          expira_en: expiraEn
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      const url = `${window.location.origin}/seguimiento?t=${data.id}`;
+      setCompartirLink(url);
+    } catch (e) {
+      setCompartirError(String(e?.message || "No se pudo generar el enlace."));
+    } finally {
+      setCompartirGenerando(false);
+    }
+  }, [compartirVehiculo, compartirHoras, vehiculoById]);
+
+  const copiarEnlaceCompartir = useCallback(async () => {
+    if (!compartirLink) return;
+    try {
+      await navigator.clipboard.writeText(compartirLink);
+      setCompartirCopiado(true);
+    } catch {
+      // clipboard puede fallar (permiso, http no seguro) — el link ya esta visible para copiar a mano
+    }
+  }, [compartirLink]);
 
   const guardarEdicion = useCallback(async () => {
     if (!editVehiculo?.id) return;
@@ -1867,6 +1930,18 @@ export default function SeguimientoVehiculosPanel() {
                   </div>
                 ) : null}
               </div>
+              <button
+                type="button"
+                title="Compartir ubicacion por enlace"
+                onClick={(e) => { e.stopPropagation(); abrirCompartir(row); }}
+                style={{
+                  width: 30, height: 30, borderRadius: 8, flexShrink: 0, border: "1px solid #c7d2fe",
+                  background: "#eef2ff", color: "#4338ca", fontSize: 14, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center"
+                }}
+              >
+                🔗
+              </button>
               <span style={{ width: 10, height: 10, borderRadius: 5, background: row.staleMin > STALE_MIN_THRESHOLD ? "#94a3b8" : "#16a34a", flexShrink: 0 }} />
             </div>
           ))
@@ -2039,6 +2114,83 @@ export default function SeguimientoVehiculosPanel() {
                 {savingEdit ? "Guardando..." : "Guardar"}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {compartirVehiculo ? (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16
+          }}
+          onClick={cerrarCompartir}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420 }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 4, color: "#1e293b" }}>🔗 Compartir ubicacion</h3>
+            <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 14 }}>
+              {compartirVehiculo.placaLabel}{compartirVehiculo.alias ? ` · ${compartirVehiculo.alias}` : ""} — genera un enlace publico
+              (sin necesidad de iniciar sesion) para que un cliente o cualquier persona vea su ubicacion en vivo.
+            </p>
+
+            {compartirError ? <p className="warn-text" style={{ marginTop: 0 }}>{compartirError}</p> : null}
+
+            {!compartirLink ? (
+              <>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>¿Por cuantas horas estara activo?</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, marginBottom: 14 }}>
+                  {[1, 2, 4, 8, 24].map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => setCompartirHoras(h)}
+                      style={{
+                        padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1.5px solid ${compartirHoras === h ? "#4338ca" : "#e2e8f0"}`,
+                        background: compartirHoras === h ? "#eef2ff" : "#fff",
+                        color: compartirHoras === h ? "#4338ca" : "#64748b"
+                      }}
+                    >
+                      {h}h
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={1}
+                    value={compartirHoras}
+                    onChange={(e) => setCompartirHoras(e.target.value)}
+                    style={{ width: 64, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 12 }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="secondary-btn small" onClick={cerrarCompartir} disabled={compartirGenerando}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="secondary-btn small" onClick={() => void generarEnlaceCompartir()} disabled={compartirGenerando}>
+                    {compartirGenerando ? "Generando..." : "Generar enlace"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                  <p style={{ margin: 0, fontSize: 12, color: "#166534", fontWeight: 700 }}>✓ Enlace generado — activo por {compartirHoras}h</p>
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#334155", wordBreak: "break-all" }}>{compartirLink}</p>
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="secondary-btn small" onClick={cerrarCompartir}>
+                    Cerrar
+                  </button>
+                  <button type="button" className="secondary-btn small" onClick={() => void copiarEnlaceCompartir()}>
+                    {compartirCopiado ? "✓ Copiado" : "📋 Copiar enlace"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
