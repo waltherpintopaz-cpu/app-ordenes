@@ -21,6 +21,7 @@ const TIPOS = [
   { key: "template_liquidacion", label: "Al liquidar", color: "#059669", bg: "#f0fdf4", dot: "#86efac" },
   { key: "template_sin_completar", label: "Sin completar", color: "#dc2626", bg: "#fef2f2", dot: "#fca5a5" },
   { key: "template_llegada", label: "Llegada del técnico", color: "#0891b2", bg: "#ecfeff", dot: "#67e8f9" },
+  { key: "template_llegada_interno", label: "Llegada — aviso interno", color: "#475569", bg: "#f1f5f9", dot: "#94a3b8" },
 ];
 
 const defaultConfig = (emp) => ({
@@ -36,6 +37,7 @@ const defaultConfig = (emp) => ({
   template_liquidacion: "Estimado/a {nombre}, su orden #{codigo} fue completada. ¡Gracias por preferir {empresa}!",
   template_sin_completar: "Estimado/a {nombre}, su orden #{codigo} no pudo completarse en esta visita. Motivo: {resultado}. Nos comunicaremos para reagendar. — {empresa}",
   template_llegada: "Hola {nombre}, su técnico {tecnico} de {empresa} ya llegó para su visita (orden #{codigo}). 🚐",
+  template_llegada_interno: "📍 Llegada confirmada — Técnico {tecnico} en orden #{codigo} ({nombre}, {direccion}).",
 });
 
 function loadFromLS() {
