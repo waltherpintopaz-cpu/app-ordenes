@@ -715,8 +715,13 @@ export default function SeguimientoVehiculosPanel() {
   // vehiculo en el rango elegido, para animar un marcador siguiendo la ruta
   // real como un GPS tracker profesional (Traccar/Wialon), en vez de solo ver
   // la linea estatica.
-  const cargarPlayback = useCallback(async () => {
-    if (!playbackVehiculoId) { setPlaybackError("Elige un vehiculo para reproducir."); return; }
+  const cargarPlayback = useCallback(async (vehiculoIdParam) => {
+    // Recibe el id explicito en vez de leer playbackVehiculoId del estado —
+    // si se llama justo despues de un setPlaybackVehiculoId() en el mismo
+    // evento de clic, el estado todavia no se habria actualizado (closure
+    // viejo) y se cargaria el vehiculo anterior en vez del recien elegido.
+    const vehiculoId = vehiculoIdParam ?? playbackVehiculoId;
+    if (!vehiculoId) { setPlaybackError("Elige un vehiculo para reproducir."); return; }
     setLoadingPlayback(true);
     setPlaybackError("");
     setPlaybackPlaying(false);
@@ -727,7 +732,7 @@ export default function SeguimientoVehiculosPanel() {
       const res = await supabase
         .from("vehiculo_ubicaciones")
         .select("lat,lng,speed_mps,created_at")
-        .eq("vehiculo_id", playbackVehiculoId)
+        .eq("vehiculo_id", vehiculoId)
         .gte("created_at", desde)
         .lte("created_at", hasta)
         .order("created_at", { ascending: true })
@@ -1297,7 +1302,7 @@ export default function SeguimientoVehiculosPanel() {
                     type="button"
                     className="secondary-btn small"
                     style={{ marginLeft: "auto" }}
-                    onClick={() => { setPlaybackVehiculoId(id); void cargarPlayback(); }}
+                    onClick={() => { setPlaybackVehiculoId(id); void cargarPlayback(id); }}
                   >
                     ▶️ Reproducir
                   </button>
