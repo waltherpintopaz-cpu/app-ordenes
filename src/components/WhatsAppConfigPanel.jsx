@@ -20,6 +20,7 @@ const TIPOS = [
   { key: "template_recuperacion", label: "Recuperación", color: "#7c3aed", bg: "#f5f3ff", dot: "#c4b5fd" },
   { key: "template_liquidacion", label: "Al liquidar", color: "#059669", bg: "#f0fdf4", dot: "#86efac" },
   { key: "template_sin_completar", label: "Sin completar", color: "#dc2626", bg: "#fef2f2", dot: "#fca5a5" },
+  { key: "template_llegada", label: "Llegada del técnico", color: "#0891b2", bg: "#ecfeff", dot: "#67e8f9" },
 ];
 
 const defaultConfig = (emp) => ({
@@ -33,6 +34,7 @@ const defaultConfig = (emp) => ({
   template_recuperacion: "Estimado/a {nombre}, se generó la orden de recuperación #{codigo}. Coordinaremos con usted. — {empresa}",
   template_liquidacion: "Estimado/a {nombre}, su orden #{codigo} fue completada. ¡Gracias por preferir {empresa}!",
   template_sin_completar: "Estimado/a {nombre}, su orden #{codigo} no pudo completarse en esta visita. Motivo: {resultado}. Nos comunicaremos para reagendar. — {empresa}",
+  template_llegada: "Hola {nombre}, su técnico {tecnico} de {empresa} ya llegó para su visita (orden #{codigo}). 🚐",
 });
 
 function loadFromLS() {
