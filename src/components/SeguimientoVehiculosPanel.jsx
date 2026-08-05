@@ -752,12 +752,17 @@ export default function SeguimientoVehiculosPanel() {
       return;
     }
     const desde = new Date(Date.now() - TRAIL_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+    // Se pide del mas reciente al mas viejo — si entre todos los vehiculos
+    // seleccionados hay mas de 30000 puntos en la ventana, Supabase corta en
+    // el limite; pidiendolo ascendente eso descartaria lo mas RECIENTE (el
+    // recorrido de ahora), dejando solo tramos viejos. Pidiendolo descendente
+    // se garantiza quedarse con lo actual, y se reordena despues.
     const res = await supabase
       .from("vehiculo_ubicaciones")
       .select("vehiculo_id,lat,lng,created_at")
       .in("vehiculo_id", selectedIds)
       .gte("created_at", desde)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(30000);
     if (res.error) {
       if (tableMissing(res.error, "vehiculo_ubicaciones")) {
@@ -767,7 +772,7 @@ export default function SeguimientoVehiculosPanel() {
       throw res.error;
     }
     const grouped = {};
-    (Array.isArray(res.data) ? res.data : []).forEach((row) => {
+    (Array.isArray(res.data) ? res.data : []).slice().reverse().forEach((row) => {
       const id = row?.vehiculo_id;
       const lat = Number(row?.lat);
       const lng = Number(row?.lng);
