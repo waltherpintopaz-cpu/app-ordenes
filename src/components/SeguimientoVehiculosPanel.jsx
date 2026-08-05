@@ -244,20 +244,33 @@ const ACTIVITY_LABELS = {
   desconocido: "❓ Desconocido"
 };
 
-// Icono circular con la foto del vehiculo (con un anillo del color asignado)
-// para que el marcador en el mapa se vea como el vehiculo real, no un punto
-// generico. Se cachea por url+color para no re-dibujar en cada refresco.
+// Cache compartido de iconos circulares con foto del vehiculo (por
+// url+color+rumbo) para no re-dibujar en cada refresco.
 const circleIconCache = new Map();
-function crearIconoCircular(fotoUrl, color, onReady) {
-  const cacheKey = `${fotoUrl}|${color}`;
+
+// Igual que crearIconoCircular, pero con un pequeño triangulo de rumbo
+// "horneado" en el propio icono (en vez de un marcador de flecha aparte) —
+// asi se ve integrado, como un GPS tracker profesional, sin necesidad de
+// rotar la foto real del vehiculo (que no tiene un "frente" definido como un
+// icono vectorial). El rumbo se redondea a intervalos de 15° para que el
+// cache no tenga que regenerar la imagen en cada micro-cambio de direccion.
+const HEADING_BUCKET_DEG = 15;
+const roundHeadingBucket = (bearing) => {
+  if (bearing == null || !Number.isFinite(bearing)) return null;
+  return Math.round(bearing / HEADING_BUCKET_DEG) * HEADING_BUCKET_DEG % 360;
+};
+function crearIconoVehiculoConRumbo(fotoUrl, color, bearing, onReady) {
+  const bucket = roundHeadingBucket(bearing);
+  const cacheKey = `${fotoUrl}|${color}|${bucket}`;
   if (circleIconCache.has(cacheKey)) return circleIconCache.get(cacheKey);
   if (!fotoUrl) return null;
 
-  const size = 56;
+  const size = 60;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d");
+  const radius = size / 2 - 5;
 
   const img = new Image();
   img.crossOrigin = "anonymous";
@@ -266,24 +279,39 @@ function crearIconoCircular(fotoUrl, color, onReady) {
       ctx.clearRect(0, 0, size, size);
       ctx.save();
       ctx.beginPath();
-      ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+      ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
-      ctx.drawImage(img, 0, 0, size, size);
+      ctx.drawImage(img, size / 2 - radius, size / 2 - radius, radius * 2, radius * 2);
       ctx.restore();
       ctx.beginPath();
-      ctx.arc(size / 2, size / 2, size / 2 - 3, 0, Math.PI * 2);
+      ctx.arc(size / 2, size / 2, radius, 0, Math.PI * 2);
       ctx.lineWidth = 3;
       ctx.strokeStyle = color;
       ctx.stroke();
+
+      if (bucket != null) {
+        ctx.save();
+        ctx.translate(size / 2, size / 2);
+        ctx.rotate((bucket * Math.PI) / 180);
+        ctx.beginPath();
+        ctx.moveTo(0, -radius - 7);
+        ctx.lineTo(-6, -radius + 3);
+        ctx.lineTo(6, -radius + 3);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 1.3;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.restore();
+      }
+
       const dataUrl = canvas.toDataURL("image/png");
       circleIconCache.set(cacheKey, dataUrl);
       onReady?.(dataUrl);
     } catch (e) {
-      // Canvas "tainted" por CORS u otro fallo al exportar — no cachear el
-      // fallo para permitir reintentar en el siguiente refresco, y caer al
-      // circulo de color mientras tanto en vez de romper el mapa.
-      console.warn("No se pudo generar el icono circular del vehiculo:", e);
+      console.warn("No se pudo generar el icono de vehiculo con rumbo:", e);
     }
   };
   img.onerror = () => {
@@ -391,7 +419,7 @@ export default function SeguimientoVehiculosPanel() {
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(20);
   const playbackMarkerRef = useRef(null);
-  const playbackArrowRef = useRef(null);
+  const playbackHeadingBucketRef = useRef(null);
   const playbackLineDoneRef = useRef([]);
   const playbackLineRestRef = useRef(null);
   const playbackLineActiveRef = useRef(null);
@@ -965,17 +993,6 @@ export default function SeguimientoVehiculosPanel() {
       const isLive = staleMin <= STALE_MIN_THRESHOLD;
       const color = isLive ? colorForVehiculoId(id) : "#7A8699";
       const size = selected ? 54 : 44;
-      const iconDataUrl = row.fotoUrl ? crearIconoCircular(row.fotoUrl, color, () => setIconVersion((v) => v + 1)) : null;
-      const icon = iconDataUrl
-        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
-        : {
-            path: maps.SymbolPath.CIRCLE,
-            fillColor: color,
-            fillOpacity: 0.95,
-            strokeColor: "#ffffff",
-            strokeWeight: selected ? 2.2 : 1.4,
-            scale: selected ? 9 : 7.4
-          };
       const activityLabel = row.activity_type ? ACTIVITY_LABELS[row.activity_type] || row.activity_type : "";
       const title = [
         `${row.placaLabel}${row.alias ? " — " + row.alias : ""}`,
@@ -987,16 +1004,33 @@ export default function SeguimientoVehiculosPanel() {
         .join(" · ");
 
       let entry = vehicleMarkersRef.current.get(id);
+
+      // El rumbo solo se puede calcular con una posicion anterior — se
+      // conserva el ultimo conocido si el vehiculo esta detenido (sin
+      // movimiento suficiente para recalcularlo).
+      let heading = entry?.heading ?? null;
+      if (entry) {
+        const movedM = haversineKm(entry.pos, { lat, lng }) * 1000;
+        if (movedM > 2) heading = bearingDeg(entry.pos, { lat, lng });
+      }
+
+      const iconDataUrl = row.fotoUrl
+        ? crearIconoVehiculoConRumbo(row.fotoUrl, color, heading, () => setIconVersion((v) => v + 1))
+        : null;
+      const icon = iconDataUrl
+        ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
+        : {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor: color,
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff",
+            strokeWeight: selected ? 2.2 : 1.4,
+            scale: selected ? 9 : 7.4
+          };
+
       if (!entry) {
         const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, zIndex: selected ? 999 : undefined });
         marker.addListener("click", () => setSelectedId(id));
-        const arrow = new maps.Marker({
-          map,
-          position: { lat, lng },
-          icon: { path: maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 3.2, fillColor: color, fillOpacity: 0.9, strokeColor: "#fff", strokeWeight: 1, rotation: 0 },
-          zIndex: (selected ? 999 : 500) - 1,
-          clickable: false
-        });
         const pulse = new maps.Circle({
           map,
           center: { lat, lng },
@@ -1007,24 +1041,17 @@ export default function SeguimientoVehiculosPanel() {
           clickable: false,
           zIndex: 1
         });
-        entry = { marker, arrow, pulse, pos: { lat, lng }, animId: null, hasHeading: false };
+        entry = { marker, pulse, pos: { lat, lng }, heading, animId: null };
         vehicleMarkersRef.current.set(id, entry);
       } else {
         entry.marker.setTitle(title);
         entry.marker.setIcon(icon);
         entry.marker.setZIndex(selected ? 999 : undefined);
-        entry.arrow.setIcon({ ...entry.arrow.getIcon(), fillColor: color });
         entry.pulse.setOptions({ fillColor: color });
+        entry.heading = heading;
 
         const from = entry.pos;
         const to = { lat, lng };
-        const moved = haversineKm(from, to) * 1000; // metros
-        if (moved > 2) {
-          const rumbo = bearingDeg(from, to);
-          entry.arrow.setIcon({ ...entry.arrow.getIcon(), rotation: rumbo });
-          entry.hasHeading = true;
-        }
-
         if (entry.animId) cancelAnimationFrame(entry.animId);
         const start = performance.now();
         const animate = (now) => {
@@ -1033,7 +1060,6 @@ export default function SeguimientoVehiculosPanel() {
           const curLat = from.lat + (to.lat - from.lat) * k;
           const curLng = from.lng + (to.lng - from.lng) * k;
           entry.marker.setPosition({ lat: curLat, lng: curLng });
-          entry.arrow.setPosition({ lat: curLat, lng: curLng });
           entry.pulse.setCenter({ lat: curLat, lng: curLng });
           if (t < 1) {
             entry.animId = requestAnimationFrame(animate);
@@ -1052,7 +1078,6 @@ export default function SeguimientoVehiculosPanel() {
       if (seen.has(id)) return;
       if (entry.animId) cancelAnimationFrame(entry.animId);
       try { entry.marker.setMap(null); } catch { /* noop */ }
-      try { entry.arrow.setMap(null); } catch { /* noop */ }
       try { entry.pulse.setMap(null); } catch { /* noop */ }
       vehicleMarkersRef.current.delete(id);
     });
@@ -1091,7 +1116,6 @@ export default function SeguimientoVehiculosPanel() {
       registry.forEach((entry) => {
         if (entry.animId) cancelAnimationFrame(entry.animId);
         try { entry.marker.setMap(null); } catch { /* noop */ }
-        try { entry.arrow.setMap(null); } catch { /* noop */ }
         try { entry.pulse.setMap(null); } catch { /* noop */ }
       });
       registry.clear();
@@ -1173,16 +1197,15 @@ export default function SeguimientoVehiculosPanel() {
 
     const clearPlayback = () => {
       try { playbackMarkerRef.current?.setMap(null); } catch { /* noop */ }
-      try { playbackArrowRef.current?.setMap(null); } catch { /* noop */ }
       (playbackLineDoneRef.current || []).forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
       try { playbackLineRestRef.current?.setMap(null); } catch { /* noop */ }
       try { playbackLineActiveRef.current?.setMap(null); } catch { /* noop */ }
       playbackMarkerRef.current = null;
-      playbackArrowRef.current = null;
       playbackLineDoneRef.current = [];
       playbackLineRestRef.current = null;
       playbackLineActiveRef.current = null;
       playbackSegmentIdxRef.current = 0;
+      playbackHeadingBucketRef.current = null;
     };
     clearPlayback();
 
@@ -1192,28 +1215,14 @@ export default function SeguimientoVehiculosPanel() {
       playbackLineActiveRef.current = new maps.Polyline({ map, path: [full[0], full[0]], strokeColor: colorForSpeedKmh(0), strokeOpacity: 0.95, strokeWeight: 5 });
 
       const veh = vehiculoById[playbackVehiculoId];
-      const iconDataUrl = veh?.foto_url ? crearIconoCircular(veh.foto_url, "#7C3AED", () => setIconVersion((v) => v + 1)) : null;
+      const iconDataUrl = veh?.foto_url ? crearIconoVehiculoConRumbo(veh.foto_url, "#7C3AED", null, () => setIconVersion((v) => v + 1)) : null;
       playbackMarkerRef.current = new maps.Marker({
         map,
         position: full[0],
         icon: iconDataUrl
-          ? { url: iconDataUrl, scaledSize: new maps.Size(48, 48), anchor: new maps.Point(24, 24) }
+          ? { url: iconDataUrl, scaledSize: new maps.Size(52, 52), anchor: new maps.Point(26, 26) }
           : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
         zIndex: 1000
-      });
-      playbackArrowRef.current = new maps.Marker({
-        map,
-        position: full[0],
-        icon: {
-          path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 4.2,
-          fillColor: "#7C3AED",
-          fillOpacity: 0.9,
-          strokeColor: "#ffffff",
-          strokeWeight: 1.2,
-          rotation: 0
-        },
-        zIndex: 999
       });
     }
 
@@ -1231,14 +1240,22 @@ export default function SeguimientoVehiculosPanel() {
     const idx = playbackCurrent.idx ?? 0;
 
     playbackMarkerRef.current.setPosition(pos);
-    playbackArrowRef.current?.setPosition(pos);
 
     const anterior = playbackPoints[idx];
     const siguiente = playbackPoints[Math.min(idx + 1, playbackPoints.length - 1)];
     if (haversineKm(anterior, siguiente) * 1000 > 1) {
       const rumbo = bearingDeg(anterior, siguiente);
-      const icon = playbackArrowRef.current?.getIcon();
-      if (icon) playbackArrowRef.current.setIcon({ ...icon, rotation: rumbo });
+      const bucket = roundHeadingBucket(rumbo);
+      if (bucket !== playbackHeadingBucketRef.current) {
+        playbackHeadingBucketRef.current = bucket;
+        const veh = vehiculoById[playbackVehiculoId];
+        if (veh?.foto_url) {
+          const iconDataUrl = crearIconoVehiculoConRumbo(veh.foto_url, "#7C3AED", rumbo, () => setIconVersion((v) => v + 1));
+          if (iconDataUrl) {
+            playbackMarkerRef.current.setIcon({ url: iconDataUrl, scaledSize: new maps.Size(52, 52), anchor: new maps.Point(26, 26) });
+          }
+        }
+      }
     }
 
     // Si se rebobino con la barra de tiempo, quitar los tramos "recorridos"
@@ -1277,7 +1294,7 @@ export default function SeguimientoVehiculosPanel() {
     playbackLineRestRef.current?.setPath(restante);
 
     if (playbackPlaying) mapRef.current?.panTo(pos);
-  }, [playbackCurrent, playbackPlaying, playbackPoints]);
+  }, [playbackCurrent, playbackPlaying, playbackPoints, playbackVehiculoId, vehiculoById]);
 
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
