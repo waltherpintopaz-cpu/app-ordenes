@@ -6,8 +6,12 @@ const GOOGLE_MAPS_API_KEY = String(
 ).trim();
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const TRAIL_COLORS = ["#1E4F9C", "#F47A20", "#00C853", "#EC4899", "#0EA5E9", "#7C3AED"];
-const TRAIL_WINDOW_HOURS = 4;
-const TRAIL_MAX_POINTS = 300;
+// Ventana de todo el dia (no solo unas horas), y un tope de puntos generoso:
+// con el ping cada 6s, 4h ya son 2400 puntos — el limite viejo (300) cortaba
+// el recorrido a los ultimos ~30 minutos sin que se notara en el checkbox
+// "Mostrar recorrido", dando la impresion de que el trazo aparecia/desaparecia.
+const TRAIL_WINDOW_HOURS = 24;
+const TRAIL_MAX_POINTS = 20000;
 const AUTO_REFRESH_MS = 6_000;
 const STALE_MIN_THRESHOLD = 3;
 
@@ -532,7 +536,7 @@ export default function SeguimientoVehiculosPanel() {
       .in("vehiculo_id", selectedIds)
       .gte("created_at", desde)
       .order("created_at", { ascending: true })
-      .limit(12000);
+      .limit(30000);
     if (res.error) {
       if (tableMissing(res.error, "vehiculo_ubicaciones")) {
         setTrailByVehiculo({});
