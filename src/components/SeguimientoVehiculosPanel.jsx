@@ -139,6 +139,30 @@ const haversineKm = (a, b) => {
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 };
 
+// Rumbo (0-360, 0=norte) entre dos puntos — para orientar la flecha de
+// direccion del reproductor de recorrido, igual que un GPS tracker real.
+const bearingDeg = (a, b) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const toDeg = (v) => (v * 180) / Math.PI;
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+};
+
+// Colorea cada tramo recorrido segun la velocidad en ese punto — el mismo
+// codigo de colores que usan los dashboards de flotas profesionales.
+const SPEED_COLOR_STOPS = [
+  { max: 5, color: "#94a3b8" },
+  { max: 20, color: "#16a34a" },
+  { max: 50, color: "#eab308" },
+  { max: 80, color: "#f97316" },
+  { max: Infinity, color: "#dc2626" }
+];
+const colorForSpeedKmh = (kmh) => (SPEED_COLOR_STOPS.find((s) => kmh <= s.max) || SPEED_COLOR_STOPS[SPEED_COLOR_STOPS.length - 1]).color;
+
 // Suavizado puramente visual (sin llamar a ninguna API): asi es como apps
 // como Uber/InDrive hacen que el trazo en vivo se vea fluido sin pagar por
 // ajustarlo a la calle en tiempo real — solo interpola una curva suave entre
@@ -275,6 +299,12 @@ const s = {
   statValue: { fontSize: 14, color: "#1e293b" }
 };
 
+const playerIconBtnStyle = {
+  width: 36, height: 36, borderRadius: 18, border: "1px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 15, cursor: "pointer",
+  display: "flex", alignItems: "center", justifyContent: "center"
+};
+
 const tableMissing = (err, tableName) => {
   const code = String(err?.code || "").trim();
   const msg = String(err?.message || "").toLowerCase();
@@ -360,7 +390,8 @@ export default function SeguimientoVehiculosPanel() {
   const [playbackElapsedMs, setPlaybackElapsedMs] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(20);
   const playbackMarkerRef = useRef(null);
-  const playbackLineDoneRef = useRef(null);
+  const playbackArrowRef = useRef(null);
+  const playbackLineDoneRef = useRef([]);
   const playbackLineRestRef = useRef(null);
   const playbackTickRef = useRef(null);
 
@@ -743,20 +774,28 @@ export default function SeguimientoVehiculosPanel() {
     };
   }, [playbackPoints, playbackElapsedMs]);
 
+  // requestAnimationFrame en vez de setInterval — el marcador se mueve a la
+  // frecuencia real de refresco de pantalla (60fps) en vez de saltar cada
+  // 200ms, igual de fluido que un reproductor de video real.
   useEffect(() => {
     if (!playbackPlaying) return undefined;
-    const stepMs = 200;
-    playbackTickRef.current = setInterval(() => {
+    let lastTs = null;
+    const step = (ts) => {
+      if (lastTs == null) lastTs = ts;
+      const deltaMs = ts - lastTs;
+      lastTs = ts;
       setPlaybackElapsedMs((prev) => {
-        const next = prev + stepMs * playbackSpeed;
+        const next = prev + deltaMs * playbackSpeed;
         if (next >= playbackDurationMs) {
           setPlaybackPlaying(false);
           return playbackDurationMs;
         }
         return next;
       });
-    }, stepMs);
-    return () => clearInterval(playbackTickRef.current);
+      playbackTickRef.current = requestAnimationFrame(step);
+    };
+    playbackTickRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(playbackTickRef.current);
   }, [playbackPlaying, playbackSpeed, playbackDurationMs]);
 
   const cargarTodo = useCallback(async (silent = false) => {
@@ -1001,10 +1040,12 @@ export default function SeguimientoVehiculosPanel() {
 
     const clearPlayback = () => {
       try { playbackMarkerRef.current?.setMap(null); } catch { /* noop */ }
-      try { playbackLineDoneRef.current?.setMap(null); } catch { /* noop */ }
+      try { playbackArrowRef.current?.setMap(null); } catch { /* noop */ }
+      (playbackLineDoneRef.current || []).forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
       try { playbackLineRestRef.current?.setMap(null); } catch { /* noop */ }
       playbackMarkerRef.current = null;
-      playbackLineDoneRef.current = null;
+      playbackArrowRef.current = null;
+      playbackLineDoneRef.current = [];
       playbackLineRestRef.current = null;
     };
     clearPlayback();
@@ -1012,11 +1053,42 @@ export default function SeguimientoVehiculosPanel() {
     if (playbackPoints.length > 1 && playbackCurrent) {
       const full = playbackPoints.map((p) => ({ lat: p.lat, lng: p.lng }));
       const idx = playbackCurrent.idx ?? 0;
-      const done = [...full.slice(0, idx + 1), { lat: playbackCurrent.lat, lng: playbackCurrent.lng }];
-      const rest = [{ lat: playbackCurrent.lat, lng: playbackCurrent.lng }, ...full.slice(idx + 1)];
+      const restante = [{ lat: playbackCurrent.lat, lng: playbackCurrent.lng }, ...full.slice(idx + 1)];
+      playbackLineRestRef.current = new maps.Polyline({ map, path: restante, strokeColor: "#94a3b8", strokeOpacity: 0.6, strokeWeight: 4 });
 
-      playbackLineRestRef.current = new maps.Polyline({ map, path: rest, strokeColor: "#94a3b8", strokeOpacity: 0.7, strokeWeight: 4 });
-      playbackLineDoneRef.current = new maps.Polyline({ map, path: done, strokeColor: "#7C3AED", strokeOpacity: 0.95, strokeWeight: 5 });
+      // Tramo ya recorrido: coloreado por velocidad en cada segmento, como un
+      // dashboard de flota profesional (gris=detenido, verde=lento,
+      // amarillo/naranja/rojo segun se acelera).
+      const segmentos = [];
+      for (let i = 0; i <= idx; i++) {
+        const a = playbackPoints[i];
+        const b = i < idx ? playbackPoints[i + 1] : { lat: playbackCurrent.lat, lng: playbackCurrent.lng };
+        const kmh = Number.isFinite(a.speedMps) && a.speedMps >= 0 ? a.speedMps * 3.6 : 0;
+        segmentos.push({ path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }], color: colorForSpeedKmh(kmh) });
+      }
+      playbackLineDoneRef.current = segmentos.map(
+        (seg) => new maps.Polyline({ map, path: seg.path, strokeColor: seg.color, strokeOpacity: 0.95, strokeWeight: 5 })
+      );
+
+      // Flecha de direccion: rumbo real entre el punto anterior y el
+      // siguiente, para ver hacia donde avanzaba el vehiculo en cada instante.
+      const anterior = playbackPoints[idx];
+      const siguiente = playbackPoints[Math.min(idx + 1, playbackPoints.length - 1)];
+      const rumbo = bearingDeg(anterior, siguiente);
+      playbackArrowRef.current = new maps.Marker({
+        map,
+        position: { lat: playbackCurrent.lat, lng: playbackCurrent.lng },
+        icon: {
+          path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 4.2,
+          fillColor: "#7C3AED",
+          fillOpacity: 0.9,
+          strokeColor: "#ffffff",
+          strokeWeight: 1.2,
+          rotation: rumbo
+        },
+        zIndex: 999
+      });
 
       const veh = vehiculoById[playbackVehiculoId];
       const iconDataUrl = veh?.foto_url ? crearIconoCircular(veh.foto_url, "#7C3AED", () => setIconVersion((v) => v + 1)) : null;
@@ -1028,10 +1100,12 @@ export default function SeguimientoVehiculosPanel() {
           : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
         zIndex: 1000
       });
+
+      if (playbackPlaying) map.panTo({ lat: playbackCurrent.lat, lng: playbackCurrent.lng });
     }
 
     return () => clearPlayback();
-  }, [playbackPoints, playbackCurrent, playbackVehiculoId, vehiculoById, iconVersion]);
+  }, [playbackPoints, playbackCurrent, playbackVehiculoId, playbackPlaying, vehiculoById, iconVersion]);
 
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1234,59 +1308,122 @@ export default function SeguimientoVehiculosPanel() {
         )}
 
         {playbackVehiculoId ? (
-          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#fff", border: "1px solid #e2e8f0" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-              <strong style={{ fontSize: 13, color: "#1e293b" }}>
-                ▶️ Reproduciendo: {vehiculoById[playbackVehiculoId]?.placa || "-"}
+          <div
+            style={{
+              marginTop: 14, borderRadius: 14, overflow: "hidden", border: "1px solid #1e293b",
+              background: "linear-gradient(160deg,#0f172a,#1e293b)"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", flexWrap: "wrap", gap: 8 }}>
+              <strong style={{ fontSize: 13, color: "#fff" }}>
+                🎬 {vehiculoById[playbackVehiculoId]?.placa || "-"}
+                {vehiculoById[playbackVehiculoId]?.alias ? ` · ${vehiculoById[playbackVehiculoId].alias}` : ""}
               </strong>
-              <button type="button" className="secondary-btn small" onClick={() => { setPlaybackVehiculoId(null); setPlaybackPoints([]); setPlaybackPlaying(false); }}>
+              <button
+                type="button"
+                onClick={() => { setPlaybackVehiculoId(null); setPlaybackPoints([]); setPlaybackPlaying(false); }}
+                style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8, color: "#fff", padding: "4px 10px", fontSize: 12, cursor: "pointer" }}
+              >
                 ✕ Cerrar
               </button>
             </div>
 
-            {loadingPlayback ? <p style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Cargando recorrido...</p> : null}
-            {playbackError ? <p className="warn-text" style={{ marginTop: 8 }}>{playbackError}</p> : null}
+            {loadingPlayback ? <p style={{ fontSize: 12, color: "#cbd5e1", padding: "0 14px 12px" }}>Cargando recorrido...</p> : null}
+            {playbackError ? <p style={{ fontSize: 12, color: "#fca5a5", padding: "0 14px 12px" }}>{playbackError}</p> : null}
 
             {playbackPoints.length > 1 && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ padding: "0 14px 16px" }}>
+                <div style={{ textAlign: "center", marginBottom: 10 }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontVariantNumeric: "tabular-nums" }}>
+                    {playbackCurrent?.t ? new Date(playbackCurrent.t).toLocaleTimeString("es-PE") : "-"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                    {playbackCurrent?.speedMps != null ? (
+                      <span style={{ color: colorForSpeedKmh(playbackCurrent.speedMps * 3.6), fontWeight: 700 }}>
+                        ● {Math.round(playbackCurrent.speedMps * 3.6)} km/h
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "#94a3b8", minWidth: 56, textAlign: "right" }}>
+                    {playbackPoints[0] ? new Date(playbackPoints[0].t).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }) : ""}
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={playbackDurationMs}
+                    value={playbackElapsedMs}
+                    onChange={(e) => { setPlaybackPlaying(false); setPlaybackElapsedMs(Number(e.target.value)); }}
+                    style={{ flex: 1, accentColor: "#7C3AED" }}
+                  />
+                  <span style={{ fontSize: 11, color: "#94a3b8", minWidth: 56 }}>
+                    {playbackPoints[playbackPoints.length - 1]
+                      ? new Date(playbackPoints[playbackPoints.length - 1].t).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })
+                      : ""}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 14 }}>
                   <button
                     type="button"
-                    className="secondary-btn small"
-                    onClick={() => setPlaybackPlaying((p) => !p)}
+                    onClick={() => { setPlaybackPlaying(false); setPlaybackElapsedMs(0); }}
+                    style={playerIconBtnStyle}
+                    title="Ir al inicio"
                   >
-                    {playbackPlaying ? "⏸️ Pausar" : "▶️ Reproducir"}
+                    ⏮
                   </button>
-                  <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => setPlaybackPlaying((p) => !p)}
+                    style={{ ...playerIconBtnStyle, width: 46, height: 46, borderRadius: 23, background: "#7C3AED", fontSize: 18 }}
+                    title={playbackPlaying ? "Pausar" : "Reproducir"}
+                  >
+                    {playbackPlaying ? "⏸" : "▶"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setPlaybackPlaying(false); setPlaybackElapsedMs(playbackDurationMs); }}
+                    style={playerIconBtnStyle}
+                    title="Ir al final"
+                  >
+                    ⏭
+                  </button>
+
+                  <div style={{ display: "flex", gap: 4, marginLeft: 10 }}>
                     {[1, 5, 20, 60].map((sp) => (
                       <button
                         key={sp}
                         type="button"
                         onClick={() => setPlaybackSpeed(sp)}
                         style={{
-                          padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                          border: `1px solid ${playbackSpeed === sp ? "#7C3AED" : "#e2e8f0"}`,
-                          background: playbackSpeed === sp ? "#7C3AED1a" : "#fff",
-                          color: playbackSpeed === sp ? "#7C3AED" : "#64748b"
+                          padding: "5px 9px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          border: `1px solid ${playbackSpeed === sp ? "#7C3AED" : "rgba(255,255,255,0.15)"}`,
+                          background: playbackSpeed === sp ? "#7C3AED" : "rgba(255,255,255,0.06)",
+                          color: "#fff"
                         }}
                       >
                         {sp}x
                       </button>
                     ))}
                   </div>
-                  <span style={{ fontSize: 12, color: "#64748b" }}>
-                    {playbackCurrent?.t ? new Date(playbackCurrent.t).toLocaleTimeString("es-PE") : "-"}
-                    {playbackCurrent?.speedMps != null ? ` · ${Math.round(playbackCurrent.speedMps * 3.6)} km/h` : ""}
-                  </span>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={playbackDurationMs}
-                  value={playbackElapsedMs}
-                  onChange={(e) => { setPlaybackPlaying(false); setPlaybackElapsedMs(Number(e.target.value)); }}
-                  style={{ width: "100%", marginTop: 10 }}
-                />
+
+                <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+                  {[
+                    { label: "Detenido", color: "#94a3b8" },
+                    { label: "Lento", color: "#16a34a" },
+                    { label: "Moderado", color: "#eab308" },
+                    { label: "Rapido", color: "#f97316" },
+                    { label: "Muy rapido", color: "#dc2626" }
+                  ].map((leg) => (
+                    <span key={leg.label} style={{ fontSize: 10, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 4, background: leg.color, display: "inline-block" }} />
+                      {leg.label}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
