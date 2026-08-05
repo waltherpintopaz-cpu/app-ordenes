@@ -29,6 +29,7 @@ const defaultConfig = (emp) => ({
   base_url: "",
   api_key: "",
   instance_name: "",
+  grupo_jid: "",
   template_instalacion: "Estimado/a {nombre}, su orden de INSTALACIÓN #{codigo} ha sido generada. El técnico {tecnico} coordinará la visita. — {empresa}",
   template_incidencia: "Estimado/a {nombre}, su reporte #{codigo} fue registrado. Pronto un técnico lo atenderá. — {empresa}",
   template_recuperacion: "Estimado/a {nombre}, se generó la orden de recuperación #{codigo}. Coordinaremos con usted. — {empresa}",
@@ -259,6 +260,25 @@ export default function WhatsAppConfigPanel() {
                 <code style={s.endpointCode}>{cfg.base_url.replace(/\/$/, "")}/message/sendText/<strong>{cfg.instance_name}</strong></code>
               </div>
             )}
+          </div>
+
+          {/* Grupo de notificaciones internas */}
+          <div style={s.card}>
+            <div style={s.cardTitle}>Grupo de WhatsApp (notificaciones internas)</div>
+            <div style={s.cardSub}>
+              Cuando un técnico llega a una orden, además del cliente se avisa a este grupo. Pega el JID del grupo
+              (termina en <code>@g.us</code>) — lo obtienes desde tu servidor Evolution API en{" "}
+              <code>GET /group/fetchAllGroups/{"{instancia}"}</code>.
+            </div>
+            <div style={s.fieldGroup}>
+              <label style={s.label}>JID del grupo</label>
+              <input
+                style={s.input}
+                placeholder="120363025343154268@g.us"
+                value={cfg.grupo_jid || ""}
+                onChange={(e) => set("grupo_jid", e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Test */}
