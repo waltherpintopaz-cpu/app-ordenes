@@ -424,6 +424,7 @@ export default function SeguimientoVehiculosPanel() {
   const [trailByVehiculo, setTrailByVehiculo] = useState({});
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [followVehicle, setFollowVehicle] = useState(false);
   const [showTrail, setShowTrail] = useState(true);
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
 
@@ -1044,6 +1045,14 @@ export default function SeguimientoVehiculosPanel() {
     return () => { cancelled = true; };
   }, []);
 
+  // Si el usuario arrastra el mapa manualmente, se cancela el seguimiento
+  // automatico — evita que la camara "pelee" con el gesto del usuario.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !mapsRef.current) return undefined;
+    const listener = mapRef.current.addListener("dragstart", () => setFollowVehicle(false));
+    return () => { mapsRef.current.event.removeListener(listener); };
+  }, [mapReady]);
+
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return;
     const map = mapRef.current;
@@ -1151,6 +1160,9 @@ export default function SeguimientoVehiculosPanel() {
         const from = entry.pos;
         const to = { lat, lng };
         if (entry.animId) cancelAnimationFrame(entry.animId);
+        if (followVehicle && selected) {
+          try { map.panTo(to); } catch { /* noop */ }
+        }
         const start = performance.now();
         const animate = (now) => {
           const t = Math.min(1, (now - start) / ANIM_MS);
@@ -1179,7 +1191,7 @@ export default function SeguimientoVehiculosPanel() {
       try { entry.pulse.setMap(null); } catch { /* noop */ }
       vehicleMarkersRef.current.delete(id);
     });
-  }, [rowsList, selectedId, mapReady, iconVersion]);
+  }, [rowsList, selectedId, mapReady, iconVersion, followVehicle]);
 
   // Pulso "en vivo" continuo (radar) detras de los vehiculos con reporte
   // reciente — un solo loop de animacion compartido, no uno por vehiculo.
@@ -1477,6 +1489,26 @@ export default function SeguimientoVehiculosPanel() {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b" }}>
           <input type="checkbox" checked={showOrdenes} onChange={(e) => setShowOrdenes(e.target.checked)} />
           Mostrar ordenes del dia ({ordenesHoy.length})
+        </label>
+        <label
+          style={{
+            display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, cursor: selectedId ? "pointer" : "not-allowed",
+            color: followVehicle ? "#7C3AED" : "#64748b", opacity: selectedId ? 1 : 0.5
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={followVehicle}
+            disabled={!selectedId}
+            onChange={(e) => {
+              setFollowVehicle(e.target.checked);
+              const row = rowsList.find((r) => r.vehiculo_id === selectedId);
+              if (e.target.checked && row && isValidCoord(Number(row.lat), Number(row.lng))) {
+                zoomSuaveHacia(mapRef.current, 17, { lat: Number(row.lat), lng: Number(row.lng) });
+              }
+            }}
+          />
+          🎯 Seguir vehiculo (camara automatica)
         </label>
       </div>
 
