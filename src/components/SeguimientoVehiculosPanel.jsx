@@ -394,6 +394,8 @@ export default function SeguimientoVehiculosPanel() {
   const playbackArrowRef = useRef(null);
   const playbackLineDoneRef = useRef([]);
   const playbackLineRestRef = useRef(null);
+  const playbackLineActiveRef = useRef(null);
+  const playbackSegmentIdxRef = useRef(0);
   const playbackTickRef = useRef(null);
 
   const vehiculoById = useMemo(() => {
@@ -1159,6 +1161,11 @@ export default function SeguimientoVehiculosPanel() {
     return () => clearSnapOverlays();
   }, [snappedPathByVehiculo, showTrail, clearSnapOverlays]);
 
+  // Inicializa el reproductor SOLO cuando cambia el vehiculo/recorrido — no en
+  // cada tick de la animacion. Antes, todo (marcador, flecha, cada tramo de
+  // linea) se destruia y recreaba 60 veces por segundo, lo cual era tan
+  // pesado que el navegador no alcanzaba a dibujar a tiempo y el auto
+  // parpadeaba o desaparecia.
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return undefined;
     const map = mapRef.current;
@@ -1169,41 +1176,34 @@ export default function SeguimientoVehiculosPanel() {
       try { playbackArrowRef.current?.setMap(null); } catch { /* noop */ }
       (playbackLineDoneRef.current || []).forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
       try { playbackLineRestRef.current?.setMap(null); } catch { /* noop */ }
+      try { playbackLineActiveRef.current?.setMap(null); } catch { /* noop */ }
       playbackMarkerRef.current = null;
       playbackArrowRef.current = null;
       playbackLineDoneRef.current = [];
       playbackLineRestRef.current = null;
+      playbackLineActiveRef.current = null;
+      playbackSegmentIdxRef.current = 0;
     };
     clearPlayback();
 
-    if (playbackPoints.length > 1 && playbackCurrent) {
+    if (playbackPoints.length > 1) {
       const full = playbackPoints.map((p) => ({ lat: p.lat, lng: p.lng }));
-      const idx = playbackCurrent.idx ?? 0;
-      const restante = [{ lat: playbackCurrent.lat, lng: playbackCurrent.lng }, ...full.slice(idx + 1)];
-      playbackLineRestRef.current = new maps.Polyline({ map, path: restante, strokeColor: "#94a3b8", strokeOpacity: 0.6, strokeWeight: 4 });
+      playbackLineRestRef.current = new maps.Polyline({ map, path: full, strokeColor: "#94a3b8", strokeOpacity: 0.6, strokeWeight: 4 });
+      playbackLineActiveRef.current = new maps.Polyline({ map, path: [full[0], full[0]], strokeColor: colorForSpeedKmh(0), strokeOpacity: 0.95, strokeWeight: 5 });
 
-      // Tramo ya recorrido: coloreado por velocidad en cada segmento, como un
-      // dashboard de flota profesional (gris=detenido, verde=lento,
-      // amarillo/naranja/rojo segun se acelera).
-      const segmentos = [];
-      for (let i = 0; i <= idx; i++) {
-        const a = playbackPoints[i];
-        const b = i < idx ? playbackPoints[i + 1] : { lat: playbackCurrent.lat, lng: playbackCurrent.lng };
-        const kmh = Number.isFinite(a.speedMps) && a.speedMps >= 0 ? a.speedMps * 3.6 : 0;
-        segmentos.push({ path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }], color: colorForSpeedKmh(kmh) });
-      }
-      playbackLineDoneRef.current = segmentos.map(
-        (seg) => new maps.Polyline({ map, path: seg.path, strokeColor: seg.color, strokeOpacity: 0.95, strokeWeight: 5 })
-      );
-
-      // Flecha de direccion: rumbo real entre el punto anterior y el
-      // siguiente, para ver hacia donde avanzaba el vehiculo en cada instante.
-      const anterior = playbackPoints[idx];
-      const siguiente = playbackPoints[Math.min(idx + 1, playbackPoints.length - 1)];
-      const rumbo = bearingDeg(anterior, siguiente);
+      const veh = vehiculoById[playbackVehiculoId];
+      const iconDataUrl = veh?.foto_url ? crearIconoCircular(veh.foto_url, "#7C3AED", () => setIconVersion((v) => v + 1)) : null;
+      playbackMarkerRef.current = new maps.Marker({
+        map,
+        position: full[0],
+        icon: iconDataUrl
+          ? { url: iconDataUrl, scaledSize: new maps.Size(48, 48), anchor: new maps.Point(24, 24) }
+          : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
+        zIndex: 1000
+      });
       playbackArrowRef.current = new maps.Marker({
         map,
-        position: { lat: playbackCurrent.lat, lng: playbackCurrent.lng },
+        position: full[0],
         icon: {
           path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
           scale: 4.2,
@@ -1211,27 +1211,73 @@ export default function SeguimientoVehiculosPanel() {
           fillOpacity: 0.9,
           strokeColor: "#ffffff",
           strokeWeight: 1.2,
-          rotation: rumbo
+          rotation: 0
         },
         zIndex: 999
       });
-
-      const veh = vehiculoById[playbackVehiculoId];
-      const iconDataUrl = veh?.foto_url ? crearIconoCircular(veh.foto_url, "#7C3AED", () => setIconVersion((v) => v + 1)) : null;
-      playbackMarkerRef.current = new maps.Marker({
-        map,
-        position: { lat: playbackCurrent.lat, lng: playbackCurrent.lng },
-        icon: iconDataUrl
-          ? { url: iconDataUrl, scaledSize: new maps.Size(48, 48), anchor: new maps.Point(24, 24) }
-          : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
-        zIndex: 1000
-      });
-
-      if (playbackPlaying) map.panTo({ lat: playbackCurrent.lat, lng: playbackCurrent.lng });
     }
 
     return () => clearPlayback();
-  }, [playbackPoints, playbackCurrent, playbackVehiculoId, playbackPlaying, vehiculoById, iconVersion]);
+  }, [playbackPoints, playbackVehiculoId, vehiculoById, iconVersion]);
+
+  // Tick de la animacion: solo mueve/actualiza lo que ya existe (nunca crea
+  // ni destruye Polylines/Markers), asi que puede correr a 60fps sin
+  // problema. Un nuevo tramo "recorrido" solo se agrega cuando de verdad se
+  // paso a un punto nuevo, no en cada micro-interpolacion.
+  useEffect(() => {
+    if (!playbackMarkerRef.current || !playbackCurrent || playbackPoints.length < 2) return;
+    const maps = mapsRef.current;
+    const pos = { lat: playbackCurrent.lat, lng: playbackCurrent.lng };
+    const idx = playbackCurrent.idx ?? 0;
+
+    playbackMarkerRef.current.setPosition(pos);
+    playbackArrowRef.current?.setPosition(pos);
+
+    const anterior = playbackPoints[idx];
+    const siguiente = playbackPoints[Math.min(idx + 1, playbackPoints.length - 1)];
+    if (haversineKm(anterior, siguiente) * 1000 > 1) {
+      const rumbo = bearingDeg(anterior, siguiente);
+      const icon = playbackArrowRef.current?.getIcon();
+      if (icon) playbackArrowRef.current.setIcon({ ...icon, rotation: rumbo });
+    }
+
+    // Si se rebobino con la barra de tiempo, quitar los tramos "recorridos"
+    // que quedaron por delante de la nueva posicion.
+    while (playbackSegmentIdxRef.current > idx) {
+      const line = playbackLineDoneRef.current.pop();
+      try { line?.setMap(null); } catch { /* noop */ }
+      playbackSegmentIdxRef.current -= 1;
+    }
+
+    // Agregar tramos "recorridos" nuevos que se hayan pasado desde el ultimo tick.
+    while (playbackSegmentIdxRef.current < idx) {
+      const i = playbackSegmentIdxRef.current;
+      const a = playbackPoints[i];
+      const b = playbackPoints[i + 1];
+      const kmh = Number.isFinite(a.speedMps) && a.speedMps >= 0 ? a.speedMps * 3.6 : 0;
+      const line = new maps.Polyline({
+        map: mapRef.current,
+        path: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }],
+        strokeColor: colorForSpeedKmh(kmh),
+        strokeOpacity: 0.95,
+        strokeWeight: 5
+      });
+      playbackLineDoneRef.current.push(line);
+      playbackSegmentIdxRef.current += 1;
+    }
+
+    // Tramo activo: del ultimo punto ya confirmado a la posicion interpolada actual.
+    const base = playbackPoints[idx];
+    const kmhActivo = Number.isFinite(base.speedMps) && base.speedMps >= 0 ? base.speedMps * 3.6 : 0;
+    playbackLineActiveRef.current?.setPath([{ lat: base.lat, lng: base.lng }, pos]);
+    playbackLineActiveRef.current?.setOptions({ strokeColor: colorForSpeedKmh(kmhActivo) });
+
+    // Lo restante (aun no recorrido), desde la posicion actual en adelante.
+    const restante = [pos, ...playbackPoints.slice(idx + 1).map((p) => ({ lat: p.lat, lng: p.lng }))];
+    playbackLineRestRef.current?.setPath(restante);
+
+    if (playbackPlaying) mapRef.current?.panTo(pos);
+  }, [playbackCurrent, playbackPlaying, playbackPoints]);
 
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
