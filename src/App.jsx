@@ -3115,7 +3115,9 @@ export default function App() {
   // sin importar el filtro elegido; el admin ve todos y puede filtrar).
   const [filtroNodoRecuperacion, setFiltroNodoRecuperacion] = useState("");
   const nodosDisponiblesRecuperacion = useMemo(
-    () => (esGestorSesion ? nodosAccesoGestoraSesion : NODOS_BASE_WEB),
+    // Si la gestora no tiene nodos restringidos configurados, ve todos
+    // (igual que un admin) — el selector debe listarlos todos en ese caso.
+    () => (esGestorSesion && nodosAccesoGestoraSesion.length > 0 ? nodosAccesoGestoraSesion : NODOS_BASE_WEB),
     [esGestorSesion, nodosAccesoGestoraSesion]
   );
   const coincideNodoRecuperacion = useCallback(
