@@ -3110,13 +3110,31 @@ export default function App() {
   const [filtroGestorRecuperacionAdmin, setFiltroGestorRecuperacionAdmin] = useState("");
   const gestorFiltroRecuperacionEfectivo = esGestorSesion ? (usuarioSesion?.nombre || "") : filtroGestorRecuperacionAdmin;
 
+  // ── Recuperaciones: filtro por nodo — respeta los permisos de nodo del
+  // usuario (una gestora restringida a ciertos nodos NUNCA ve los demas,
+  // sin importar el filtro elegido; el admin ve todos y puede filtrar).
+  const [filtroNodoRecuperacion, setFiltroNodoRecuperacion] = useState("");
+  const nodosDisponiblesRecuperacion = useMemo(
+    () => (esGestorSesion ? nodosAccesoGestoraSesion : NODOS_BASE_WEB),
+    [esGestorSesion, nodosAccesoGestoraSesion]
+  );
+  const coincideNodoRecuperacion = useCallback(
+    (rawNodo) => {
+      if (!tieneAccesoNodoSesion(rawNodo)) return false;
+      if (!filtroNodoRecuperacion) return true;
+      return normalizeNodoKey(rawNodo) === normalizeNodoKey(filtroNodoRecuperacion);
+    },
+    [tieneAccesoNodoSesion, filtroNodoRecuperacion]
+  );
+
   // Órdenes de Recojo de equipo aún no ejecutadas (para tab "Pendientes" en Recuperaciones)
   // Ordenadas por fecha ascendente: las vencidas y mas urgentes primero.
   const pendientesRecuperacion = useMemo(() => {
-    const base = (Array.isArray(ordenes) ? ordenes : []).filter((o) => o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente");
+    const base = (Array.isArray(ordenes) ? ordenes : [])
+      .filter((o) => o.tipoActuacion === "Recojo de equipo" && o.estado === "Pendiente" && coincideNodoRecuperacion(o.nodo));
     const filtrado = gestorFiltroRecuperacionEfectivo ? base.filter((o) => o.autorOrden === gestorFiltroRecuperacionEfectivo) : base;
     return [...filtrado].sort((a, b) => String(a.fechaActuacion || "9999-99-99").localeCompare(String(b.fechaActuacion || "9999-99-99")));
-  }, [ordenes, gestorFiltroRecuperacionEfectivo]);
+  }, [ordenes, gestorFiltroRecuperacionEfectivo, coincideNodoRecuperacion]);
 
   const vencidasRecuperacionCount = useMemo(
     () => pendientesRecuperacion.filter((o) => o.fechaActuacion && o.fechaActuacion < todayIsoLocal()).length,
@@ -3132,9 +3150,16 @@ export default function App() {
   }, [ordenes]);
 
   const historialRecuperacionesFiltrado = useMemo(() => {
-    if (!gestorFiltroRecuperacionEfectivo) return historialRecuperaciones;
-    return historialRecuperaciones.filter((rec) => codigoAutorOrdenMap[rec.orden_codigo] === gestorFiltroRecuperacionEfectivo);
-  }, [historialRecuperaciones, codigoAutorOrdenMap, gestorFiltroRecuperacionEfectivo]);
+    let filtrado = historialRecuperaciones.filter((rec) => coincideNodoRecuperacion(rec.nodo));
+    if (gestorFiltroRecuperacionEfectivo) filtrado = filtrado.filter((rec) => codigoAutorOrdenMap[rec.orden_codigo] === gestorFiltroRecuperacionEfectivo);
+    return filtrado;
+  }, [historialRecuperaciones, codigoAutorOrdenMap, gestorFiltroRecuperacionEfectivo, coincideNodoRecuperacion]);
+
+  // Custodia Tecnica — misma restriccion de nodo aplicada a stockTecnico.
+  const stockTecnicoAccesible = useMemo(
+    () => stockTecnico.filter((s) => coincideNodoRecuperacion(s.nodo)),
+    [stockTecnico, coincideNodoRecuperacion]
+  );
 
   // Busqueda por nombre/DNI compartida entre las 3 pestanas de Recuperaciones
   // (Pendientes, Ejecuciones, Custodia Tecnica) — reutiliza el mismo estado
@@ -24367,7 +24392,7 @@ export default function App() {
                 { label: "Pendientes", valor: pendientesRecuperacion.length, Icon: Clock, color: "#92400e", bg: "#fef3c7" },
                 { label: "Vencidas", valor: vencidasRecuperacionCount, Icon: AlertTriangle, color: "#991b1b", bg: "#fee2e2" },
                 { label: "Completadas este mes", valor: completadasMesRecuperacionCount, Icon: CheckCircle2, color: "#166534", bg: "#dcfce7" },
-                { label: "Equipos en custodia", valor: stockTecnico.filter((s) => !s.ingresado_almacen).length, Icon: Package, color: "#1e40af", bg: "#dbeafe" },
+                { label: "Equipos en custodia", valor: stockTecnicoAccesible.filter((s) => !s.ingresado_almacen).length, Icon: Package, color: "#1e40af", bg: "#dbeafe" },
               ].map((s) => (
                 <div key={s.label} style={{ background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", borderRadius: "14px", padding: "14px 16px", display: "flex", alignItems: "center", gap: "12px" }}>
                   <div style={{ width: "38px", height: "38px", borderRadius: "10px", background: s.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><s.Icon size={18} color={s.color} /></div>
@@ -24384,7 +24409,7 @@ export default function App() {
               {[
                 { key: "pendientes", label: "Pendientes", Icon: Clock, badge: pendientesRecuperacion.length, badgeVencidas: vencidasRecuperacionCount },
                 { key: "ejecuciones", label: "Ejecuciones", Icon: ClipboardList },
-                { key: "stock", label: "Custodia Técnica", Icon: Package, badge: stockTecnico.filter((s) => !s.ingresado_almacen).length },
+                { key: "stock", label: "Custodia Técnica", Icon: Package, badge: stockTecnicoAccesible.filter((s) => !s.ingresado_almacen).length },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -24428,6 +24453,21 @@ export default function App() {
                     <option key={g} value={g}>{g}</option>
                   ))}
                 </select>
+              )}
+              {nodosDisponiblesRecuperacion.length > 0 && (
+                <>
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280" }}>📍 Nodo:</span>
+                  <select
+                    value={filtroNodoRecuperacion}
+                    onChange={(e) => setFiltroNodoRecuperacion(e.target.value)}
+                    style={{ padding: "6px 10px", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", background: isDark ? "#1a2740" : "#fff" }}
+                  >
+                    <option value="">Todos{esGestorSesion ? " (mis nodos)" : ""}</option>
+                    {nodosDisponiblesRecuperacion.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </>
               )}
               <input
                 value={filtroHistorialBusqueda}
@@ -24772,9 +24812,9 @@ export default function App() {
                 {/* Stats header */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px" }}>
                   {[
-                    { n: stockTecnico.filter((s) => !s.ingresado_almacen).length, label: "Pendientes de ingreso", icon: "⏳", bg: "#fffbeb", border: "#fde68a", numColor: "#d97706", labelColor: "#92400e" },
-                    { n: stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega).length, label: "Con solicitud de entrega", icon: "📤", bg: "#eff6ff", border: "#bfdbfe", numColor: "#1e40af", labelColor: "#1e3a5f" },
-                    { n: stockTecnico.filter((s) => s.ingresado_almacen).length, label: "Ingresados a almacén", icon: "✅", bg: "#f0fdf4", border: "#86efac", numColor: "#16a34a", labelColor: "#166534" },
+                    { n: stockTecnicoAccesible.filter((s) => !s.ingresado_almacen).length, label: "Pendientes de ingreso", icon: "⏳", bg: "#fffbeb", border: "#fde68a", numColor: "#d97706", labelColor: "#92400e" },
+                    { n: stockTecnicoAccesible.filter((s) => !s.ingresado_almacen && s.codigo_entrega).length, label: "Con solicitud de entrega", icon: "📤", bg: "#eff6ff", border: "#bfdbfe", numColor: "#1e40af", labelColor: "#1e3a5f" },
+                    { n: stockTecnicoAccesible.filter((s) => s.ingresado_almacen).length, label: "Ingresados a almacén", icon: "✅", bg: "#f0fdf4", border: "#86efac", numColor: "#16a34a", labelColor: "#166534" },
                   ].map((st, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: "14px", background: st.bg, border: `1.5px solid ${st.border}`, borderRadius: "14px", padding: "14px 18px" }}>
                       <span style={{ fontSize: "28px", lineHeight: 1 }}>{st.icon}</span>
@@ -24796,7 +24836,7 @@ export default function App() {
                 </div>
 
                 {/* Pendientes */}
-                {stockTecnico.filter((s) => !s.ingresado_almacen).length === 0 ? (
+                {stockTecnicoAccesible.filter((s) => !s.ingresado_almacen).length === 0 ? (
                   <div style={{ border: "1px dashed #bbf7d0", borderRadius: "14px", padding: "32px", color: "#166534", background: "#f0fdf4", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "28px" }}>✓</span>
                     <span style={{ fontWeight: 700, fontSize: "14px" }}>Todo al día</span>
@@ -24808,9 +24848,9 @@ export default function App() {
                       const qBusqueda = filtroHistorialBusqueda.trim().toLowerCase();
                       const coincideBusqueda = (s) =>
                         !qBusqueda || [s.nombre_cliente, s.dni_cliente, s.orden_codigo, s.tecnico_recupera, s.serial].some((v) => String(v || "").toLowerCase().includes(qBusqueda));
-                      const conSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega && coincideBusqueda(s));
-                      const sinSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && !s.codigo_entrega && coincideBusqueda(s));
-                      const pendientesVisibles = stockTecnico.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true) && coincideBusqueda(s));
+                      const conSolicitud = stockTecnicoAccesible.filter((s) => !s.ingresado_almacen && s.codigo_entrega && coincideBusqueda(s));
+                      const sinSolicitud = stockTecnicoAccesible.filter((s) => !s.ingresado_almacen && !s.codigo_entrega && coincideBusqueda(s));
+                      const pendientesVisibles = stockTecnicoAccesible.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true) && coincideBusqueda(s));
                       return (
                         <>
                           {/* Grupo: con solicitud */}
@@ -24935,11 +24975,11 @@ export default function App() {
                     <div style={{ flex: 1, height: "1.5px", background: "#d1fae5" }} />
                     <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "20px", padding: "5px 14px", fontSize: "12px", fontWeight: 700, color: "#15803d", whiteSpace: "nowrap" }}>
                       📦 Historial de ingresados
-                      <span style={{ background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px" }}>{stockTecnico.filter((s) => s.ingresado_almacen).length}</span>
+                      <span style={{ background: "#16a34a", color: "#fff", borderRadius: "999px", padding: "1px 7px", fontSize: "11px" }}>{stockTecnicoAccesible.filter((s) => s.ingresado_almacen).length}</span>
                     </span>
                     <div style={{ flex: 1, height: "1.5px", background: "#d1fae5" }} />
                   </div>
-                  {stockTecnico.filter((s) => s.ingresado_almacen).length === 0 ? (
+                  {stockTecnicoAccesible.filter((s) => s.ingresado_almacen).length === 0 ? (
                     <div style={{ border: "1px dashed #bbf7d0", borderRadius: "12px", padding: "16px", color: isDark ? "#93a2bd" : "#6b7280", textAlign: "center", fontSize: "13px" }}>
                       Aún no hay equipos confirmados como ingresados.
                     </div>
@@ -24949,7 +24989,7 @@ export default function App() {
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", padding: "10px 14px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: "10px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb" }}>
                       <select style={{ ...inputStyle, fontSize: "12px", padding: "5px 8px", flex: "0 1 130px" }} value={filtroHistorialNodo} onChange={(e) => setFiltroHistorialNodo(e.target.value)}>
                         <option value="TODOS">Todos los nodos</option>
-                        {[...new Set(stockTecnico.filter((s) => s.ingresado_almacen && s.nodo).map((s) => s.nodo))].sort().map((n) => (
+                        {[...new Set(stockTecnicoAccesible.filter((s) => s.ingresado_almacen && s.nodo).map((s) => s.nodo))].sort().map((n) => (
                           <option key={n} value={n}>{n}</option>
                         ))}
                       </select>
@@ -24967,7 +25007,7 @@ export default function App() {
                       <button
                         style={{ ...primaryButton, fontSize: "12px", padding: "5px 12px", whiteSpace: "nowrap", background: "#dc2626", borderColor: "#dc2626" }}
                         onClick={() => {
-                          const ingresados = stockTecnico.filter((s) => {
+                          const ingresados = stockTecnicoAccesible.filter((s) => {
                             if (!s.ingresado_almacen) return false;
                             if (filtroHistorialNodo !== "TODOS" && s.nodo !== filtroHistorialNodo) return false;
                             if (filtroHistorialCatalogado === "SI" && !s.catalogado) return false;
@@ -25005,7 +25045,7 @@ export default function App() {
                         📄 PDF
                       </button>
                     </div>
-                    {stockTecnico.filter((s) => {
+                    {stockTecnicoAccesible.filter((s) => {
                       if (!s.ingresado_almacen) return false;
                       if (filtroHistorialNodo !== "TODOS" && s.nodo !== filtroHistorialNodo) return false;
                       if (filtroHistorialCatalogado === "SI" && !s.catalogado) return false;
@@ -25018,7 +25058,7 @@ export default function App() {
                     }).length === 0 && (
                       <div style={{ color: isDark ? "#93a2bd" : "#6b7280", textAlign: "center", fontSize: "13px", padding: "16px" }}>No hay resultados para los filtros aplicados.</div>
                     )}
-                    {stockTecnico.filter((s) => {
+                    {stockTecnicoAccesible.filter((s) => {
                       if (!s.ingresado_almacen) return false;
                       if (filtroHistorialNodo !== "TODOS" && s.nodo !== filtroHistorialNodo) return false;
                       if (filtroHistorialCatalogado === "SI" && !s.catalogado) return false;
