@@ -349,6 +349,21 @@ export default function SeguimientoVehiculosPanel() {
   const [loadingSnap, setLoadingSnap] = useState(false);
   const snapPolylinesRef = useRef([]);
 
+  const [analyticsHoraDesde, setAnalyticsHoraDesde] = useState("00:00");
+  const [analyticsHoraHasta, setAnalyticsHoraHasta] = useState("23:59");
+
+  const [playbackVehiculoId, setPlaybackVehiculoId] = useState(null);
+  const [playbackPoints, setPlaybackPoints] = useState([]);
+  const [loadingPlayback, setLoadingPlayback] = useState(false);
+  const [playbackError, setPlaybackError] = useState("");
+  const [playbackPlaying, setPlaybackPlaying] = useState(false);
+  const [playbackElapsedMs, setPlaybackElapsedMs] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(20);
+  const playbackMarkerRef = useRef(null);
+  const playbackLineDoneRef = useRef(null);
+  const playbackLineRestRef = useRef(null);
+  const playbackTickRef = useRef(null);
+
   const vehiculoById = useMemo(() => {
     const map = {};
     (Array.isArray(vehiculos) ? vehiculos : []).forEach((v) => { map[v.id] = v; });
@@ -567,8 +582,8 @@ export default function SeguimientoVehiculosPanel() {
     setLoadingAnalytics(true);
     setAnalyticsError("");
     try {
-      const desde = new Date(`${analyticsDate}T00:00:00`).toISOString();
-      const hasta = new Date(`${analyticsDate}T23:59:59.999`).toISOString();
+      const desde = new Date(`${analyticsDate}T${analyticsHoraDesde || "00:00"}:00`).toISOString();
+      const hasta = new Date(`${analyticsDate}T${analyticsHoraHasta || "23:59"}:59.999`).toISOString();
       const res = await supabase
         .from("vehiculo_ubicaciones")
         .select("vehiculo_id,lat,lng,speed_mps,activity_type,created_at")
@@ -663,7 +678,86 @@ export default function SeguimientoVehiculosPanel() {
     } finally {
       setLoadingAnalytics(false);
     }
-  }, [analyticsDate, selectedIds]);
+  }, [analyticsDate, analyticsHoraDesde, analyticsHoraHasta, selectedIds]);
+
+  // Reproductor de recorrido: carga los puntos crudos (con hora exacta) de UN
+  // vehiculo en el rango elegido, para animar un marcador siguiendo la ruta
+  // real como un GPS tracker profesional (Traccar/Wialon), en vez de solo ver
+  // la linea estatica.
+  const cargarPlayback = useCallback(async () => {
+    if (!playbackVehiculoId) { setPlaybackError("Elige un vehiculo para reproducir."); return; }
+    setLoadingPlayback(true);
+    setPlaybackError("");
+    setPlaybackPlaying(false);
+    setPlaybackElapsedMs(0);
+    try {
+      const desde = new Date(`${analyticsDate}T${analyticsHoraDesde || "00:00"}:00`).toISOString();
+      const hasta = new Date(`${analyticsDate}T${analyticsHoraHasta || "23:59"}:59.999`).toISOString();
+      const res = await supabase
+        .from("vehiculo_ubicaciones")
+        .select("lat,lng,speed_mps,created_at")
+        .eq("vehiculo_id", playbackVehiculoId)
+        .gte("created_at", desde)
+        .lte("created_at", hasta)
+        .order("created_at", { ascending: true })
+        .limit(20000);
+      if (res.error) throw res.error;
+      const pts = (Array.isArray(res.data) ? res.data : [])
+        .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), speedMps: Number(r.speed_mps), t: new Date(r.created_at).getTime() }))
+        .filter((p) => isValidCoord(p.lat, p.lng) && Number.isFinite(p.t));
+      if (pts.length === 0) {
+        setPlaybackError("No hay puntos guardados para ese vehiculo en ese rango.");
+      }
+      setPlaybackPoints(pts);
+    } catch (e) {
+      setPlaybackError(String(e?.message || "No se pudo cargar el recorrido para reproducir."));
+      setPlaybackPoints([]);
+    } finally {
+      setLoadingPlayback(false);
+    }
+  }, [playbackVehiculoId, analyticsDate, analyticsHoraDesde, analyticsHoraHasta]);
+
+  const playbackDurationMs = useMemo(() => {
+    if (playbackPoints.length < 2) return 0;
+    return playbackPoints[playbackPoints.length - 1].t - playbackPoints[0].t;
+  }, [playbackPoints]);
+
+  // Posicion interpolada entre los dos puntos que rodean el instante actual
+  // de reproduccion, para que el marcador se mueva suave en vez de saltar.
+  const playbackCurrent = useMemo(() => {
+    if (playbackPoints.length === 0) return null;
+    const targetT = playbackPoints[0].t + playbackElapsedMs;
+    if (playbackPoints.length === 1) return { ...playbackPoints[0], idx: 0 };
+    let i = 0;
+    while (i < playbackPoints.length - 1 && playbackPoints[i + 1].t <= targetT) i++;
+    const a = playbackPoints[i];
+    const b = playbackPoints[Math.min(i + 1, playbackPoints.length - 1)];
+    const span = b.t - a.t;
+    const frac = span > 0 ? Math.min(1, Math.max(0, (targetT - a.t) / span)) : 0;
+    return {
+      lat: a.lat + (b.lat - a.lat) * frac,
+      lng: a.lng + (b.lng - a.lng) * frac,
+      speedMps: a.speedMps,
+      t: targetT,
+      idx: i
+    };
+  }, [playbackPoints, playbackElapsedMs]);
+
+  useEffect(() => {
+    if (!playbackPlaying) return undefined;
+    const stepMs = 200;
+    playbackTickRef.current = setInterval(() => {
+      setPlaybackElapsedMs((prev) => {
+        const next = prev + stepMs * playbackSpeed;
+        if (next >= playbackDurationMs) {
+          setPlaybackPlaying(false);
+          return playbackDurationMs;
+        }
+        return next;
+      });
+    }, stepMs);
+    return () => clearInterval(playbackTickRef.current);
+  }, [playbackPlaying, playbackSpeed, playbackDurationMs]);
 
   const cargarTodo = useCallback(async (silent = false) => {
     if (!isSupabaseConfigured) { setError("Supabase no esta configurado."); setLoading(false); return; }
@@ -900,6 +994,45 @@ export default function SeguimientoVehiculosPanel() {
     return () => clearSnapOverlays();
   }, [snappedPathByVehiculo, showTrail, clearSnapOverlays]);
 
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+
+    const clearPlayback = () => {
+      try { playbackMarkerRef.current?.setMap(null); } catch { /* noop */ }
+      try { playbackLineDoneRef.current?.setMap(null); } catch { /* noop */ }
+      try { playbackLineRestRef.current?.setMap(null); } catch { /* noop */ }
+      playbackMarkerRef.current = null;
+      playbackLineDoneRef.current = null;
+      playbackLineRestRef.current = null;
+    };
+    clearPlayback();
+
+    if (playbackPoints.length > 1 && playbackCurrent) {
+      const full = playbackPoints.map((p) => ({ lat: p.lat, lng: p.lng }));
+      const idx = playbackCurrent.idx ?? 0;
+      const done = [...full.slice(0, idx + 1), { lat: playbackCurrent.lat, lng: playbackCurrent.lng }];
+      const rest = [{ lat: playbackCurrent.lat, lng: playbackCurrent.lng }, ...full.slice(idx + 1)];
+
+      playbackLineRestRef.current = new maps.Polyline({ map, path: rest, strokeColor: "#94a3b8", strokeOpacity: 0.7, strokeWeight: 4 });
+      playbackLineDoneRef.current = new maps.Polyline({ map, path: done, strokeColor: "#7C3AED", strokeOpacity: 0.95, strokeWeight: 5 });
+
+      const veh = vehiculoById[playbackVehiculoId];
+      const iconDataUrl = veh?.foto_url ? crearIconoCircular(veh.foto_url, "#7C3AED", () => setIconVersion((v) => v + 1)) : null;
+      playbackMarkerRef.current = new maps.Marker({
+        map,
+        position: { lat: playbackCurrent.lat, lng: playbackCurrent.lng },
+        icon: iconDataUrl
+          ? { url: iconDataUrl, scaledSize: new maps.Size(48, 48), anchor: new maps.Point(24, 24) }
+          : { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2.5, scale: 9 },
+        zIndex: 1000
+      });
+    }
+
+    return () => clearPlayback();
+  }, [playbackPoints, playbackCurrent, playbackVehiculoId, vehiculoById, iconVersion]);
+
   const toggleVehiculo = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
@@ -999,12 +1132,27 @@ export default function SeguimientoVehiculosPanel() {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 15, color: "#1e293b" }}>📊 Detalle de recorrido</h3>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <input
               type="date"
               value={analyticsDate}
               onChange={(e) => setAnalyticsDate(e.target.value)}
               style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }}
+            />
+            <input
+              type="time"
+              value={analyticsHoraDesde}
+              onChange={(e) => setAnalyticsHoraDesde(e.target.value)}
+              title="Desde"
+              style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, width: 90 }}
+            />
+            <span style={{ color: "#94a3b8", fontSize: 12 }}>a</span>
+            <input
+              type="time"
+              value={analyticsHoraHasta}
+              onChange={(e) => setAnalyticsHoraHasta(e.target.value)}
+              title="Hasta"
+              style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13, width: 90 }}
             />
             <button type="button" className="secondary-btn small" onClick={() => void calcularAnalitica()} disabled={loadingAnalytics}>
               {loadingAnalytics ? "Calculando..." : "Calcular"}
@@ -1071,11 +1219,78 @@ export default function SeguimientoVehiculosPanel() {
                       ) : null}
                     </>
                   )}
+                  <button
+                    type="button"
+                    className="secondary-btn small"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => { setPlaybackVehiculoId(id); void cargarPlayback(); }}
+                  >
+                    ▶️ Reproducir
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
+
+        {playbackVehiculoId ? (
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: "#fff", border: "1px solid #e2e8f0" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <strong style={{ fontSize: 13, color: "#1e293b" }}>
+                ▶️ Reproduciendo: {vehiculoById[playbackVehiculoId]?.placa || "-"}
+              </strong>
+              <button type="button" className="secondary-btn small" onClick={() => { setPlaybackVehiculoId(null); setPlaybackPoints([]); setPlaybackPlaying(false); }}>
+                ✕ Cerrar
+              </button>
+            </div>
+
+            {loadingPlayback ? <p style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>Cargando recorrido...</p> : null}
+            {playbackError ? <p className="warn-text" style={{ marginTop: 8 }}>{playbackError}</p> : null}
+
+            {playbackPoints.length > 1 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="secondary-btn small"
+                    onClick={() => setPlaybackPlaying((p) => !p)}
+                  >
+                    {playbackPlaying ? "⏸️ Pausar" : "▶️ Reproducir"}
+                  </button>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {[1, 5, 20, 60].map((sp) => (
+                      <button
+                        key={sp}
+                        type="button"
+                        onClick={() => setPlaybackSpeed(sp)}
+                        style={{
+                          padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          border: `1px solid ${playbackSpeed === sp ? "#7C3AED" : "#e2e8f0"}`,
+                          background: playbackSpeed === sp ? "#7C3AED1a" : "#fff",
+                          color: playbackSpeed === sp ? "#7C3AED" : "#64748b"
+                        }}
+                      >
+                        {sp}x
+                      </button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>
+                    {playbackCurrent?.t ? new Date(playbackCurrent.t).toLocaleTimeString("es-PE") : "-"}
+                    {playbackCurrent?.speedMps != null ? ` · ${Math.round(playbackCurrent.speedMps * 3.6)} km/h` : ""}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={playbackDurationMs}
+                  value={playbackElapsedMs}
+                  onChange={(e) => { setPlaybackPlaying(false); setPlaybackElapsedMs(Number(e.target.value)); }}
+                  style={{ width: "100%", marginTop: 10 }}
+                />
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
