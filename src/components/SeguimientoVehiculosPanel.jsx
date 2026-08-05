@@ -338,8 +338,9 @@ export default function SeguimientoVehiculosPanel() {
   const mapCanvasRef = useRef(null);
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
-  const markersRef = useRef([]);
   const polylinesRef = useRef([]);
+  const vehicleMarkersRef = useRef(new Map());
+  const pulseRafRef = useRef(null);
   const autoFitDoneRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
@@ -876,13 +877,6 @@ export default function SeguimientoVehiculosPanel() {
     return { total, activos, retrasados: total - activos };
   }, [rowsList]);
 
-  const clearOverlays = useCallback(() => {
-    markersRef.current.forEach((m) => { try { m.setMap(null); } catch { /* noop */ } });
-    polylinesRef.current.forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
-    markersRef.current = [];
-    polylinesRef.current = [];
-  }, []);
-
   const clearOrderOverlays = useCallback(() => {
     orderMarkersRef.current.forEach((m) => { try { m.setMap(null); } catch { /* noop */ } });
     orderMarkersRef.current = [];
@@ -927,24 +921,49 @@ export default function SeguimientoVehiculosPanel() {
     if (!mapRef.current || !mapsRef.current) return;
     const map = mapRef.current;
     const maps = mapsRef.current;
-    clearOverlays();
+    polylinesRef.current.forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
+    polylinesRef.current = [];
 
     trailPolylines.forEach((trail) => {
       const line = new maps.Polyline({ map, path: trail.points, strokeColor: trail.color, strokeOpacity: 0.9, strokeWeight: 4 });
       polylinesRef.current.push(line);
     });
 
+    if (!selectedId && rowsList.length > 0) setSelectedId(rowsList[0]?.vehiculo_id);
+    if (rowsList.length > 0 && !autoFitDoneRef.current) { fitMap(); autoFitDoneRef.current = true; }
+
+    return () => {
+      polylinesRef.current.forEach((l) => { try { l.setMap(null); } catch { /* noop */ } });
+      polylinesRef.current = [];
+    };
+  }, [rowsList, selectedId, trailPolylines, fitMap]);
+
+  // Marcadores de vehiculo persistentes: en vez de destruir y recrear todo en
+  // cada refresco (lo que hacia que el auto "saltara" de golpe cada 6s), se
+  // actualiza la posicion del marcador ya existente con una transicion suave,
+  // como hacen Uber/InDrive — sin pagar por ninguna API de rutas.
+  const ANIM_MS = 1400;
+  const easeInOutQuad = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    const seen = new Set();
+
     rowsList.forEach((row) => {
       const lat = Number(row?.lat);
       const lng = Number(row?.lng);
       if (!isValidCoord(lat, lng)) return;
-      const selected = row?.vehiculo_id === selectedId;
+      const id = row?.vehiculo_id;
+      seen.add(id);
+
+      const selected = id === selectedId;
       const staleMin = Number(row?.staleMin || 0);
-      const color = staleMin > STALE_MIN_THRESHOLD ? "#7A8699" : colorForVehiculoId(row?.vehiculo_id);
+      const isLive = staleMin <= STALE_MIN_THRESHOLD;
+      const color = isLive ? colorForVehiculoId(id) : "#7A8699";
       const size = selected ? 54 : 44;
-      const iconDataUrl = row.fotoUrl
-        ? crearIconoCircular(row.fotoUrl, color, () => setIconVersion((v) => v + 1))
-        : null;
+      const iconDataUrl = row.fotoUrl ? crearIconoCircular(row.fotoUrl, color, () => setIconVersion((v) => v + 1)) : null;
       const icon = iconDataUrl
         ? { url: iconDataUrl, scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) }
         : {
@@ -964,16 +983,118 @@ export default function SeguimientoVehiculosPanel() {
       ]
         .filter(Boolean)
         .join(" · ");
-      const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, zIndex: selected ? 999 : undefined });
-      marker.addListener("click", () => setSelectedId(row?.vehiculo_id));
-      markersRef.current.push(marker);
+
+      let entry = vehicleMarkersRef.current.get(id);
+      if (!entry) {
+        const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, zIndex: selected ? 999 : undefined });
+        marker.addListener("click", () => setSelectedId(id));
+        const arrow = new maps.Marker({
+          map,
+          position: { lat, lng },
+          icon: { path: maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 3.2, fillColor: color, fillOpacity: 0.9, strokeColor: "#fff", strokeWeight: 1, rotation: 0 },
+          zIndex: (selected ? 999 : 500) - 1,
+          clickable: false
+        });
+        const pulse = new maps.Circle({
+          map,
+          center: { lat, lng },
+          radius: 30,
+          fillColor: color,
+          fillOpacity: 0.25,
+          strokeOpacity: 0,
+          clickable: false,
+          zIndex: 1
+        });
+        entry = { marker, arrow, pulse, pos: { lat, lng }, animId: null, hasHeading: false };
+        vehicleMarkersRef.current.set(id, entry);
+      } else {
+        entry.marker.setTitle(title);
+        entry.marker.setIcon(icon);
+        entry.marker.setZIndex(selected ? 999 : undefined);
+        entry.arrow.setIcon({ ...entry.arrow.getIcon(), fillColor: color });
+        entry.pulse.setOptions({ fillColor: color });
+
+        const from = entry.pos;
+        const to = { lat, lng };
+        const moved = haversineKm(from, to) * 1000; // metros
+        if (moved > 2) {
+          const rumbo = bearingDeg(from, to);
+          entry.arrow.setIcon({ ...entry.arrow.getIcon(), rotation: rumbo });
+          entry.hasHeading = true;
+        }
+
+        if (entry.animId) cancelAnimationFrame(entry.animId);
+        const start = performance.now();
+        const animate = (now) => {
+          const t = Math.min(1, (now - start) / ANIM_MS);
+          const k = easeInOutQuad(t);
+          const curLat = from.lat + (to.lat - from.lat) * k;
+          const curLng = from.lng + (to.lng - from.lng) * k;
+          entry.marker.setPosition({ lat: curLat, lng: curLng });
+          entry.arrow.setPosition({ lat: curLat, lng: curLng });
+          entry.pulse.setCenter({ lat: curLat, lng: curLng });
+          if (t < 1) {
+            entry.animId = requestAnimationFrame(animate);
+          } else {
+            entry.animId = null;
+            entry.pos = to;
+          }
+        };
+        entry.animId = requestAnimationFrame(animate);
+      }
     });
 
-    if (!selectedId && rowsList.length > 0) setSelectedId(rowsList[0]?.vehiculo_id);
-    if (rowsList.length > 0 && !autoFitDoneRef.current) { fitMap(); autoFitDoneRef.current = true; }
+    // Vehiculos que salieron de la lista (deseleccionados o sin ubicacion) —
+    // remover sus marcadores.
+    vehicleMarkersRef.current.forEach((entry, id) => {
+      if (seen.has(id)) return;
+      if (entry.animId) cancelAnimationFrame(entry.animId);
+      try { entry.marker.setMap(null); } catch { /* noop */ }
+      try { entry.arrow.setMap(null); } catch { /* noop */ }
+      try { entry.pulse.setMap(null); } catch { /* noop */ }
+      vehicleMarkersRef.current.delete(id);
+    });
+  }, [rowsList, selectedId, mapReady, iconVersion]);
 
-    return () => clearOverlays();
-  }, [rowsList, selectedId, trailPolylines, clearOverlays, fitMap, iconVersion]);
+  // Pulso "en vivo" continuo (radar) detras de los vehiculos con reporte
+  // reciente — un solo loop de animacion compartido, no uno por vehiculo.
+  useEffect(() => {
+    if (!mapReady) return undefined;
+    let cancelled = false;
+    const PULSE_PERIOD_MS = 1800;
+    const tick = (now) => {
+      if (cancelled) return;
+      const phase = (now % PULSE_PERIOD_MS) / PULSE_PERIOD_MS;
+      vehicleMarkersRef.current.forEach((entry) => {
+        const radius = 14 + phase * 26;
+        const opacity = 0.28 * (1 - phase);
+        try {
+          entry.pulse.setRadius(radius);
+          entry.pulse.setOptions({ fillOpacity: opacity });
+        } catch { /* noop */ }
+      });
+      pulseRafRef.current = requestAnimationFrame(tick);
+    };
+    pulseRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      if (pulseRafRef.current) cancelAnimationFrame(pulseRafRef.current);
+    };
+  }, [mapReady]);
+
+  // Limpieza total solo al desmontar el componente (no en cada refresco).
+  useEffect(() => {
+    const registry = vehicleMarkersRef.current;
+    return () => {
+      registry.forEach((entry) => {
+        if (entry.animId) cancelAnimationFrame(entry.animId);
+        try { entry.marker.setMap(null); } catch { /* noop */ }
+        try { entry.arrow.setMap(null); } catch { /* noop */ }
+        try { entry.pulse.setMap(null); } catch { /* noop */ }
+      });
+      registry.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return undefined;
