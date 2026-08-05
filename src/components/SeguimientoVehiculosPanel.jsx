@@ -146,6 +146,24 @@ const haversineKm = (a, b) => {
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 };
 
+// El GPS varia unos metros en cualquier direccion aun con el vehiculo
+// completamente quieto (ruido normal de senal) — sin filtrar esto, el
+// recorrido se dibuja como una "telarana" en vez de un punto fijo. Se
+// descartan puntos que no se alejaron lo suficiente del ultimo punto que
+// si se conservo, igual que hacen los trackers GPS profesionales.
+const JITTER_THRESHOLD_KM = 0.015; // ~15 metros
+const filtrarJitterEstacionario = (points) => {
+  if (!Array.isArray(points) || points.length === 0) return points;
+  const out = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const last = out[out.length - 1];
+    if (haversineKm(last, points[i]) >= JITTER_THRESHOLD_KM) {
+      out.push(points[i]);
+    }
+  }
+  return out;
+};
+
 // Rumbo (0-360, 0=norte) entre dos puntos — para orientar la flecha de
 // direccion del reproductor de recorrido, igual que un GPS tracker real.
 const bearingDeg = (a, b) => {
@@ -817,9 +835,10 @@ export default function SeguimientoVehiculosPanel() {
         .order("created_at", { ascending: true })
         .limit(20000);
       if (res.error) throw res.error;
-      const pts = (Array.isArray(res.data) ? res.data : [])
+      const ptsRaw = (Array.isArray(res.data) ? res.data : [])
         .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), speedMps: Number(r.speed_mps), t: new Date(r.created_at).getTime() }))
         .filter((p) => isValidCoord(p.lat, p.lng) && Number.isFinite(p.t));
+      const pts = filtrarJitterEstacionario(ptsRaw);
       if (pts.length === 0) {
         setPlaybackError("No hay puntos guardados para ese vehiculo en ese rango.");
       }
@@ -994,7 +1013,7 @@ export default function SeguimientoVehiculosPanel() {
       .map(([id, pts]) => ({
         id,
         color: colorForVehiculoId(id),
-        points: suavizarPuntos(pts.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) })))
+        points: suavizarPuntos(filtrarJitterEstacionario(pts.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))))
       }));
   }, [showTrail, trailByVehiculo, ubicacionesVisibles]);
 
