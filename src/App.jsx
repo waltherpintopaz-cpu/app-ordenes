@@ -3136,6 +3136,25 @@ export default function App() {
     return historialRecuperaciones.filter((rec) => codigoAutorOrdenMap[rec.orden_codigo] === gestorFiltroRecuperacionEfectivo);
   }, [historialRecuperaciones, codigoAutorOrdenMap, gestorFiltroRecuperacionEfectivo]);
 
+  // Busqueda por nombre/DNI compartida entre las 3 pestanas de Recuperaciones
+  // (Pendientes, Ejecuciones, Custodia Tecnica) — reutiliza el mismo estado
+  // que ya existia para el buscador de "Historial de ingresados".
+  const pendientesRecuperacionBuscado = useMemo(() => {
+    const q = filtroHistorialBusqueda.trim().toLowerCase();
+    if (!q) return pendientesRecuperacion;
+    return pendientesRecuperacion.filter((o) =>
+      [o.nombre, o.dni, o.codigo, o.direccion, o.tecnico, o.autorOrden].some((v) => String(v || "").toLowerCase().includes(q))
+    );
+  }, [pendientesRecuperacion, filtroHistorialBusqueda]);
+
+  const historialRecuperacionesBuscado = useMemo(() => {
+    const q = filtroHistorialBusqueda.trim().toLowerCase();
+    if (!q) return historialRecuperacionesFiltrado;
+    return historialRecuperacionesFiltrado.filter((rec) =>
+      [rec.nombre_cliente, rec.dni, rec.orden_codigo, rec.tecnico_ejecuta].some((v) => String(v || "").toLowerCase().includes(q))
+    );
+  }, [historialRecuperacionesFiltrado, filtroHistorialBusqueda]);
+
   const completadasMesRecuperacionCount = useMemo(() => {
     const hoy = new Date();
     const inicioMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
@@ -24391,7 +24410,7 @@ export default function App() {
               ))}
             </div>
 
-            {/* ── Filtro por gestor (quién creó la orden) ── */}
+            {/* ── Filtro por gestor (quién creó la orden) + busqueda por nombre/DNI ── */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280" }}>👤 Gestor:</span>
               {esGestorSesion ? (
@@ -24410,6 +24429,12 @@ export default function App() {
                   ))}
                 </select>
               )}
+              <input
+                value={filtroHistorialBusqueda}
+                onChange={(e) => setFiltroHistorialBusqueda(e.target.value)}
+                placeholder="🔎 Buscar por nombre o DNI..."
+                style={{ flex: "1 1 220px", minWidth: "180px", padding: "6px 12px", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: "12px", color: isDark ? "#c3d3ee" : "#374151", background: isDark ? "#1a2740" : "#fff" }}
+              />
             </div>
 
             {/* ── PENDIENTES ── */}
@@ -24417,10 +24442,10 @@ export default function App() {
               <div style={{ display: "grid", gap: "16px" }}>
                 <div>
                   <h2 style={{ fontSize: "16px", fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827", margin: "0 0 2px" }}>Recojos de equipo pendientes</h2>
-                  <p style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", margin: 0 }}>{pendientesRecuperacion.length} registro{pendientesRecuperacion.length !== 1 ? "s" : ""} aún sin ejecutar</p>
+                  <p style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", margin: 0 }}>{pendientesRecuperacionBuscado.length} registro{pendientesRecuperacionBuscado.length !== 1 ? "s" : ""} aún sin ejecutar</p>
                 </div>
 
-                {pendientesRecuperacion.length === 0 ? (
+                {pendientesRecuperacionBuscado.length === 0 ? (
                   <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: isDark ? "1.5px dashed #2c3c58" : "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
                     <div style={{ fontSize: "32px", marginBottom: "8px" }}>✅</div>
                     <div style={{ fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "4px" }}>Sin pendientes</div>
@@ -24428,7 +24453,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
-                    {pendientesRecuperacion.map((o) => {
+                    {pendientesRecuperacionBuscado.map((o) => {
                       const vencida = o.fechaActuacion && o.fechaActuacion < todayIsoLocal();
                       const editandoFecha = editandoFechaRecuperacionId === o.id;
                       return (
@@ -24513,7 +24538,7 @@ export default function App() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                   <div>
                     <h2 style={{ fontSize: "16px", fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827", margin: "0 0 2px" }}>Historial de ejecuciones</h2>
-                    <p style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", margin: 0 }}>{historialRecuperacionesFiltrado.length} registro{historialRecuperacionesFiltrado.length !== 1 ? "s" : ""}</p>
+                    <p style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#9ca3af", margin: 0 }}>{historialRecuperacionesBuscado.length} registro{historialRecuperacionesBuscado.length !== 1 ? "s" : ""}</p>
                   </div>
                   <button
                     style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 16px", borderRadius: "9px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", background: isDark ? "#1a2740" : "#fff", color: isDark ? "#c3d3ee" : "#374151", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}
@@ -24529,7 +24554,7 @@ export default function App() {
                     <div style={{ fontSize: "28px", marginBottom: "8px" }}>⏳</div>
                     <div style={{ fontWeight: 600 }}>Cargando registros…</div>
                   </div>
-                ) : historialRecuperacionesFiltrado.length === 0 ? (
+                ) : historialRecuperacionesBuscado.length === 0 ? (
                   <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: "16px", border: isDark ? "1.5px dashed #2c3c58" : "1.5px dashed #e5e7eb", padding: "48px", textAlign: "center" }}>
                     <div style={{ display: "flex", justifyContent: "center", marginBottom: "8px", color: isDark ? "#93a2bd" : "#9ca3af" }}><ClipboardList size={32} /></div>
                     <div style={{ fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "4px" }}>Sin registros aún</div>
@@ -24537,7 +24562,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: "12px" }}>
-                    {historialRecuperacionesFiltrado.map((rec, idx) => {
+                    {historialRecuperacionesBuscado.map((rec, idx) => {
                       const equipos = Array.isArray(rec.equipos_recuperados) ? rec.equipos_recuperados : [];
                       const fotos = Array.isArray(rec.fotos) ? rec.fotos : [];
                       const fecha = rec.fecha_ejecucion ? new Date(rec.fecha_ejecucion).toLocaleString("es-PE") : "";
@@ -24780,9 +24805,12 @@ export default function App() {
                 ) : (
                   <div style={{ display: "grid", gap: "14px" }}>
                     {(() => {
-                      const conSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega);
-                      const sinSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && !s.codigo_entrega);
-                      const pendientesVisibles = stockTecnico.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true));
+                      const qBusqueda = filtroHistorialBusqueda.trim().toLowerCase();
+                      const coincideBusqueda = (s) =>
+                        !qBusqueda || [s.nombre_cliente, s.dni_cliente, s.orden_codigo, s.tecnico_recupera, s.serial].some((v) => String(v || "").toLowerCase().includes(qBusqueda));
+                      const conSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && s.codigo_entrega && coincideBusqueda(s));
+                      const sinSolicitud = stockTecnico.filter((s) => !s.ingresado_almacen && !s.codigo_entrega && coincideBusqueda(s));
+                      const pendientesVisibles = stockTecnico.filter((s) => !s.ingresado_almacen && (rolSesion === "Tecnico" ? s.tecnico_recupera === usuarioSesion?.nombre : true) && coincideBusqueda(s));
                       return (
                         <>
                           {/* Grupo: con solicitud */}
@@ -24917,14 +24945,8 @@ export default function App() {
                     </div>
                   ) : (
                   <div style={{ display: "grid", gap: "10px" }}>
-                    {/* Filtros + PDF */}
+                    {/* Filtros + PDF (la busqueda por nombre/DNI ya esta arriba, compartida entre pestanas) */}
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", padding: "10px 14px", background: isDark ? "#16213a" : "#f8fafc", borderRadius: "10px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb" }}>
-                      <input
-                        style={{ ...inputStyle, flex: "1 1 160px", fontSize: "12px", padding: "5px 10px" }}
-                        placeholder="Buscar cliente, tipo, serial, orden..."
-                        value={filtroHistorialBusqueda}
-                        onChange={(e) => setFiltroHistorialBusqueda(e.target.value)}
-                      />
                       <select style={{ ...inputStyle, fontSize: "12px", padding: "5px 8px", flex: "0 1 130px" }} value={filtroHistorialNodo} onChange={(e) => setFiltroHistorialNodo(e.target.value)}>
                         <option value="TODOS">Todos los nodos</option>
                         {[...new Set(stockTecnico.filter((s) => s.ingresado_almacen && s.nodo).map((s) => s.nodo))].sort().map((n) => (
@@ -24952,7 +24974,7 @@ export default function App() {
                             if (filtroHistorialCatalogado === "NO" && s.catalogado) return false;
                             if (filtroHistorialBusqueda) {
                               const q = filtroHistorialBusqueda.toLowerCase();
-                              if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
+                              if (![s.tipo, s.nombre_cliente, s.dni_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
                             }
                             return true;
                           });
@@ -24990,7 +25012,7 @@ export default function App() {
                       if (filtroHistorialCatalogado === "NO" && s.catalogado) return false;
                       if (filtroHistorialBusqueda) {
                         const q = filtroHistorialBusqueda.toLowerCase();
-                        if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
+                        if (![s.tipo, s.nombre_cliente, s.dni_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
                       }
                       return true;
                     }).length === 0 && (
@@ -25003,7 +25025,7 @@ export default function App() {
                       if (filtroHistorialCatalogado === "NO" && s.catalogado) return false;
                       if (filtroHistorialBusqueda) {
                         const q = filtroHistorialBusqueda.toLowerCase();
-                        if (![s.tipo, s.nombre_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
+                        if (![s.tipo, s.nombre_cliente, s.dni_cliente, s.serial, s.orden_codigo, s.tecnico_recupera, s.nodo].some((v) => String(v || "").toLowerCase().includes(q))) return false;
                       }
                       return true;
                     }).map((item) => {
