@@ -14,6 +14,9 @@ const TRAIL_WINDOW_HOURS = 24;
 const TRAIL_MAX_POINTS = 20000;
 const AUTO_REFRESH_MS = 6_000;
 const STALE_MIN_THRESHOLD = 3;
+// Velocidad urbana asumida para el ETA (no hay API de rutas de por medio,
+// solo distancia en linea recta / esta velocidad) — ajustable si hace falta.
+const ASSUMED_AVG_SPEED_KMH = 28;
 
 const toText = (value) => String(value ?? "").trim();
 const isValidCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
@@ -923,10 +926,42 @@ export default function SeguimientoVehiculosPanel() {
         const staleMin = Math.floor((Date.now() - new Date(row?.updated_at || Date.now()).getTime()) / 60000);
         const speedMps = Number(row?.speed_mps);
         const speedKmh = Number.isFinite(speedMps) && speedMps >= 0 ? speedMps * 3.6 : null;
-        return { ...row, placaLabel: toText(row?.placa) || veh?.placa || "-", alias: veh?.alias || "", fotoUrl: veh?.foto_url || "", speedKmh, staleMin };
+
+        // ETA estimado a la orden pendiente mas cercana del tecnico asignado a
+        // este vehiculo — no usa ninguna API paga, solo distancia en linea
+        // recta y una velocidad promedio urbana asumida.
+        let etaInfo = null;
+        const tecnicoAsignado = toText(veh?.tecnico_asignado);
+        if (tecnicoAsignado && isValidCoord(Number(row?.lat), Number(row?.lng))) {
+          const candidatas = ordenesHoy.filter(
+            (o) => toText(o.tecnico) === tecnicoAsignado && o.estado === "Pendiente" && o.coords
+          );
+          if (candidatas.length > 0) {
+            const posicionActual = { lat: Number(row.lat), lng: Number(row.lng) };
+            let mejor = null;
+            candidatas.forEach((o) => {
+              const distKm = haversineKm(posicionActual, o.coords);
+              if (!mejor || distKm < mejor.distKm) mejor = { orden: o, distKm };
+            });
+            if (mejor) {
+              const etaMin = Math.max(1, Math.round((mejor.distKm / ASSUMED_AVG_SPEED_KMH) * 60));
+              etaInfo = { codigo: mejor.orden.codigo, distKm: mejor.distKm, etaMin };
+            }
+          }
+        }
+
+        return {
+          ...row,
+          placaLabel: toText(row?.placa) || veh?.placa || "-",
+          alias: veh?.alias || "",
+          fotoUrl: veh?.foto_url || "",
+          speedKmh,
+          staleMin,
+          etaInfo
+        };
       })
       .sort((a, b) => new Date(b?.updated_at || 0).getTime() - new Date(a?.updated_at || 0).getTime());
-  }, [ubicacionesVisibles, vehiculoById]);
+  }, [ubicacionesVisibles, vehiculoById, ordenesHoy]);
 
   const trailPolylines = useMemo(() => {
     if (!showTrail) return [];
@@ -1060,7 +1095,8 @@ export default function SeguimientoVehiculosPanel() {
         `${row.placaLabel}${row.alias ? " — " + row.alias : ""}`,
         row.speedKmh != null ? `${Math.round(row.speedKmh)} km/h` : null,
         row.battery_pct != null ? `Bateria ${row.battery_pct}%` : null,
-        activityLabel || null
+        activityLabel || null,
+        row.etaInfo ? `Orden ${row.etaInfo.codigo || "-"} en ~${row.etaInfo.etaMin} min` : null
       ]
         .filter(Boolean)
         .join(" · ");
@@ -1722,6 +1758,11 @@ export default function SeguimientoVehiculosPanel() {
                   {row.battery_pct != null ? ` · Bateria ${row.battery_pct}%` : ""}
                   {row.activity_type ? ` · ${ACTIVITY_LABELS[row.activity_type] || row.activity_type}` : ""}
                 </div>
+                {row.etaInfo ? (
+                  <div style={{ fontSize: 12, color: "#7C3AED", fontWeight: 600, marginTop: 2 }}>
+                    🎯 Orden {row.etaInfo.codigo || "-"} · llegando en ~{row.etaInfo.etaMin} min ({row.etaInfo.distKm.toFixed(1)} km)
+                  </div>
+                ) : null}
               </div>
               <span style={{ width: 10, height: 10, borderRadius: 5, background: row.staleMin > STALE_MIN_THRESHOLD ? "#94a3b8" : "#16a34a", flexShrink: 0 }} />
             </div>
