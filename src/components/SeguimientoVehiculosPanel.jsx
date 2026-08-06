@@ -1258,7 +1258,7 @@ export default function SeguimientoVehiculosPanel() {
     // Zoom de referencia = 16 (donde 68/56px se ven bien); mas alejado del
     // mapa lo reduce, mas cerca lo agranda, con un piso para que nunca se
     // achique demasiado ni se pierda de vista.
-    const zoomScale = Math.min(1.7, Math.max(0.6, Math.pow(1.22, mapZoom - 16)));
+    const zoomScale = Math.min(1.7, Math.max(0.85, Math.pow(1.22, mapZoom - 16)));
 
     rowsList.forEach((row) => {
       const lat = Number(row?.lat);
