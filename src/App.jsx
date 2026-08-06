@@ -3106,9 +3106,13 @@ export default function App() {
   }, [clientesFiltrados, clientesPagina]);
 
   // ── Recuperaciones: filtro por gestor (quien creó la orden) ──────────────
-  // Un Gestor solo ve lo suyo (bloqueado); el Admin puede ver todo o filtrar por cualquiera.
+  // Antes un Gestor solo podia ver lo suyo (forzado). Ahora ve, por defecto,
+  // TODAS las recuperaciones de los nodos a los que tiene acceso (igual que
+  // el Admin dentro de su alcance de nodo) — asi evita pedirle equipo a un
+  // cliente que ya tiene orden o que ya fue recuperado por otro gestor. El
+  // filtro de nodo (mas abajo) sigue restringiendo siempre lo que puede ver.
   const [filtroGestorRecuperacionAdmin, setFiltroGestorRecuperacionAdmin] = useState("");
-  const gestorFiltroRecuperacionEfectivo = esGestorSesion ? (usuarioSesion?.nombre || "") : filtroGestorRecuperacionAdmin;
+  const gestorFiltroRecuperacionEfectivo = filtroGestorRecuperacionAdmin;
 
   // ── Recuperaciones: filtro por nodo — respeta los permisos de nodo del
   // usuario (una gestora restringida a ciertos nodos NUNCA ve los demas,
@@ -24440,22 +24444,19 @@ export default function App() {
             {/* ── Filtro por gestor (quién creó la orden) + busqueda por nombre/DNI ── */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280" }}>👤 Gestor:</span>
-              {esGestorSesion ? (
-                <span style={{ fontSize: "12px", fontWeight: 700, background: "#eff6ff", color: "#1d4ed8", borderRadius: "8px", padding: "5px 12px" }}>
-                  {usuarioSesion?.nombre || "—"} (mis órdenes)
-                </span>
-              ) : (
-                <select
-                  value={filtroGestorRecuperacionAdmin}
-                  onChange={(e) => setFiltroGestorRecuperacionAdmin(e.target.value)}
-                  style={{ padding: "6px 10px", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", background: isDark ? "#1a2740" : "#fff" }}
-                >
-                  <option value="">Todos</option>
-                  {gestoresRecuperacionDisponibles.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-              )}
+              <select
+                value={filtroGestorRecuperacionAdmin}
+                onChange={(e) => setFiltroGestorRecuperacionAdmin(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: "8px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", background: isDark ? "#1a2740" : "#fff" }}
+              >
+                <option value="">Todos{esGestorSesion ? " (mis nodos)" : ""}</option>
+                {esGestorSesion && usuarioSesion?.nombre && !gestoresRecuperacionDisponibles.includes(usuarioSesion.nombre) && (
+                  <option value={usuarioSesion.nombre}>{usuarioSesion.nombre} (mis órdenes)</option>
+                )}
+                {gestoresRecuperacionDisponibles.map((g) => (
+                  <option key={g} value={g}>{g}{esGestorSesion && g === usuarioSesion?.nombre ? " (mis órdenes)" : ""}</option>
+                ))}
+              </select>
               {nodosDisponiblesRecuperacion.length > 0 && (
                 <>
                   <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280" }}>📍 Nodo:</span>
