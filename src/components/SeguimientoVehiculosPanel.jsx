@@ -160,19 +160,30 @@ const haversineKm = (a, b) => {
 };
 
 // El GPS varia unos metros en cualquier direccion aun con el vehiculo
-// completamente quieto (ruido normal de senal) — sin filtrar esto, el
-// recorrido se dibuja como una "telarana" en vez de un punto fijo. Se
-// descartan puntos que no se alejaron lo suficiente del ultimo punto que
-// si se conservo, igual que hacen los trackers GPS profesionales.
-const JITTER_THRESHOLD_KM = 0.015; // ~15 metros
+// completamente quieto (ruido normal de senal, peor todavia cerca de
+// edificios por el rebote de la señal) — sin filtrar esto, el recorrido se
+// dibuja como una "telarana" saliendose de la calle en vez de un punto fijo.
+// Dos pasadas:
+// 1) Se descartan lecturas de mala precision (el propio GPS ya avisa que esa
+//    lectura no es confiable via accuracy_m) — la causa mas comun de que el
+//    trazo se salga de la pista en una parada larga.
+// 2) Se agrupan por "ancla": mientras los puntos sigan dentro del radio de
+//    la primera lectura de la parada, no cuentan como movimiento real — a
+//    diferencia de comparar solo contra el ultimo punto guardado, esto no
+//    deja que la parada "camine" de a poco por un zigzag de ruido.
+const STOP_RADIUS_KM = 0.02; // ~20 metros
+const MAX_ACCURACY_M = 30;
 const filtrarJitterEstacionario = (points) => {
   if (!Array.isArray(points) || points.length === 0) return points;
-  const out = [points[0]];
-  for (let i = 1; i < points.length; i++) {
-    const last = out[out.length - 1];
-    if (haversineKm(last, points[i]) >= JITTER_THRESHOLD_KM) {
-      out.push(points[i]);
-    }
+  const buenas = points.filter((p) => p.accuracyM == null || p.accuracyM <= MAX_ACCURACY_M);
+  const base = buenas.length > 0 ? buenas : points;
+
+  const out = [base[0]];
+  let ancla = base[0];
+  for (let i = 1; i < base.length; i++) {
+    if (haversineKm(ancla, base[i]) < STOP_RADIUS_KM) continue;
+    out.push(base[i]);
+    ancla = base[i];
   }
   return out;
 };
@@ -314,6 +325,7 @@ const loadGoogleMapsSdk = () => {
 
 export default function SeguimientoVehiculosPanel() {
   const mapCanvasRef = useRef(null);
+  const mapWrapperRef = useRef(null);
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
   const polylinesRef = useRef([]);
@@ -336,6 +348,9 @@ export default function SeguimientoVehiculosPanel() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [followVehicle, setFollowVehicle] = useState(false);
+  const [viewerPos, setViewerPos] = useState(null);
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   const [showTrail, setShowTrail] = useState(true);
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
 
@@ -662,7 +677,7 @@ export default function SeguimientoVehiculosPanel() {
     // se garantiza quedarse con lo actual, y se reordena despues.
     const res = await supabase
       .from("vehiculo_ubicaciones")
-      .select("vehiculo_id,lat,lng,created_at")
+      .select("vehiculo_id,lat,lng,accuracy_m,created_at")
       .in("vehiculo_id", selectedIds)
       .gte("created_at", desde)
       .order("created_at", { ascending: false })
@@ -680,8 +695,9 @@ export default function SeguimientoVehiculosPanel() {
       const lat = Number(row?.lat);
       const lng = Number(row?.lng);
       if (!id || !isValidCoord(lat, lng)) return;
+      const accuracyM = Number(row?.accuracy_m);
       if (!grouped[id]) grouped[id] = [];
-      grouped[id].push({ lat, lng, created_at: row?.created_at || null });
+      grouped[id].push({ lat, lng, accuracyM: Number.isFinite(accuracyM) ? accuracyM : null, created_at: row?.created_at || null });
     });
     Object.keys(grouped).forEach((id) => {
       if (grouped[id].length > TRAIL_MAX_POINTS) grouped[id] = grouped[id].slice(grouped[id].length - TRAIL_MAX_POINTS);
@@ -815,7 +831,7 @@ export default function SeguimientoVehiculosPanel() {
       const hasta = new Date(`${analyticsDate}T${analyticsHoraHasta || "23:59"}:59.999`).toISOString();
       const res = await supabase
         .from("vehiculo_ubicaciones")
-        .select("lat,lng,speed_mps,created_at")
+        .select("lat,lng,speed_mps,accuracy_m,created_at")
         .eq("vehiculo_id", vehiculoId)
         .gte("created_at", desde)
         .lte("created_at", hasta)
@@ -823,7 +839,16 @@ export default function SeguimientoVehiculosPanel() {
         .limit(20000);
       if (res.error) throw res.error;
       const ptsRaw = (Array.isArray(res.data) ? res.data : [])
-        .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), speedMps: Number(r.speed_mps), t: new Date(r.created_at).getTime() }))
+        .map((r) => {
+          const accuracyM = Number(r.accuracy_m);
+          return {
+            lat: Number(r.lat),
+            lng: Number(r.lng),
+            speedMps: Number(r.speed_mps),
+            accuracyM: Number.isFinite(accuracyM) ? accuracyM : null,
+            t: new Date(r.created_at).getTime()
+          };
+        })
         .filter((p) => isValidCoord(p.lat, p.lng) && Number.isFinite(p.t));
       const pts = filtrarJitterEstacionario(ptsRaw);
       if (pts.length === 0) {
@@ -977,6 +1002,80 @@ export default function SeguimientoVehiculosPanel() {
       .sort((a, b) => new Date(b?.updated_at || 0).getTime() - new Date(a?.updated_at || 0).getTime());
   }, [ubicacionesVisibles, vehiculoById, ordenesHoy]);
 
+  const followedRow = useMemo(
+    () => (followVehicle ? rowsList.find((r) => r.vehiculo_id === selectedId) : null),
+    [followVehicle, selectedId, rowsList]
+  );
+
+  // Ordenes de HOY del tecnico asignado a este vehiculo, agrupadas por tipo
+  // (Instalacion/Incidencia/Recuperacion/Otro) — mismo criterio que usan los
+  // iconos de las ordenes en el mapa, para que la tarjeta y el mapa hablen
+  // el mismo idioma.
+  const followedOrdenesResumen = useMemo(() => {
+    if (!followedRow) return null;
+    const tecnico = toText(vehiculoById[followedRow.vehiculo_id]?.tecnico_asignado);
+    if (!tecnico) return null;
+    const delTecnico = ordenesHoy.filter((o) => toText(o.tecnico) === tecnico);
+    const conteos = new Map();
+    delTecnico.forEach((o) => {
+      const label = iconoParaTipoActuacion(o.tipo_actuacion).label;
+      conteos.set(label, (conteos.get(label) || 0) + 1);
+    });
+    const pendientes = delTecnico.filter((o) => o.estado === "Pendiente").length;
+    return { total: delTecnico.length, pendientes, porTipo: Array.from(conteos.entries()) };
+  }, [followedRow, vehiculoById, ordenesHoy]);
+
+  // Ubicacion de quien esta viendo el mapa (navegador) — para la distancia
+  // por RUTA hasta el vehiculo seguido. Solo se pide mientras se este
+  // siguiendo a alguien, y se refresca cada rato (quien mira el mapa no se
+  // mueve tan rapido como el vehiculo).
+  useEffect(() => {
+    if (!followVehicle || typeof navigator === "undefined" || !navigator.geolocation) return undefined;
+    let cancelled = false;
+    const fetchPos = () => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => { if (!cancelled) setViewerPos({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    };
+    fetchPos();
+    const interval = setInterval(fetchPos, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [followVehicle]);
+
+  // Distancia POR RUTA (Directions API), no en linea recta — se recalcula
+  // cada ~25s (no en cada refresco de 6s) para no gastar de mas la cuota.
+  useEffect(() => {
+    if (!followedRow || !viewerPos || !isValidCoord(Number(followedRow.lat), Number(followedRow.lng))) {
+      setRouteInfo(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const fetchRoute = async () => {
+      try {
+        const origin = `${viewerPos.lat},${viewerPos.lng}`;
+        const destination = `${followedRow.lat},${followedRow.lng}`;
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}&key=${GOOGLE_MAPS_API_KEY}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const leg = data?.routes?.[0]?.legs?.[0];
+        if (!cancelled && leg) {
+          setRouteInfo({
+            distanceKm: leg.distance?.value != null ? leg.distance.value / 1000 : null,
+            durationMin: leg.duration?.value != null ? Math.round(leg.duration.value / 60) : null
+          });
+        }
+      } catch {
+        // sin conexion o sin cuota — se deja el ultimo valor conocido
+      }
+    };
+    void fetchRoute();
+    const interval = setInterval(fetchRoute, 25_000);
+    return () => { cancelled = true; clearInterval(interval); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followedRow?.vehiculo_id, followedRow?.lat, followedRow?.lng, viewerPos]);
+
   // Ordenes donde el vehiculo del tecnico asignado esta detenido justo al
   // lado — se marcan como "en sitio" para encender el halo pulsante.
   const arrivedOrderIds = useMemo(() => {
@@ -1002,7 +1101,7 @@ export default function SeguimientoVehiculosPanel() {
       .map(([id, pts]) => ({
         id,
         color: colorForVehiculoId(id),
-        points: suavizarPuntos(filtrarJitterEstacionario(pts.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }))))
+        points: suavizarPuntos(filtrarJitterEstacionario(pts.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng), accuracyM: p.accuracyM ?? null }))))
       }));
   }, [showTrail, trailByVehiculo, ubicacionesVisibles]);
 
@@ -1067,13 +1166,39 @@ export default function SeguimientoVehiculosPanel() {
         mapsRef.current = maps;
         if (!mapRef.current) {
           mapRef.current = new maps.Map(mapCanvasRef.current, {
-            center: DEFAULT_CENTER, zoom: 13, streetViewControl: false, mapTypeControl: false, fullscreenControl: true, gestureHandling: "greedy",
+            // El boton de pantalla completa NATIVO de Google solo agranda el
+            // div del mapa (no la tarjeta flotante, que es un hermano fuera
+            // de ese div) — se desactiva y se usa uno propio que agranda TODO
+            // el contenedor (mapa + tarjeta), asi la tarjeta tambien se ve.
+            center: DEFAULT_CENTER, zoom: 13, streetViewControl: false, mapTypeControl: false, fullscreenControl: false, gestureHandling: "greedy",
           });
         }
         setMapReady(true);
       })
       .catch((e) => { if (!cancelled) { setMapReady(false); setMapError(String(e?.message || "No se pudo cargar Google Maps.")); } });
     return () => { cancelled = true; };
+  }, []);
+
+  // Boton propio de pantalla completa (agranda el contenedor entero, mapa +
+  // tarjeta) — Google no le avisa solo al mapa que cambio de tamaño, hay
+  // que pedirselo con "resize" o se queda con los tiles a medio cargar.
+  const toggleMapFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else if (mapWrapperRef.current?.requestFullscreen) {
+      mapWrapperRef.current.requestFullscreen();
+    }
+  }, []);
+  useEffect(() => {
+    const onChange = () => {
+      const isFull = document.fullscreenElement === mapWrapperRef.current;
+      setMapFullscreen(isFull);
+      setTimeout(() => {
+        if (mapRef.current && mapsRef.current) mapsRef.current.event.trigger(mapRef.current, "resize");
+      }, 60);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   // Si el usuario arrastra el mapa manualmente, se cancela el seguimiento
@@ -1189,7 +1314,14 @@ export default function SeguimientoVehiculosPanel() {
 
       if (!entry) {
         const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, zIndex: selected ? 999 : undefined });
-        marker.addListener("click", () => setSelectedId(id));
+        marker.addListener("click", () => {
+          setSelectedId(id);
+          setFollowVehicle(true);
+          // Usa la posicion ACTUAL del marcador (no la de cuando se creo, que
+          // puede estar vieja si el vehiculo ya se movio desde entonces).
+          const pos = marker.getPosition();
+          if (pos) zoomSuaveHacia(map, 18, { lat: pos.lat(), lng: pos.lng() });
+        });
         const pulse = new maps.Circle({
           map,
           center: { lat, lng },
@@ -1243,7 +1375,7 @@ export default function SeguimientoVehiculosPanel() {
       try { entry.pulse.setMap(null); } catch { /* noop */ }
       vehicleMarkersRef.current.delete(id);
     });
-  }, [rowsList, selectedId, mapReady, followVehicle, mapZoom]);
+  }, [rowsList, selectedId, mapReady, followVehicle, mapZoom, zoomSuaveHacia]);
 
   // Pulso "en vivo" continuo (radar) detras de los vehiculos con reporte
   // reciente — un solo loop de animacion compartido, no uno por vehiculo.
@@ -1591,7 +1723,7 @@ export default function SeguimientoVehiculosPanel() {
               setFollowVehicle(e.target.checked);
               const row = rowsList.find((r) => r.vehiculo_id === selectedId);
               if (e.target.checked && row && isValidCoord(Number(row.lat), Number(row.lng))) {
-                zoomSuaveHacia(mapRef.current, 17, { lat: Number(row.lat), lng: Number(row.lng) });
+                zoomSuaveHacia(mapRef.current, 18, { lat: Number(row.lat), lng: Number(row.lng) });
               }
             }}
           />
@@ -1600,9 +1732,10 @@ export default function SeguimientoVehiculosPanel() {
       </div>
 
       <div
+        ref={mapWrapperRef}
         style={{
-          position: "relative", width: "100%", height: 480, borderRadius: 16, overflow: "hidden",
-          border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)"
+          position: "relative", width: "100%", height: mapFullscreen ? "100vh" : 480, borderRadius: mapFullscreen ? 0 : 16,
+          overflow: "hidden", border: "1px solid #e2e8f0", boxShadow: "0 8px 24px rgba(15,23,42,0.08)", background: "#fff"
         }}
       >
         <div ref={mapCanvasRef} style={{ width: "100%", height: "100%" }} />
@@ -1611,6 +1744,93 @@ export default function SeguimientoVehiculosPanel() {
             Cargando mapa...
           </div>
         )}
+        <button
+          type="button"
+          onClick={toggleMapFullscreen}
+          title={mapFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+          style={{
+            position: "absolute", bottom: 14, right: 14, width: 36, height: 36, borderRadius: 18, border: "1px solid #e2e8f0",
+            background: "rgba(255,255,255,0.95)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 2px 8px rgba(15,23,42,0.15)"
+          }}
+        >
+          {mapFullscreen ? "🗗" : "⛶"}
+        </button>
+        {followedRow ? (
+          <div
+            style={{
+              position: "absolute", top: 16, right: 16, width: 290, background: "rgba(255,255,255,0.98)",
+              borderRadius: 16, padding: 18, boxShadow: "0 10px 28px rgba(15,23,42,0.25)", maxHeight: "calc(100% - 32px)", overflowY: "auto"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {followedRow.fotoUrl ? (
+                  <img src={followedRow.fotoUrl} alt="" style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                ) : null}
+                <strong style={{ fontSize: 16, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {followedRow.placaLabel}{followedRow.alias ? ` · ${followedRow.alias}` : ""}
+                </strong>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFollowVehicle(false)}
+                style={{ border: "none", background: "transparent", cursor: "pointer", color: "#94a3b8", fontSize: 20, lineHeight: 1, padding: 2, flexShrink: 0 }}
+                aria-label="Dejar de seguir"
+              >
+                ✕
+              </button>
+            </div>
+            {toText(vehiculoById[followedRow.vehiculo_id]?.tecnico_asignado) ? (
+              <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
+                👤 {vehiculoById[followedRow.vehiculo_id].tecnico_asignado}
+              </div>
+            ) : null}
+            {followedRow.speedKmh != null ? (
+              <div style={{ fontSize: 32, fontWeight: 900, color: colorForSpeedKmh(followedRow.speedKmh), marginTop: 6 }}>
+                {Math.round(followedRow.speedKmh)} <span style={{ fontSize: 14, fontWeight: 700 }}>km/h</span>
+              </div>
+            ) : (
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#cbd5e1", marginTop: 6 }}>—</div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
+              {followedRow.battery_pct != null ? (
+                <span style={{ fontSize: 13, fontWeight: 700, color: followedRow.battery_pct <= 20 ? "#dc2626" : followedRow.battery_pct <= 50 ? "#ca8a04" : "#16a34a" }}>
+                  🔋 {followedRow.battery_pct}%
+                </span>
+              ) : null}
+              {followedRow.tieneEscalera ? (
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#F59E0B" }}>🪜 Escalera</span>
+              ) : null}
+            </div>
+            {routeInfo?.distanceKm != null ? (
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#1E4F9C", marginTop: 8 }}>
+                🧭 {routeInfo.distanceKm < 1 ? `${Math.round(routeInfo.distanceKm * 1000)} m` : `${routeInfo.distanceKm.toFixed(1)} km`} por ruta
+                {routeInfo.durationMin != null ? ` · ~${routeInfo.durationMin} min` : ""}
+              </div>
+            ) : null}
+            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>{formatAgo(followedRow.updated_at)}</div>
+
+            {followedOrdenesResumen ? (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#1e293b" }}>
+                  📋 {followedOrdenesResumen.total} orden{followedOrdenesResumen.total === 1 ? "" : "es"} hoy
+                  {followedOrdenesResumen.total > 0 ? ` (${followedOrdenesResumen.pendientes} pendiente${followedOrdenesResumen.pendientes === 1 ? "" : "s"})` : ""}
+                </div>
+                {followedOrdenesResumen.porTipo.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+                    {followedOrdenesResumen.porTipo.map(([label, count]) => (
+                      <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569" }}>
+                        <span>{label}</span>
+                        <strong style={{ color: "#1e293b" }}>{count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div
