@@ -34,6 +34,7 @@ import GestorasReportesPanel from "./components/GestorasReportesPanel";
 import DashboardEjecutivoPanel from "./components/DashboardEjecutivoPanel";
 import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
 import IptvPanel from "./components/IptvPanel";
+import MaxPlayerCuentasPanel from "./components/MaxPlayerCuentasPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
 import EquiposTecnicoReportesPanel from "./components/EquiposTecnicoReportesPanel";
@@ -228,6 +229,7 @@ const MENU_VISTAS_WEB = [
   { key: "monitorSenales", label: "Monitor Señales", gestoraVisible: true },
   { key: "noc", label: "NOC Equipos DIM" },
   { key: "iptv", label: "Panel IPTV" },
+  { key: "maxplayerCuentas", label: "Cuentas MaxPlayer" },
   { key: "finanzas", label: "Finanzas" },
 ];
 
@@ -21032,6 +21034,10 @@ export default function App() {
 
         {vistaActiva === "iptv" && (esAdminSesion || esGestorSesion) && (
           <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} theme={theme} />
+        )}
+
+        {vistaActiva === "maxplayerCuentas" && esAdminSesion && (
+          <MaxPlayerCuentasPanel theme={theme} />
         )}
 
         {vistaActiva === "noc" && esAdminSesion && (
