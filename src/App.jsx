@@ -818,6 +818,11 @@ function deserializeLiquidacionFromSupabase(row = {}) {
       const ymd = raw.slice(0, 10);
       return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : "";
     })(),
+    fechaLiquidacionTs: (() => {
+      const raw = String(row.fecha_liquidacion || row.updated_at || row.created_at || "").trim();
+      const ts = raw ? new Date(raw).getTime() : NaN;
+      return Number.isFinite(ts) ? ts : 0;
+    })(),
     tipoActuacion: String(row.tipo_actuacion || "").trim(),
     dni: String(row.dni || "").trim(),
     nombre: String(row.nombre || row.cliente || "").trim(),
@@ -12108,7 +12113,8 @@ export default function App() {
           safeIncludes(item.tecnico, q) ||
           safeIncludes(item.liquidacion?.tecnicoLiquida, q)
         );
-      });
+      })
+      .sort((a, b) => (a.fechaLiquidacionTs || 0) - (b.fechaLiquidacionTs || 0));
   }, [
     liquidaciones,
     reporteDesde,
