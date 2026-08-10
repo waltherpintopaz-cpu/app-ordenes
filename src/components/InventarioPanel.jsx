@@ -576,6 +576,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   const [filtroEstadoCatalogo, setFiltroEstadoCatalogo] = useState("TODOS");
   const [catalogoOrden, _setCatalogoOrden] = useState("NUEVOS");
   const [catalogoPagina, setCatalogoPagina] = useState(1);
+  const [resumenMarcaModeloAbierto, setResumenMarcaModeloAbierto] = useState(true);
   const [filtroEstadoStockTecnico, setFiltroEstadoStockTecnico] = useState("ASIGNADO");
   const [tecnicoFiltro, setTecnicoFiltro] = useState("");
   const [fotoMaterialDisponible, setFotoMaterialDisponible] = useState(true);
@@ -1478,6 +1479,21 @@ ${filasNodos}
       conciliado: base.filter((e) => e.conciliacionEstado === "resuelto").length,
     };
   }, [equipos, busqueda, tecnicoFiltro]);
+  const catalogoPorMarcaModelo = useMemo(() => {
+    const map = new Map();
+    for (const e of catalogo) {
+      const marca = String(e?.marca || "").trim() || "Sin marca";
+      const modelo = String(e?.modelo || "").trim() || "Sin modelo";
+      const tipo = String(e?.tipo || "").trim() || "Sin tipo";
+      const key = `${tipo}||${marca}||${modelo}`;
+      const prev = map.get(key);
+      if (prev) prev.cantidad += 1;
+      else map.set(key, { tipo, marca, modelo, cantidad: 1 });
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => b.cantidad - a.cantidad || `${a.marca} ${a.modelo}`.localeCompare(`${b.marca} ${b.modelo}`, "es", { sensitivity: "base" })
+    );
+  }, [catalogo]);
   const equiposEnAlmacen = conteoCatalogo.almacen;
   const equiposAsignados = conteoCatalogo.asignado;
   const equiposLiquidados = conteoCatalogo.liquidado;
@@ -4178,6 +4194,30 @@ ${filasNodos}
           {String(tecnicoFiltro || "").trim() ? (
             <p className="panel-meta">Filtro tecnico aplicado: {tecnicoFiltro}</p>
           ) : null}
+          <article className="inv-card">
+            <div className="inv-row-head" style={{ cursor: "pointer" }} onClick={() => setResumenMarcaModeloAbierto((v) => !v)}>
+              <h3 style={{ margin: 0 }}>
+                Resumen por marca y modelo ({catalogoPorMarcaModelo.length})
+              </h3>
+              <button type="button" className="secondary-btn small">
+                {resumenMarcaModeloAbierto ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
+            {resumenMarcaModeloAbierto ? (
+              <div className="inv-list">
+                {catalogoPorMarcaModelo.length === 0 ? <p className="empty">Sin equipos para resumir.</p> : null}
+                {catalogoPorMarcaModelo.map((r) => (
+                  <div key={`${r.tipo}||${r.marca}||${r.modelo}`} className="inv-row">
+                    <div className="inv-row-head">
+                      <p className="inv-row-title">{r.marca} {r.modelo}</p>
+                      <span className="inv-state almacen">{r.cantidad}</span>
+                    </div>
+                    <p className="inv-row-meta">{r.tipo}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </article>
           <div className="inv-list">
             {catalogoPaginaRows.length === 0 ? <p className="empty">Sin equipos para mostrar.</p> : null}
             {catalogoPaginaRows.map((e) => (
