@@ -12089,6 +12089,15 @@ export default function App() {
         return medio.includes(reporteMedioPago.toLowerCase());
       })
       .filter((item) => {
+        // Solo actuaciones realmente completadas: excluye lo marcado en la
+        // liquidacion como No viable / Reprogramada / No se encontro al cliente /
+        // Pendiente por material. Registros antiguos sin este campo (por
+        // defecto "Liquidada") se siguen contando.
+        const resultado = String(item.liquidacion?.resultadoFinal || "").trim();
+        const NO_COMPLETADOS = ["No viable", "Reprogramada", "No se encontró al cliente", "Pendiente por material"];
+        return !NO_COMPLETADOS.includes(resultado);
+      })
+      .filter((item) => {
         if (!q) return true;
         return (
           safeIncludes(item.codigo, q) ||
