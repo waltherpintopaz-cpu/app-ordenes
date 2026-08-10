@@ -12674,6 +12674,14 @@ export default function App() {
     let sumEqVenta = 0;
     let sumActuacion = 0;
 
+    // Conteo de actuaciones por tipo (Instalacion, Incidencia, Recuperacion, etc.)
+    const tiposCount = {};
+    liquidacionesReporte.forEach((item) => {
+      const tipo = String(item.tipoActuacion || "Sin tipo").trim() || "Sin tipo";
+      tiposCount[tipo] = (tiposCount[tipo] || 0) + 1;
+    });
+    const tiposCountRows = Object.entries(tiposCount).sort((a, b) => b[1] - a[1]);
+
     const rows = liquidacionesReporte.map((item, idx) => {
       const monto = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
       const usuario = String(item.usuarioNodo || "").trim() || "-";
@@ -12771,6 +12779,10 @@ export default function App() {
     tbody tr{border-bottom:1px solid #f1f5f9}
     tfoot tr{background:#fff7f0;border-top:2px solid ${accentColor}}
     tfoot td{padding:8px;font-size:11px;font-weight:700;color:${accentColor};text-align:right}
+    .tipos-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .tipo-chip{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #fed7aa;border-radius:8px;padding:8px 14px}
+    .tipo-chip .n{font-size:16px;font-weight:800;color:${accentColor}}
+    .tipo-chip .l{font-size:11px;color:#374151;font-weight:600}
     .resumen{margin-top:20px;border:2px solid ${accentColor};border-radius:10px;overflow:hidden}
     .resumen-title{background:${accentColor};color:#fff;padding:10px 16px;font-size:13px;font-weight:800}
     .resumen-row{display:flex;justify-content:space-between;padding:8px 16px;border-bottom:1px solid #fed7aa;font-size:13px}
@@ -12795,6 +12807,11 @@ export default function App() {
     <div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(filtroTecnico)}</span></div>
     <div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(filtroNodo)}</span></div>
     <div class="info-item"><span class="info-label">Actuaciones</span><span class="info-value">${liquidacionesReporte.length}</span></div>
+  </div>
+
+  <div class="tipos-bar">
+    ${tiposCountRows.map(([tipo, n]) => `
+    <div class="tipo-chip"><span class="n">${n}</span><span class="l">${escHtml(tipo)}</span></div>`).join("")}
   </div>
 
   <table>
