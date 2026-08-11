@@ -499,10 +499,11 @@ export default function SidebarApp() {
   const [iptvEnviando,    setIptvEnviando]    = useState(false);
   const [iptvCambioPass,  setIptvCambioPass]  = useState(false);
   const [iptvNuevaPass,   setIptvNuevaPass]   = useState("");
-  const [iptvPantallas,   setIptvPantallas]   = useState("2");
+  const [iptvPantallas,   setIptvPantallas]   = useState("1");
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
+  const [ordenIptvPantallas, setOrdenIptvPantallas] = useState("1");
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
   const [showOrdenMap,  setShowOrdenMap]  = useState(false);
@@ -2335,8 +2336,10 @@ export default function SidebarApp() {
         try {
           const dniOrden  = cliente ? (cliente.cedula || "") : ordenForm.dni.trim();
           const nodoOrden = nodoFinal;
-          iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden);
-          setIptvData({ iptv_usuario: iptvInfo.iptv_usuario, iptv_password: iptvInfo.iptv_password, iptv_user_id: iptvInfo.iptv_user_id, created_at: new Date().toISOString(), creado_por: agente });
+          const nombreOrden = cliente ? (cliente.nombre || "") : ordenForm.nombre.trim();
+          const pantallasOrden = Number(ordenIptvPantallas) > 0 ? Number(ordenIptvPantallas) : 1;
+          iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden, pantallasOrden, nombreOrden);
+          setIptvData({ iptv_usuario: iptvInfo.iptv_usuario, iptv_password: iptvInfo.iptv_password, iptv_user_id: iptvInfo.iptv_user_id, xtream_user_id: iptvInfo.xtream_user_id, max_connections: pantallasOrden, created_at: new Date().toISOString(), creado_por: agente });
         } catch (e) {
           notify("No se pudo crear la cuenta IPTV: " + e.message, false);
         }
@@ -2388,6 +2391,7 @@ export default function SidebarApp() {
       const codigoFinal = res.data?.codigo || codigo;
       setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
       setOrdenIncluirIptv(false);
+      setOrdenIptvPantallas("1");
       notify(`✅ Orden ${codigoFinal} creada`);
 
       // WhatsApp al cliente
@@ -2664,7 +2668,7 @@ export default function SidebarApp() {
   }
 
   /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
-  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 2) {
+  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "") {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
     // nodoRaw puede venir como ID numérico de MikroWisp (cliente real, vía MP_NODO_SUFFIX) o como
@@ -2701,7 +2705,7 @@ export default function SidebarApp() {
       dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
       nodo: nodoRaw || null, creado_por: agente || null,
       xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
-      max_connections: pantallas,
+      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
     });
     return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   }
@@ -2711,7 +2715,7 @@ export default function SidebarApp() {
     const pantallas = Number(iptvPantallas) > 0 ? Number(iptvPantallas) : 1;
     setIptvCreando(true);
     try {
-      const { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo, pantallas);
+      const { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo, pantallas, cliente.nombre);
       const nuevo = { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id, max_connections: pantallas, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
       notify(`✅ Usuario IPTV creado: ${iptv_usuario} (${pantallas} pantallas)`);
@@ -3647,6 +3651,15 @@ export default function SidebarApp() {
                         <input type="checkbox" checked={ordenIncluirIptv} onChange={e=>setOrdenIncluirIptv(e.target.checked)} />
                         <span style={{ fontSize:11, fontWeight:600, color:T.navy }}>📺 Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden</span>
                       </label>
+                    )}
+                    {esInst && ordenIncluirIptv && (
+                      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 10px 8px 10px" }}>
+                        <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Pantallas:</span>
+                        <select value={ordenIptvPantallas} onChange={e=>setOrdenIptvPantallas(e.target.value)}
+                          style={{ padding:"4px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12 }}>
+                          {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
                     )}
                   </div>
                   {/* ── Checklist de progreso ── */}
@@ -5258,6 +5271,15 @@ export default function SidebarApp() {
                     <span style={{ fontSize:11, fontWeight:600, color:T.navy }}>📺 Crear cuenta IPTV (MaxPlayer) y adjuntarla a esta orden</span>
                   </label>
                 )}
+                {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && ordenIncluirIptv && (
+                  <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 10px 8px 10px" }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Pantallas:</span>
+                    <select value={ordenIptvPantallas} onChange={e=>setOrdenIptvPantallas(e.target.value)}
+                      style={{ padding:"4px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12 }}>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <button onClick={crearOrden} disabled={creandoOrden || !ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()}
@@ -5596,14 +5618,13 @@ export default function SidebarApp() {
                 <label style={{ fontSize:11, color:T.muted, fontWeight:600, display:"block", marginBottom:4 }}>
                   Pantallas (conexiones simultáneas)
                 </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
+                <select
                   value={iptvPantallas}
                   onChange={e => setIptvPantallas(e.target.value)}
                   style={{ width:"100%", padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13, marginBottom:10, boxSizing:"border-box" }}
-                />
+                >
+                  {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
                 <button onClick={crearIPTV} disabled={iptvCreando || !cliente}
                   style={{ ...S.btn(iptvCreando ? "#9ca3af" : T.blue), opacity: iptvCreando ? 0.6 : 1 }}>
                   {iptvCreando ? "Creando usuario..." : "➕ Crear usuario IPTV"}

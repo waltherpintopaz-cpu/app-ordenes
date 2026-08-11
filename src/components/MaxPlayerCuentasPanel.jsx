@@ -1,13 +1,39 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Tv, Search, Trash2, RefreshCw, Copy } from "lucide-react";
+import { Tv, Search, Trash2, RefreshCw, Copy, Plus, Send, X } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 // Mismas credenciales que usa SidebarApp.jsx para crear/eliminar cuentas IPTV.
 const MP_TOKEN  = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN = "1777119384974866697";
+const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
+const NODOS = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
+const EMPRESAS_WHATSAPP = ["Americanet", "DIM"];
+const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 // Xtream propio — misma linea dedicada por cliente que crea SidebarApp.jsx,
 // via proxy (server/xtreamProxyServer.mjs) para no exponer la API key en el navegador.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
+
+async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+  if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
+  const rXUser = `src_${usernameBase}`;
+  const rXPass = Math.random().toString(36).slice(2, 12);
+  const rRes = await fetch(`${XTREAM_PROXY_URL}/api/xtream/create-user`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: rXUser,
+      password: rXPass,
+      max_connections: maxConnections,
+      never: true,
+      bouquets: XTREAM_BOUQUETS_TODOS,
+    }),
+  });
+  const rData = await rRes.json().catch(() => ({}));
+  if (!rRes.ok || !rData?.success) {
+    throw new Error(rData?.error || `Error Xtream ${rRes.status}`);
+  }
+  return { xtream_user_id: rData.user_id, xtream_username: rData.username, xtream_password: rData.password };
+}
 
 async function eliminarLineaXtreamPropia(xtreamUserId) {
   if (!xtreamUserId || !XTREAM_PROXY_URL) return;
@@ -18,6 +44,103 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
       body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
     });
   } catch (_) { /* limpieza best-effort */ }
+}
+
+/** Crea la linea Xtream dedicada + la cuenta en MaxPlayer + guarda en iptv_clientes. */
+async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections, creadoPor }) {
+  const dni = String(dniRaw || "").replace(/\D/g, "");
+  if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
+  const nodoStr = String(nodoRaw || "").trim();
+  const matchNod = nodoStr.match(/^Nod_0?(\d+)$/i);
+  const nodoNum = matchNod ? parseInt(matchNod[1], 10) : (MP_NODO_SUFFIX[Number(nodoRaw)] ?? 1);
+  const iptvUser = `${dni}-${nodoNum}`;
+  const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
+  const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
+
+  const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas);
+
+  const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+    body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: lineaXtream.xtream_username, iptv_pass: lineaXtream.xtream_password, username: iptvUser, password: iptvPass }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
+    throw new Error(data?.message || data?.error || `Error ${res.status}`);
+  }
+  const userId = String(data.user_id || "");
+  await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
+    body: JSON.stringify({ user_id: userId, password: iptvPass }),
+  });
+
+  const payload = {
+    dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
+    nodo: nodoRaw || null, creado_por: creadoPor || null,
+    xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
+    max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
+  };
+  let upsertRes = await supabase.from("iptv_clientes").upsert(payload, { onConflict: "dni" });
+  if (upsertRes.error) {
+    const msg = String(upsertRes.error.message || "");
+    const m = msg.match(/column ['"]?([a-z_]+)['"]? .*does not exist/i);
+    if (m && Object.prototype.hasOwnProperty.call(payload, m[1])) {
+      const retry = { ...payload };
+      delete retry[m[1]];
+      await supabase.from("iptv_clientes").upsert(retry, { onConflict: "dni" });
+    } else if (upsertRes.error) {
+      throw upsertRes.error;
+    }
+  }
+  return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id, nombre: payload.nombre, nodo: payload.nodo, max_connections: pantallas };
+}
+
+function normalizarTelefonoPe(telefono) {
+  let phone = String(telefono || "").replace(/[\s\-()]/g, "");
+  if (phone.startsWith("+")) phone = phone.slice(1);
+  if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+  return phone;
+}
+
+const primerNombre = (n) => {
+  const raw = String(n || "").trim();
+  if (!raw) return "cliente";
+  const base = raw.includes(",") ? raw.split(",")[1]?.trim().split(" ")[0] : raw.split(" ")[0];
+  if (!base) return "cliente";
+  return base.charAt(0).toUpperCase() + base.slice(1).toLowerCase();
+};
+
+/** Envia las credenciales por WhatsApp usando el mismo texto que SidebarApp.jsx (enviarIPTV). */
+async function enviarCredencialesWhatsapp({ empresa, celular, nombre, iptv_usuario, iptv_password }) {
+  const phone = normalizarTelefonoPe(celular);
+  if (!phone) return { ok: false, msg: "Ingresa un celular válido." };
+  const { data: cfg } = await supabase
+    .from("whatsapp_config")
+    .select("base_url,api_key,instance_name,habilitado")
+    .eq("empresa", empresa)
+    .maybeSingle();
+  if (!cfg?.habilitado || !cfg?.base_url || !cfg?.api_key || !cfg?.instance_name) {
+    return { ok: false, msg: `WhatsApp no está configurado/habilitado para ${empresa}.` };
+  }
+  const nombreFmt = primerNombre(nombre);
+  const texto = `📺 *CREDENCIALES MAXPLAYER*\n\nHola ${nombreFmt}, aquí están tus datos de acceso a *MaxPlayer*:\n\n*Usuario:* ${iptv_usuario}\n*Contraseña:* ${iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬\n\n💡 *Tip:* Para una mejor experiencia conecta tu TV por *cable de red* o a la red *WiFi 5GHz* con buena cobertura.`;
+  const url = `${cfg.base_url.replace(/\/$/, "")}/message/sendText/${cfg.instance_name}`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: cfg.api_key },
+      body: JSON.stringify({ number: phone, text: texto }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      return { ok: false, msg: `Error ${res.status}: ${t.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, msg: e?.message || "Error de red enviando el mensaje." };
+  }
 }
 
 const ESTADO_COLOR = {
@@ -53,6 +176,19 @@ export default function MaxPlayerCuentasPanel({ theme }) {
   const [eliminandoDni, setEliminandoDni] = useState("");
   const [toast, setToast] = useState("");
 
+  // Crear cuenta
+  const [mostrarCrear, setMostrarCrear] = useState(false);
+  const [crearForm, setCrearForm] = useState({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1" });
+  const [buscandoCliente, setBuscandoCliente] = useState(false);
+  const [creando, setCreando] = useState(false);
+  const [crearMsg, setCrearMsg] = useState("");
+
+  // Enviar credenciales
+  const [envioRow, setEnvioRow] = useState(null);
+  const [envioCelular, setEnvioCelular] = useState("");
+  const [envioEmpresa, setEnvioEmpresa] = useState(EMPRESAS_WHATSAPP[0]);
+  const [enviando, setEnviando] = useState(false);
+
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
@@ -64,7 +200,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
     try {
       const { data: iptv, error: errIptv } = await supabase
         .from("iptv_clientes")
-        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections")
+        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre")
         .order("created_at", { ascending: false });
       if (errIptv) throw errIptv;
 
@@ -101,7 +237,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
         return (
           String(c.dni || "").toLowerCase().includes(q) ||
           String(c.iptv_usuario || "").toLowerCase().includes(q) ||
-          String(c.cliente?.nombre || "").toLowerCase().includes(q)
+          String(c.nombre || c.cliente?.nombre || "").toLowerCase().includes(q)
         );
       });
   }, [cuentas, clientesMap, busqueda, filtroEstado]);
@@ -116,7 +252,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
   }, [cuentas, clientesMap]);
 
   const eliminarCuenta = async (row) => {
-    const nombreRef = row.cliente?.nombre || row.iptv_usuario;
+    const nombreRef = row.nombre || row.cliente?.nombre || row.iptv_usuario;
     if (!window.confirm(`¿Eliminar la cuenta MaxPlayer de "${nombreRef}" (usuario ${row.iptv_usuario})?\n\nEsto la borra de MaxPlayer y de nuestro sistema. No se puede deshacer.`)) return;
     setEliminandoDni(row.dni);
     try {
@@ -141,6 +277,77 @@ export default function MaxPlayerCuentasPanel({ theme }) {
     setEliminandoDni("");
   };
 
+  const buscarClientePorDni = async () => {
+    const dni = crearForm.dni.trim();
+    if (!/^\d{8}$/.test(dni)) return;
+    setBuscandoCliente(true);
+    try {
+      const { data } = await supabase
+        .from("mikrowisp_clientes")
+        .select("nombre,nodo,estado")
+        .eq("cedula", dni);
+      const match = (data || []).find((c) => c.estado === "ACTIVO") || (data || [])[0] || null;
+      if (match) {
+        setCrearForm((p) => ({ ...p, nombre: match.nombre || p.nombre, nodo: NODOS.includes(match.nodo) ? match.nodo : p.nodo }));
+        setCrearMsg("");
+      } else {
+        setCrearMsg("No se encontró un cliente con ese DNI en Mikrowisp — completa nombre y nodo manualmente.");
+      }
+    } catch (_) {
+      setCrearMsg("No se pudo buscar el cliente, completa manualmente.");
+    }
+    setBuscandoCliente(false);
+  };
+
+  const handleCrearCuenta = async () => {
+    const dni = crearForm.dni.trim();
+    if (!/^\d{8}$/.test(dni)) return setCrearMsg("Ingresa un DNI válido de 8 dígitos.");
+    if (!crearForm.nombre.trim()) return setCrearMsg("Ingresa el nombre del cliente.");
+    setCreando(true);
+    setCrearMsg("");
+    try {
+      const nueva = await crearCuentaMaxPlayer({
+        dniRaw: dni,
+        nodoRaw: crearForm.nodo,
+        nombreRaw: crearForm.nombre,
+        maxConnections: crearForm.pantallas,
+        creadoPor: "Panel MaxPlayer",
+      });
+      setCuentas((prev) => [{ dni, iptv_usuario: nueva.iptv_usuario, iptv_password: nueva.iptv_password, iptv_user_id: nueva.iptv_user_id, xtream_user_id: nueva.xtream_user_id, nodo: nueva.nodo, nombre: nueva.nombre, max_connections: nueva.max_connections, created_at: new Date().toISOString(), creado_por: "Panel MaxPlayer" }, ...prev.filter((c) => c.dni !== dni)]);
+      showToast(`✅ Cuenta creada: ${nueva.iptv_usuario}`);
+      setMostrarCrear(false);
+      setCrearForm({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1" });
+    } catch (e) {
+      setCrearMsg(e?.message || "No se pudo crear la cuenta.");
+    }
+    setCreando(false);
+  };
+
+  const abrirEnviar = (row) => {
+    setEnvioRow(row);
+    setEnvioCelular("");
+    setEnvioEmpresa(EMPRESAS_WHATSAPP[0]);
+  };
+
+  const handleEnviar = async () => {
+    if (!envioRow) return;
+    setEnviando(true);
+    const r = await enviarCredencialesWhatsapp({
+      empresa: envioEmpresa,
+      celular: envioCelular,
+      nombre: envioRow.nombre || envioRow.cliente?.nombre || "",
+      iptv_usuario: envioRow.iptv_usuario,
+      iptv_password: envioRow.iptv_password,
+    });
+    setEnviando(false);
+    if (r.ok) {
+      showToast(`✅ Credenciales enviadas (${envioEmpresa})`);
+      setEnvioRow(null);
+    } else {
+      showToast("❌ " + r.msg);
+    }
+  };
+
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
   const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
   const tdSt = { padding: "10px 14px", verticalAlign: "middle", fontSize: 13 };
@@ -163,9 +370,14 @@ export default function MaxPlayerCuentasPanel({ theme }) {
             </p>
           </div>
         </div>
-        <button onClick={cargar} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
-          <RefreshCw size={14} /> Actualizar
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => { setMostrarCrear(true); setCrearMsg(""); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+            <Plus size={14} /> Crear cuenta
+          </button>
+          <button onClick={cargar} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+            <RefreshCw size={14} /> Actualizar
+          </button>
+        </div>
       </div>
 
       {error && <div style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 8, padding: "10px 16px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
@@ -225,7 +437,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
                       <span style={{ fontFamily: "monospace" }}>{c.dni}</span>
                       <CopyBtn text={c.dni} />
                     </td>
-                    <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>{c.cliente?.nombre || "—"}</td>
+                    <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>{c.nombre || c.cliente?.nombre || "—"}</td>
                     <td style={tdSt}>
                       <span style={{ background: colores.bg, color: colores.fg, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
                         {estado || "No encontrado"}
@@ -235,7 +447,13 @@ export default function MaxPlayerCuentasPanel({ theme }) {
                     <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>
                       {c.created_at ? new Date(c.created_at).toLocaleDateString("es-PE") : "—"}
                     </td>
-                    <td style={{ ...tdSt, textAlign: "right" }}>
+                    <td style={{ ...tdSt, textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button
+                        onClick={() => abrirEnviar(c)}
+                        style={{ background: "#dcfce7", color: "#16a34a", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5, marginRight: 6 }}
+                      >
+                        <Send size={13} /> Enviar
+                      </button>
                       <button
                         onClick={() => eliminarCuenta(c)}
                         disabled={eliminandoDni === c.dni}
@@ -249,6 +467,81 @@ export default function MaxPlayerCuentasPanel({ theme }) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {mostrarCrear && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}
+          onClick={() => !creando && setMostrarCrear(false)}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 22, width: 380, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111827" }}>Crear cuenta MaxPlayer</h3>
+              <button onClick={() => setMostrarCrear(false)} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}><X size={18} /></button>
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>DNI</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+              <input style={{ ...inputSt, flex: 1 }} value={crearForm.dni} maxLength={8}
+                onChange={(e) => setCrearForm((p) => ({ ...p, dni: e.target.value.replace(/\D/g, "") }))} placeholder="8 dígitos" />
+              <button onClick={buscarClientePorDni} disabled={buscandoCliente} style={{ ...inputSt, cursor: "pointer", fontWeight: 600 }}>
+                {buscandoCliente ? "..." : "Buscar"}
+              </button>
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Nombre</label>
+            <input style={{ ...inputSt, width: "100%", boxSizing: "border-box", marginBottom: 10 }} value={crearForm.nombre}
+              onChange={(e) => setCrearForm((p) => ({ ...p, nombre: e.target.value }))} placeholder="Nombre del cliente" />
+            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Nodo</label>
+                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={crearForm.nodo}
+                  onChange={(e) => setCrearForm((p) => ({ ...p, nodo: e.target.value }))}>
+                  {NODOS.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ width: 90 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Pantallas</label>
+                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={crearForm.pantallas}
+                  onChange={(e) => setCrearForm((p) => ({ ...p, pantallas: e.target.value }))}>
+                  {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+            </div>
+            {crearMsg && <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 10 }}>{crearMsg}</div>}
+            <button onClick={handleCrearCuenta} disabled={creando}
+              style={{ width: "100%", background: creando ? "#9ca3af" : "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: creando ? "default" : "pointer", fontSize: 13 }}>
+              {creando ? "Creando..." : "Crear cuenta"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {envioRow && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}
+          onClick={() => !enviando && setEnvioRow(null)}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 22, width: 360, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111827" }}>Enviar credenciales</h3>
+              <button onClick={() => setEnvioRow(null)} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginBottom: 12 }}>
+              {envioRow.nombre || envioRow.cliente?.nombre || envioRow.iptv_usuario} · <span style={{ fontFamily: "monospace" }}>{envioRow.iptv_usuario}</span>
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Remitente</label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {EMPRESAS_WHATSAPP.map((e) => (
+                <button key={e} onClick={() => setEnvioEmpresa(e)}
+                  style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: envioEmpresa === e ? "1.5px solid #2563eb" : (isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb"), background: envioEmpresa === e ? (isDark ? "#16213a" : "#eff6ff") : "transparent", color: envioEmpresa === e ? "#2563eb" : (isDark ? "#c3d3ee" : "#374151"), fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                  {e}
+                </button>
+              ))}
+            </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Celular</label>
+            <input style={{ ...inputSt, width: "100%", boxSizing: "border-box", marginBottom: 14 }} value={envioCelular}
+              onChange={(e) => setEnvioCelular(e.target.value)} placeholder="9XXXXXXXX" />
+            <button onClick={handleEnviar} disabled={enviando || !envioCelular.trim()}
+              style={{ width: "100%", background: (enviando || !envioCelular.trim()) ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: (enviando || !envioCelular.trim()) ? "default" : "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <Send size={14} /> {enviando ? "Enviando..." : "Enviar por WhatsApp"}
+            </button>
+          </div>
         </div>
       )}
     </div>
