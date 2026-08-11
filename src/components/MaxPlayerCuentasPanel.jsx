@@ -598,8 +598,8 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#6b7280" }}>Cargando...</div>
       ) : (
-        <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflowX: "auto", overflowY: "hidden" }}>
+          <table style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: isDark ? "#16213a" : "#f8fafc" }}>
                 <th style={thSt}>Usuario MaxPlayer</th>
