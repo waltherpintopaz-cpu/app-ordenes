@@ -5,16 +5,16 @@ import { supabase } from "../supabaseClient";
 // Mismas credenciales que usa SidebarApp.jsx para crear/eliminar cuentas IPTV.
 const MP_TOKEN  = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN = "1777119384974866697";
-// Xtream propio — misma linea dedicada por cliente que crea SidebarApp.jsx.
-const XTREAM_API_BASE = "http://179.43.96.253:25500";
-const XTREAM_API_KEY = "86881cc5d31097d8375fa76ba35bde2755809b47350b91a4";
+// Xtream propio — misma linea dedicada por cliente que crea SidebarApp.jsx,
+// via proxy (server/xtreamProxyServer.mjs) para no exponer la API key en el navegador.
+const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 
 async function eliminarLineaXtreamPropia(xtreamUserId) {
-  if (!xtreamUserId) return;
+  if (!xtreamUserId || !XTREAM_PROXY_URL) return;
   try {
-    await fetch(`${XTREAM_API_BASE}/manage_user_api.php`, {
+    await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
     });
   } catch (_) { /* limpieza best-effort */ }

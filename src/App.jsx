@@ -69,18 +69,20 @@ const MP_TOKEN = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN = "1777119384974866697";
 const MP_NODO_SUFFIX = { 1: 1, 2: 2, 3: 3, 5: 4, 11: 6 };
 // Xtream propio (179.43.96.253) — linea fuente dedicada por cliente en vez del
-// usuario "ernesto" fijo compartido. Ver create_user_api.php / manage_user_api.php.
-const XTREAM_API_BASE = "http://179.43.96.253:25500";
-const XTREAM_API_KEY = "86881cc5d31097d8375fa76ba35bde2755809b47350b91a4";
+// usuario "ernesto" fijo compartido. Se llama via proxy (server/xtreamProxyServer.mjs
+// en EasyPanel), nunca directo desde el navegador: evita mixed-content (panel en
+// HTTPS -> Xtream en HTTP) y evita exponer la API key de Xtream en el bundle JS.
+const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 
 /** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
 async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+  if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
-  const rRes = await fetch(`${XTREAM_API_BASE}/create_user_api.php`, {
+  const rRes = await fetch(`${XTREAM_PROXY_URL}/api/xtream/create-user`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       username: rXUser,
       password: rXPass,
@@ -98,11 +100,11 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections) {
 
 /** Elimina la linea Xtream dedicada de un cliente. No bloquea si falla (limpieza best-effort). */
 async function eliminarLineaXtreamPropia(xtreamUserId) {
-  if (!xtreamUserId) return;
+  if (!xtreamUserId || !XTREAM_PROXY_URL) return;
   try {
-    await fetch(`${XTREAM_API_BASE}/manage_user_api.php`, {
+    await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
     });
   } catch (_) { /* limpieza best-effort */ }
