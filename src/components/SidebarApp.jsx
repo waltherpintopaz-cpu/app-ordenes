@@ -26,10 +26,65 @@ const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
 const MP_LOGO_URL = "https://vgwbqbzpjlbkmxtfghdm.supabase.co/storage/v1/object/public/logo%20image/Captura%20de%20pantalla%202026-06-26%20145210.png";
 const MP_TOKEN   = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN  = "1777119384974866697";
-const MP_IPTV_U  = "ernesto";
-const MP_IPTV_P  = "ernesto";
 // mikrowisp_clientes.nodo (router ID) → número secuencial de nodo para username IPTV
 const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
+// Xtream propio (179.43.96.253) — linea fuente dedicada por cliente en vez del
+// usuario "ernesto" fijo compartido. Ver create_user_api.php / manage_user_api.php.
+const XTREAM_API_BASE = "http://179.43.96.253:25500";
+const XTREAM_API_KEY = "86881cc5d31097d8375fa76ba35bde2755809b47350b91a4";
+const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
+
+/** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
+async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+  const rXUser = `src_${usernameBase}`;
+  const rXPass = Math.random().toString(36).slice(2, 12);
+  const rRes = await fetch(`${XTREAM_API_BASE}/create_user_api.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+    body: JSON.stringify({
+      username: rXUser,
+      password: rXPass,
+      max_connections: maxConnections,
+      never: true,
+      bouquets: XTREAM_BOUQUETS_TODOS,
+    }),
+  });
+  const rData = await rRes.json().catch(() => ({}));
+  if (!rRes.ok || !rData?.success) {
+    throw new Error(rData?.error || `Error Xtream ${rRes.status}`);
+  }
+  return { xtream_user_id: rData.user_id, xtream_username: rData.username, xtream_password: rData.password };
+}
+
+/** Elimina la linea Xtream dedicada de un cliente. No bloquea si falla (limpieza best-effort). */
+async function eliminarLineaXtreamPropia(xtreamUserId) {
+  if (!xtreamUserId) return;
+  try {
+    await fetch(`${XTREAM_API_BASE}/manage_user_api.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+      body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
+    });
+  } catch (_) { /* limpieza best-effort */ }
+}
+
+/** upsert con reintento si faltan columnas nuevas en Supabase (xtream_user_id, xtream_username, max_connections) */
+async function upsertIptvClienteConFallback(payload) {
+  let rRow = { ...payload };
+  for (let i = 0; i < 5; i += 1) {
+    const rRes = await supabase.from("iptv_clientes").upsert(rRow, { onConflict: "dni" });
+    if (!rRes.error) return;
+    const rMsg = String(rRes.error.message || "");
+    const rMatch = rMsg.match(/column ['"]?([a-z_]+)['"]? .*does not exist/i);
+    if (rMatch && Object.prototype.hasOwnProperty.call(rRow, rMatch[1])) {
+      const rNext = { ...rRow };
+      delete rNext[rMatch[1]];
+      rRow = rNext;
+      continue;
+    }
+    throw rRes.error;
+  }
+}
 const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
@@ -442,6 +497,7 @@ export default function SidebarApp() {
   const [iptvEnviando,    setIptvEnviando]    = useState(false);
   const [iptvCambioPass,  setIptvCambioPass]  = useState(false);
   const [iptvNuevaPass,   setIptvNuevaPass]   = useState("");
+  const [iptvPantallas,   setIptvPantallas]   = useState("2");
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
@@ -1150,7 +1206,7 @@ export default function SidebarApp() {
     const nombreAnterior = String(cliente.nombre || "");
     let iptvExistente = null;
     try {
-      const { data } = await supabase.from("iptv_clientes").select("iptv_user_id,iptv_usuario").eq("dni", dniAnterior).maybeSingle();
+      const { data } = await supabase.from("iptv_clientes").select("iptv_user_id,iptv_usuario,xtream_user_id").eq("dni", dniAnterior).maybeSingle();
       iptvExistente = data || null;
     } catch (_) { /* si falla la consulta, se sigue sin advertencia de IPTV */ }
     const avisoIptv = iptvExistente?.iptv_user_id ? `\n\n⚠ Este cliente tiene cuenta IPTV (${iptvExistente.iptv_usuario}) — se eliminará, el nuevo titular deberá pedir una nueva si la necesita.` : "";
@@ -1195,6 +1251,7 @@ export default function SidebarApp() {
             headers: { "Api-Token": MP_TOKEN },
           });
           if (delRes.ok) {
+            await eliminarLineaXtreamPropia(iptvExistente.xtream_user_id);
             await supabase.from("iptv_clientes").delete().eq("dni", dniAnterior);
             if (iptvData?.iptv_user_id === iptvExistente.iptv_user_id) setIptvData(null);
           } else {
@@ -2599,13 +2656,13 @@ export default function SidebarApp() {
     if (!cedula) return;
     const dni = String(cedula).replace(/\D/g, "");
     const { data } = await supabase.from("iptv_clientes")
-      .select("iptv_usuario,iptv_password,iptv_user_id,created_at,creado_por")
+      .select("iptv_usuario,iptv_password,iptv_user_id,created_at,creado_por,xtream_user_id,max_connections")
       .eq("dni", dni).maybeSingle();
     setIptvData(data || null);
   }
 
   /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
-  async function generarCuentaIptv(dniRaw, nodoRaw) {
+  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 2) {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
     // nodoRaw puede venir como ID numérico de MikroWisp (cliente real, vía MP_NODO_SUFFIX) o como
@@ -2615,14 +2672,22 @@ export default function SidebarApp() {
     const nodoNum = matchNod ? parseInt(matchNod[1], 10) : (MP_NODO_SUFFIX[Number(nodoRaw)] ?? 1);
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
+    const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
 
+    // 1) Linea Xtream propia dedicada (reemplaza el "ernesto" fijo compartido por todos los clientes)
+    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas);
+
+    // 2) Cuenta MaxPlayer usando esa linea propia como fuente
     const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-      body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
+      body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: lineaXtream.xtream_username, iptv_pass: lineaXtream.xtream_password, username: iptvUser, password: iptvPass }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+    if (!res.ok) {
+      await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
+      throw new Error(data?.message || data?.error || `Error ${res.status}`);
+    }
     const userId = String(data.user_id || "");
     // Establecer contraseña real vía endpoint correcto
     await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
@@ -2630,18 +2695,24 @@ export default function SidebarApp() {
       headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
       body: JSON.stringify({ user_id: userId, password: iptvPass }),
     });
-    await supabase.from("iptv_clientes").upsert({ dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, nodo: nodoRaw || null, creado_por: agente || null }, { onConflict: "dni" });
-    return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId };
+    await upsertIptvClienteConFallback({
+      dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
+      nodo: nodoRaw || null, creado_por: agente || null,
+      xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
+      max_connections: pantallas,
+    });
+    return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   }
 
   async function crearIPTV() {
     if (!cliente) return;
+    const pantallas = Number(iptvPantallas) > 0 ? Number(iptvPantallas) : 1;
     setIptvCreando(true);
     try {
-      const { iptv_usuario, iptv_password, iptv_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo);
-      const nuevo = { iptv_usuario, iptv_password, iptv_user_id, created_at: new Date().toISOString(), creado_por: agente };
+      const { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo, pantallas);
+      const nuevo = { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id, max_connections: pantallas, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
-      notify(`✅ Usuario IPTV creado: ${iptv_usuario}`);
+      notify(`✅ Usuario IPTV creado: ${iptv_usuario} (${pantallas} pantallas)`);
     } catch(e) { notify("Error IPTV: " + e.message, false); }
     setIptvCreando(false);
   }
@@ -2686,6 +2757,7 @@ export default function SidebarApp() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+      await eliminarLineaXtreamPropia(iptvData.xtream_user_id);
       await supabase.from("iptv_clientes").delete().eq("dni", dni);
       setIptvData(null);
       notify("✅ Cuenta IPTV eliminada");
@@ -5446,6 +5518,7 @@ export default function SidebarApp() {
                   {[
                     ["Usuario",    iptvData.iptv_usuario],
                     ["Contraseña", iptvData.iptv_password],
+                    ["Pantallas",  iptvData.max_connections || "—"],
                     ["Creado por", iptvData.creado_por || "—"],
                     ["Fecha",      iptvData.created_at ? new Date(iptvData.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric"}) : "—"],
                   ].map(([l,v], i, arr) => (
@@ -5518,6 +5591,17 @@ export default function SidebarApp() {
                     ))}
                   </div>
                 )}
+                <label style={{ fontSize:11, color:T.muted, fontWeight:600, display:"block", marginBottom:4 }}>
+                  Pantallas (conexiones simultáneas)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={iptvPantallas}
+                  onChange={e => setIptvPantallas(e.target.value)}
+                  style={{ width:"100%", padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13, marginBottom:10, boxSizing:"border-box" }}
+                />
                 <button onClick={crearIPTV} disabled={iptvCreando || !cliente}
                   style={{ ...S.btn(iptvCreando ? "#9ca3af" : T.blue), opacity: iptvCreando ? 0.6 : 1 }}>
                   {iptvCreando ? "Creando usuario..." : "➕ Crear usuario IPTV"}

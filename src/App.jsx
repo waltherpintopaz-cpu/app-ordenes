@@ -67,9 +67,64 @@ const USUARIOS_TABLE = "usuarios";
 // MaxPlayer (IPTV) — mismas credenciales que usa SidebarApp.jsx
 const MP_TOKEN = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN = "1777119384974866697";
-const MP_IPTV_U = "ernesto";
-const MP_IPTV_P = "ernesto";
 const MP_NODO_SUFFIX = { 1: 1, 2: 2, 3: 3, 5: 4, 11: 6 };
+// Xtream propio (179.43.96.253) — linea fuente dedicada por cliente en vez del
+// usuario "ernesto" fijo compartido. Ver create_user_api.php / manage_user_api.php.
+const XTREAM_API_BASE = "http://179.43.96.253:25500";
+const XTREAM_API_KEY = "86881cc5d31097d8375fa76ba35bde2755809b47350b91a4";
+const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
+
+/** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
+async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+  const rXUser = `src_${usernameBase}`;
+  const rXPass = Math.random().toString(36).slice(2, 12);
+  const rRes = await fetch(`${XTREAM_API_BASE}/create_user_api.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+    body: JSON.stringify({
+      username: rXUser,
+      password: rXPass,
+      max_connections: maxConnections,
+      never: true,
+      bouquets: XTREAM_BOUQUETS_TODOS,
+    }),
+  });
+  const rData = await rRes.json().catch(() => ({}));
+  if (!rRes.ok || !rData?.success) {
+    throw new Error(rData?.error || `Error Xtream ${rRes.status}`);
+  }
+  return { xtream_user_id: rData.user_id, xtream_username: rData.username, xtream_password: rData.password };
+}
+
+/** Elimina la linea Xtream dedicada de un cliente. No bloquea si falla (limpieza best-effort). */
+async function eliminarLineaXtreamPropia(xtreamUserId) {
+  if (!xtreamUserId) return;
+  try {
+    await fetch(`${XTREAM_API_BASE}/manage_user_api.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+      body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
+    });
+  } catch (_) { /* limpieza best-effort */ }
+}
+
+/** upsert con reintento si faltan columnas nuevas en Supabase (xtream_user_id, xtream_username, max_connections) */
+async function upsertIptvClienteConFallback(payload) {
+  let rRow = { ...payload };
+  for (let i = 0; i < 5; i += 1) {
+    const rRes = await supabase.from("iptv_clientes").upsert(rRow, { onConflict: "dni" });
+    if (!rRes.error) return;
+    const rMsg = String(rRes.error.message || "");
+    const rMatch = rMsg.match(/column ['"]?([a-z_]+)['"]? .*does not exist/i);
+    if (rMatch && Object.prototype.hasOwnProperty.call(rRow, rMatch[1])) {
+      const rNext = { ...rRow };
+      delete rNext[rMatch[1]];
+      rRow = rNext;
+      continue;
+    }
+    throw rRes.error;
+  }
+}
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const HIST_APPSHEET_SHEET_ID = "1soSl4tyfSC7VDNAXhRWUhtkotk09G1IpjqqxkzQnqKE";
@@ -9329,7 +9384,7 @@ export default function App() {
   );
 
   /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
-  const generarCuentaIptv = async (dniRaw, nodoRaw) => {
+  const generarCuentaIptv = async (dniRaw, nodoRaw, maxConnections = 2) => {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
     // orden.nodo llega como "Nod_01".."Nod_06" (el sufijo es directamente ese número) o como ID
@@ -9339,25 +9394,35 @@ export default function App() {
     const nodoNum = matchNod ? parseInt(matchNod[1], 10) : (MP_NODO_SUFFIX[Number(nodoRaw)] ?? 1);
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
+    const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
 
+    // 1) Linea Xtream propia dedicada (reemplaza el "ernesto" fijo compartido por todos los clientes)
+    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas);
+
+    // 2) Cuenta MaxPlayer usando esa linea propia como fuente
     const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-      body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: MP_IPTV_U, iptv_pass: MP_IPTV_P, username: iptvUser, password: iptvPass }),
+      body: JSON.stringify({ domain_id: MP_DOMAIN, iptv_user: lineaXtream.xtream_username, iptv_pass: lineaXtream.xtream_password, username: iptvUser, password: iptvPass }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.message || data?.error || `Error ${res.status}`);
+    if (!res.ok) {
+      await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
+      throw new Error(data?.message || data?.error || `Error ${res.status}`);
+    }
     const userId = String(data.user_id || "");
     await fetch("https://api.maxplayer.tv/v3/api/public/users/password", {
       method: "PUT",
       headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
       body: JSON.stringify({ user_id: userId, password: iptvPass }),
     });
-    await supabase.from("iptv_clientes").upsert(
-      { dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, nodo: nodoRaw || null, creado_por: usuarioSesion?.nombre || null },
-      { onConflict: "dni" }
-    );
-    return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId };
+    await upsertIptvClienteConFallback({
+      dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
+      nodo: nodoRaw || null, creado_por: usuarioSesion?.nombre || null,
+      xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
+      max_connections: pantallas,
+    });
+    return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   };
 
   const guardarOrden = async () => {

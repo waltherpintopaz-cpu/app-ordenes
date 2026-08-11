@@ -5,6 +5,20 @@ import { supabase } from "../supabaseClient";
 // Mismas credenciales que usa SidebarApp.jsx para crear/eliminar cuentas IPTV.
 const MP_TOKEN  = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN = "1777119384974866697";
+// Xtream propio — misma linea dedicada por cliente que crea SidebarApp.jsx.
+const XTREAM_API_BASE = "http://179.43.96.253:25500";
+const XTREAM_API_KEY = "86881cc5d31097d8375fa76ba35bde2755809b47350b91a4";
+
+async function eliminarLineaXtreamPropia(xtreamUserId) {
+  if (!xtreamUserId) return;
+  try {
+    await fetch(`${XTREAM_API_BASE}/manage_user_api.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${XTREAM_API_KEY}` },
+      body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
+    });
+  } catch (_) { /* limpieza best-effort */ }
+}
 
 const ESTADO_COLOR = {
   ACTIVO: { bg: "#dcfce7", fg: "#166534" },
@@ -50,7 +64,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
     try {
       const { data: iptv, error: errIptv } = await supabase
         .from("iptv_clientes")
-        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at")
+        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections")
         .order("created_at", { ascending: false });
       if (errIptv) throw errIptv;
 
@@ -117,6 +131,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
           throw new Error(data?.message || data?.error || `Error ${res.status} en MaxPlayer`);
         }
       }
+      await eliminarLineaXtreamPropia(row.xtream_user_id);
       await supabase.from("iptv_clientes").delete().eq("dni", row.dni);
       setCuentas((prev) => prev.filter((c) => c.dni !== row.dni));
       showToast(`✅ Cuenta de ${nombreRef} eliminada`);
