@@ -222,7 +222,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     try {
       let query = supabase
         .from("iptv_clientes")
-        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo")
+        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo,plan")
         .order("created_at", { ascending: false });
       query = dniExacto ? query.eq("dni", dniExacto) : query;
       const { data: iptv, error: errIptv } = await query;
@@ -439,6 +439,34 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     setActualizandoDni("");
   };
 
+  const actualizarPlan = async (row, nuevoPlan) => {
+    if (!row.xtream_user_id) {
+      showToast("❌ Esta cuenta no tiene línea Xtream asociada (creada antes de la actualización), no se puede editar.");
+      return;
+    }
+    if (!XTREAM_PROXY_URL) {
+      showToast("❌ Falta configurar VITE_XTREAM_PROXY_URL.");
+      return;
+    }
+    setActualizandoDni(row.dni);
+    try {
+      const bouquets = PLANES_IPTV[nuevoPlan] || PLANES_IPTV.Premium;
+      const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", user_id: row.xtream_user_id, bouquets }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").update({ plan: nuevoPlan }).eq("dni", row.dni);
+      setCuentas((prev) => prev.map((c) => (c.dni === row.dni ? { ...c, plan: nuevoPlan } : c)));
+      showToast(`✅ Plan actualizado a ${nuevoPlan}`);
+    } catch (e) {
+      showToast("❌ " + (e?.message || String(e)));
+    }
+    setActualizandoDni("");
+  };
+
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
   const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
   const tdSt = { padding: "10px 14px", verticalAlign: "middle", fontSize: 13 };
@@ -528,6 +556,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 <th style={thSt}>Cliente</th>
                 <th style={thSt}>Estado</th>
                 <th style={thSt}>Nodo</th>
+                <th style={thSt}>Plan</th>
                 <th style={thSt}>Pantallas</th>
                 <th style={thSt}>Creado</th>
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
@@ -535,7 +564,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
             </thead>
             <tbody>
               {filas.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
+                <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
                   {soloBusquedaDni
                     ? (yaBusco ? "No se encontró una cuenta con ese DNI." : "Ingresa un DNI y presiona Buscar.")
                     : (busqueda || filtroEstado ? "Sin resultados." : "Sin cuentas registradas.")}
@@ -564,6 +593,17 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                       </span>
                     </td>
                     <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{c.nodo || "—"}</td>
+                    <td style={tdSt}>
+                      <select
+                        value={c.plan || "Premium"}
+                        disabled={actualizandoDni === c.dni || !c.xtream_user_id}
+                        onChange={(e) => actualizarPlan(c, e.target.value)}
+                        title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar plan"}
+                        style={{ ...inputSt, padding: "4px 8px", fontSize: 12, opacity: !c.xtream_user_id ? 0.5 : 1 }}
+                      >
+                        {PLANES_IPTV_NOMBRES.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </td>
                     <td style={tdSt}>
                       <select
                         value={c.max_connections || 1}

@@ -510,6 +510,7 @@ export default function SidebarApp() {
   const [iptvPantallas,   setIptvPantallas]   = useState("1");
   const [iptvPlan,        setIptvPlan]        = useState("Premium");
   const [actualizandoPantallas, setActualizandoPantallas] = useState(false);
+  const [actualizandoPlan, setActualizandoPlan] = useState(false);
   const [demoNombre,   setDemoNombre]   = useState("");
   const [demoPantallas, setDemoPantallas] = useState("1");
   const [demoHoras,    setDemoHoras]    = useState("24");
@@ -2677,7 +2678,7 @@ export default function SidebarApp() {
     if (!cedula) return;
     const dni = String(cedula).replace(/\D/g, "");
     const { data } = await supabase.from("iptv_clientes")
-      .select("iptv_usuario,iptv_password,iptv_user_id,created_at,creado_por,xtream_user_id,max_connections")
+      .select("iptv_usuario,iptv_password,iptv_user_id,created_at,creado_por,xtream_user_id,max_connections,plan")
       .eq("dni", dni).maybeSingle();
     setIptvData(data || null);
   }
@@ -2825,6 +2826,28 @@ export default function SidebarApp() {
       notify("Error al actualizar pantallas: " + e.message, false);
     }
     setActualizandoPantallas(false);
+  }
+
+  async function actualizarPlanIptv(nuevoPlan) {
+    if (!iptvData?.xtream_user_id) return notify("Esta cuenta no tiene línea Xtream asociada (creada antes de la actualización).", false);
+    const dni = String(cliente?.cedula || "").replace(/\D/g, "");
+    setActualizandoPlan(true);
+    try {
+      const bouquets = PLANES_IPTV[nuevoPlan] || PLANES_IPTV.Premium;
+      const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", user_id: iptvData.xtream_user_id, bouquets }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").update({ plan: nuevoPlan }).eq("dni", dni);
+      setIptvData((prev) => ({ ...prev, plan: nuevoPlan }));
+      notify(`✅ Plan actualizado a ${nuevoPlan}`);
+    } catch (e) {
+      notify("Error al actualizar plan: " + e.message, false);
+    }
+    setActualizandoPlan(false);
   }
 
   async function enviarIPTV() {
@@ -5616,6 +5639,21 @@ export default function SidebarApp() {
                       <div style={{ padding:"8px 10px", fontSize:12, fontWeight:700, color:T.navy, fontFamily: l==="Usuario"||l==="Contraseña" ? "monospace" : "inherit" }}>{v}</div>
                     </div>
                   ))}
+                  <div style={{ display:"grid", gridTemplateColumns:"110px 1fr" }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>Plan</div>
+                    <div style={{ padding:"6px 10px", display:"flex", alignItems:"center", gap:8 }}>
+                      <select
+                        value={iptvData.plan || "Premium"}
+                        disabled={actualizandoPlan || !iptvData.xtream_user_id}
+                        onChange={(e) => actualizarPlanIptv(e.target.value)}
+                        title={!iptvData.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar plan"}
+                        style={{ padding:"3px 6px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12, opacity: !iptvData.xtream_user_id ? 0.5 : 1 }}
+                      >
+                        {PLANES_IPTV_NOMBRES.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                      {actualizandoPlan && <span style={{ fontSize:11, color:T.muted }}>Guardando...</span>}
+                    </div>
+                  </div>
                   <div style={{ display:"grid", gridTemplateColumns:"110px 1fr" }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>Pantallas</div>
                     <div style={{ padding:"6px 10px", display:"flex", alignItems:"center", gap:8 }}>
