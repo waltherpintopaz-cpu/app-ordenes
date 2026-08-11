@@ -9,11 +9,19 @@ const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
 const NODOS = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
 const EMPRESAS_WHATSAPP = ["Americanet", "DIM"];
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
+// Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN
+// 3=PELICULAS 4=SERIES 5=TV_DIGITAL 6=Privado 7=Free.
+const PLANES_IPTV = {
+  Free: [7],
+  Standard: [1, 3, 7],
+  Premium: [1, 2, 3, 4, 7],
+};
+const PLANES_IPTV_NOMBRES = Object.keys(PLANES_IPTV);
 // Xtream propio — misma linea dedicada por cliente que crea SidebarApp.jsx,
 // via proxy (server/xtreamProxyServer.mjs) para no exponer la API key en el navegador.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 
-async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null) {
+async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null, bouquets = XTREAM_BOUQUETS_TODOS) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
@@ -25,7 +33,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = n
       password: rXPass,
       max_connections: maxConnections,
       ...(expHoras ? { never: false, exp_hours: expHoras } : { never: true }),
-      bouquets: XTREAM_BOUQUETS_TODOS,
+      bouquets,
     }),
   });
   const rData = await rRes.json().catch(() => ({}));
@@ -47,7 +55,7 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
 }
 
 /** Crea la linea Xtream dedicada + la cuenta en MaxPlayer + guarda en iptv_clientes. */
-async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections, creadoPor, expHoras = null, esDemo = false }) {
+async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections, creadoPor, expHoras = null, esDemo = false, plan = "Premium" }) {
   const dni = String(dniRaw || "").replace(/\D/g, "");
   if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
   const nodoStr = String(nodoRaw || "").trim();
@@ -56,8 +64,10 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
   const iptvUser = `${dni}-${nodoNum}`;
   const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
   const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
+  // Las demos siempre llevan el catalogo completo, sin importar el plan seleccionado.
+  const bouquetsPlan = esDemo ? XTREAM_BOUQUETS_TODOS : (PLANES_IPTV[plan] || PLANES_IPTV.Premium);
 
-  const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, expHoras);
+  const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, expHoras, bouquetsPlan);
 
   const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
     method: "POST",
@@ -81,7 +91,7 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
     nodo: nodoRaw || null, creado_por: creadoPor || null,
     xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
     max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
-    es_demo: esDemo,
+    es_demo: esDemo, plan: esDemo ? "Premium" : plan,
   };
   let upsertRes = await supabase.from("iptv_clientes").upsert(payload, { onConflict: "dni" });
   if (upsertRes.error) {
@@ -181,7 +191,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
 
   // Crear cuenta
   const [mostrarCrear, setMostrarCrear] = useState(false);
-  const [crearForm, setCrearForm] = useState({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1" });
+  const [crearForm, setCrearForm] = useState({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1", plan: "Premium" });
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [creando, setCreando] = useState(false);
   const [crearMsg, setCrearMsg] = useState("");
@@ -339,11 +349,12 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
         nombreRaw: crearForm.nombre,
         maxConnections: crearForm.pantallas,
         creadoPor: "Panel MaxPlayer",
+        plan: crearForm.plan,
       });
       setCuentas((prev) => [{ dni, iptv_usuario: nueva.iptv_usuario, iptv_password: nueva.iptv_password, iptv_user_id: nueva.iptv_user_id, xtream_user_id: nueva.xtream_user_id, nodo: nueva.nodo, nombre: nueva.nombre, max_connections: nueva.max_connections, created_at: new Date().toISOString(), creado_por: "Panel MaxPlayer" }, ...prev.filter((c) => c.dni !== dni)]);
       showToast(`✅ Cuenta creada: ${nueva.iptv_usuario}`);
       setMostrarCrear(false);
-      setCrearForm({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1" });
+      setCrearForm({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1", plan: "Premium" });
     } catch (e) {
       setCrearMsg(e?.message || "No se pudo crear la cuenta.");
     }
@@ -625,6 +636,11 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 </select>
               </div>
             </div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Plan</label>
+            <select style={{ ...inputSt, width: "100%", boxSizing: "border-box", marginBottom: 10 }} value={crearForm.plan}
+              onChange={(e) => setCrearForm((p) => ({ ...p, plan: e.target.value }))}>
+              {PLANES_IPTV_NOMBRES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
             {crearMsg && <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 10 }}>{crearMsg}</div>}
             <button onClick={handleCrearCuenta} disabled={creando}
               style={{ width: "100%", background: creando ? "#9ca3af" : "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: creando ? "default" : "pointer", fontSize: 13 }}>

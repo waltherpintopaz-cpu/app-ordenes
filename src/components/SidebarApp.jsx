@@ -34,9 +34,17 @@ const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
 // HTTPS -> Xtream en HTTP) y evita exponer la API key de Xtream en el bundle JS.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
+// Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN
+// 3=PELICULAS 4=SERIES 5=TV_DIGITAL 6=Privado 7=Free.
+const PLANES_IPTV = {
+  Free: [7],
+  Standard: [1, 3, 7],
+  Premium: [1, 2, 3, 4, 7],
+};
+const PLANES_IPTV_NOMBRES = Object.keys(PLANES_IPTV);
 
 /** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
-async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null) {
+async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null, bouquets = XTREAM_BOUQUETS_TODOS) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
@@ -48,7 +56,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = n
       password: rXPass,
       max_connections: maxConnections,
       ...(expHoras ? { never: false, exp_hours: expHoras } : { never: true }),
-      bouquets: XTREAM_BOUQUETS_TODOS,
+      bouquets,
     }),
   });
   const rData = await rRes.json().catch(() => ({}));
@@ -500,6 +508,7 @@ export default function SidebarApp() {
   const [iptvCambioPass,  setIptvCambioPass]  = useState(false);
   const [iptvNuevaPass,   setIptvNuevaPass]   = useState("");
   const [iptvPantallas,   setIptvPantallas]   = useState("1");
+  const [iptvPlan,        setIptvPlan]        = useState("Premium");
   const [actualizandoPantallas, setActualizandoPantallas] = useState(false);
   const [demoNombre,   setDemoNombre]   = useState("");
   const [demoPantallas, setDemoPantallas] = useState("1");
@@ -509,6 +518,7 @@ export default function SidebarApp() {
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
   const [ordenIptvPantallas, setOrdenIptvPantallas] = useState("1");
+  const [ordenIptvPlan, setOrdenIptvPlan] = useState("Premium");
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
   const [showOrdenMap,  setShowOrdenMap]  = useState(false);
@@ -2343,7 +2353,7 @@ export default function SidebarApp() {
           const nodoOrden = nodoFinal;
           const nombreOrden = cliente ? (cliente.nombre || "") : ordenForm.nombre.trim();
           const pantallasOrden = Number(ordenIptvPantallas) > 0 ? Number(ordenIptvPantallas) : 1;
-          iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden, pantallasOrden, nombreOrden);
+          iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden, pantallasOrden, nombreOrden, null, false, ordenIptvPlan);
           setIptvData({ iptv_usuario: iptvInfo.iptv_usuario, iptv_password: iptvInfo.iptv_password, iptv_user_id: iptvInfo.iptv_user_id, xtream_user_id: iptvInfo.xtream_user_id, max_connections: pantallasOrden, created_at: new Date().toISOString(), creado_por: agente });
         } catch (e) {
           notify("No se pudo crear la cuenta IPTV: " + e.message, false);
@@ -2673,7 +2683,7 @@ export default function SidebarApp() {
   }
 
   /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
-  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "", expHoras = null, esDemo = false) {
+  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "", expHoras = null, esDemo = false, plan = "Premium") {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
     // nodoRaw puede venir como ID numérico de MikroWisp (cliente real, vía MP_NODO_SUFFIX) o como
@@ -2684,9 +2694,11 @@ export default function SidebarApp() {
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
     const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
+    // Las demos siempre llevan el catalogo completo, sin importar el plan seleccionado.
+    const bouquetsPlan = esDemo ? XTREAM_BOUQUETS_TODOS : (PLANES_IPTV[plan] || PLANES_IPTV.Premium);
 
     // 1) Linea Xtream propia dedicada (reemplaza el "ernesto" fijo compartido por todos los clientes)
-    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, expHoras);
+    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, expHoras, bouquetsPlan);
 
     // 2) Cuenta MaxPlayer usando esa linea propia como fuente
     const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
@@ -2711,6 +2723,7 @@ export default function SidebarApp() {
       nodo: nodoRaw || null, creado_por: agente || null,
       xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
       max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, es_demo: esDemo,
+      plan: esDemo ? "Premium" : plan,
     });
     return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   }
@@ -2720,7 +2733,7 @@ export default function SidebarApp() {
     const pantallas = Number(iptvPantallas) > 0 ? Number(iptvPantallas) : 1;
     setIptvCreando(true);
     try {
-      const { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo, pantallas, cliente.nombre);
+      const { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id } = await generarCuentaIptv(cliente.cedula, cliente.nodo, pantallas, cliente.nombre, null, false, iptvPlan);
       const nuevo = { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id, max_connections: pantallas, created_at: new Date().toISOString(), creado_por: agente };
       setIptvData(nuevo);
       notify(`✅ Usuario IPTV creado: ${iptv_usuario} (${pantallas} pantallas)`);
@@ -3697,6 +3710,11 @@ export default function SidebarApp() {
                     )}
                     {esInst && ordenIncluirIptv && (
                       <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 10px 8px 10px" }}>
+                        <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Plan:</span>
+                        <select value={ordenIptvPlan} onChange={e=>setOrdenIptvPlan(e.target.value)}
+                          style={{ padding:"4px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12 }}>
+                          {PLANES_IPTV_NOMBRES.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
                         <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Pantallas:</span>
                         <select value={ordenIptvPantallas} onChange={e=>setOrdenIptvPantallas(e.target.value)}
                           style={{ padding:"4px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12 }}>
@@ -5316,6 +5334,11 @@ export default function SidebarApp() {
                 )}
                 {["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion) && ordenIncluirIptv && (
                   <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 10px 8px 10px" }}>
+                    <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Plan:</span>
+                    <select value={ordenIptvPlan} onChange={e=>setOrdenIptvPlan(e.target.value)}
+                      style={{ padding:"4px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12 }}>
+                      {PLANES_IPTV_NOMBRES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
                     <span style={{ fontSize:11, fontWeight:600, color:T.muted }}>Pantallas:</span>
                     <select value={ordenIptvPantallas} onChange={e=>setOrdenIptvPantallas(e.target.value)}
                       style={{ padding:"4px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12 }}>
@@ -5672,6 +5695,16 @@ export default function SidebarApp() {
                     ))}
                   </div>
                 )}
+                <label style={{ fontSize:11, color:T.muted, fontWeight:600, display:"block", marginBottom:4 }}>
+                  Plan
+                </label>
+                <select
+                  value={iptvPlan}
+                  onChange={e => setIptvPlan(e.target.value)}
+                  style={{ width:"100%", padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13, marginBottom:10, boxSizing:"border-box" }}
+                >
+                  {PLANES_IPTV_NOMBRES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
                 <label style={{ fontSize:11, color:T.muted, fontWeight:600, display:"block", marginBottom:4 }}>
                   Pantallas (conexiones simultáneas)
                 </label>

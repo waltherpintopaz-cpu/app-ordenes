@@ -74,9 +74,17 @@ const MP_NODO_SUFFIX = { 1: 1, 2: 2, 3: 3, 5: 4, 11: 6 };
 // HTTPS -> Xtream en HTTP) y evita exponer la API key de Xtream en el bundle JS.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
+// Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN
+// 3=PELICULAS 4=SERIES 5=TV_DIGITAL 6=Privado 7=Free.
+const PLANES_IPTV = {
+  Free: [7],
+  Standard: [1, 3, 7],
+  Premium: [1, 2, 3, 4, 7],
+};
+const PLANES_IPTV_NOMBRES = Object.keys(PLANES_IPTV);
 
 /** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
-async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null) {
+async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null, bouquets = XTREAM_BOUQUETS_TODOS) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
@@ -88,7 +96,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = n
       password: rXPass,
       max_connections: maxConnections,
       ...(expHoras ? { never: false, exp_hours: expHoras } : { never: true }),
-      bouquets: XTREAM_BOUQUETS_TODOS,
+      bouquets,
     }),
   });
   const rData = await rRes.json().catch(() => ({}));
@@ -1861,6 +1869,7 @@ export default function App() {
   const [enviarWhatsappOrden, setEnviarWhatsappOrden] = useState(true);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
   const [ordenIptvPantallas, setOrdenIptvPantallas] = useState("1");
+  const [ordenIptvPlan, setOrdenIptvPlan] = useState("Premium");
   const [vistaActiva, setVistaActiva] = useState(() => {
     const sesionGuardada = localStorage.getItem("usuarioSesionId");
     return sesionGuardada ? "dashboard" : "crear";
@@ -9387,7 +9396,7 @@ export default function App() {
   );
 
   /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
-  const generarCuentaIptv = async (dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "") => {
+  const generarCuentaIptv = async (dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "", plan = "Premium") => {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
     // orden.nodo llega como "Nod_01".."Nod_06" (el sufijo es directamente ese número) o como ID
@@ -9398,9 +9407,10 @@ export default function App() {
     const iptvUser = `${dni}-${nodoNum}`;
     const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
     const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
+    const bouquetsPlan = PLANES_IPTV[plan] || PLANES_IPTV.Premium;
 
     // 1) Linea Xtream propia dedicada (reemplaza el "ernesto" fijo compartido por todos los clientes)
-    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas);
+    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, null, bouquetsPlan);
 
     // 2) Cuenta MaxPlayer usando esa linea propia como fuente
     const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
@@ -9423,7 +9433,7 @@ export default function App() {
       dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
       nodo: nodoRaw || null, creado_por: usuarioSesion?.nombre || null,
       xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
-      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
+      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, plan,
     });
     return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   };
@@ -9507,7 +9517,7 @@ export default function App() {
         }
 
         const pantallasOrden = Number(ordenIptvPantallas) > 0 ? Number(ordenIptvPantallas) : 1;
-        const iptvInfo = iptvExistente || iptvClienteExistente || await generarCuentaIptv(orden.dni, orden.nodo, pantallasOrden, orden.nombre);
+        const iptvInfo = iptvExistente || iptvClienteExistente || await generarCuentaIptv(orden.dni, orden.nodo, pantallasOrden, orden.nombre, ordenIptvPlan);
         descripcionFinal = [
           descripcionFinal,
           iptvInfo.iptv_password
@@ -16085,6 +16095,14 @@ export default function App() {
                   )}
                   {ordenIncluirIptv && (
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", alignSelf: "flex-end" }}>
+                      <span style={{ fontSize: "12px", fontWeight: 600, color: "#166534" }}>Plan:</span>
+                      <select
+                        value={ordenIptvPlan}
+                        onChange={(e) => setOrdenIptvPlan(e.target.value)}
+                        style={{ ...inputStyle, width: "100px", padding: "6px 8px" }}
+                      >
+                        {PLANES_IPTV_NOMBRES.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
                       <span style={{ fontSize: "12px", fontWeight: 600, color: "#166534" }}>Pantallas:</span>
                       <select
                         value={ordenIptvPantallas}
