@@ -36,7 +36,7 @@ const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").tri
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 
 /** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
-async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
@@ -47,7 +47,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections) {
       username: rXUser,
       password: rXPass,
       max_connections: maxConnections,
-      never: true,
+      ...(expHoras ? { never: false, exp_hours: expHoras } : { never: true }),
       bouquets: XTREAM_BOUQUETS_TODOS,
     }),
   });
@@ -500,6 +500,11 @@ export default function SidebarApp() {
   const [iptvCambioPass,  setIptvCambioPass]  = useState(false);
   const [iptvNuevaPass,   setIptvNuevaPass]   = useState("");
   const [iptvPantallas,   setIptvPantallas]   = useState("1");
+  const [actualizandoPantallas, setActualizandoPantallas] = useState(false);
+  const [demoNombre,   setDemoNombre]   = useState("");
+  const [demoPantallas, setDemoPantallas] = useState("1");
+  const [demoHoras,    setDemoHoras]    = useState("24");
+  const [creandoDemo,  setCreandoDemo]  = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
@@ -2668,7 +2673,7 @@ export default function SidebarApp() {
   }
 
   /** Crea la cuenta en MaxPlayer + la guarda en iptv_clientes. Devuelve { iptv_usuario, iptv_password, iptv_user_id }. */
-  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "") {
+  async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "", expHoras = null, esDemo = false) {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
     // nodoRaw puede venir como ID numérico de MikroWisp (cliente real, vía MP_NODO_SUFFIX) o como
@@ -2681,7 +2686,7 @@ export default function SidebarApp() {
     const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
 
     // 1) Linea Xtream propia dedicada (reemplaza el "ernesto" fijo compartido por todos los clientes)
-    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas);
+    const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, expHoras);
 
     // 2) Cuenta MaxPlayer usando esa linea propia como fuente
     const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
@@ -2705,7 +2710,7 @@ export default function SidebarApp() {
       dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
       nodo: nodoRaw || null, creado_por: agente || null,
       xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
-      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
+      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, es_demo: esDemo,
     });
     return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   }
@@ -2721,6 +2726,23 @@ export default function SidebarApp() {
       notify(`✅ Usuario IPTV creado: ${iptv_usuario} (${pantallas} pantallas)`);
     } catch(e) { notify("Error IPTV: " + e.message, false); }
     setIptvCreando(false);
+  }
+
+  async function crearDemoIPTV() {
+    if (!demoNombre.trim()) return;
+    setCreandoDemo(true);
+    // DNI sintetico de 8 digitos (el prospecto no esta registrado como cliente real).
+    const dniDemo = String(90000000 + (Date.now() % 9999999)).slice(0, 8);
+    try {
+      const { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id } = await generarCuentaIptv(
+        dniDemo, "Nod_01", Number(demoPantallas), `DEMO - ${demoNombre.trim()}`, Number(demoHoras), true
+      );
+      const nuevo = { iptv_usuario, iptv_password, iptv_user_id, xtream_user_id, max_connections: Number(demoPantallas), created_at: new Date().toISOString(), creado_por: agente };
+      setIptvData(nuevo);
+      notify(`✅ Demo creada: ${iptv_usuario} (vence en ${demoHoras}h)`);
+      setDemoNombre("");
+    } catch(e) { notify("Error demo IPTV: " + e.message, false); }
+    setCreandoDemo(false);
   }
 
   async function cambiarPassIPTV() {
@@ -2769,6 +2791,27 @@ export default function SidebarApp() {
       notify("✅ Cuenta IPTV eliminada");
     } catch(e) { notify("Error al eliminar: " + e.message, false); }
     setIptvCreando(false);
+  }
+
+  async function actualizarPantallasIptv(nuevoValor) {
+    if (!iptvData?.xtream_user_id) return notify("Esta cuenta no tiene línea Xtream asociada (creada antes de la actualización).", false);
+    const dni = String(cliente?.cedula || "").replace(/\D/g, "");
+    setActualizandoPantallas(true);
+    try {
+      const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", user_id: iptvData.xtream_user_id, max_connections: nuevoValor }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").update({ max_connections: nuevoValor }).eq("dni", dni);
+      setIptvData((prev) => ({ ...prev, max_connections: nuevoValor }));
+      notify(`✅ Pantallas actualizadas a ${nuevoValor}`);
+    } catch (e) {
+      notify("Error al actualizar pantallas: " + e.message, false);
+    }
+    setActualizandoPantallas(false);
   }
 
   async function enviarIPTV() {
@@ -5542,15 +5585,29 @@ export default function SidebarApp() {
                   {[
                     ["Usuario",    iptvData.iptv_usuario],
                     ["Contraseña", iptvData.iptv_password],
-                    ["Pantallas",  iptvData.max_connections || "—"],
                     ["Creado por", iptvData.creado_por || "—"],
                     ["Fecha",      iptvData.created_at ? new Date(iptvData.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric"}) : "—"],
                   ].map(([l,v], i, arr) => (
-                    <div key={l} style={{ display:"grid", gridTemplateColumns:"110px 1fr", borderBottom: i < arr.length-1 ? `1px solid ${T.border}` : "none" }}>
+                    <div key={l} style={{ display:"grid", gridTemplateColumns:"110px 1fr", borderBottom: `1px solid ${T.border}` }}>
                       <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
                       <div style={{ padding:"8px 10px", fontSize:12, fontWeight:700, color:T.navy, fontFamily: l==="Usuario"||l==="Contraseña" ? "monospace" : "inherit" }}>{v}</div>
                     </div>
                   ))}
+                  <div style={{ display:"grid", gridTemplateColumns:"110px 1fr" }}>
+                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>Pantallas</div>
+                    <div style={{ padding:"6px 10px", display:"flex", alignItems:"center", gap:8 }}>
+                      <select
+                        value={iptvData.max_connections || 1}
+                        disabled={actualizandoPantallas || !iptvData.xtream_user_id}
+                        onChange={(e) => actualizarPantallasIptv(Number(e.target.value))}
+                        title={!iptvData.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar pantallas"}
+                        style={{ padding:"3px 6px", borderRadius:5, border:"1px solid #d1d5db", fontSize:12, opacity: !iptvData.xtream_user_id ? 0.5 : 1 }}
+                      >
+                        {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      {actualizandoPantallas && <span style={{ fontSize:11, color:T.muted }}>Guardando...</span>}
+                    </div>
+                  </div>
                 </div>
 
                 {/* App info */}
@@ -5630,6 +5687,32 @@ export default function SidebarApp() {
                   {iptvCreando ? "Creando usuario..." : "➕ Crear usuario IPTV"}
                 </button>
                 {!cliente && <div style={{ fontSize:10, color:T.muted, textAlign:"center", marginTop:6 }}>Carga un cliente primero</div>}
+
+                <div style={{ borderTop:`1px solid ${T.border}`, marginTop:16, paddingTop:12 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#7c3aed", marginBottom:4 }}>🎬 Cuenta demo</div>
+                  <div style={{ fontSize:10, color:T.muted, marginBottom:8 }}>Para prospectos que aún no son clientes. Vence sola pasadas las horas elegidas.</div>
+                  <input
+                    type="text"
+                    placeholder="Nombre / identificador"
+                    value={demoNombre}
+                    onChange={e => setDemoNombre(e.target.value)}
+                    style={{ width:"100%", padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13, marginBottom:8, boxSizing:"border-box" }}
+                  />
+                  <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                    <select value={demoPantallas} onChange={e => setDemoPantallas(e.target.value)}
+                      style={{ flex:1, padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13 }}>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} pantalla{n>1?"s":""}</option>)}
+                    </select>
+                    <select value={demoHoras} onChange={e => setDemoHoras(e.target.value)}
+                      style={{ flex:1, padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13 }}>
+                      {[12,24,48,72].map(h => <option key={h} value={h}>{h} horas</option>)}
+                    </select>
+                  </div>
+                  <button onClick={crearDemoIPTV} disabled={creandoDemo || !demoNombre.trim()}
+                    style={{ ...S.btn(creandoDemo ? "#9ca3af" : "#7c3aed"), opacity: (creandoDemo || !demoNombre.trim()) ? 0.6 : 1 }}>
+                    {creandoDemo ? "Creando demo..." : "🎬 Crear demo"}
+                  </button>
+                </div>
               </>
             )}
           </div>

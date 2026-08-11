@@ -76,7 +76,7 @@ const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").tri
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 
 /** Crea una linea Xtream dedicada para un cliente (fuente que consumira MaxPlayer). */
-async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
@@ -87,7 +87,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections) {
       username: rXUser,
       password: rXPass,
       max_connections: maxConnections,
-      never: true,
+      ...(expHoras ? { never: false, exp_hours: expHoras } : { never: true }),
       bouquets: XTREAM_BOUQUETS_TODOS,
     }),
   });
@@ -293,7 +293,7 @@ const MENU_VISTAS_WEB = [
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "whatsapp", "recordatorios", "iptv"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
 };
@@ -21149,8 +21149,8 @@ export default function App() {
           <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} theme={theme} />
         )}
 
-        {vistaActiva === "maxplayerCuentas" && esAdminSesion && (
-          <MaxPlayerCuentasPanel theme={theme} />
+        {vistaActiva === "maxplayerCuentas" && (esAdminSesion || esGestorSesion) && (
+          <MaxPlayerCuentasPanel theme={theme} soloBusquedaDni={!esAdminSesion} />
         )}
 
         {vistaActiva === "noc" && esAdminSesion && (

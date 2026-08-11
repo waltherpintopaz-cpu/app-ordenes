@@ -13,7 +13,7 @@ const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 // via proxy (server/xtreamProxyServer.mjs) para no exponer la API key en el navegador.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 
-async function crearLineaXtreamPropia(usernameBase, maxConnections) {
+async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
   const rXUser = `src_${usernameBase}`;
   const rXPass = Math.random().toString(36).slice(2, 12);
@@ -24,7 +24,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections) {
       username: rXUser,
       password: rXPass,
       max_connections: maxConnections,
-      never: true,
+      ...(expHoras ? { never: false, exp_hours: expHoras } : { never: true }),
       bouquets: XTREAM_BOUQUETS_TODOS,
     }),
   });
@@ -47,7 +47,7 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
 }
 
 /** Crea la linea Xtream dedicada + la cuenta en MaxPlayer + guarda en iptv_clientes. */
-async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections, creadoPor }) {
+async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections, creadoPor, expHoras = null, esDemo = false }) {
   const dni = String(dniRaw || "").replace(/\D/g, "");
   if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
   const nodoStr = String(nodoRaw || "").trim();
@@ -57,7 +57,7 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
   const iptvPass = dni.slice(0, 3) + dni.slice(3).split("").sort(() => Math.random() - 0.5).join("");
   const pantallas = Number(maxConnections) > 0 ? Number(maxConnections) : 1;
 
-  const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas);
+  const lineaXtream = await crearLineaXtreamPropia(iptvUser, pantallas, expHoras);
 
   const res = await fetch("https://api.maxplayer.tv/v3/api/public/users", {
     method: "POST",
@@ -81,6 +81,7 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
     nodo: nodoRaw || null, creado_por: creadoPor || null,
     xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
     max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
+    es_demo: esDemo,
   };
   let upsertRes = await supabase.from("iptv_clientes").upsert(payload, { onConflict: "dni" });
   if (upsertRes.error) {
@@ -94,7 +95,7 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
       throw upsertRes.error;
     }
   }
-  return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id, nombre: payload.nombre, nodo: payload.nodo, max_connections: pantallas };
+  return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id, nombre: payload.nombre, nodo: payload.nodo, max_connections: pantallas, es_demo: esDemo };
 }
 
 function normalizarTelefonoPe(telefono) {
@@ -165,13 +166,15 @@ function CopyBtn({ text }) {
   );
 }
 
-export default function MaxPlayerCuentasPanel({ theme }) {
+export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }) {
   const isDark = theme === "dark";
   const [cuentas, setCuentas] = useState([]);
   const [clientesMap, setClientesMap] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [busquedaDni, setBusquedaDni] = useState("");
+  const [yaBusco, setYaBusco] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState("");
   const [eliminandoDni, setEliminandoDni] = useState("");
   const [toast, setToast] = useState("");
@@ -189,19 +192,30 @@ export default function MaxPlayerCuentasPanel({ theme }) {
   const [envioEmpresa, setEnvioEmpresa] = useState(EMPRESAS_WHATSAPP[0]);
   const [enviando, setEnviando] = useState(false);
 
+  // Editar pantallas
+  const [actualizandoDni, setActualizandoDni] = useState("");
+
+  // Crear demo
+  const [mostrarDemo, setMostrarDemo] = useState(false);
+  const [demoForm, setDemoForm] = useState({ nombre: "", pantallas: "1", horas: "24" });
+  const [creandoDemo, setCreandoDemo] = useState(false);
+  const [demoMsg, setDemoMsg] = useState("");
+
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3000);
   };
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (dniExacto) => {
     setLoading(true);
     setError("");
     try {
-      const { data: iptv, error: errIptv } = await supabase
+      let query = supabase
         .from("iptv_clientes")
-        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre")
+        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo")
         .order("created_at", { ascending: false });
+      query = dniExacto ? query.eq("dni", dniExacto) : query;
+      const { data: iptv, error: errIptv } = await query;
       if (errIptv) throw errIptv;
 
       const dnis = (iptv || []).map((r) => r.dni).filter(Boolean);
@@ -224,7 +238,20 @@ export default function MaxPlayerCuentasPanel({ theme }) {
     setLoading(false);
   }, []);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    if (!soloBusquedaDni) cargar();
+  }, [cargar, soloBusquedaDni]);
+
+  const buscarPorDniGestor = () => {
+    const dni = busquedaDni.trim();
+    if (!/^\d{8}$/.test(dni)) {
+      setError("Ingresa un DNI válido de 8 dígitos.");
+      return;
+    }
+    setError("");
+    setYaBusco(true);
+    cargar(dni);
+  };
 
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -323,6 +350,32 @@ export default function MaxPlayerCuentasPanel({ theme }) {
     setCreando(false);
   };
 
+  const handleCrearDemo = async () => {
+    if (!demoForm.nombre.trim()) return setDemoMsg("Ingresa un nombre o identificador (ej. nombre del prospecto).");
+    setCreandoDemo(true);
+    setDemoMsg("");
+    // DNI sintetico de 8 digitos (el prospecto no esta registrado como cliente real).
+    const dniDemo = String(90000000 + (Date.now() % 9999999)).slice(0, 8);
+    try {
+      const nueva = await crearCuentaMaxPlayer({
+        dniRaw: dniDemo,
+        nodoRaw: "Nod_01",
+        nombreRaw: `DEMO - ${demoForm.nombre.trim()}`,
+        maxConnections: demoForm.pantallas,
+        creadoPor: "Panel MaxPlayer (demo)",
+        expHoras: Number(demoForm.horas),
+        esDemo: true,
+      });
+      setCuentas((prev) => [{ dni: dniDemo, iptv_usuario: nueva.iptv_usuario, iptv_password: nueva.iptv_password, iptv_user_id: nueva.iptv_user_id, xtream_user_id: nueva.xtream_user_id, nodo: nueva.nodo, nombre: nueva.nombre, max_connections: nueva.max_connections, es_demo: true, created_at: new Date().toISOString(), creado_por: "Panel MaxPlayer (demo)" }, ...prev]);
+      showToast(`✅ Demo creada: ${nueva.iptv_usuario} (vence en ${demoForm.horas}h)`);
+      setMostrarDemo(false);
+      setDemoForm({ nombre: "", pantallas: "1", horas: "24" });
+    } catch (e) {
+      setDemoMsg(e?.message || "No se pudo crear la demo.");
+    }
+    setCreandoDemo(false);
+  };
+
   const abrirEnviar = (row) => {
     setEnvioRow(row);
     setEnvioCelular("");
@@ -348,6 +401,33 @@ export default function MaxPlayerCuentasPanel({ theme }) {
     }
   };
 
+  const actualizarPantallas = async (row, nuevoValor) => {
+    if (!row.xtream_user_id) {
+      showToast("❌ Esta cuenta no tiene línea Xtream asociada (creada antes de la actualización), no se puede editar.");
+      return;
+    }
+    if (!XTREAM_PROXY_URL) {
+      showToast("❌ Falta configurar VITE_XTREAM_PROXY_URL.");
+      return;
+    }
+    setActualizandoDni(row.dni);
+    try {
+      const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", user_id: row.xtream_user_id, max_connections: Number(nuevoValor) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
+      await supabase.from("iptv_clientes").update({ max_connections: Number(nuevoValor) }).eq("dni", row.dni);
+      setCuentas((prev) => prev.map((c) => (c.dni === row.dni ? { ...c, max_connections: Number(nuevoValor) } : c)));
+      showToast(`✅ Pantallas actualizadas a ${nuevoValor}`);
+    } catch (e) {
+      showToast("❌ " + (e?.message || String(e)));
+    }
+    setActualizandoDni("");
+  };
+
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
   const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
   const tdSt = { padding: "10px 14px", verticalAlign: "middle", fontSize: 13 };
@@ -365,23 +445,45 @@ export default function MaxPlayerCuentasPanel({ theme }) {
           <div style={{ background: "#2563eb", borderRadius: 10, padding: 8 }}><Tv size={22} color="#fff" /></div>
           <div>
             <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : undefined }}>Cuentas MaxPlayer</h2>
-            <p style={{ margin: 0, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
-              {stats.total} cuenta{stats.total !== 1 ? "s" : ""} creadas · {stats.inactivas} de cliente{stats.inactivas !== 1 ? "s" : ""} inactivo{stats.inactivas !== 1 ? "s" : ""} o no encontrado
-            </p>
+            {!soloBusquedaDni && (
+              <p style={{ margin: 0, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
+                {stats.total} cuenta{stats.total !== 1 ? "s" : ""} creadas · {stats.inactivas} de cliente{stats.inactivas !== 1 ? "s" : ""} inactivo{stats.inactivas !== 1 ? "s" : ""} o no encontrado
+              </p>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => { setMostrarCrear(true); setCrearMsg(""); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
             <Plus size={14} /> Crear cuenta
           </button>
-          <button onClick={cargar} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
-            <RefreshCw size={14} /> Actualizar
+          <button onClick={() => { setMostrarDemo(true); setDemoMsg(""); }} style={{ display: "flex", alignItems: "center", gap: 6, background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+            <Plus size={14} /> Crear demo
           </button>
+          {!soloBusquedaDni && (
+            <button onClick={() => cargar()} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+              <RefreshCw size={14} /> Actualizar
+            </button>
+          )}
         </div>
       </div>
 
       {error && <div style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 8, padding: "10px 16px", marginBottom: 16, fontSize: 13 }}>{error}</div>}
 
+      {soloBusquedaDni ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <input
+            style={{ ...inputSt, flex: "1 1 220px" }}
+            placeholder="DNI del cliente (8 dígitos)"
+            value={busquedaDni}
+            maxLength={8}
+            onChange={(e) => setBusquedaDni(e.target.value.replace(/\D/g, ""))}
+            onKeyDown={(e) => e.key === "Enter" && buscarPorDniGestor()}
+          />
+          <button onClick={buscarPorDniGestor} style={{ display: "flex", alignItems: "center", gap: 6, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+            <Search size={14} /> Buscar
+          </button>
+        </div>
+      ) : (
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: "1 1 220px" }}>
           <Search size={14} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: isDark ? "#93a2bd" : "#9ca3af" }} />
@@ -401,6 +503,7 @@ export default function MaxPlayerCuentasPanel({ theme }) {
         </select>
         <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{filas.length} de {cuentas.length}</span>
       </div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#6b7280" }}>Cargando...</div>
@@ -414,14 +517,17 @@ export default function MaxPlayerCuentasPanel({ theme }) {
                 <th style={thSt}>Cliente</th>
                 <th style={thSt}>Estado</th>
                 <th style={thSt}>Nodo</th>
+                <th style={thSt}>Pantallas</th>
                 <th style={thSt}>Creado</th>
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filas.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
-                  {busqueda || filtroEstado ? "Sin resultados." : "Sin cuentas registradas."}
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
+                  {soloBusquedaDni
+                    ? (yaBusco ? "No se encontró una cuenta con ese DNI." : "Ingresa un DNI y presiona Buscar.")
+                    : (busqueda || filtroEstado ? "Sin resultados." : "Sin cuentas registradas.")}
                 </td></tr>
               )}
               {filas.map((c) => {
@@ -437,13 +543,27 @@ export default function MaxPlayerCuentasPanel({ theme }) {
                       <span style={{ fontFamily: "monospace" }}>{c.dni}</span>
                       <CopyBtn text={c.dni} />
                     </td>
-                    <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>{c.nombre || c.cliente?.nombre || "—"}</td>
+                    <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>
+                      {c.es_demo && <span style={{ background: "#ede9fe", color: "#7c3aed", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6 }}>DEMO</span>}
+                      {c.nombre || c.cliente?.nombre || "—"}
+                    </td>
                     <td style={tdSt}>
                       <span style={{ background: colores.bg, color: colores.fg, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
                         {estado || "No encontrado"}
                       </span>
                     </td>
                     <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{c.nodo || "—"}</td>
+                    <td style={tdSt}>
+                      <select
+                        value={c.max_connections || 1}
+                        disabled={actualizandoDni === c.dni || !c.xtream_user_id}
+                        onChange={(e) => actualizarPantallas(c, e.target.value)}
+                        title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar pantallas"}
+                        style={{ ...inputSt, padding: "4px 8px", fontSize: 12, opacity: !c.xtream_user_id ? 0.5 : 1 }}
+                      >
+                        {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </td>
                     <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>
                       {c.created_at ? new Date(c.created_at).toLocaleDateString("es-PE") : "—"}
                     </td>
@@ -509,6 +629,45 @@ export default function MaxPlayerCuentasPanel({ theme }) {
             <button onClick={handleCrearCuenta} disabled={creando}
               style={{ width: "100%", background: creando ? "#9ca3af" : "#2563eb", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: creando ? "default" : "pointer", fontSize: 13 }}>
               {creando ? "Creando..." : "Crear cuenta"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mostrarDemo && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}
+          onClick={() => !creandoDemo && setMostrarDemo(false)}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 22, width: 360, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111827" }}>Crear cuenta demo</h3>
+              <button onClick={() => setMostrarDemo(false)} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 0, marginBottom: 14 }}>
+              Para prospectos que aún no son clientes registrados. Vence sola pasadas las horas elegidas.
+            </p>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Nombre / identificador</label>
+            <input style={{ ...inputSt, width: "100%", boxSizing: "border-box", marginBottom: 10 }} value={demoForm.nombre}
+              onChange={(e) => setDemoForm((p) => ({ ...p, nombre: e.target.value }))} placeholder="Ej. Juan (prospecto Nod_03)" />
+            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Pantallas</label>
+                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={demoForm.pantallas}
+                  onChange={(e) => setDemoForm((p) => ({ ...p, pantallas: e.target.value }))}>
+                  {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Duración</label>
+                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={demoForm.horas}
+                  onChange={(e) => setDemoForm((p) => ({ ...p, horas: e.target.value }))}>
+                  {[12,24,48,72].map((h) => <option key={h} value={h}>{h} horas</option>)}
+                </select>
+              </div>
+            </div>
+            {demoMsg && <div style={{ fontSize: 12, color: "#dc2626", marginBottom: 10 }}>{demoMsg}</div>}
+            <button onClick={handleCrearDemo} disabled={creandoDemo}
+              style={{ width: "100%", background: creandoDemo ? "#9ca3af" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: creandoDemo ? "default" : "pointer", fontSize: 13 }}>
+              {creandoDemo ? "Creando..." : "Crear demo"}
             </button>
           </div>
         </div>
