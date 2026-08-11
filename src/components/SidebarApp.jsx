@@ -2721,7 +2721,7 @@ export default function SidebarApp() {
     });
     await upsertIptvClienteConFallback({
       dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
-      nodo: nodoRaw || null, creado_por: agente || null,
+      nodo: normalizarEtiquetaNodo(nodoRaw) || null, creado_por: agente || null,
       xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
       max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, es_demo: esDemo,
       plan: esDemo ? "Premium" : plan,

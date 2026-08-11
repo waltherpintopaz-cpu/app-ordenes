@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Tv, Search, Trash2, RefreshCw, Copy, Plus, Send, X } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 
 // Mismas credenciales que usa SidebarApp.jsx para crear/eliminar cuentas IPTV.
 const MP_TOKEN  = "mNTO0Z5ynAIsPx7LWBzFX90N";
@@ -88,7 +89,7 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
 
   const payload = {
     dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
-    nodo: nodoRaw || null, creado_por: creadoPor || null,
+    nodo: normalizarEtiquetaNodo(nodoRaw) || null, creado_por: creadoPor || null,
     xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
     max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
     es_demo: esDemo, plan: esDemo ? "Premium" : plan,
@@ -329,7 +330,8 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
         .eq("cedula", dni);
       const match = (data || []).find((c) => c.estado === "ACTIVO") || (data || [])[0] || null;
       if (match) {
-        setCrearForm((p) => ({ ...p, nombre: match.nombre || p.nombre, nodo: NODOS.includes(match.nodo) ? match.nodo : p.nodo }));
+        const nodoNormalizado = normalizarEtiquetaNodo(match.nodo);
+        setCrearForm((p) => ({ ...p, nombre: match.nombre || p.nombre, nodo: NODOS.includes(nodoNormalizado) ? nodoNormalizado : p.nodo }));
         setCrearMsg("");
       } else {
         setCrearMsg("No se encontró un cliente con ese DNI en Mikrowisp — completa nombre y nodo manualmente.");
@@ -643,7 +645,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                         {estado || "No encontrado"}
                       </span>
                     </td>
-                    <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{c.nodo || "—"}</td>
+                    <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{normalizarEtiquetaNodo(c.nodo) || "—"}</td>
                     <td style={tdSt}>
                       <select
                         value={c.plan || "Premium"}
