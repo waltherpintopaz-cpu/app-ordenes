@@ -205,10 +205,6 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
 
   // Editar pantallas
   const [actualizandoDni, setActualizandoDni] = useState("");
-  const [migrandoDni, setMigrandoDni] = useState("");
-  const [migrarRow, setMigrarRow] = useState(null);
-  const [migrarPlan, setMigrarPlan] = useState("Premium");
-  const [migrarPantallas, setMigrarPantallas] = useState("1");
 
   // Crear demo
   const [mostrarDemo, setMostrarDemo] = useState(false);
@@ -473,53 +469,6 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     setActualizandoDni("");
   };
 
-  const abrirMigrar = (row) => {
-    if (row.xtream_user_id) return;
-    if (!row.iptv_user_id) {
-      showToast("❌ Esta cuenta no tiene iptv_user_id de MaxPlayer guardado, no se puede migrar.");
-      return;
-    }
-    setMigrarRow(row);
-    setMigrarPlan("Premium");
-    setMigrarPantallas("1");
-  };
-
-  /** Migra una cuenta vieja (fuente "ernesto" compartida) a su propia linea Xtream
-   * dedicada, cambiando solo la fuente en MaxPlayer.tv (PUT /users/list) — el
-   * cliente sigue usando el mismo usuario/contraseña, sin cortes de servicio. */
-  const confirmarMigracion = async () => {
-    const row = migrarRow;
-    if (!row) return;
-    setMigrandoDni(row.dni);
-    try {
-      const pantallas = Number(migrarPantallas) > 0 ? Number(migrarPantallas) : 1;
-      const bouquets = PLANES_IPTV[migrarPlan] || PLANES_IPTV.Premium;
-      const lineaXtream = await crearLineaXtreamPropia(row.iptv_usuario, pantallas, null, bouquets);
-      const res = await fetch("https://api.maxplayer.tv/v3/api/public/users/list", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
-        body: JSON.stringify({ user_id: row.iptv_user_id, domain_id: MP_DOMAIN, iptv_username: lineaXtream.xtream_username, iptv_password: lineaXtream.xtream_password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) {
-        await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
-        throw new Error(data?.message || data?.error || `Error ${res.status} en MaxPlayer`);
-      }
-      await supabase.from("iptv_clientes").update({
-        xtream_user_id: lineaXtream.xtream_user_id,
-        xtream_username: lineaXtream.xtream_username,
-        max_connections: pantallas,
-        plan: migrarPlan,
-      }).eq("dni", row.dni);
-      setCuentas((prev) => prev.map((c) => (c.dni === row.dni ? { ...c, xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username, max_connections: pantallas, plan: migrarPlan } : c)));
-      showToast(`✅ Migrado: ${row.iptv_usuario} ya tiene línea propia (${migrarPlan}, ${pantallas} pantalla${pantallas > 1 ? "s" : ""})`);
-      setMigrarRow(null);
-    } catch (e) {
-      showToast("❌ " + (e?.message || String(e)));
-    }
-    setMigrandoDni("");
-  };
-
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
   const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
   const tdSt = { padding: "10px 14px", verticalAlign: "middle", fontSize: 13 };
@@ -672,16 +621,6 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                       {c.created_at ? new Date(c.created_at).toLocaleDateString("es-PE") : "—"}
                     </td>
                     <td style={{ ...tdSt, textAlign: "right", whiteSpace: "nowrap" }}>
-                      {!c.xtream_user_id && (
-                        <button
-                          onClick={() => abrirMigrar(c)}
-                          disabled={migrandoDni === c.dni}
-                          title="Migrar de la fuente compartida (ernesto) a una línea Xtream propia, sin cambiar usuario/contraseña del cliente"
-                          style={{ background: "#ede9fe", color: "#7c3aed", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: migrandoDni === c.dni ? "default" : "pointer", fontSize: 12, opacity: migrandoDni === c.dni ? 0.6 : 1, marginRight: 6 }}
-                        >
-                          {migrandoDni === c.dni ? "Migrando..." : "Migrar"}
-                        </button>
-                      )}
                       <button
                         onClick={() => abrirEnviar(c)}
                         style={{ background: "#dcfce7", color: "#16a34a", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5, marginRight: 6 }}
@@ -787,41 +726,6 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
             <button onClick={handleCrearDemo} disabled={creandoDemo}
               style={{ width: "100%", background: creandoDemo ? "#9ca3af" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: creandoDemo ? "default" : "pointer", fontSize: 13 }}>
               {creandoDemo ? "Creando..." : "Crear demo"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {migrarRow && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}
-          onClick={() => migrandoDni !== migrarRow.dni && setMigrarRow(null)}>
-          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 22, width: 360, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111827" }}>Migrar a línea propia</h3>
-              <button onClick={() => setMigrarRow(null)} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}><X size={18} /></button>
-            </div>
-            <p style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginTop: 0, marginBottom: 14 }}>
-              {migrarRow.nombre || migrarRow.iptv_usuario} — hoy usa la fuente compartida "ernesto". El cliente no notará nada (mismo usuario/contraseña), solo cambia la fuente por detrás.
-            </p>
-            <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Plan</label>
-                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={migrarPlan}
-                  onChange={(e) => setMigrarPlan(e.target.value)}>
-                  {PLANES_IPTV_NOMBRES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div style={{ width: 90 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Pantallas</label>
-                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={migrarPantallas}
-                  onChange={(e) => setMigrarPantallas(e.target.value)}>
-                  {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-            </div>
-            <button onClick={confirmarMigracion} disabled={migrandoDni === migrarRow.dni}
-              style={{ width: "100%", background: migrandoDni === migrarRow.dni ? "#9ca3af" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: migrandoDni === migrarRow.dni ? "default" : "pointer", fontSize: 13 }}>
-              {migrandoDni === migrarRow.dni ? "Migrando..." : "Migrar"}
             </button>
           </div>
         </div>

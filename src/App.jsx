@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -35,6 +35,8 @@ import DashboardEjecutivoPanel from "./components/DashboardEjecutivoPanel";
 import MonitorSeñalesPanel from "./components/MonitorSeñalesPanel";
 import IptvPanel from "./components/IptvPanel";
 import MaxPlayerCuentasPanel from "./components/MaxPlayerCuentasPanel";
+import MaxPlayerDashboardPanel from "./components/MaxPlayerDashboardPanel";
+import MaxPlayerReportesPanel from "./components/MaxPlayerReportesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
 import EquiposTecnicoReportesPanel from "./components/EquiposTecnicoReportesPanel";
@@ -376,6 +378,7 @@ const MENU_LUCIDE_ICONS = {
   recordatorios:       Bell,
   reclamaciones:       ScrollText,
   iptv:                Tv,
+  maxplayerCuentas:    MonitorPlay,
   finanzas:            BarChart2,
   bot:                 Cpu,
 };
@@ -430,6 +433,17 @@ const BOT_LUCIDE_ICONS = {
   botControl: Activity,
   botConfig:  Cpu,
   agentes:    Users2,
+};
+
+const MAXPLAYER_SUBMENU_ITEMS = [
+  { key: "dashboard", label: "Dashboard", sideLabel: "Dashboard" },
+  { key: "cuentas",   label: "Cuentas",   sideLabel: "Cuentas"   },
+  { key: "reportes",  label: "Reportes",  sideLabel: "Reportes por nodo" },
+];
+const MAXPLAYER_LUCIDE_ICONS = {
+  dashboard: LayoutDashboard,
+  cuentas:   MonitorPlay,
+  reportes:  BarChart2,
 };
 
 function escapeRegExp(value = "") {
@@ -1877,6 +1891,7 @@ export default function App() {
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
   const [reportesSubmenu, setReportesSubmenu] = useState("general");
   const [botSubmenu, setBotSubmenu] = useState("botControl");
+  const [maxplayerSubmenu, setMaxplayerSubmenu] = useState("cuentas");
   const [historialAppsheetEquipos, setHistorialAppsheetEquipos] = useState([]);
   const [historialAppsheetLiquidaciones, setHistorialAppsheetLiquidaciones] = useState([]);
   const [historialAppsheetLoading, setHistorialAppsheetLoading] = useState(false);
@@ -2738,6 +2753,14 @@ export default function App() {
   const botSubmenuActual = useMemo(
     () => BOT_SUBMENU_ITEMS.find(item => item.key === botSubmenu) || BOT_SUBMENU_ITEMS[0],
     [botSubmenu]
+  );
+  const maxplayerSubmenuActual = useMemo(
+    () => MAXPLAYER_SUBMENU_ITEMS.find(item => item.key === maxplayerSubmenu) || MAXPLAYER_SUBMENU_ITEMS[0],
+    [maxplayerSubmenu]
+  );
+  const maxplayerSubmenuItemsPermitidos = useMemo(
+    () => esAdminSesion ? MAXPLAYER_SUBMENU_ITEMS : MAXPLAYER_SUBMENU_ITEMS.filter(item => item.key === "cuentas"),
+    [esAdminSesion]
   );
 
   const tieneAccesoNodoSesion = useCallback(
@@ -14818,6 +14841,16 @@ export default function App() {
     );
   };
 
+  const renderMaxplayerSubmenuIcon = (key, active = false, size = 13) => {
+    const Icon = MAXPLAYER_LUCIDE_ICONS[key] || MonitorPlay;
+    const color = active ? "#1B6EC4" : "#6b7280";
+    return (
+      <span aria-hidden="true" style={{ width: "16px", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon size={size} color={color} strokeWidth={1.7} />
+      </span>
+    );
+  };
+
   const mainMenuItems = MENU_VISTAS_WEB.filter((item) => {
     if (!accesosSesion.includes(item.key)) return false;
     if (item.key === "almacenes" && !esAdminSesion) return false;
@@ -15051,6 +15084,50 @@ export default function App() {
                         onClick={() => setReportesSubmenu(submenu.key)}
                       >
                         {renderReportesSubmenuIcon(submenu.key, reportesSubmenu === submenu.key)}
+                        <span>{submenu.sideLabel || submenu.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (item.key === "maxplayerCuentas") {
+              const isMaxplayerActive = vistaActiva === "maxplayerCuentas";
+              return (
+                <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "4px" }}>
+                  <button
+                    key={`side-${item.key}`}
+                    type="button"
+                    style={sideHistorialAppsheetButtonStyle(isMaxplayerActive)}
+                    onClick={() => navTo("maxplayerCuentas")}
+                  >
+                    <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                        {renderSidebarIcon(item.key, isMaxplayerActive)}
+                        <span style={{ display: "grid", gap: "2px", minWidth: 0 }}>
+                          <span style={{ fontSize: "13.5px", fontWeight: isMaxplayerActive ? 600 : 500 }}>{item.label}</span>
+                          {isMaxplayerActive && maxplayerSubmenuActual ? (
+                            <span style={{ fontSize: "11px", color: "#98a3b9", letterSpacing: "0.02em" }}>
+                              {maxplayerSubmenuActual.sideLabel || maxplayerSubmenuActual.label}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span style={{ fontSize: "12px", lineHeight: 1, color: isMaxplayerActive ? "#d98908" : "#a4afc5", transform: isMaxplayerActive ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 140ms ease" }}>{">"}</span>
+                    </span>
+                  </button>
+                  <div style={{ ...sideHistorialAppsheetSubmenuWrapStyle, maxHeight: isMaxplayerActive ? "200px" : "0", overflow: "hidden", transition: "max-height 0.28s ease" }}>
+                    {maxplayerSubmenuItemsPermitidos.map((submenu) => (
+                      <button
+                        key={`sub-maxplayer-${submenu.key}`}
+                        type="button"
+                        style={sideHistorialAppsheetSubmenuButtonStyle(isMaxplayerActive && maxplayerSubmenu === submenu.key)}
+                        onClick={() => {
+                          setMaxplayerSubmenu(submenu.key);
+                        }}
+                      >
+                        {renderMaxplayerSubmenuIcon(submenu.key, isMaxplayerActive && maxplayerSubmenu === submenu.key)}
                         <span>{submenu.sideLabel || submenu.label}</span>
                       </button>
                     ))}
@@ -21167,8 +21244,16 @@ export default function App() {
           <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} theme={theme} />
         )}
 
-        {vistaActiva === "maxplayerCuentas" && (esAdminSesion || esGestorSesion) && (
+        {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "dashboard" && esAdminSesion && (
+          <MaxPlayerDashboardPanel theme={theme} />
+        )}
+
+        {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "cuentas" && (esAdminSesion || esGestorSesion) && (
           <MaxPlayerCuentasPanel theme={theme} soloBusquedaDni={!esAdminSesion} />
+        )}
+
+        {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "reportes" && esAdminSesion && (
+          <MaxPlayerReportesPanel theme={theme} />
         )}
 
         {vistaActiva === "noc" && esAdminSesion && (
