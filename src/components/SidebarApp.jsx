@@ -515,6 +515,7 @@ export default function SidebarApp() {
   const [demoPantallas, setDemoPantallas] = useState("1");
   const [demoHoras,    setDemoHoras]    = useState("24");
   const [creandoDemo,  setCreandoDemo]  = useState(false);
+  const [showDemoNoRegistrado, setShowDemoNoRegistrado] = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
@@ -3501,6 +3502,57 @@ export default function SidebarApp() {
                 )}
 
               </div>
+            </div>
+          )}
+
+          {/* ── Demo IPTV para prospecto no registrado ── */}
+          <div style={S.divider} />
+          <button onClick={() => {
+              const abriendo = !showDemoNoRegistrado;
+              setShowDemoNoRegistrado(abriendo);
+              if (abriendo) { setIptvData(null); setDemoNombre(""); setDemoPantallas("1"); setDemoHoras("24"); }
+            }}
+            style={{ ...S.btn(showDemoNoRegistrado ? "#6b7280" : "#7c3aed"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: showDemoNoRegistrado ? 8 : 0 }}>
+            🎬 {showDemoNoRegistrado ? "Cerrar demo" : "Crear demo IPTV"}
+          </button>
+          {showDemoNoRegistrado && (
+            <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:"10px 12px", marginBottom:8 }}>
+              {iptvData?.iptv_usuario ? (
+                <>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#7c3aed", marginBottom:6 }}>✅ Demo creada</div>
+                  <div style={{ fontSize:12, color:T.navy, marginBottom:2 }}>Usuario: <b style={{ fontFamily:"monospace" }}>{iptvData.iptv_usuario}</b></div>
+                  <div style={{ fontSize:12, color:T.navy, marginBottom:10 }}>Contraseña: <b style={{ fontFamily:"monospace" }}>{iptvData.iptv_password}</b></div>
+                  <button onClick={enviarIPTV} disabled={iptvEnviando || !contact?.phone_number}
+                    style={{ ...S.btn(iptvEnviando ? "#9ca3af" : T.blue), opacity: iptvEnviando ? 0.6 : 1 }}>
+                    {iptvEnviando ? "Enviando..." : "📲 Enviar credenciales al cliente"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize:10, color:T.muted, marginBottom:8 }}>Para ofrecer una prueba antes de que se registre como cliente. Vence sola pasadas las horas elegidas.</div>
+                  <input
+                    type="text"
+                    placeholder="Nombre / identificador del prospecto"
+                    value={demoNombre}
+                    onChange={e => setDemoNombre(e.target.value)}
+                    style={{ width:"100%", padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13, marginBottom:8, boxSizing:"border-box" }}
+                  />
+                  <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+                    <select value={demoPantallas} onChange={e => setDemoPantallas(e.target.value)}
+                      style={{ flex:1, padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13 }}>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} pantalla{n>1?"s":""}</option>)}
+                    </select>
+                    <select value={demoHoras} onChange={e => setDemoHoras(e.target.value)}
+                      style={{ flex:1, padding:"6px 8px", borderRadius:5, border:"1px solid #d1d5db", fontSize:13 }}>
+                      {[12,24,48,72].map(h => <option key={h} value={h}>{h} horas</option>)}
+                    </select>
+                  </div>
+                  <button onClick={crearDemoIPTV} disabled={creandoDemo || !demoNombre.trim()}
+                    style={{ ...S.btn(creandoDemo ? "#9ca3af" : "#7c3aed"), opacity: (creandoDemo || !demoNombre.trim()) ? 0.6 : 1 }}>
+                    {creandoDemo ? "Creando demo..." : "🎬 Crear demo"}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
