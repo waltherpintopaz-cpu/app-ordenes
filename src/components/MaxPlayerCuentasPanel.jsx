@@ -93,6 +93,7 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
     xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
     max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null,
     es_demo: esDemo, plan: esDemo ? "Premium" : plan,
+    demo_exp_at: (esDemo && expHoras) ? new Date(Date.now() + Number(expHoras) * 3600000).toISOString() : null,
   };
   let upsertRes = await supabase.from("iptv_clientes").upsert(payload, { onConflict: "dni" });
   if (upsertRes.error) {

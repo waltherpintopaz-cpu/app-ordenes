@@ -10,6 +10,15 @@ const SERVER_PORT = Number(process.env.PORT || process.env.XTREAM_PROXY_PORT || 
 const XTREAM_API_BASE = String(process.env.XTREAM_API_BASE || "http://179.43.96.253:25500").trim().replace(/\/+$/, "");
 const XTREAM_API_KEY = String(process.env.XTREAM_API_KEY || "").trim();
 
+// ---------- Limpieza automatica de demos IPTV vencidas ----------
+// Corre dentro de este mismo proceso (ya vive 24/7 en EasyPanel) cada
+// CLEANUP_INTERVAL_MIN minutos: borra de Xtream, MaxPlayer.tv y Supabase
+// cualquier fila de iptv_clientes con es_demo=true y demo_exp_at ya pasado.
+const SUPABASE_URL = String(process.env.SUPABASE_URL || "https://vgwbqbzpjlbkmxtfghdm.supabase.co").trim().replace(/\/+$/, "");
+const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "sb_publishable_sC_66p4UKHUudDVyWyNcyA_bkrl_J2_").trim();
+const MP_TOKEN = String(process.env.MP_TOKEN || "mNTO0Z5ynAIsPx7LWBzFX90N").trim();
+const CLEANUP_INTERVAL_MIN = Number(process.env.CLEANUP_INTERVAL_MIN || 15) || 15;
+
 const writeJson = (res, status, data) => {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -40,6 +49,53 @@ const forwardToXtream = async (path, body) => {
   const json = await res.json().catch(() => ({}));
   return { status: res.status, json };
 };
+
+const supabaseHeaders = {
+  "Content-Type": "application/json",
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+};
+
+async function limpiarDemosVencidas() {
+  if (!XTREAM_API_KEY) return { ok: false, error: "server_misconfigured" };
+  const nowIso = new Date().toISOString();
+  const url = `${SUPABASE_URL}/rest/v1/iptv_clientes?es_demo=eq.true&demo_exp_at=lt.${encodeURIComponent(nowIso)}&select=dni,iptv_usuario,iptv_user_id,xtream_user_id`;
+  let vencidas = [];
+  try {
+    const res = await fetch(url, { headers: supabaseHeaders });
+    vencidas = await res.json();
+    if (!Array.isArray(vencidas)) vencidas = [];
+  } catch (e) {
+    console.error("[cleanup-demos] error consultando Supabase:", e?.message || e);
+    return { ok: false, error: "supabase_query_failed" };
+  }
+
+  if (vencidas.length === 0) return { ok: true, eliminadas: 0 };
+
+  let eliminadas = 0;
+  for (const row of vencidas) {
+    try {
+      if (row.iptv_user_id) {
+        await fetch(`https://api.maxplayer.tv/v3/api/public/users/${row.iptv_user_id}`, {
+          method: "DELETE",
+          headers: { "Api-Token": MP_TOKEN },
+        }).catch(() => {});
+      }
+      if (row.xtream_user_id) {
+        await forwardToXtream("/manage_user_api.php", { action: "delete", user_id: row.xtream_user_id });
+      }
+      await fetch(`${SUPABASE_URL}/rest/v1/iptv_clientes?dni=eq.${encodeURIComponent(row.dni)}`, {
+        method: "DELETE",
+        headers: supabaseHeaders,
+      });
+      eliminadas += 1;
+      console.log(`[cleanup-demos] eliminada demo vencida: ${row.iptv_usuario} (dni ${row.dni})`);
+    } catch (e) {
+      console.error(`[cleanup-demos] error eliminando ${row.iptv_usuario}:`, e?.message || e);
+    }
+  }
+  return { ok: true, eliminadas, total_vencidas: vencidas.length };
+}
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -76,6 +132,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/xtream/cleanup-demos") {
+      const result = await limpiarDemosVencidas();
+      writeJson(res, result.ok ? 200 : 500, result);
+      return;
+    }
+
     writeJson(res, 404, { success: false, error: "not_found" });
   } catch (e) {
     writeJson(res, 500, { success: false, error: "internal_error", detail: String(e?.message || e) });
@@ -85,3 +147,8 @@ const server = http.createServer(async (req, res) => {
 server.listen(SERVER_PORT, SERVER_HOST, () => {
   console.log(`Xtream proxy escuchando en http://${SERVER_HOST}:${SERVER_PORT}`);
 });
+
+// Limpieza automatica de demos vencidas: primera pasada a los 30s de arrancar
+// (para no competir con el arranque), luego cada CLEANUP_INTERVAL_MIN minutos.
+setTimeout(() => { limpiarDemosVencidas().catch(() => {}); }, 30000);
+setInterval(() => { limpiarDemosVencidas().catch(() => {}); }, CLEANUP_INTERVAL_MIN * 60000);
