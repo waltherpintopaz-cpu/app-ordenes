@@ -2853,16 +2853,17 @@ export default function SidebarApp() {
   }
 
   async function enviarIPTV() {
-    if (!iptvData || !contact?.phone_number) return;
+    if (!iptvData) return notify("No hay credenciales IPTV cargadas para enviar.", false);
+    if (!contact?.phone_number) return notify("No hay un número de contacto en este chat para enviar.", false);
     setIptvEnviando(true);
-    const nombreRaw = cliente?.nombre || "";
+    const nombreRaw = cliente?.nombre || demoNombre || "";
     const nombre = nombreRaw.includes(",")
       ? nombreRaw.split(",")[1].trim().split(" ")[0]
       : nombreRaw.split(" ")[0];
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
     const texto = `📺 *CREDENCIALES MAXPLAYER*\n\nHola ${nombreFmt}, aquí están tus datos de acceso a *MaxPlayer*:\n\n*Usuario:* ${iptvData.iptv_usuario}\n*Contraseña:* ${iptvData.iptv_password}\n\nDescarga la app *MaxPlayer* e ingresa con estos datos. 🎬\n\n💡 *Tip:* Para una mejor experiencia conecta tu TV por *cable de red* o a la red *WiFi 5GHz* con buena cobertura.`;
     try {
-      await fetch(PROXY_URL, {
+      const res = await fetch(PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2875,6 +2876,8 @@ export default function SidebarApp() {
           },
         }),
       });
+      const bodyTxt = await res.text().catch(() => "");
+      if (!res.ok) throw new Error(`Webhook respondió ${res.status}: ${bodyTxt.slice(0, 200)}`);
       notify("✅ Credenciales enviadas al cliente");
     } catch(e) { notify("Error al enviar: " + e.message, false); }
     setIptvEnviando(false);
