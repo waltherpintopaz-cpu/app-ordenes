@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Wallet, Plus, Edit2, Trash2, X, Download, FileText, Image as ImageIcon, Camera, RefreshCw } from "lucide-react";
+import { Wallet, Plus, Edit2, Trash2, X, Download, FileText, Camera, RefreshCw } from "lucide-react";
 
 const CATEGORIAS = ["Compras", "Alimentación", "Transporte", "Otros"];
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const emptyForm = { fecha: new Date().toISOString().slice(0, 10), descripcion: "", monto: "", categoria: CATEGORIAS[0], foto_url: "" };
+const emptyForm = { fecha: new Date().toISOString().slice(0, 10), descripcion: "", monto: "", categoria: CATEGORIAS[0], fotos: [] };
 
 export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const isDark = theme === "dark";
@@ -67,7 +67,8 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
 
   const abrirModal = (g = null) => {
     if (g) {
-      setForm({ fecha: g.fecha, descripcion: g.descripcion || "", monto: String(g.monto ?? ""), categoria: g.categoria || CATEGORIAS[0], foto_url: g.foto_url || "" });
+      const fotos = Array.isArray(g.fotos) && g.fotos.length ? g.fotos : (g.foto_url ? [g.foto_url] : []);
+      setForm({ fecha: g.fecha, descripcion: g.descripcion || "", monto: String(g.monto ?? ""), categoria: g.categoria || CATEGORIAS[0], fotos });
       setEditId(g.id);
     } else {
       setForm(emptyForm);
@@ -76,21 +77,27 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     setModal(true);
   };
 
-  const subirFoto = async (file) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return showToast("❌ Solo se aceptan imágenes.");
+  const subirFotos = async (files) => {
+    const imagenes = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
+    if (!imagenes.length) return showToast("❌ Solo se aceptan imágenes.");
     setSubiendoFoto(true);
     try {
-      const fileName = `gastos/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
-      const { error: err } = await supabase.storage.from("fotos").upload(fileName, file, { contentType: file.type, upsert: true });
-      if (err) throw err;
-      const { data } = supabase.storage.from("fotos").getPublicUrl(fileName);
-      setForm((p) => ({ ...p, foto_url: data.publicUrl }));
+      const urls = [];
+      for (const file of imagenes) {
+        const fileName = `gastos/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${file.name.replace(/\s+/g, "_")}`;
+        const { error: err } = await supabase.storage.from("fotos").upload(fileName, file, { contentType: file.type, upsert: true });
+        if (err) throw err;
+        const { data } = supabase.storage.from("fotos").getPublicUrl(fileName);
+        urls.push(data.publicUrl);
+      }
+      setForm((p) => ({ ...p, fotos: [...p.fotos, ...urls] }));
     } catch (e) {
       showToast("❌ Error al subir foto: " + (e?.message || String(e)));
     }
     setSubiendoFoto(false);
   };
+
+  const quitarFoto = (url) => setForm((p) => ({ ...p, fotos: p.fotos.filter((f) => f !== url) }));
 
   const guardar = async () => {
     if (!form.descripcion.trim()) return showToast("❌ Ingresa una descripción.");
@@ -103,7 +110,8 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         descripcion: form.descripcion.trim(),
         monto,
         categoria: form.categoria,
-        foto_url: form.foto_url || null,
+        fotos: form.fotos,
+        foto_url: form.fotos[0] || null,
         creado_por: sessionUser?.nombre || sessionUser?.email || null,
         updated_at: new Date().toISOString(),
       };
@@ -245,11 +253,20 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                   <td style={tdSt}>{g.categoria || "—"}</td>
                   <td style={{ ...tdSt, fontWeight: 700, color: "#16a34a" }}>S/ {Number(g.monto).toFixed(2)}</td>
                   <td style={tdSt}>
-                    {g.foto_url ? (
-                      <a href={g.foto_url} target="_blank" rel="noopener noreferrer">
-                        <img src={g.foto_url} alt="evidencia" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6 }} />
-                      </a>
-                    ) : <span style={{ color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>—</span>}
+                    {(() => {
+                      const fotos = Array.isArray(g.fotos) && g.fotos.length ? g.fotos : (g.foto_url ? [g.foto_url] : []);
+                      if (!fotos.length) return <span style={{ color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>—</span>;
+                      return (
+                        <a href={fotos[0]} target="_blank" rel="noopener noreferrer" style={{ position: "relative", display: "inline-block" }}>
+                          <img src={fotos[0]} alt="evidencia" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6 }} />
+                          {fotos.length > 1 && (
+                            <span style={{ position: "absolute", bottom: -4, right: -4, background: "#16a34a", color: "#fff", fontSize: 9, fontWeight: 700, borderRadius: 8, padding: "1px 4px", lineHeight: 1.2 }}>
+                              +{fotos.length - 1}
+                            </span>
+                          )}
+                        </a>
+                      );
+                    })()}
                   </td>
                   <td style={{ ...tdSt, textAlign: "right", whiteSpace: "nowrap" }}>
                     <button onClick={() => abrirModal(g)} style={{ background: "#eff6ff", color: "#2563eb", border: "none", borderRadius: 8, padding: "7px 10px", fontWeight: 600, cursor: "pointer", fontSize: 12, marginRight: 6 }}>
@@ -298,20 +315,33 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
               </div>
             </div>
 
-            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Evidencia (foto)</label>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) subirFoto(f); e.target.value = ""; }} />
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Evidencia (fotos)</label>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }}
+              onChange={(e) => { const files = e.target.files; if (files?.length) subirFotos(files); e.target.value = ""; }} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={subiendoFoto}
                 style={{ display: "flex", alignItems: "center", gap: 6, ...inputSt, cursor: "pointer", opacity: subiendoFoto ? 0.6 : 1 }}>
-                <Camera size={14} /> {subiendoFoto ? "Subiendo..." : "Tomar / subir foto"}
+                <Camera size={14} /> {subiendoFoto ? "Subiendo..." : "Tomar / subir foto(s)"}
               </button>
-              {form.foto_url && (
-                <a href={form.foto_url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#2563eb" }}>
-                  <ImageIcon size={14} /> Ver
-                </a>
+              {form.fotos.length > 0 && (
+                <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{form.fotos.length} foto{form.fotos.length !== 1 ? "s" : ""}</span>
               )}
             </div>
+            {form.fotos.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                {form.fotos.map((url) => (
+                  <div key={url} style={{ position: "relative" }}>
+                    <a href={url} target="_blank" rel="noopener noreferrer">
+                      <img src={url} alt="evidencia" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb" }} />
+                    </a>
+                    <button type="button" onClick={() => quitarFoto(url)}
+                      style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: "50%", background: "#dc2626", color: "#fff", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <button onClick={guardar} disabled={guardando}
               style={{ width: "100%", background: guardando ? "#9ca3af" : "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: guardando ? "default" : "pointer", fontSize: 13 }}>
