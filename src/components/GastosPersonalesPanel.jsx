@@ -5,9 +5,10 @@ import autoTable from "jspdf-autotable";
 import { Wallet, Plus, Edit2, Trash2, X, Download, FileText, Camera, RefreshCw } from "lucide-react";
 
 const CATEGORIAS = ["Compras", "Alimentación", "Transporte", "Otros"];
+const ENTIDADES = ["DIM", "Americanet", "Personal"];
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const emptyForm = { fecha: new Date().toISOString().slice(0, 10), descripcion: "", monto: "", categoria: CATEGORIAS[0], fotos: [] };
+const emptyForm = { fecha: new Date().toISOString().slice(0, 10), descripcion: "", monto: "", categoria: CATEGORIAS[0], entidad: ENTIDADES[0], fotos: [] };
 
 export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const isDark = theme === "dark";
@@ -19,6 +20,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const hoy = new Date();
   const [filtroAnio, setFiltroAnio] = useState(hoy.getFullYear());
   const [filtroMes, setFiltroMes] = useState(hoy.getMonth() + 1); // 1-12, 0 = todos
+  const [filtroEntidad, setFiltroEntidad] = useState("Todas");
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -53,9 +55,10 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       const [y, m] = String(g.fecha || "").split("-").map(Number);
       if (filtroAnio && y !== filtroAnio) return false;
       if (filtroMes && m !== filtroMes) return false;
+      if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return false;
       return true;
     });
-  }, [gastos, filtroAnio, filtroMes]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
 
@@ -68,7 +71,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const abrirModal = (g = null) => {
     if (g) {
       const fotos = Array.isArray(g.fotos) && g.fotos.length ? g.fotos : (g.foto_url ? [g.foto_url] : []);
-      setForm({ fecha: g.fecha, descripcion: g.descripcion || "", monto: String(g.monto ?? ""), categoria: g.categoria || CATEGORIAS[0], fotos });
+      setForm({ fecha: g.fecha, descripcion: g.descripcion || "", monto: String(g.monto ?? ""), categoria: g.categoria || CATEGORIAS[0], entidad: g.entidad || ENTIDADES[0], fotos });
       setEditId(g.id);
     } else {
       setForm(emptyForm);
@@ -110,6 +113,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         descripcion: form.descripcion.trim(),
         monto,
         categoria: form.categoria,
+        entidad: form.entidad,
         fotos: form.fotos,
         foto_url: form.fotos[0] || null,
         creado_por: sessionUser?.nombre || sessionUser?.email || null,
@@ -146,9 +150,9 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
 
   const exportarCsv = () => {
     if (filtrados.length === 0) return showToast("❌ No hay gastos para exportar.");
-    const filas = [["Fecha", "Descripción", "Categoría", "Monto"]];
-    filtrados.forEach((g) => filas.push([g.fecha, g.descripcion, g.categoria || "", Number(g.monto).toFixed(2)]));
-    filas.push(["", "", "TOTAL", total.toFixed(2)]);
+    const filas = [["Fecha", "Descripción", "Categoría", "Entidad", "Monto"]];
+    filtrados.forEach((g) => filas.push([g.fecha, g.descripcion, g.categoria || "", g.entidad || "Personal", Number(g.monto).toFixed(2)]));
+    filas.push(["", "", "", "TOTAL", total.toFixed(2)]);
     const csv = filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -167,9 +171,9 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     doc.setFontSize(10); doc.text(`Período: ${periodoTxt}`, 14, 26);
     autoTable(doc, {
       startY: 32,
-      head: [["Fecha", "Descripción", "Categoría", "Monto (S/)"]],
-      body: filtrados.map((g) => [g.fecha, g.descripcion, g.categoria || "-", Number(g.monto).toFixed(2)]),
-      foot: [["", "", "TOTAL", total.toFixed(2)]],
+      head: [["Fecha", "Descripción", "Categoría", "Entidad", "Monto (S/)"]],
+      body: filtrados.map((g) => [g.fecha, g.descripcion, g.categoria || "-", g.entidad || "Personal", Number(g.monto).toFixed(2)]),
+      foot: [["", "", "", "TOTAL", total.toFixed(2)]],
       styles: { fontSize: 9 },
       footStyles: { fontStyle: "bold" },
     });
@@ -216,6 +220,10 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         <select value={filtroAnio} onChange={(e) => setFiltroAnio(Number(e.target.value))} style={inputSt}>
           {aniosDisponibles.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
+        <select value={filtroEntidad} onChange={(e) => setFiltroEntidad(e.target.value)} style={inputSt}>
+          <option value="Todas">Todas las entidades</option>
+          {ENTIDADES.map((e) => <option key={e} value={e}>{e}</option>)}
+        </select>
         <button onClick={exportarCsv} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
           <Download size={13} /> CSV / Sheets
         </button>
@@ -237,6 +245,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                 <th style={thSt}>Fecha</th>
                 <th style={thSt}>Descripción</th>
                 <th style={thSt}>Categoría</th>
+                <th style={thSt}>Entidad</th>
                 <th style={thSt}>Monto</th>
                 <th style={thSt}>Foto</th>
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
@@ -244,13 +253,22 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
             </thead>
             <tbody>
               {filtrados.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin gastos en este período.</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin gastos en este período.</td></tr>
               )}
               {filtrados.map((g) => (
                 <tr key={g.id} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" }}>
                   <td style={{ ...tdSt, whiteSpace: "nowrap" }}>{g.fecha}</td>
                   <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>{g.descripcion}</td>
                   <td style={tdSt}>{g.categoria || "—"}</td>
+                  <td style={tdSt}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
+                      background: g.entidad === "DIM" ? "#eef2ff" : g.entidad === "Americanet" ? "#ecfdf5" : "#fef3c7",
+                      color: g.entidad === "DIM" ? "#4338ca" : g.entidad === "Americanet" ? "#047857" : "#92400e",
+                    }}>
+                      {g.entidad || "Personal"}
+                    </span>
+                  </td>
                   <td style={{ ...tdSt, fontWeight: 700, color: "#16a34a" }}>S/ {Number(g.monto).toFixed(2)}</td>
                   <td style={tdSt}>
                     {(() => {
@@ -313,6 +331,21 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                   {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+            </div>
+
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Entidad</label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {ENTIDADES.map((e) => (
+                <button key={e} type="button" onClick={() => setForm((p) => ({ ...p, entidad: e }))}
+                  style={{
+                    flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    border: form.entidad === e ? "none" : (isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb"),
+                    background: form.entidad === e ? "#16a34a" : (isDark ? "#1a2740" : "#fff"),
+                    color: form.entidad === e ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
+                  }}>
+                  {e}
+                </button>
+              ))}
             </div>
 
             <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Evidencia (fotos)</label>
