@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -37,6 +37,7 @@ import IptvPanel from "./components/IptvPanel";
 import MaxPlayerCuentasPanel from "./components/MaxPlayerCuentasPanel";
 import MaxPlayerDashboardPanel from "./components/MaxPlayerDashboardPanel";
 import MaxPlayerReportesPanel from "./components/MaxPlayerReportesPanel";
+import GastosPersonalesPanel from "./components/GastosPersonalesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
 import EquiposTecnicoReportesPanel from "./components/EquiposTecnicoReportesPanel";
@@ -298,6 +299,7 @@ const MENU_VISTAS_WEB = [
   { key: "iptv", label: "Panel IPTV" },
   { key: "maxplayerCuentas", label: "Cuentas MaxPlayer" },
   { key: "finanzas", label: "Finanzas" },
+  { key: "misGastos", label: "Mis Gastos" },
 ];
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -380,6 +382,7 @@ const MENU_LUCIDE_ICONS = {
   iptv:                Tv,
   maxplayerCuentas:    MonitorPlay,
   finanzas:            BarChart2,
+  misGastos:           Wallet,
   bot:                 Cpu,
 };
 
@@ -21254,6 +21257,10 @@ export default function App() {
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "reportes" && esAdminSesion && (
           <MaxPlayerReportesPanel theme={theme} />
+        )}
+
+        {vistaActiva === "misGastos" && (
+          <GastosPersonalesPanel theme={theme} sessionUser={usuarioSesion} />
         )}
 
         {vistaActiva === "noc" && esAdminSesion && (
