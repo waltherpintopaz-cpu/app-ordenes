@@ -2035,6 +2035,12 @@ export default function App() {
   const [usuarioForm, setUsuarioForm] = useState(initialUsuario);
   const [usuarioEditandoId, setUsuarioEditandoId] = useState(null);
   const [usuariosPanelTab, setUsuariosPanelTab] = useState("personal");
+  const [appControlVersion, setAppControlVersion] = useState("");
+  const [appControlMensaje, setAppControlMensaje] = useState("");
+  const [appControlLoading, setAppControlLoading] = useState(false);
+  const [appControlSaving, setAppControlSaving] = useState(false);
+  const [appControlInfo, setAppControlInfo] = useState("");
+  const [appControlError, setAppControlError] = useState("");
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
   const [busquedaClientes, setBusquedaClientes] = useState("");
   const [busquedaClientesDraft, setBusquedaClientesDraft] = useState("");
@@ -7226,6 +7232,54 @@ export default function App() {
       );
     } finally {
       setMikrotikConfigSaving(false);
+    }
+  };
+
+  const cargarAppControlDesdeSupabase = async () => {
+    if (!isSupabaseConfigured) return;
+    setAppControlLoading(true);
+    setAppControlError("");
+    try {
+      const { data, error } = await supabase
+        .from("app_control")
+        .select("version_minima_android, mensaje")
+        .eq("id", 1)
+        .maybeSingle();
+      if (error) throw error;
+      setAppControlVersion(String(data?.version_minima_android ?? ""));
+      setAppControlMensaje(String(data?.mensaje ?? ""));
+    } catch (error) {
+      const msg = String(error?.message || "");
+      if (msg.toLowerCase().includes("does not exist") || error?.code === "42P01") {
+        setAppControlError("Falta crear la tabla app_control en Supabase (ver SQL de la app mobile).");
+      } else {
+        setAppControlError(msg || "No se pudo cargar el control de versión.");
+      }
+    } finally {
+      setAppControlLoading(false);
+    }
+  };
+
+  const guardarAppControlEnSupabase = async () => {
+    if (!isSupabaseConfigured) { setAppControlError("Supabase no está configurado en esta app."); return; }
+    const version = Number(appControlVersion);
+    if (!Number.isFinite(version) || version < 1) {
+      setAppControlError("Ingresa un número de versión válido (mayor a 0).");
+      return;
+    }
+    setAppControlSaving(true);
+    setAppControlError("");
+    setAppControlInfo("");
+    try {
+      const { error } = await supabase
+        .from("app_control")
+        .upsert({ id: 1, version_minima_android: version, mensaje: appControlMensaje.trim() || null, updated_at: new Date().toISOString() }, { onConflict: "id" });
+      if (error) throw error;
+      setAppControlInfo("Control de versión guardado. Las apps móviles con versión menor quedarán bloqueadas en su próxima revisión (máx. 60s).");
+    } catch (error) {
+      setAppControlError(String(error?.message || "No se pudo guardar el control de versión."));
+    } finally {
+      setAppControlSaving(false);
     }
   };
 
@@ -19925,6 +19979,15 @@ export default function App() {
                       MikroTik
                     </button>
                   ) : null}
+                  {esAdminSesion ? (
+                    <button
+                      type="button"
+                      onClick={() => { setUsuariosPanelTab("app"); void cargarAppControlDesdeSupabase(); }}
+                      style={usuariosPanelTab === "app" ? primaryButton : secondaryButton}
+                    >
+                      App móvil
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -20383,6 +20446,56 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+              </div>
+            ) : null}
+
+            {esAdminSesion && usuariosPanelTab === "app" ? (
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center", marginBottom: "16px" }}>
+                  <div style={{ display: "grid", gap: "4px" }}>
+                    <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Control de versión — App móvil</h2>
+                    <p style={{ ...subtitleStyle, margin: 0 }}>
+                      Bloquea el uso de versiones antiguas de la app. Cualquier instalación con un versionCode menor al indicado quedará bloqueada al abrir (revisa cada 60s).
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button type="button" style={secondaryButton} onClick={() => void cargarAppControlDesdeSupabase()} disabled={appControlLoading || appControlSaving}>
+                      {appControlLoading ? "Cargando..." : "Recargar"}
+                    </button>
+                    <button type="button" style={primaryButton} onClick={() => void guardarAppControlEnSupabase()} disabled={appControlLoading || appControlSaving}>
+                      {appControlSaving ? "Guardando..." : "Guardar"}
+                    </button>
+                  </div>
+                </div>
+
+                {appControlInfo ? <div style={{ ...badgeSuccess, padding: "10px 12px", borderRadius: "12px", marginBottom: "12px" }}>{appControlInfo}</div> : null}
+                {appControlError ? <div style={{ ...badgeDanger, padding: "10px 12px", borderRadius: "12px", marginBottom: "12px", display: "block" }}>{appControlError}</div> : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
+                  <div>
+                    <label style={labelStyle}>Versión mínima permitida (versionCode Android)</label>
+                    <input
+                      style={inputStyle}
+                      type="number"
+                      min={1}
+                      value={appControlVersion}
+                      onChange={(e) => setAppControlVersion(e.target.value)}
+                      placeholder="Ej. 133"
+                    />
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={labelStyle}>Mensaje que verá el usuario bloqueado (opcional)</label>
+                    <textarea
+                      style={{ ...inputStyle, minHeight: 70, resize: "vertical" }}
+                      value={appControlMensaje}
+                      onChange={(e) => setAppControlMensaje(e.target.value)}
+                      placeholder="Actualiza tu app a la última versión. Contacta al administrador para obtener la nueva APK."
+                    />
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 14 }}>
+                  Tip: el versionCode de la última APK generada está en <code>android/app/build.gradle</code> del proyecto mobile.
+                </p>
               </div>
             ) : null}
           </div>
