@@ -16515,8 +16515,8 @@ export default function App() {
                             <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#64748b", marginTop: 1 }}>{item.tipoActuacion || item.orden || "-"}</div>
                           </div>
                           <div style={{ fontSize: 12, color: isDark ? "#a9bcdd" : "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
-                            <span>📍 {item.direccion || "-"}</span>
-                            <span>DNI {item.dni || "-"} · {item.celular || "sin cel."}</span>
+                            <span>📍 {bloqueadoPorNodo ? "Sin acceso" : (item.direccion || "-")}</span>
+                            <span>DNI {item.dni || "-"}{!bloqueadoPorNodo && ` · ${item.celular || "sin cel."}`}</span>
                           </div>
                           <div style={{ fontSize: 12, color: isDark ? "#a9bcdd" : "#475569", display: "flex", flexDirection: "column", gap: 1 }}>
                             <span>👷 {item.tecnico || "Sin técnico"}</span>
@@ -16532,10 +16532,10 @@ export default function App() {
                           )}
                         </div>
                         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                          <button onClick={() => llamarCliente(item.celular)} title="Llamar" style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>📞</button>
-                          <button onClick={() => abrirWhatsApp(item.celular)} title="WhatsApp" style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#16a34a", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>💬</button>
-                          <button onClick={() => navegarRuta(item.ubicacion, item.direccion)} title="Navegar" style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗺️</button>
-                          <button onClick={() => compartirUbicacionConCliente(item)} title="Compartir ubicacion con el cliente" style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4338ca", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🔗</button>
+                          {!bloqueadoPorNodo && <button onClick={() => llamarCliente(item.celular)} title="Llamar" style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>📞</button>}
+                          {!bloqueadoPorNodo && <button onClick={() => abrirWhatsApp(item.celular)} title="WhatsApp" style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#16a34a", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>💬</button>}
+                          {!bloqueadoPorNodo && <button onClick={() => navegarRuta(item.ubicacion, item.direccion)} title="Navegar" style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗺️</button>}
+                          {!bloqueadoPorNodo && <button onClick={() => compartirUbicacionConCliente(item)} title="Compartir ubicacion con el cliente" style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4338ca", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🔗</button>}
                         </div>
                       </div>
 
