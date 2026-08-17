@@ -6,6 +6,7 @@ import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import { buscarZonaCobertura } from "../utils/cobertura.js";
+import CoberturaMapaModal from "./CoberturaMapaModal.jsx";
 
 // ─── Captura temprana de postMessage ─────────────────────────────────────────
 // Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
@@ -537,6 +538,7 @@ export default function SidebarApp() {
   const [demoHoras,    setDemoHoras]    = useState("24");
   const [creandoDemo,  setCreandoDemo]  = useState(false);
   const [showDemoNoRegistrado, setShowDemoNoRegistrado] = useState(false);
+  const [showCoberturaModal, setShowCoberturaModal] = useState(false);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
@@ -2942,6 +2944,18 @@ export default function SidebarApp() {
         </div>
       )}
 
+      {/* ── Mapa de zona de cobertura ── */}
+      {showCoberturaModal && (
+        <CoberturaMapaModal
+          coordenadas={ordenForm.coordenadas}
+          coordsLista={coordsLista}
+          buscando={buscandoCoords}
+          onClose={() => setShowCoberturaModal(false)}
+          onReintentar={() => void extraerCoordsDeChat()}
+          onSeleccionarCoord={(c) => { setOrdenForm(p => ({ ...p, coordenadas: c })); setCoordsLista([]); }}
+        />
+      )}
+
       {/* ── Modal selector de servicio (mismo DNI) ── */}
       {modalSelectorServicio && (
         <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.65)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center", padding:14 }}
@@ -3529,6 +3543,13 @@ export default function SidebarApp() {
               </div>
             </div>
           )}
+
+          {/* ── Ver zona de cobertura ── */}
+          <div style={S.divider} />
+          <button onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); }}
+            style={{ ...S.btn("#0284c7"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            🗺 Ver cobertura
+          </button>
 
           {/* ── Demo IPTV para prospecto no registrado ── */}
           <div style={S.divider} />
