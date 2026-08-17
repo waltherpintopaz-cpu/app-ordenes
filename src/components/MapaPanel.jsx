@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
+import { ZONAS_COBERTURA } from "../config/zonasCobertura";
 
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
@@ -109,6 +110,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [filtroNodo, setFiltroNodo] = useState("TODOS");
   const [nodos, setNodos] = useState([]);
   const [showCajas, setShowCajas] = useState(true);
+  const [showZonas, setShowZonas] = useState(true);
   const [mapType, setMapType] = useState("roadmap");
   const [selectedTipo, setSelectedTipo] = useState("caja");
   const [selectedId, setSelectedId] = useState("");
@@ -137,6 +139,8 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
   const polylinesRef = useRef([]);
+  const polygonsRef = useRef([]);
+  const infoWindowRef = useRef(null);
   const gpsMarkerRef = useRef(null);
   const gpsCircleRef = useRef(null);
   const shouldAutoFrameRef = useRef(true);
@@ -430,6 +434,44 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     return () => limpiarMarkers();
   }, [limpiarMarkers, ordenesFiltradas, cajasVisibles, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
 
+  // Zonas de cobertura (polígonos importados de Google My Maps)
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+
+    polygonsRef.current.forEach((p) => { try { p.setMap(null); } catch { } });
+    polygonsRef.current = [];
+
+    if (!showZonas) return undefined;
+
+    if (!infoWindowRef.current) infoWindowRef.current = new maps.InfoWindow();
+
+    ZONAS_COBERTURA.forEach((zona) => {
+      const poly = new maps.Polygon({
+        map,
+        paths: zona.coordinates,
+        strokeColor: zona.strokeColor,
+        strokeOpacity: 0.85,
+        strokeWeight: 2,
+        fillColor: zona.fillColor,
+        fillOpacity: zona.fillOpacity,
+        clickable: true,
+        zIndex: 0,
+      });
+      poly.addListener("click", (e) => {
+        infoWindowRef.current.setContent(
+          `<div style="font-size:12px;font-weight:700;color:#1a3a6b;">${zona.grupo}</div><div style="font-size:12px;">${zona.nombre}</div>`
+        );
+        infoWindowRef.current.setPosition(e.latLng);
+        infoWindowRef.current.open(map);
+      });
+      polygonsRef.current.push(poly);
+    });
+
+    return () => { polygonsRef.current.forEach((p) => { try { p.setMap(null); } catch { } }); polygonsRef.current = []; };
+  }, [mapReady, showZonas]);
+
   // Auto-frame al cambiar filtro
   useEffect(() => { shouldAutoFrameRef.current = true; }, [filtroNodo, busqueda, showCajas]);
 
@@ -574,6 +616,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         </button>
         <button style={{ ...btnStyle(showCajas, "#0284c7") }} onClick={() => setShowCajas((v) => !v)}>
           {showCajas ? "Ocultar cajas" : "Mostrar cajas"}
+        </button>
+        <button style={{ ...btnStyle(showZonas, "#7c3aed") }} onClick={() => setShowZonas((v) => !v)}>
+          {showZonas ? "Ocultar zonas" : "Mostrar zonas"}
         </button>
         <button style={{ ...btnStyle(mapType === "satellite", "#374151") }} onClick={() => setMapType((v) => v === "roadmap" ? "satellite" : "roadmap")}>
           {mapType === "roadmap" ? "🛰 Satélite" : "🗺 Normal"}
