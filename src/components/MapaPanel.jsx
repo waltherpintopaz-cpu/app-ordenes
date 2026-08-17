@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
-import { ZONAS_COBERTURA } from "../config/zonasCobertura";
+import { cargarZonasCobertura, invalidarZonasCobertura } from "../utils/zonasCobertura";
+import ImportarMapaCoberturaModal from "./ImportarMapaCoberturaModal";
 
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
@@ -111,6 +112,8 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [nodos, setNodos] = useState([]);
   const [showCajas, setShowCajas] = useState(true);
   const [showZonas, setShowZonas] = useState(true);
+  const [zonas, setZonas] = useState([]);
+  const [showImportarZonas, setShowImportarZonas] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [selectedTipo, setSelectedTipo] = useState("caja");
   const [selectedId, setSelectedId] = useState("");
@@ -223,6 +226,12 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   }, [sessionUser?.nombre, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos, ordenesFallback]);
 
   useEffect(() => { void cargar(); }, []); // eslint-disable-line
+
+  const recargarZonas = useCallback(() => {
+    invalidarZonasCobertura();
+    cargarZonasCobertura().then(setZonas);
+  }, []);
+  useEffect(() => { cargarZonasCobertura().then(setZonas); }, []);
 
   const obtenerGPS = useCallback(() => {
     if (!navigator.geolocation) { setError("GPS no disponible en este navegador."); return; }
@@ -447,7 +456,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
 
     if (!infoWindowRef.current) infoWindowRef.current = new maps.InfoWindow();
 
-    ZONAS_COBERTURA.forEach((zona) => {
+    zonas.forEach((zona) => {
       const poly = new maps.Polygon({
         map,
         paths: zona.coordinates,
@@ -470,7 +479,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     });
 
     return () => { polygonsRef.current.forEach((p) => { try { p.setMap(null); } catch { } }); polygonsRef.current = []; };
-  }, [mapReady, showZonas]);
+  }, [mapReady, showZonas, zonas]);
 
   // Auto-frame al cambiar filtro
   useEffect(() => { shouldAutoFrameRef.current = true; }, [filtroNodo, busqueda, showCajas]);
@@ -618,7 +627,10 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           {showCajas ? "Ocultar cajas" : "Mostrar cajas"}
         </button>
         <button style={{ ...btnStyle(showZonas, "#7c3aed") }} onClick={() => setShowZonas((v) => !v)}>
-          {showZonas ? "Ocultar zonas" : "Mostrar zonas"}
+          {showZonas ? "Ocultar zonas" : "Mostrar zonas"} ({zonas.length})
+        </button>
+        <button style={{ ...btnStyle(false, "#059669") }} onClick={() => setShowImportarZonas(true)}>
+          + Agregar mapa
         </button>
         <button style={{ ...btnStyle(mapType === "satellite", "#374151") }} onClick={() => setMapType((v) => v === "roadmap" ? "satellite" : "roadmap")}>
           {mapType === "roadmap" ? "🛰 Satélite" : "🗺 Normal"}
@@ -941,6 +953,15 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           <img src={lightboxUrl} alt="Foto" style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 10, boxShadow: "0 8px 40px #000a", objectFit: "contain" }} />
           <button onClick={() => setLightboxUrl("")} style={{ position: "absolute", top: 16, right: 20, background: "#fff2", color: "#fff", border: "none", borderRadius: "50%", width: 36, height: 36, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
+      )}
+
+      {/* ── Importar mapa de cobertura ── */}
+      {showImportarZonas && (
+        <ImportarMapaCoberturaModal
+          zonasActuales={zonas}
+          onClose={() => setShowImportarZonas(false)}
+          onImportado={() => { recargarZonas(); }}
+        />
       )}
     </div>
   );

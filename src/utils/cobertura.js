@@ -1,4 +1,4 @@
-import { ZONAS_COBERTURA } from "../config/zonasCobertura";
+import { cargarZonasCobertura } from "./zonasCobertura";
 
 // Ray casting: true si (lat,lng) cae dentro del poligono cerrado `coordinates`.
 function puntoEnPoligono(lat, lng, coordinates) {
@@ -14,7 +14,8 @@ function puntoEnPoligono(lat, lng, coordinates) {
 }
 
 // Devuelve la zona de cobertura (con nombre y grupo) que contiene el punto, o null si no esta en ninguna.
-export function buscarZonaCobertura(lat, lng) {
+export async function buscarZonaCobertura(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return ZONAS_COBERTURA.find((z) => puntoEnPoligono(lat, lng, z.coordinates)) || null;
+  const zonas = await cargarZonasCobertura();
+  return zonas.find((z) => puntoEnPoligono(lat, lng, z.coordinates)) || null;
 }

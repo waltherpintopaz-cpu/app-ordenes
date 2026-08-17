@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ZONAS_COBERTURA } from "../config/zonasCobertura";
+import { cargarZonasCobertura } from "../utils/zonasCobertura";
 import { buscarZonaCobertura } from "../utils/cobertura";
 
 function parseCoordStr(str) {
@@ -17,9 +17,19 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
   const mapInstanceRef = useRef(null);
   const clienteMarkerRef = useRef(null);
   const zonasFitRef = useRef(null);
+  const [zona, setZona] = useState(undefined); // undefined=verificando, null=fuera, obj=dentro
+  const [zonasCargando, setZonasCargando] = useState(true);
 
   const punto = parseCoordStr(coordenadas);
-  const zona = punto ? buscarZonaCobertura(punto.lat, punto.lng) : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!punto) { setZona(undefined); return; }
+    setZona(undefined);
+    buscarZonaCobertura(punto.lat, punto.lng).then((z) => { if (!cancelled) setZona(z); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coordenadas]);
 
   // Inicializar mapa + dibujar polígonos (una sola vez)
   useEffect(() => {
@@ -35,25 +45,31 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
     L.control.attribution({ prefix: false }).addAttribution('© <a href="https://carto.com">CARTO</a> · © OpenStreetMap').addTo(map);
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    const zonasLayer = L.layerGroup().addTo(map);
-    const bounds = [];
-    ZONAS_COBERTURA.forEach((z) => {
-      const latlngs = z.coordinates.map((c) => [c.lat, c.lng]);
-      L.polygon(latlngs, {
-        color: z.strokeColor,
-        weight: 2,
-        fillColor: z.fillColor,
-        fillOpacity: z.fillOpacity,
-      })
-        .bindTooltip(`${z.grupo} · ${z.nombre}`, { sticky: true })
-        .addTo(zonasLayer);
-      latlngs.forEach((ll) => bounds.push(ll));
-    });
-    zonasFitRef.current = bounds.length ? L.latLngBounds(bounds) : null;
-    if (zonasFitRef.current) map.fitBounds(zonasFitRef.current, { padding: [20, 20] });
-
     mapInstanceRef.current = map;
+
+    cargarZonasCobertura().then((zonas) => {
+      if (!mapInstanceRef.current) return;
+      const zonasLayer = L.layerGroup().addTo(map);
+      const bounds = [];
+      zonas.forEach((z) => {
+        const latlngs = z.coordinates.map((c) => [c.lat, c.lng]);
+        L.polygon(latlngs, {
+          color: z.strokeColor,
+          weight: 2,
+          fillColor: z.fillColor,
+          fillOpacity: z.fillOpacity,
+        })
+          .bindTooltip(`${z.grupo} · ${z.nombre}`, { sticky: true })
+          .addTo(zonasLayer);
+        latlngs.forEach((ll) => bounds.push(ll));
+      });
+      zonasFitRef.current = bounds.length ? L.latLngBounds(bounds) : null;
+      if (zonasFitRef.current && !punto) map.fitBounds(zonasFitRef.current, { padding: [20, 20] });
+      setZonasCargando(false);
+    });
+
     return () => { map.remove(); mapInstanceRef.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Marcador del cliente: se actualiza cada vez que cambian las coordenadas
@@ -64,7 +80,7 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
     if (clienteMarkerRef.current) { clienteMarkerRef.current.remove(); clienteMarkerRef.current = null; }
     if (!punto) return;
 
-    const color = zona ? "#16a34a" : "#dc2626";
+    const color = zona === undefined ? "#94a3b8" : zona ? "#16a34a" : "#dc2626";
     const icon = L.divIcon({
       className: "",
       iconSize: [22, 22],
@@ -96,10 +112,16 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
           <div style={s.floatTop}>
             {buscando ? (
               <div style={s.statePill}>⏳ Buscando ubicación en el chat...</div>
+            ) : zonasCargando ? (
+              <div style={s.statePill}>⏳ Cargando zonas de cobertura...</div>
             ) : punto ? (
-              <div style={{ ...s.statePill, background: zona ? "#f0fdf4" : "#fef2f2", color: zona ? "#16a34a" : "#dc2626", borderColor: zona ? "#86efac" : "#fecaca" }}>
-                {zona ? `✅ En cobertura · ${zona.grupo} · ${zona.nombre}` : "⚠ Fuera de las zonas de cobertura registradas"}
-              </div>
+              zona === undefined ? (
+                <div style={s.statePill}>⏳ Verificando cobertura...</div>
+              ) : (
+                <div style={{ ...s.statePill, background: zona ? "#f0fdf4" : "#fef2f2", color: zona ? "#16a34a" : "#dc2626", borderColor: zona ? "#86efac" : "#fecaca" }}>
+                  {zona ? `✅ En cobertura · ${zona.grupo} · ${zona.nombre}` : "⚠ Fuera de las zonas de cobertura registradas"}
+                </div>
+              )
             ) : (
               <div style={{ ...s.statePill, background: "#fffbeb", color: "#92400e", borderColor: "#fde68a" }}>
                 Sin ubicación aún — usa "Buscar en chat" o ingrésala manualmente

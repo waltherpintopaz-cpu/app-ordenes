@@ -357,8 +357,19 @@ function clearStoredAgente() {
 
 // ─── Badge: zona de cobertura para un punto lat/lng ────────────────────────
 function BadgeCobertura({ lat, lng }) {
+  const [zona, setZona] = useState(undefined); // undefined=cargando, null=fuera, obj=dentro
+  useEffect(() => {
+    let cancelled = false;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) { setZona(undefined); return; }
+    setZona(undefined);
+    buscarZonaCobertura(lat, lng).then((z) => { if (!cancelled) setZona(z); });
+    return () => { cancelled = true; };
+  }, [lat, lng]);
+
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const zona = buscarZonaCobertura(lat, lng);
+  if (zona === undefined) {
+    return <span style={{ fontSize:10, fontWeight:600, color:"#94a3b8", whiteSpace:"nowrap" }}>Verificando cobertura...</span>;
+  }
   if (zona) {
     return (
       <span style={{ fontSize:10, fontWeight:700, color:"#16a34a", background:"#f0fdf4",
