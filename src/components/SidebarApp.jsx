@@ -5,6 +5,7 @@ import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } f
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
+import { buscarZonaCobertura } from "../utils/cobertura.js";
 
 // ─── Captura temprana de postMessage ─────────────────────────────────────────
 // Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
@@ -351,6 +352,26 @@ function setStoredAgente(nombre) {
 function clearStoredAgente() {
   document.cookie = "sb_agente=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=None;Secure";
   localStorage.removeItem("sb_agente");
+}
+
+// ─── Badge: zona de cobertura para un punto lat/lng ────────────────────────
+function BadgeCobertura({ lat, lng }) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const zona = buscarZonaCobertura(lat, lng);
+  if (zona) {
+    return (
+      <span style={{ fontSize:10, fontWeight:700, color:"#16a34a", background:"#f0fdf4",
+        border:"1px solid #86efac", borderRadius:4, padding:"2px 6px", whiteSpace:"nowrap" }}>
+        ✅ En cobertura · {zona.nombre}
+      </span>
+    );
+  }
+  return (
+    <span style={{ fontSize:10, fontWeight:700, color:"#dc2626", background:"#fef2f2",
+      border:"1px solid #fecaca", borderRadius:4, padding:"2px 6px", whiteSpace:"nowrap" }}>
+      ⚠ Fuera de cobertura
+    </span>
+  );
 }
 
 // Lista única de agentes para el selector inicial
@@ -3734,6 +3755,7 @@ export default function SidebarApp() {
                           const mapUrl=`https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
                           return(<div style={{position:"relative",marginTop:4}}>
                             <iframe src={mapUrl} title="Ubicación" style={{width:"100%",height:130,border:`1px solid ${T.border}`,borderRadius:4,display:"block"}} loading="lazy" />
+                            <div style={{position:"absolute",top:6,left:6}}><BadgeCobertura lat={lat} lng={lng} /></div>
                             <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
                               style={{position:"absolute",bottom:6,right:8,background:"rgba(0,0,0,0.6)",color:"#fff",fontSize:10,padding:"3px 8px",borderRadius:4,textDecoration:"none",fontWeight:600}}>
                               Google Maps ↗
@@ -3977,6 +3999,7 @@ export default function SidebarApp() {
                 if (!lat||!lng) return null;
                 return (
                   <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+                    <BadgeCobertura lat={lat} lng={lng} />
                     <button onClick={() => setShowMap(m => !m)}
                       style={{ ...S.btnOut, fontSize:10, padding:"2px 8px", color:T.blue, borderColor:T.border }}>
                       {showMap ? "Ocultar mapa" : "Ver mapa"}
@@ -5370,9 +5393,10 @@ export default function SidebarApp() {
                       const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
                       const valid = lat && lng && !isNaN(lat) && !isNaN(lng);
                       return valid ? (
-                        <div style={{ display:"flex" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 8px" }}>
+                        <BadgeCobertura lat={lat} lng={lng} />
                         <button onClick={() => setShowOrdenMap(m => !m)}
-                          style={{ ...S.btnSm(showOrdenMap ? T.blueDk : T.blue), borderRadius:0, flex:1, padding:"4px 10px", fontSize:10, whiteSpace:"nowrap" }}>
+                          style={{ ...S.btnSm(showOrdenMap ? T.blueDk : T.blue), borderRadius:4, flex:1, padding:"4px 10px", fontSize:10, whiteSpace:"nowrap" }}>
                           {showOrdenMap ? "Ocultar mapa" : "Ver mapa"}
                         </button>
                         </div>
