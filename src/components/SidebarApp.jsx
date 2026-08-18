@@ -555,6 +555,7 @@ export default function SidebarApp() {
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
   const [ordenIptvPantallas, setOrdenIptvPantallas] = useState("1");
   const [ordenIptvPlan, setOrdenIptvPlan] = useState("Premium");
+  const [agregarTelMkw, setAgregarTelMkw] = useState(true);
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
   const [showOrdenMap,  setShowOrdenMap]  = useState(false);
@@ -1897,6 +1898,28 @@ export default function SidebarApp() {
       else updQ = updQ.is("nodo", null);
       const { error: updErr } = await updQ;
       if (updErr) throw updErr;
+
+      // Actualizar el número también en Mikrowisp (opcional, marcado por defecto)
+      if (agregarTelMkw && dniSel.mikrowisp_id && dniSel.nodo !== null && dniSel.nodo !== undefined) {
+        try {
+          const idcliente = parseInt(dniSel.mikrowisp_id, 10);
+          const nodoNum = Number(dniSel.nodo);
+          const det = await mkwProxy(nodoNum, "GetClientsDetails", { idcliente });
+          const clientes = det?.clientes || det?.datos || [];
+          const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
+          const movilActual = String(detCliente?.movil || "").trim();
+          const yaEsta = movilActual.split(",").map(s => s.trim()).includes(rawPhone);
+          if (!yaEsta) {
+            const nuevoMovil = movilActual ? `${movilActual},${rawPhone}` : rawPhone;
+            const res = await mkwProxy(nodoNum, "UpdateUser", { idcliente, datos: { movil: nuevoMovil } });
+            const ok = (res?.estado || "").toLowerCase() === "exito" || String(res?.code) === "200";
+            if (!ok) throw new Error(res?.mensaje || res?.message || "Mikrowisp rechazó la actualización");
+          }
+        } catch (e) {
+          notify("Número guardado, pero falló en Mikrowisp: " + e.message, false);
+        }
+      }
+
       notify("✅ Número agregado");
       await verInfoCliente({ ...dniSel, telefonos: nuevoTel });
     } catch(e) { notify("Error al guardar: " + e.message, false); }
@@ -3179,10 +3202,16 @@ export default function SidebarApp() {
               <button onClick={() => verInfoCliente(dniSel)} className="sb-btn-action"
                 style={{ ...S.btn(T.blue) }}>Ver información del cliente</button>
               {contact?.phone_number && (
-                <button onClick={agregarTelefono} disabled={agregando} className="sb-btn-action"
-                  style={{ ...S.btn(T.green), opacity:agregando?0.6:1 }}>
-                  {agregando ? "Guardando..." : `Agregar ${contact.phone_number} a este cliente`}
-                </button>
+                <>
+                  <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:T.muted, cursor:"pointer" }}>
+                    <input type="checkbox" checked={agregarTelMkw} onChange={e=>setAgregarTelMkw(e.target.checked)} />
+                    Actualizar también en Mikrowisp
+                  </label>
+                  <button onClick={agregarTelefono} disabled={agregando} className="sb-btn-action"
+                    style={{ ...S.btn(T.green), opacity:agregando?0.6:1 }}>
+                    {agregando ? "Guardando..." : `Agregar ${contact.phone_number} a este cliente`}
+                  </button>
+                </>
               )}
             </div>
           )}
