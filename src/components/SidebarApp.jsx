@@ -551,6 +551,8 @@ export default function SidebarApp() {
   const [creandoDemo,  setCreandoDemo]  = useState(false);
   const [showDemoNoRegistrado, setShowDemoNoRegistrado] = useState(false);
   const [showCoberturaModal, setShowCoberturaModal] = useState(false);
+  const [leadsPendientesSidebar, setLeadsPendientesSidebar] = useState([]);
+  const [promocionesActivas, setPromocionesActivas] = useState([]);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
@@ -2387,6 +2389,56 @@ export default function SidebarApp() {
     if (error) throw error;
   }
 
+  // ── Leads sin cobertura pendientes: cargar + notificar desde el sidebar ──
+  async function cargarLeadsPendientesSidebar() {
+    try {
+      const { data } = await supabase
+        .from("leads_sin_cobertura")
+        .select("id,telefono,nombre,coordenadas,account_id")
+        .eq("notificado", false)
+        .limit(300);
+      setLeadsPendientesSidebar(Array.isArray(data) ? data : []);
+    } catch { /* silencioso */ }
+  }
+
+  async function notificarLeadSidebar(lead) {
+    const primerNombre = String(lead.nombre || "").trim().split(" ")[0];
+    const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
+    const mensaje = `${saludo} 🎉\n\n¡Buenas noticias! Ya tenemos cobertura disponible en tu zona 🚀\n\nComo nos dejaste tus datos, quisimos avisarte antes que nadie. Además tenemos una promoción especial de bienvenida para ti.\n\n¿Te gustaría que te contactemos para coordinar la instalación? 📶`;
+    const res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: lead.telefono, message: mensaje, account_id: lead.account_id || acctId || "1" } }),
+    });
+    if (!res.ok) throw new Error("No se pudo enviar el mensaje");
+    const { error } = await supabase.from("leads_sin_cobertura").update({ notificado: true, notificado_en: new Date().toISOString() }).eq("id", lead.id);
+    if (error) throw error;
+    setLeadsPendientesSidebar(prev => prev.filter(l => l.id !== lead.id));
+  }
+
+  // ── Promociones activas: cargar + enviar al cliente actual ──────────────
+  async function cargarPromocionesActivas() {
+    try {
+      const { data } = await supabase
+        .from("promociones")
+        .select("id,titulo,mensaje")
+        .eq("activo", true)
+        .order("orden", { ascending: true });
+      setPromocionesActivas(Array.isArray(data) ? data : []);
+    } catch { /* silencioso */ }
+  }
+
+  async function enviarPromocionCliente(promo) {
+    const phone = contact?.phone_number;
+    if (!phone) throw new Error("No hay número de contacto en esta conversación");
+    const res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: promo.mensaje, account_id: acctId || "1" } }),
+    });
+    if (!res.ok) throw new Error("No se pudo enviar la promoción");
+  }
+
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
@@ -3041,6 +3093,10 @@ export default function SidebarApp() {
           onReintentar={() => void extraerCoordsDeChat()}
           onSeleccionarCoord={(c) => { setOrdenForm(p => ({ ...p, coordenadas: c })); setCoordsLista([]); }}
           onEnviarSinCobertura={enviarMensajeSinCobertura}
+          leadsPendientes={leadsPendientesSidebar}
+          onNotificarLead={notificarLeadSidebar}
+          promociones={promocionesActivas}
+          onEnviarPromocion={enviarPromocionCliente}
         />
       )}
 
@@ -3640,7 +3696,7 @@ export default function SidebarApp() {
 
           {/* ── Ver zona de cobertura ── */}
           <div style={S.divider} />
-          <button onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); }}
+          <button onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); void cargarLeadsPendientesSidebar(); void cargarPromocionesActivas(); }}
             style={{ ...S.btn("#0284c7"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
             🗺 Ver cobertura
           </button>
