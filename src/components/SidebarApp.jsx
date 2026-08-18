@@ -2442,7 +2442,8 @@ export default function SidebarApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: bloques[i], account_id: acctId || "1" } }),
       });
-      if (!res.ok) throw new Error(`No se pudo enviar el mensaje ${i + 1} de ${bloques.length}`);
+      const bodyTxt = await res.text().catch(() => "");
+      if (!res.ok) throw new Error(`Mensaje ${i + 1}/${bloques.length}: webhook respondió ${res.status} — ${bodyTxt.slice(0, 200)}`);
       if (i < bloques.length - 1) await new Promise(r => setTimeout(r, 1200));
     }
   }
