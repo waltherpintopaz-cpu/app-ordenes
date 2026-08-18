@@ -524,6 +524,7 @@ export default function SidebarApp() {
   const [dniResultados,setDniResultados]= useState([]); // lista de resultados
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
+  const [vinculando,   setVinculando]   = useState(false);
   // Crear orden desde sidebar
   const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
@@ -1879,51 +1880,77 @@ export default function SidebarApp() {
     setLoading(false);
   }
 
+  // Agrega rawPhone al telefonos/movil de una fila de mikrowisp_clientes (cache
+  // local) y opcionalmente empuja el mismo numero al campo movil en Mikrowisp.
+  async function vincularTelefonoAFila(row, rawPhone, tambienMikrowisp) {
+    const telActual = row.telefonos || "";
+    if (telActual.includes(rawPhone)) return { nuevoTel: telActual, yaEstaba: true };
+    const nuevoTel = telActual && telActual !== "EMPTY" ? `${telActual},${rawPhone}` : rawPhone;
+    let updQ = supabase
+      .from("mikrowisp_clientes")
+      .update({ telefonos: nuevoTel })
+      .eq("mikrowisp_id", row.mikrowisp_id);
+    if (row.nodo !== null && row.nodo !== undefined) updQ = updQ.eq("nodo", row.nodo);
+    else updQ = updQ.is("nodo", null);
+    const { error: updErr } = await updQ;
+    if (updErr) throw updErr;
+
+    if (tambienMikrowisp && row.mikrowisp_id && row.nodo !== null && row.nodo !== undefined) {
+      try {
+        const idcliente = parseInt(row.mikrowisp_id, 10);
+        const nodoNum = Number(row.nodo);
+        const det = await mkwProxy(nodoNum, "GetClientsDetails", { idcliente });
+        const clientes = det?.clientes || det?.datos || [];
+        const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
+        const movilActual = String(detCliente?.movil || "").trim();
+        const yaEsta = movilActual.split(",").map(s => s.trim()).includes(rawPhone);
+        if (!yaEsta) {
+          const nuevoMovil = movilActual ? `${movilActual},${rawPhone}` : rawPhone;
+          const res = await mkwProxy(nodoNum, "UpdateUser", { idcliente, datos: { movil: nuevoMovil } });
+          const ok = (res?.estado || "").toLowerCase() === "exito" || String(res?.code) === "200";
+          if (!ok) throw new Error(res?.mensaje || res?.message || "Mikrowisp rechazó la actualización");
+        }
+      } catch (e) {
+        notify("Número guardado, pero falló en Mikrowisp: " + e.message, false);
+      }
+    }
+    return { nuevoTel, yaEstaba: false };
+  }
+
   async function agregarTelefono() {
     if (!dniSel || !contact?.phone_number) return;
     setAgregando(true);
     try {
       const rawPhone = contact.phone_number.replace(/[^\d]/g, "");
-      const telActual = dniSel.telefonos || "";
-      if (telActual.includes(rawPhone)) {
-        notify("Este número ya está registrado en el cliente", false);
-        setAgregando(false); return;
-      }
-      const nuevoTel = telActual && telActual !== "EMPTY" ? `${telActual},${rawPhone}` : rawPhone;
-      let updQ = supabase
-        .from("mikrowisp_clientes")
-        .update({ telefonos: nuevoTel })
-        .eq("mikrowisp_id", dniSel.mikrowisp_id);
-      if (dniSel.nodo !== null && dniSel.nodo !== undefined) updQ = updQ.eq("nodo", dniSel.nodo);
-      else updQ = updQ.is("nodo", null);
-      const { error: updErr } = await updQ;
-      if (updErr) throw updErr;
-
-      // Actualizar el número también en Mikrowisp (opcional, marcado por defecto)
-      if (agregarTelMkw && dniSel.mikrowisp_id && dniSel.nodo !== null && dniSel.nodo !== undefined) {
-        try {
-          const idcliente = parseInt(dniSel.mikrowisp_id, 10);
-          const nodoNum = Number(dniSel.nodo);
-          const det = await mkwProxy(nodoNum, "GetClientsDetails", { idcliente });
-          const clientes = det?.clientes || det?.datos || [];
-          const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
-          const movilActual = String(detCliente?.movil || "").trim();
-          const yaEsta = movilActual.split(",").map(s => s.trim()).includes(rawPhone);
-          if (!yaEsta) {
-            const nuevoMovil = movilActual ? `${movilActual},${rawPhone}` : rawPhone;
-            const res = await mkwProxy(nodoNum, "UpdateUser", { idcliente, datos: { movil: nuevoMovil } });
-            const ok = (res?.estado || "").toLowerCase() === "exito" || String(res?.code) === "200";
-            if (!ok) throw new Error(res?.mensaje || res?.message || "Mikrowisp rechazó la actualización");
-          }
-        } catch (e) {
-          notify("Número guardado, pero falló en Mikrowisp: " + e.message, false);
-        }
-      }
-
+      const { nuevoTel, yaEstaba } = await vincularTelefonoAFila(dniSel, rawPhone, agregarTelMkw);
+      if (yaEstaba) { notify("Este número ya está registrado en el cliente", false); setAgregando(false); return; }
       notify("✅ Número agregado");
       await verInfoCliente({ ...dniSel, telefonos: nuevoTel });
     } catch(e) { notify("Error al guardar: " + e.message, false); }
     setAgregando(false);
+  }
+
+  // ── Cliente sin cuenta MikroWisp en pantalla, pero su DNI sí está registrado
+  //    en Mikrowisp bajo otro número: buscarlo y vincular el número actual ──
+  async function vincularConMikrowisp() {
+    if (!cliente?.cedula || !contact?.phone_number) return;
+    setVinculando(true);
+    try {
+      const dni = String(cliente.cedula).replace(/\D/g, "");
+      const { data: rows } = await supabase
+        .from("mikrowisp_clientes")
+        .select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado")
+        .eq("cedula", dni)
+        .limit(1);
+      const row = rows?.[0];
+      if (!row) { notify("Este DNI no está registrado en Mikrowisp", false); setVinculando(false); return; }
+
+      const rawPhone = contact.phone_number.replace(/[^\d]/g, "");
+      const { nuevoTel } = await vincularTelefonoAFila(row, rawPhone, true);
+      notify("✅ Cliente vinculado con Mikrowisp");
+      await cargarDesdeRow({ ...row, telefonos: nuevoTel });
+    } catch(e) { notify("Error al vincular: " + e.message, false); }
+    setVinculando(false);
   }
 
   // ── Diagnóstico MikroTik ──────────────────────────────────────────────────
@@ -4047,6 +4074,13 @@ export default function SidebarApp() {
             <span style={{ fontSize:11, fontWeight:700, color:"#92400e" }}>
               ⚠ Cliente sin cuenta MikroWisp — solo datos internos. Sin facturación ni activar/suspender servicio.
             </span>
+            {cliente.cedula && contact?.phone_number && (
+              <button onClick={vincularConMikrowisp} disabled={vinculando}
+                style={{ display:"block", marginTop:6, background:"#92400e", color:"#fff", border:"none",
+                  borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:700, cursor:"pointer", opacity:vinculando?0.6:1 }}>
+                {vinculando ? "Buscando..." : "🔗 Buscar por DNI en Mikrowisp y vincular este número"}
+              </button>
+            )}
           </div>
         )}
 
