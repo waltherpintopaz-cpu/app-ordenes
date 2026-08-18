@@ -17,8 +17,11 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
   const mapInstanceRef = useRef(null);
   const clienteMarkerRef = useRef(null);
   const zonasFitRef = useRef(null);
+  const capaCallesRef = useRef(null);
+  const capaSatRef = useRef(null);
   const [zona, setZona] = useState(undefined); // undefined=verificando, null=fuera, obj=dentro
   const [zonasCargando, setZonasCargando] = useState(true);
+  const [capa, setCapa] = useState("calles"); // "calles" | "satelite"
 
   const punto = parseCoordStr(coordenadas);
 
@@ -37,12 +40,16 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
 
     const map = L.map(mapRef.current, { zoomControl: false, attributionControl: false }).setView([-16.398, -71.55], 12);
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    capaCallesRef.current = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
       subdomains: "abcd",
     }).addTo(map);
 
-    L.control.attribution({ prefix: false }).addAttribution('© <a href="https://carto.com">CARTO</a> · © OpenStreetMap').addTo(map);
+    capaSatRef.current = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19,
+    });
+
+    L.control.attribution({ prefix: false }).addAttribution('© <a href="https://carto.com">CARTO</a> · © OpenStreetMap · © Esri').addTo(map);
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
     mapInstanceRef.current = map;
@@ -92,6 +99,30 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coordenadas]);
 
+  // Cambiar entre capa de calles y capa satelital
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const calles = capaCallesRef.current;
+    const sat = capaSatRef.current;
+    if (!map || !calles || !sat) return;
+    if (capa === "satelite") {
+      if (!map.hasLayer(sat)) sat.addTo(map);
+      if (map.hasLayer(calles)) map.removeLayer(calles);
+    } else {
+      if (!map.hasLayer(calles)) calles.addTo(map);
+      if (map.hasLayer(sat)) map.removeLayer(sat);
+    }
+  }, [capa]);
+
+  function compartirPorWhatsApp() {
+    if (!punto) return;
+    const link = `https://maps.google.com/?q=${punto.lat},${punto.lng}`;
+    const texto = zona
+      ? `📍 Ubicación del cliente (en cobertura · ${zona.grupo} · ${zona.nombre}): ${link}`
+      : `📍 Ubicación del cliente: ${link}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
+  }
+
   return (
     <div style={s.overlay}>
       <div style={s.modal}>
@@ -107,6 +138,15 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
         {/* Body */}
         <div style={s.body}>
           <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+
+          {/* Toggle capa calles/satelital */}
+          <button
+            onClick={() => setCapa((c) => (c === "satelite" ? "calles" : "satelite"))}
+            style={s.btnCapa}
+            title={capa === "satelite" ? "Cambiar a calles" : "Cambiar a satelital"}
+          >
+            {capa === "satelite" ? "🗺 Calles" : "🛰 Satelital"}
+          </button>
 
           {/* Estado / badge flotante */}
           <div style={s.floatTop}>
@@ -155,6 +195,9 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
           <button onClick={onReintentar} disabled={buscando} style={{ ...s.btnAction, opacity: buscando ? 0.6 : 1 }}>
             {buscando ? "Buscando..." : "📍 Buscar en chat"}
           </button>
+          <button onClick={compartirPorWhatsApp} disabled={!punto} style={{ ...s.btnWhatsapp, opacity: punto ? 1 : 0.5 }}>
+            💬 Compartir por WhatsApp
+          </button>
         </div>
       </div>
     </div>
@@ -169,7 +212,7 @@ const s = {
   subtitle: { fontSize: 11, color: "#64748b", marginTop: 1 },
   btnClose: { width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#475569" },
   body: { flex: 1, position: "relative", minHeight: 0 },
-  floatTop: { position: "absolute", top: 10, left: 10, right: 10, zIndex: 1000, display: "flex", justifyContent: "center" },
+  floatTop: { position: "absolute", top: 10, left: 10, right: 10, zIndex: 900, display: "flex", justifyContent: "center", pointerEvents: "none" },
   statePill: { background: "rgba(15,23,42,0.85)", color: "#fff", fontSize: 12, fontWeight: 700, padding: "7px 14px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.15)", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
   floatList: { position: "absolute", top: 54, right: 10, zIndex: 1000, background: "rgba(255,255,255,0.97)", borderRadius: 12, padding: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.2)", maxWidth: 240 },
   floatListLabel: { fontSize: 10, fontWeight: 700, color: "#16a34a", marginBottom: 6 },
@@ -177,4 +220,6 @@ const s = {
   footer: { display: "flex", gap: 8, padding: 10, background: "#fff", borderTop: "1px solid #e2e8f0" },
   input: { flex: 1, padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontFamily: "monospace", outline: "none" },
   btnAction: { padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
+  btnWhatsapp: { padding: "8px 16px", background: "#25d366", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
+  btnCapa: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
 };
