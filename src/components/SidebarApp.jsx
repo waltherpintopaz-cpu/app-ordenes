@@ -2421,22 +2421,30 @@ export default function SidebarApp() {
     try {
       const { data } = await supabase
         .from("promociones")
-        .select("id,titulo,mensaje")
+        .select("id,titulo,mensaje,mensajes")
         .eq("activo", true)
         .order("orden", { ascending: true });
-      setPromocionesActivas(Array.isArray(data) ? data : []);
+      setPromocionesActivas((Array.isArray(data) ? data : []).map(p => ({
+        ...p,
+        mensajes: Array.isArray(p.mensajes) && p.mensajes.length ? p.mensajes : (p.mensaje ? [p.mensaje] : []),
+      })));
     } catch { /* silencioso */ }
   }
 
   async function enviarPromocionCliente(promo) {
     const phone = contact?.phone_number;
     if (!phone) throw new Error("No hay número de contacto en esta conversación");
-    const res = await fetch(PROXY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: promo.mensaje, account_id: acctId || "1" } }),
-    });
-    if (!res.ok) throw new Error("No se pudo enviar la promoción");
+    const bloques = Array.isArray(promo.mensajes) && promo.mensajes.length ? promo.mensajes : [promo.mensaje].filter(Boolean);
+    if (!bloques.length) throw new Error("Esta promoción no tiene mensajes configurados");
+    for (let i = 0; i < bloques.length; i++) {
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: bloques[i], account_id: acctId || "1" } }),
+      });
+      if (!res.ok) throw new Error(`No se pudo enviar el mensaje ${i + 1} de ${bloques.length}`);
+      if (i < bloques.length - 1) await new Promise(r => setTimeout(r, 1200));
+    }
   }
 
   // ── Crear orden desde sidebar ─────────────────────────────────────────────

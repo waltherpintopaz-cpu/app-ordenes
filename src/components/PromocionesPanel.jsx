@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "../supabaseClient";
 
-const VACIO = { titulo: "", mensaje: "" };
+const VACIO = { titulo: "", mensajes: [""] };
 
 export default function PromocionesPanel({ theme }) {
   const isDark = theme === "dark";
@@ -17,25 +17,30 @@ export default function PromocionesPanel({ theme }) {
     setLoading(true);
     const { data, error: e } = await supabase.from("promociones").select("*").order("orden", { ascending: true }).order("id", { ascending: true });
     setError(e ? e.message : "");
-    setPromos(Array.isArray(data) ? data : []);
+    setPromos(Array.isArray(data) ? data.map((p) => ({ ...p, mensajes: Array.isArray(p.mensajes) && p.mensajes.length ? p.mensajes : (p.mensaje ? [p.mensaje] : []) })) : []);
     setLoading(false);
   }, []);
 
   useEffect(() => { void cargar(); }, [cargar]);
 
+  const setBloque = (idx, valor) => setForm((p) => ({ ...p, mensajes: p.mensajes.map((m, i) => (i === idx ? valor : m)) }));
+  const agregarBloque = () => setForm((p) => ({ ...p, mensajes: [...p.mensajes, ""] }));
+  const quitarBloque = (idx) => setForm((p) => ({ ...p, mensajes: p.mensajes.filter((_, i) => i !== idx) }));
+
   const guardar = async () => {
     const titulo = form.titulo.trim();
-    const mensaje = form.mensaje.trim();
-    if (!titulo || !mensaje) { setError("Completa título y mensaje."); return; }
+    const mensajes = form.mensajes.map((m) => m.trim()).filter(Boolean);
+    if (!titulo || mensajes.length === 0) { setError("Completa título y al menos un mensaje."); return; }
     setGuardando(true);
     setError("");
     try {
+      const payload = { titulo, mensajes, mensaje: mensajes[0] };
       if (editingId) {
-        const { error: e } = await supabase.from("promociones").update({ titulo, mensaje }).eq("id", editingId);
+        const { error: e } = await supabase.from("promociones").update(payload).eq("id", editingId);
         if (e) throw e;
       } else {
         const maxOrden = promos.reduce((m, p) => Math.max(m, p.orden || 0), 0);
-        const { error: e } = await supabase.from("promociones").insert([{ titulo, mensaje, orden: maxOrden + 1 }]);
+        const { error: e } = await supabase.from("promociones").insert([{ ...payload, orden: maxOrden + 1 }]);
         if (e) throw e;
       }
       setForm(VACIO);
@@ -48,7 +53,7 @@ export default function PromocionesPanel({ theme }) {
     }
   };
 
-  const editar = (p) => { setEditingId(p.id); setForm({ titulo: p.titulo, mensaje: p.mensaje }); };
+  const editar = (p) => { setEditingId(p.id); setForm({ titulo: p.titulo, mensajes: p.mensajes.length ? p.mensajes : [""] }); };
   const cancelarEdicion = () => { setEditingId(null); setForm(VACIO); };
 
   const eliminar = async (p) => {
@@ -99,7 +104,9 @@ export default function PromocionesPanel({ theme }) {
         <div style={{ fontWeight: 800, fontSize: 18, color: "#1a3a6b", marginBottom: 4 }}>🎁 Promociones</div>
         <div style={{ fontSize: 13, color: mutedColor }}>
           Estas promociones aparecen en el sidebar de Chatwoot cuando el agente confirma que el cliente sí tiene cobertura,
-          para que pueda elegir y enviar una por WhatsApp con un clic.
+          para que pueda elegir y enviarla por WhatsApp con un clic. Cada promoción puede tener varios bloques de mensaje
+          (ej: uno con la lista de planes, otro con la oferta especial) — se envían como mensajes separados, uno tras otro,
+          en vez de un solo bloque largo.
         </div>
       </div>
 
@@ -108,17 +115,30 @@ export default function PromocionesPanel({ theme }) {
         <div style={{ fontWeight: 700, fontSize: 13, color: textColor, marginBottom: 10 }}>
           {editingId ? "Editar promoción" : "Nueva promoción"}
         </div>
-        <div style={{ marginBottom: 10 }}>
+        <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: mutedColor, display: "block", marginBottom: 4 }}>Título (solo referencia interna)</label>
-          <input style={inputStyle} placeholder="Ej: Primer mes 50% dcto." value={form.titulo}
+          <input style={inputStyle} placeholder="Ej: Planes DIM + promo instalación gratis" value={form.titulo}
             onChange={(e) => setForm((p) => ({ ...p, titulo: e.target.value }))} />
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: mutedColor, display: "block", marginBottom: 4 }}>Mensaje que se envía al cliente por WhatsApp</label>
-          <textarea style={{ ...inputStyle, minHeight: 100, resize: "vertical", fontFamily: "inherit" }}
-            placeholder="Ej: 🎉 ¡Promoción especial! Tu primer mes con 50% de descuento en el plan de 100 Mbps..."
-            value={form.mensaje} onChange={(e) => setForm((p) => ({ ...p, mensaje: e.target.value }))} />
+
+        <label style={{ fontSize: 11, fontWeight: 700, color: mutedColor, display: "block", marginBottom: 4 }}>
+          Mensajes que se envían al cliente (uno por bloque, en orden)
+        </label>
+        <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+          {form.mensajes.map((bloque, idx) => (
+            <div key={idx} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <div style={{ ...btn("#1a3a6b"), padding: "6px 9px", cursor: "default", flexShrink: 0 }}>{idx + 1}</div>
+              <textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical", fontFamily: "inherit", flex: 1 }}
+                placeholder={idx === 0 ? "Ej: 🌐 DIM Internet - Fibra Óptica\n\n🏠 Hogar · 400 Mbps · S/ 50\n⚡ Turbo · 600 Mbps · S/ 60..." : "Ej: 🎉 Instalación gratis + primer mes 50% de descuento..."}
+                value={bloque} onChange={(e) => setBloque(idx, e.target.value)} />
+              {form.mensajes.length > 1 && (
+                <button style={{ ...btn("#dc2626", true), padding: "6px 9px", flexShrink: 0 }} onClick={() => quitarBloque(idx)}>✕</button>
+              )}
+            </div>
+          ))}
         </div>
+        <button style={{ ...btn("#2563eb", true), marginBottom: 12 }} onClick={agregarBloque}>+ Agregar otro bloque de mensaje</button>
+
         <div style={{ display: "flex", gap: 8 }}>
           <button style={btn("#1a3a6b")} onClick={guardar} disabled={guardando}>
             {guardando ? "Guardando..." : editingId ? "Guardar cambios" : "+ Agregar promoción"}
@@ -143,8 +163,15 @@ export default function PromocionesPanel({ theme }) {
                     <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999, background: p.activo ? "#dcfce7" : "#f1f5f9", color: p.activo ? "#16a34a" : "#94a3b8" }}>
                       {p.activo ? "Activa" : "Inactiva"}
                     </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999, background: "#eff6ff", color: "#2563eb" }}>
+                      {p.mensajes.length} mensaje{p.mensajes.length === 1 ? "" : "s"}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 12, color: mutedColor, whiteSpace: "pre-wrap" }}>{p.mensaje}</div>
+                  {p.mensajes.map((m, mi) => (
+                    <div key={mi} style={{ fontSize: 12, color: mutedColor, whiteSpace: "pre-wrap", marginBottom: mi < p.mensajes.length - 1 ? 6 : 0, paddingLeft: 8, borderLeft: `2px solid ${borderColor}` }}>
+                      {m}
+                    </div>
+                  ))}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
                   <div style={{ display: "flex", gap: 4 }}>

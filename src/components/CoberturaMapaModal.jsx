@@ -300,7 +300,7 @@ export default function CoberturaMapaModal({
                     <button key={promo.id} onClick={() => enviarPromo(promo)}
                       disabled={enviandoPromoId === promo.id || promoEnviadaId === promo.id}
                       style={{ ...s.promoItem, opacity: enviandoPromoId === promo.id ? 0.7 : 1 }}>
-                      <span>{promo.titulo}</span>
+                      <span>{promo.titulo}{Array.isArray(promo.mensajes) && promo.mensajes.length > 1 ? ` (${promo.mensajes.length} mensajes)` : ""}</span>
                       <span style={{ fontWeight: 700 }}>
                         {promoEnviadaId === promo.id ? "✅ Enviada" : enviandoPromoId === promo.id ? "Enviando..." : "Enviar →"}
                       </span>
