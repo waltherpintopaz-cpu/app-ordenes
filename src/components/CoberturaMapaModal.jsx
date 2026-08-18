@@ -22,6 +22,7 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
   const [zona, setZona] = useState(undefined); // undefined=verificando, null=fuera, obj=dentro
   const [zonasCargando, setZonasCargando] = useState(true);
   const [capa, setCapa] = useState("calles"); // "calles" | "satelite"
+  const [copiado, setCopiado] = useState(false);
 
   const punto = parseCoordStr(coordenadas);
 
@@ -114,13 +115,31 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
     }
   }, [capa]);
 
-  function compartirPorWhatsApp() {
-    if (!punto) return;
-    const link = `https://maps.google.com/?q=${punto.lat},${punto.lng}`;
-    const texto = zona
+  function linkMaps() {
+    return punto ? `https://maps.google.com/?q=${punto.lat},${punto.lng}` : "";
+  }
+
+  function textoCompartir() {
+    const link = linkMaps();
+    return zona
       ? `📍 Ubicación del cliente (en cobertura · ${zona.grupo} · ${zona.nombre}): ${link}`
       : `📍 Ubicación del cliente: ${link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
+  }
+
+  function compartirPorWhatsApp() {
+    if (!punto) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(textoCompartir())}`, "_blank");
+  }
+
+  async function copiarLink() {
+    if (!punto) return;
+    try {
+      await navigator.clipboard.writeText(linkMaps());
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1800);
+    } catch {
+      window.prompt("Copia el link:", linkMaps());
+    }
   }
 
   return (
@@ -195,6 +214,9 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
           <button onClick={onReintentar} disabled={buscando} style={{ ...s.btnAction, opacity: buscando ? 0.6 : 1 }}>
             {buscando ? "Buscando..." : "📍 Buscar en chat"}
           </button>
+          <button onClick={copiarLink} disabled={!punto} style={{ ...s.btnCopiar, opacity: punto ? 1 : 0.5 }}>
+            {copiado ? "✓ Copiado" : "🔗 Copiar link"}
+          </button>
           <button onClick={compartirPorWhatsApp} disabled={!punto} style={{ ...s.btnWhatsapp, opacity: punto ? 1 : 0.5 }}>
             💬 Compartir por WhatsApp
           </button>
@@ -221,5 +243,6 @@ const s = {
   input: { flex: 1, padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontFamily: "monospace", outline: "none" },
   btnAction: { padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
   btnWhatsapp: { padding: "8px 16px", background: "#25d366", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
+  btnCopiar: { padding: "8px 16px", background: "#334155", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
   btnCapa: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
 };
