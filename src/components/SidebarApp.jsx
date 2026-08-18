@@ -2451,7 +2451,7 @@ export default function SidebarApp() {
       });
       const bodyTxt = await res.text().catch(() => "");
       if (!res.ok) throw new Error(`Mensaje ${i + 1}/${bloques.length}: webhook respondió ${res.status} — ${bodyTxt.slice(0, 200)}`);
-      if (i < bloques.length - 1) await new Promise(r => setTimeout(r, 1200));
+      if (i < bloques.length - 1) await new Promise(r => setTimeout(r, 2500));
     }
   }
 
