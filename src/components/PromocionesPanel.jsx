@@ -3,6 +3,11 @@ import { supabase, isSupabaseConfigured } from "../supabaseClient";
 
 const VACIO = { titulo: "", mensajes: [""] };
 
+const MENSAJES_SISTEMA_DEFS = [
+  { clave: "sin_cobertura", label: "Cliente sin cobertura", hint: "Se envía desde el sidebar cuando la ubicación del cliente cae fuera de las zonas registradas." },
+  { clave: "cobertura_disponible", label: "Aviso: ya hay cobertura", hint: "Se envía a un lead guardado (sin cobertura) cuando el agente confirma que ya llegó la cobertura a su zona." },
+];
+
 export default function PromocionesPanel({ theme }) {
   const isDark = theme === "dark";
   const [promos, setPromos] = useState([]);
@@ -11,6 +16,9 @@ export default function PromocionesPanel({ theme }) {
   const [form, setForm] = useState(VACIO);
   const [editingId, setEditingId] = useState(null);
   const [guardando, setGuardando] = useState(false);
+  const [mensajesSistema, setMensajesSistema] = useState({});
+  const [guardandoClave, setGuardandoClave] = useState(null);
+  const [errorSistema, setErrorSistema] = useState("");
 
   const cargar = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -21,7 +29,31 @@ export default function PromocionesPanel({ theme }) {
     setLoading(false);
   }, []);
 
-  useEffect(() => { void cargar(); }, [cargar]);
+  const cargarMensajesSistema = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const { data, error: e } = await supabase.from("mensajes_sistema").select("clave,mensaje");
+    if (e) { setErrorSistema(e.message); return; }
+    const map = {};
+    (data || []).forEach((r) => { map[r.clave] = r.mensaje; });
+    setMensajesSistema(map);
+  }, []);
+
+  useEffect(() => { void cargar(); void cargarMensajesSistema(); }, [cargar, cargarMensajesSistema]);
+
+  const guardarMensajeSistema = async (clave) => {
+    const mensaje = String(mensajesSistema[clave] || "").trim();
+    if (!mensaje) { setErrorSistema("El mensaje no puede quedar vacío."); return; }
+    setGuardandoClave(clave);
+    setErrorSistema("");
+    try {
+      const { error: e } = await supabase.from("mensajes_sistema").upsert({ clave, mensaje, updated_at: new Date().toISOString() });
+      if (e) throw e;
+    } catch (e) {
+      setErrorSistema(String(e?.message || "No se pudo guardar."));
+    } finally {
+      setGuardandoClave(null);
+    }
+  };
 
   const setBloque = (idx, valor) => setForm((p) => ({ ...p, mensajes: p.mensajes.map((m, i) => (i === idx ? valor : m)) }));
   const agregarBloque = () => setForm((p) => ({ ...p, mensajes: [...p.mensajes, ""] }));
@@ -108,6 +140,29 @@ export default function PromocionesPanel({ theme }) {
           (ej: uno con la lista de planes, otro con la oferta especial) — se envían como mensajes separados, uno tras otro,
           en vez de un solo bloque largo.
         </div>
+      </div>
+
+      {/* Mensajes automáticos del sistema */}
+      <div style={{ background: cardBg, border: `1.5px solid ${borderColor}`, borderRadius: 12, padding: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: textColor, marginBottom: 2 }}>✉️ Mensajes automáticos del sistema</div>
+        <div style={{ fontSize: 11, color: mutedColor, marginBottom: 12 }}>
+          Usa <code>{"{saludo}"}</code> donde quieras que aparezca "¡Hola Nombre!" (o "¡Hola!" si no hay nombre) — se reemplaza automáticamente al enviar.
+        </div>
+        <div style={{ display: "grid", gap: 14 }}>
+          {MENSAJES_SISTEMA_DEFS.map(({ clave, label, hint }) => (
+            <div key={clave}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: mutedColor, display: "block", marginBottom: 2 }}>{label}</label>
+              <div style={{ fontSize: 10, color: mutedColor, marginBottom: 4 }}>{hint}</div>
+              <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "inherit" }}
+                value={mensajesSistema[clave] || ""}
+                onChange={(e) => setMensajesSistema((p) => ({ ...p, [clave]: e.target.value }))} />
+              <button style={{ ...btn("#1a3a6b", true), marginTop: 6 }} onClick={() => guardarMensajeSistema(clave)} disabled={guardandoClave === clave}>
+                {guardandoClave === clave ? "Guardando..." : "Guardar mensaje"}
+              </button>
+            </div>
+          ))}
+        </div>
+        {errorSistema && <div style={{ marginTop: 8, fontSize: 12, color: "#dc2626", fontWeight: 600 }}>{errorSistema}</div>}
       </div>
 
       {/* Formulario alta/edición */}

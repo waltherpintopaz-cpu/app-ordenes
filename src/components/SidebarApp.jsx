@@ -2370,14 +2370,29 @@ export default function SidebarApp() {
     }).catch(() => {});
   }
 
+  // ── Mensajes automáticos del sistema, editables desde el panel Promociones ──
+  const MENSAJES_SISTEMA_FALLBACK = {
+    sin_cobertura: `{saludo} 👋\n\nGracias por tu interés en nuestro servicio. Revisamos tu ubicación y por el momento no contamos con cobertura en tu zona 😔\n\nLa buena noticia es que estamos en pleno proceso de expansión, y guardamos tu ubicación y número para avisarte apenas lleguemos a tu sector. Además, serás de los primeros en recibir promociones especiales de lanzamiento 🎉\n\n¡Gracias por tu paciencia, pronto estaremos más cerca!`,
+    cobertura_disponible: `{saludo} 🎉\n\n¡Buenas noticias! Ya tenemos cobertura disponible en tu zona 🚀\n\nComo nos dejaste tus datos, quisimos avisarte antes que nadie. Además tenemos una promoción especial de bienvenida para ti.\n\n¿Te gustaría que te contactemos para coordinar la instalación? 📶`,
+  };
+
+  async function obtenerMensajeSistema(clave, nombre) {
+    const primerNombre = String(nombre || "").trim().split(" ")[0];
+    const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
+    let plantilla = MENSAJES_SISTEMA_FALLBACK[clave] || "";
+    try {
+      const { data } = await supabase.from("mensajes_sistema").select("mensaje").eq("clave", clave).maybeSingle();
+      if (data?.mensaje) plantilla = data.mensaje;
+    } catch { /* usa el fallback */ }
+    return plantilla.replace(/\{saludo\}/g, saludo);
+  }
+
   // ── Mensaje + registro de lead cuando la ubicación cae fuera de cobertura ──
   async function enviarMensajeSinCobertura(coordStr) {
     const phone = contact?.phone_number;
     if (!phone) throw new Error("No hay número de contacto en esta conversación");
 
-    const primerNombre = (contact?.name || "").trim().split(" ")[0];
-    const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
-    const mensaje = `${saludo} 👋\n\nGracias por tu interés en nuestro servicio. Revisamos tu ubicación y por el momento no contamos con cobertura en tu zona 😔\n\nLa buena noticia es que estamos en pleno proceso de expansión, y guardamos tu ubicación y número para avisarte apenas lleguemos a tu sector. Además, serás de los primeros en recibir promociones especiales de lanzamiento 🎉\n\n¡Gracias por tu paciencia, pronto estaremos más cerca!`;
+    const mensaje = await obtenerMensajeSistema("sin_cobertura", contact?.name);
 
     await fetch(PROXY_URL, {
       method: "POST",
@@ -2409,9 +2424,7 @@ export default function SidebarApp() {
   }
 
   async function notificarLeadSidebar(lead) {
-    const primerNombre = String(lead.nombre || "").trim().split(" ")[0];
-    const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
-    const mensaje = `${saludo} 🎉\n\n¡Buenas noticias! Ya tenemos cobertura disponible en tu zona 🚀\n\nComo nos dejaste tus datos, quisimos avisarte antes que nadie. Además tenemos una promoción especial de bienvenida para ti.\n\n¿Te gustaría que te contactemos para coordinar la instalación? 📶`;
+    const mensaje = await obtenerMensajeSistema("cobertura_disponible", lead.nombre);
     const res = await fetch(PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

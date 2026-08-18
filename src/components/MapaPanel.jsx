@@ -254,13 +254,20 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     [leads, leadsFiltro]
   );
 
+  const MENSAJE_COBERTURA_FALLBACK = `{saludo} 🎉\n\n¡Buenas noticias! Ya tenemos cobertura disponible en tu zona 🚀\n\nComo nos dejaste tus datos, quisimos avisarte antes que nadie. Además tenemos una promoción especial de bienvenida para ti.\n\n¿Te gustaría que te contactemos para coordinar la instalación? 📶`;
+
   const notificarLead = async (lead) => {
     if (notificandoId) return;
     setNotificandoId(lead.id);
     try {
       const primerNombre = String(lead.nombre || "").trim().split(" ")[0];
       const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
-      const mensaje = `${saludo} 🎉\n\n¡Buenas noticias! Ya tenemos cobertura disponible en tu zona 🚀\n\nComo nos dejaste tus datos, quisimos avisarte antes que nadie. Además tenemos una promoción especial de bienvenida para ti.\n\n¿Te gustaría que te contactemos para coordinar la instalación? 📶`;
+      let plantilla = MENSAJE_COBERTURA_FALLBACK;
+      try {
+        const { data } = await supabase.from("mensajes_sistema").select("mensaje").eq("clave", "cobertura_disponible").maybeSingle();
+        if (data?.mensaje) plantilla = data.mensaje;
+      } catch { /* usa el fallback */ }
+      const mensaje = plantilla.replace(/\{saludo\}/g, saludo);
       const res = await fetch(PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
