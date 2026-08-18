@@ -525,6 +525,7 @@ export default function SidebarApp() {
   const [dniSel,       setDniSel]       = useState(null); // row seleccionado
   const [agregando,    setAgregando]    = useState(false);
   const [vinculando,   setVinculando]   = useState(false);
+  const [modoBusquedaManual, setModoBusquedaManual] = useState(false);
   // Crear orden desde sidebar
   const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
@@ -805,6 +806,12 @@ export default function SidebarApp() {
     setOrdenCreada(null);
     setOrdenesCliente([]); setLiquidacionesCliente([]);
     setRecojoInfo(null);
+    setModoBusquedaManual(false);
+  }
+
+  function volverABuscar() {
+    resetEstado();
+    setModoBusquedaManual(true);
   }
 
   // ── Consultar si a este cliente ya se le recogio el equipo antes ──────────
@@ -3280,12 +3287,18 @@ export default function SidebarApp() {
       )}
 
       {/* ── Error + búsqueda flexible ── */}
-      {error && !cliente && (
+      {(error || modoBusquedaManual) && !cliente && (
         <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
-          <div style={{ fontWeight:700, color:T.red, fontSize:13, marginBottom:3 }}>Cliente no encontrado</div>
-          <div style={{ fontSize:11, color:T.muted, marginBottom:12 }}>
-            Número <strong>{contact?.phone_number}</strong> no está registrado en Mikrowisp.
-          </div>
+          {error ? (
+            <>
+              <div style={{ fontWeight:700, color:T.red, fontSize:13, marginBottom:3 }}>Cliente no encontrado</div>
+              <div style={{ fontSize:11, color:T.muted, marginBottom:12 }}>
+                Número <strong>{contact?.phone_number}</strong> no está registrado en Mikrowisp.
+              </div>
+            </>
+          ) : (
+            <div style={{ fontWeight:700, color:T.navy, fontSize:13, marginBottom:12 }}>Buscar otro cliente</div>
+          )}
           <div style={{ fontWeight:600, fontSize:12, color:T.navy, marginBottom:6 }}>Buscar por DNI o nombre</div>
           <div style={{ display:"flex", gap:6, marginBottom:8 }}>
             <input style={{ ...S.input, flex:1 }} type="text"
@@ -4122,10 +4135,16 @@ export default function SidebarApp() {
                 )}
               </div>
             </div>
-            <button onClick={() => buscarCliente(contact?.phone_number || "")}
-              style={{ background:T.bg, border:`1px solid ${T.border}`,
-                borderRadius:4, padding:"5px 9px", cursor:"pointer", color:T.blue, fontSize:13, flexShrink:0 }}
-              title="Recargar"><RefreshCw size={13} /></button>
+            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+              <button onClick={volverABuscar}
+                style={{ background:T.bg, border:`1px solid ${T.border}`,
+                  borderRadius:4, padding:"5px 9px", cursor:"pointer", color:T.navy, fontSize:11, fontWeight:600, display:"flex", alignItems:"center", gap:4 }}
+                title="Volver a buscar otro cliente">← Volver</button>
+              <button onClick={() => buscarCliente(contact?.phone_number || "")}
+                style={{ background:T.bg, border:`1px solid ${T.border}`,
+                  borderRadius:4, padding:"5px 9px", cursor:"pointer", color:T.blue, fontSize:13 }}
+                title="Recargar"><RefreshCw size={13} /></button>
+            </div>
           </div>
         </div>
 
