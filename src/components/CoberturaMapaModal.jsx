@@ -14,7 +14,7 @@ function parseCoordStr(str) {
 // no un mini-mapa embebido) y marca si la ubicación del cliente cae dentro.
 export default function CoberturaMapaModal({
   coordenadas, coordsLista = [], buscando, onClose, onSeleccionarCoord, onReintentar, onEnviarSinCobertura,
-  leadsPendientes = [], onNotificarLead, promociones = [], onEnviarPromocion,
+  leadsPendientes = [], onNotificarLead, promociones = [], onEnviarPromocion, onEnviarPromocionBloque,
 }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -37,6 +37,9 @@ export default function CoberturaMapaModal({
   const [enviandoPromoId, setEnviandoPromoId] = useState(null);
   const [promoEnviadaId, setPromoEnviadaId] = useState(null);
   const [errorPromo, setErrorPromo] = useState("");
+  const [promoExpandidaId, setPromoExpandidaId] = useState(null);
+  const [bloquesEnviados, setBloquesEnviados] = useState({}); // { [promoId]: number[] }
+  const [enviandoBloqueKey, setEnviandoBloqueKey] = useState(null); // `${promoId}-${idx}`
 
   const punto = parseCoordStr(coordenadas);
 
@@ -47,6 +50,9 @@ export default function CoberturaMapaModal({
     setShowPromos(false);
     setPromoEnviadaId(null);
     setErrorPromo("");
+    setPromoExpandidaId(null);
+    setBloquesEnviados({});
+    setEnviandoBloqueKey(null);
     if (!punto) { setZona(undefined); return; }
     setZona(undefined);
     buscarZonaCobertura(punto.lat, punto.lng).then((z) => { if (!cancelled) setZona(z); });
@@ -176,10 +182,25 @@ export default function CoberturaMapaModal({
     try {
       await onEnviarPromocion(promo);
       setPromoEnviadaId(promo.id);
+      setBloquesEnviados((prev) => ({ ...prev, [promo.id]: (promo.mensajes || [promo.mensaje]).map((_, i) => i) }));
     } catch (e) {
       setErrorPromo(e.message || "No se pudo enviar la promoción");
     }
     setEnviandoPromoId(null);
+  }
+
+  async function enviarBloque(promo, idx) {
+    if (!onEnviarPromocionBloque) return;
+    const key = `${promo.id}-${idx}`;
+    setEnviandoBloqueKey(key);
+    setErrorPromo("");
+    try {
+      await onEnviarPromocionBloque(promo, idx);
+      setBloquesEnviados((prev) => ({ ...prev, [promo.id]: [...new Set([...(prev[promo.id] || []), idx])] }));
+    } catch (e) {
+      setErrorPromo(e.message || "No se pudo enviar el mensaje");
+    }
+    setEnviandoBloqueKey(null);
   }
 
   function linkMaps() {
@@ -296,16 +317,47 @@ export default function CoberturaMapaModal({
                   {promociones.length === 0 && (
                     <div style={s.promoVacia}>No hay promociones activas — agrégalas en el panel "Promociones" del navegador.</div>
                   )}
-                  {promociones.map((promo) => (
-                    <button key={promo.id} onClick={() => enviarPromo(promo)}
-                      disabled={enviandoPromoId === promo.id || promoEnviadaId === promo.id}
-                      style={{ ...s.promoItem, opacity: enviandoPromoId === promo.id ? 0.7 : 1 }}>
-                      <span>{promo.titulo}{Array.isArray(promo.mensajes) && promo.mensajes.length > 1 ? ` (${promo.mensajes.length} mensajes)` : ""}</span>
-                      <span style={{ fontWeight: 700 }}>
-                        {promoEnviadaId === promo.id ? "✅ Enviada" : enviandoPromoId === promo.id ? "Enviando..." : "Enviar →"}
-                      </span>
-                    </button>
-                  ))}
+                  {promociones.map((promo) => {
+                    const bloques = Array.isArray(promo.mensajes) && promo.mensajes.length ? promo.mensajes : [promo.mensaje].filter(Boolean);
+                    const enviados = bloquesEnviados[promo.id] || [];
+                    const expandida = promoExpandidaId === promo.id;
+                    return (
+                      <div key={promo.id} style={s.promoGrupo}>
+                        <div style={s.promoItemRow}>
+                          <button onClick={() => enviarPromo(promo)}
+                            disabled={enviandoPromoId === promo.id || promoEnviadaId === promo.id}
+                            style={{ ...s.promoItem, opacity: enviandoPromoId === promo.id ? 0.7 : 1, flex: 1 }}>
+                            <span>{promo.titulo}{bloques.length > 1 ? ` (${bloques.length} mensajes)` : ""}</span>
+                            <span style={{ fontWeight: 700 }}>
+                              {promoEnviadaId === promo.id ? "✅ Todo enviado" : enviandoPromoId === promo.id ? "Enviando..." : "Enviar todo →"}
+                            </span>
+                          </button>
+                          {bloques.length > 1 && (
+                            <button onClick={() => setPromoExpandidaId(expandida ? null : promo.id)} style={s.btnPromoManual} title="Enviar mensaje por mensaje">
+                              {expandida ? "▲" : "✋ Manual"}
+                            </button>
+                          )}
+                        </div>
+                        {expandida && (
+                          <div style={s.promoBloques}>
+                            {bloques.map((texto, idx) => {
+                              const key = `${promo.id}-${idx}`;
+                              const yaEnviado = enviados.includes(idx);
+                              return (
+                                <div key={idx} style={s.promoBloqueRow}>
+                                  <div style={s.promoBloqueTexto}>{texto}</div>
+                                  <button onClick={() => enviarBloque(promo, idx)} disabled={enviandoBloqueKey === key || yaEnviado}
+                                    style={{ ...s.btnBloque, background: yaEnviado ? "#16a34a" : "#2563eb", opacity: enviandoBloqueKey === key ? 0.7 : 1 }}>
+                                    {yaEnviado ? "✅" : enviandoBloqueKey === key ? "..." : `Enviar ${idx + 1}/${bloques.length}`}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {errorPromo && <div style={s.avisoError}>{errorPromo}</div>}
                 </div>
               )}
@@ -398,7 +450,14 @@ const s = {
   avisoPromoTitulo: { fontSize: 12, fontWeight: 700, color: "#14532d" },
   btnPromoCerrar: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#64748b", fontWeight: 700 },
   promoVacia: { fontSize: 11, color: "#64748b" },
-  promoItem: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", textAlign: "left", padding: "9px 12px", background: "#f0fdf4", border: "1px solid #dcfce7", borderRadius: 8, marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#14532d", cursor: "pointer" },
+  promoItem: { display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", textAlign: "left", padding: "9px 12px", background: "#f0fdf4", border: "1px solid #dcfce7", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#14532d", cursor: "pointer" },
+  promoGrupo: { marginBottom: 6 },
+  promoItemRow: { display: "flex", gap: 6, alignItems: "stretch" },
+  btnPromoManual: { flexShrink: 0, padding: "0 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, color: "#2563eb", fontWeight: 700, fontSize: 11, cursor: "pointer" },
+  promoBloques: { display: "grid", gap: 6, marginTop: 6, paddingLeft: 10, borderLeft: "2px solid #dcfce7" },
+  promoBloqueRow: { display: "flex", gap: 6, alignItems: "center" },
+  promoBloqueTexto: { flex: 1, fontSize: 11, color: "#374151", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", whiteSpace: "pre-wrap", maxHeight: 70, overflowY: "auto" },
+  btnBloque: { flexShrink: 0, padding: "6px 10px", color: "#fff", border: "none", borderRadius: 6, fontWeight: 700, fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" },
   avisoLead: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #86efac", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   avisoLeadHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   avisoLeadNombre: { fontSize: 13, fontWeight: 800, color: "#14532d" },

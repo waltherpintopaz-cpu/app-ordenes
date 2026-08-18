@@ -2438,21 +2438,42 @@ export default function SidebarApp() {
     } catch { /* silencioso */ }
   }
 
+  function bloquesDePromo(promo) {
+    return Array.isArray(promo.mensajes) && promo.mensajes.length ? promo.mensajes : [promo.mensaje].filter(Boolean);
+  }
+
+  async function enviarMensajeChatwootDirecto(phone, texto) {
+    const res = await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: texto, account_id: acctId || "1" } }),
+    });
+    const bodyTxt = await res.text().catch(() => "");
+    if (!res.ok) throw new Error(`Webhook respondió ${res.status} — ${bodyTxt.slice(0, 200)}`);
+  }
+
   async function enviarPromocionCliente(promo) {
     const phone = contact?.phone_number;
     if (!phone) throw new Error("No hay número de contacto en esta conversación");
-    const bloques = Array.isArray(promo.mensajes) && promo.mensajes.length ? promo.mensajes : [promo.mensaje].filter(Boolean);
+    const bloques = bloquesDePromo(promo);
     if (!bloques.length) throw new Error("Esta promoción no tiene mensajes configurados");
     for (let i = 0; i < bloques.length; i++) {
-      const res = await fetch(PROXY_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: bloques[i], account_id: acctId || "1" } }),
-      });
-      const bodyTxt = await res.text().catch(() => "");
-      if (!res.ok) throw new Error(`Mensaje ${i + 1}/${bloques.length}: webhook respondió ${res.status} — ${bodyTxt.slice(0, 200)}`);
+      try {
+        await enviarMensajeChatwootDirecto(phone, bloques[i]);
+      } catch (e) {
+        throw new Error(`Mensaje ${i + 1}/${bloques.length}: ${e.message}`);
+      }
       if (i < bloques.length - 1) await new Promise(r => setTimeout(r, 2500));
     }
+  }
+
+  async function enviarBloquePromocion(promo, idx) {
+    const phone = contact?.phone_number;
+    if (!phone) throw new Error("No hay número de contacto en esta conversación");
+    const bloques = bloquesDePromo(promo);
+    const texto = bloques[idx];
+    if (!texto) throw new Error("Mensaje no encontrado");
+    await enviarMensajeChatwootDirecto(phone, texto);
   }
 
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
@@ -3113,6 +3134,7 @@ export default function SidebarApp() {
           onNotificarLead={notificarLeadSidebar}
           promociones={promocionesActivas}
           onEnviarPromocion={enviarPromocionCliente}
+          onEnviarPromocionBloque={enviarBloquePromocion}
         />
       )}
 
