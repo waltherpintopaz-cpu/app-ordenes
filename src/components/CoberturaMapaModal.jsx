@@ -12,7 +12,7 @@ function parseCoordStr(str) {
 
 // Modal de pantalla completa: dibuja las zonas de cobertura (polígonos reales,
 // no un mini-mapa embebido) y marca si la ubicación del cliente cae dentro.
-export default function CoberturaMapaModal({ coordenadas, coordsLista = [], buscando, onClose, onSeleccionarCoord, onReintentar }) {
+export default function CoberturaMapaModal({ coordenadas, coordsLista = [], buscando, onClose, onSeleccionarCoord, onReintentar, onEnviarSinCobertura }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const clienteMarkerRef = useRef(null);
@@ -23,11 +23,16 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
   const [zonasCargando, setZonasCargando] = useState(true);
   const [capa, setCapa] = useState("calles"); // "calles" | "satelite"
   const [copiado, setCopiado] = useState(false);
+  const [enviandoAviso, setEnviandoAviso] = useState(false);
+  const [avisoEnviado, setAvisoEnviado] = useState(false);
+  const [errorAviso, setErrorAviso] = useState("");
 
   const punto = parseCoordStr(coordenadas);
 
   useEffect(() => {
     let cancelled = false;
+    setAvisoEnviado(false);
+    setErrorAviso("");
     if (!punto) { setZona(undefined); return; }
     setZona(undefined);
     buscarZonaCobertura(punto.lat, punto.lng).then((z) => { if (!cancelled) setZona(z); });
@@ -131,6 +136,19 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
     window.open(`https://wa.me/?text=${encodeURIComponent(textoCompartir())}`, "_blank");
   }
 
+  async function enviarAvisoSinCobertura() {
+    if (!onEnviarSinCobertura || !punto) return;
+    setEnviandoAviso(true);
+    setErrorAviso("");
+    try {
+      await onEnviarSinCobertura(coordenadas);
+      setAvisoEnviado(true);
+    } catch (e) {
+      setErrorAviso(e.message || "No se pudo enviar el aviso");
+    }
+    setEnviandoAviso(false);
+  }
+
   async function copiarLink() {
     if (!punto) return;
     try {
@@ -187,6 +205,20 @@ export default function CoberturaMapaModal({ coordenadas, coordsLista = [], busc
               </div>
             )}
           </div>
+
+          {/* Aviso de zona fuera de cobertura: enviar mensaje + guardar lead */}
+          {punto && zona === null && (
+            <div style={s.avisoFuera}>
+              <div style={s.avisoFueraTexto}>
+                📍 Ubicación fuera de cobertura — puedes avisarle al cliente y guardar sus datos para notificarlo cuando lleguemos a su zona.
+              </div>
+              <button onClick={enviarAvisoSinCobertura} disabled={enviandoAviso || avisoEnviado}
+                style={{ ...s.btnAviso, background: avisoEnviado ? "#16a34a" : "#dc2626", opacity: enviandoAviso ? 0.7 : 1 }}>
+                {avisoEnviado ? "✅ Mensaje enviado y guardado" : enviandoAviso ? "Enviando..." : "📨 Avisar al cliente y guardar"}
+              </button>
+              {errorAviso && <div style={s.avisoError}>{errorAviso}</div>}
+            </div>
+          )}
 
           {/* Selector de múltiples ubicaciones encontradas */}
           {coordsLista.length > 1 && (
@@ -245,4 +277,8 @@ const s = {
   btnWhatsapp: { padding: "8px 16px", background: "#25d366", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
   btnCopiar: { padding: "8px 16px", background: "#334155", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
   btnCapa: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
+  avisoFuera: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, background: "#fff", border: "1.5px solid #fecaca", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
+  avisoFueraTexto: { fontSize: 11.5, color: "#7f1d1d", fontWeight: 600, marginBottom: 8, lineHeight: 1.4 },
+  btnAviso: { width: "100%", padding: "8px 12px", background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  avisoError: { fontSize: 11, color: "#dc2626", fontWeight: 600, marginTop: 6 },
 };

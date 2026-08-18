@@ -4,6 +4,7 @@ import { cargarZonasCobertura, invalidarZonasCobertura } from "../utils/zonasCob
 import ImportarMapaCoberturaModal from "./ImportarMapaCoberturaModal";
 
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
+const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
 const APPSHEET_APP_NAME = String(import.meta.env.VITE_APPSHEET_APP_NAME || "Actuaciones02-637142196").trim();
 const APPSHEET_TABLE_NAME = String(import.meta.env.VITE_APPSHEET_TABLE_NAME || "Tabla_1").trim();
@@ -136,6 +137,10 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [fotoNapPreview, setFotoNapPreview] = useState("");
   const [fotoParamPreview, setFotoParamPreview] = useState("");
   const [lightboxUrl, setLightboxUrl] = useState("");
+  const [leads, setLeads] = useState([]);
+  const [showLeads, setShowLeads] = useState(true);
+  const [leadsFiltro, setLeadsFiltro] = useState("pendientes"); // "pendientes" | "todos"
+  const [notificandoId, setNotificandoId] = useState(null);
 
   const mapCanvasRef = useRef(null);
   const mapRef = useRef(null);
@@ -233,6 +238,45 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   }, []);
   useEffect(() => { cargarZonasCobertura().then(setZonas); }, []);
 
+  const cargarLeads = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const { data, error } = await supabase
+      .from("leads_sin_cobertura")
+      .select("id,telefono,nombre,coordenadas,notificado,account_id,created_at")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (!error) setLeads((Array.isArray(data) ? data : []).map((l) => ({ ...l, coords: parseCoords(l.coordenadas) })).filter((l) => l.coords));
+  }, []);
+  useEffect(() => { void cargarLeads(); }, [cargarLeads]);
+
+  const leadsFiltrados = useMemo(
+    () => leadsFiltro === "pendientes" ? leads.filter((l) => !l.notificado) : leads,
+    [leads, leadsFiltro]
+  );
+
+  const notificarLead = async (lead) => {
+    if (notificandoId) return;
+    setNotificandoId(lead.id);
+    try {
+      const primerNombre = String(lead.nombre || "").trim().split(" ")[0];
+      const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
+      const mensaje = `${saludo} 🎉\n\n¡Buenas noticias! Ya tenemos cobertura disponible en tu zona 🚀\n\nComo nos dejaste tus datos, quisimos avisarte antes que nadie. Además tenemos una promoción especial de bienvenida para ti.\n\n¿Te gustaría que te contactemos para coordinar la instalación? 📶`;
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: lead.telefono, message: mensaje, account_id: lead.account_id || "1" } }),
+      });
+      if (!res.ok) throw new Error("No se pudo enviar el mensaje");
+      const { error } = await supabase.from("leads_sin_cobertura").update({ notificado: true, notificado_en: new Date().toISOString() }).eq("id", lead.id);
+      if (error) throw error;
+      setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, notificado: true } : l)));
+    } catch (e) {
+      alert(String(e?.message || "No se pudo notificar al lead."));
+    } finally {
+      setNotificandoId(null);
+    }
+  };
+
   const obtenerGPS = useCallback(() => {
     if (!navigator.geolocation) { setError("GPS no disponible en este navegador."); return; }
     setGpsLoading(true);
@@ -299,8 +343,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const detalle = useMemo(() => {
     if (!selectedId) return null;
     if (selectedTipo === "caja") return cajasFiltradas.find((r) => String(r.uid) === String(selectedId)) || null;
+    if (selectedTipo === "lead") return leads.find((r) => String(r.id) === String(selectedId)) || null;
     return ordenesFiltradas.find((r) => String(r.id) === String(selectedId)) || null;
-  }, [selectedTipo, selectedId, ordenesFiltradas, cajasFiltradas]);
+  }, [selectedTipo, selectedId, ordenesFiltradas, cajasFiltradas, leads]);
 
   // Inicializar mapa
   useEffect(() => {
@@ -396,6 +441,27 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       });
     }
 
+    if (showLeads) {
+      leadsFiltrados.forEach((lead) => {
+        const isSelected = selectedTipo === "lead" && String(selectedId) === String(lead.id);
+        const m = new maps.Marker({
+          map,
+          position: { lat: Number(lead.coords.lat), lng: Number(lead.coords.lng) },
+          icon: {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor: lead.notificado ? "#94a3b8" : "#dc2626",
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff", strokeWeight: 1.8, scale: isSelected ? 10 : 8,
+          },
+          title: `Lead sin cobertura — ${lead.nombre || lead.telefono}`,
+          zIndex: isSelected ? 15 : 5,
+        });
+        m.addListener("click", () => { setSelectedTipo("lead"); setSelectedId(String(lead.id)); setTab("leads"); shouldAutoFrameRef.current = false; });
+        markersRef.current.push(m);
+        points.push({ lat: Number(lead.coords.lat), lng: Number(lead.coords.lng) });
+      });
+    }
+
     // GPS marker
     if (gpsMarkerRef.current) { try { gpsMarkerRef.current.setMap(null); } catch { } }
     if (gpsCircleRef.current) { try { gpsCircleRef.current.setMap(null); } catch { } }
@@ -441,7 +507,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
       shouldAutoFrameRef.current = false;
     }
     return () => limpiarMarkers();
-  }, [limpiarMarkers, ordenesFiltradas, cajasVisibles, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo]);
+  }, [limpiarMarkers, ordenesFiltradas, cajasVisibles, showCajas, miUbicacion, cajasNear5, selectedId, selectedTipo, showLeads, leadsFiltrados]);
 
   // Zonas de cobertura (polígonos importados de Google My Maps)
   useEffect(() => {
@@ -520,7 +586,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     if (!item?.coords || !mapRef.current) return;
     shouldAutoFrameRef.current = false;
     setSelectedTipo(tipo);
-    setSelectedId(String(tipo === "orden" ? item.id : item.uid));
+    setSelectedId(String(tipo === "caja" ? item.uid : item.id));
     if (tipo === "caja") setSimCajaSelUid(String(item.uid));
     mapRef.current.panTo({ lat: Number(item.coords.lat), lng: Number(item.coords.lng) });
     mapRef.current.setZoom(17);
@@ -629,6 +695,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         <button style={{ ...btnStyle(showZonas, "#7c3aed") }} onClick={() => setShowZonas((v) => !v)}>
           {showZonas ? "Ocultar zonas" : "Mostrar zonas"} ({zonas.length})
         </button>
+        <button style={{ ...btnStyle(showLeads, "#dc2626") }} onClick={() => setShowLeads((v) => !v)}>
+          {showLeads ? "Ocultar leads" : "Mostrar leads"} ({leads.filter((l) => !l.notificado).length})
+        </button>
         <button style={{ ...btnStyle(false, "#059669") }} onClick={() => setShowImportarZonas(true)}>
           + Agregar mapa
         </button>
@@ -712,6 +781,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
             {[
               { key: "cajas", label: `Cajas (${cajasFiltradas.length})` },
               { key: "ordenes", label: `Órdenes (${ordenesFiltradas.length})` },
+              { key: "leads", label: `Leads (${leads.filter((l) => !l.notificado).length})` },
               ...(miUbicacion ? [{ key: "cercanas", label: `Cercanas (${cajasNear20.length})` }] : []),
             ].map((t) => (
               <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -778,6 +848,25 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                     </div>
                   )}
                 </>
+              ) : selectedTipo === "lead" ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: "#1a3a6b" }}>{detalle.nombre || "Sin nombre"}</div>
+                      <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{detalle.telefono || "-"}</div>
+                    </div>
+                    <span style={tagStyle(detalle.notificado ? "#16a34a" : "#dc2626")}>{detalle.notificado ? "Notificado" : "Pendiente"}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", marginBottom: 8 }}>
+                    Consultó el {detalle.created_at ? new Date(detalle.created_at).toLocaleDateString("es-PE") : "-"}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button style={btnStyle(false, "#1a3a6b")} onClick={() => llegar(detalle)}>🧭 Llegar</button>
+                    <button style={btnStyle(false, detalle.notificado ? "#94a3b8" : "#dc2626")} onClick={() => notificarLead(detalle)} disabled={detalle.notificado || notificandoId === detalle.id}>
+                      {detalle.notificado ? "✅ Ya notificado" : notificandoId === detalle.id ? "Enviando..." : "📨 Notificar cobertura"}
+                    </button>
+                  </div>
+                </>
               ) : (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 14, color: "#1a3a6b", marginBottom: 4 }}>{detalle.codigo || "SIN-CÓDIGO"}</div>
@@ -838,6 +927,42 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                     </div>
                     <div style={{ fontSize: 12, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nombre || "-"}</div>
                     <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{item.nodo || "-"} · {item.tecnico || "-"}</div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Lista tab leads sin cobertura */}
+          {tab === "leads" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
+              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                <button style={{ ...btnStyle(leadsFiltro === "pendientes", "#dc2626"), flex: 1, padding: "4px 8px", fontSize: 11 }} onClick={() => setLeadsFiltro("pendientes")}>
+                  Pendientes ({leads.filter((l) => !l.notificado).length})
+                </button>
+                <button style={{ ...btnStyle(leadsFiltro === "todos", "#6b7280"), flex: 1, padding: "4px 8px", fontSize: 11 }} onClick={() => setLeadsFiltro("todos")}>
+                  Todos ({leads.length})
+                </button>
+              </div>
+              {leadsFiltrados.length === 0 && (
+                <div style={{ fontSize: 11, color: "#94a3b8", padding: "8px 4px" }}>
+                  {leadsFiltro === "pendientes" ? "No hay leads pendientes de notificar." : "Aún no hay leads sin cobertura registrados."}
+                </div>
+              )}
+              {leadsFiltrados.map((lead) => {
+                const isSelected = selectedTipo === "lead" && String(selectedId) === String(lead.id);
+                return (
+                  <button key={String(lead.id)} onClick={() => centrar(lead, "lead")} style={{
+                    width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
+                    border: `1.5px solid ${isSelected ? "#dc2626" : "#e2e8f0"}`,
+                    background: isSelected ? (isDark ? "#2a1616" : "#fef2f2") : (isDark ? "#1a2740" : "#fff"), marginBottom: 4, cursor: "pointer",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: "#1a3a6b" }}>{lead.nombre || lead.telefono || "-"}</span>
+                      <span style={tagStyle(lead.notificado ? "#16a34a" : "#dc2626")}>{lead.notificado ? "✓ Notificado" : "Pendiente"}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{lead.telefono || "-"}</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{lead.created_at ? new Date(lead.created_at).toLocaleDateString("es-PE") : "-"}</div>
                   </button>
                 );
               })}

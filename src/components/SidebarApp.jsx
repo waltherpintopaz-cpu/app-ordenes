@@ -2361,6 +2361,32 @@ export default function SidebarApp() {
     }).catch(() => {});
   }
 
+  // ── Mensaje + registro de lead cuando la ubicación cae fuera de cobertura ──
+  async function enviarMensajeSinCobertura(coordStr) {
+    const phone = contact?.phone_number;
+    if (!phone) throw new Error("No hay número de contacto en esta conversación");
+
+    const primerNombre = (contact?.name || "").trim().split(" ")[0];
+    const saludo = primerNombre ? `¡Hola ${primerNombre}!` : "¡Hola!";
+    const mensaje = `${saludo} 👋\n\nGracias por tu interés en nuestro servicio. Revisamos tu ubicación y por el momento no contamos con cobertura en tu zona 😔\n\nLa buena noticia es que estamos en pleno proceso de expansión, y guardamos tu ubicación y número para avisarte apenas lleguemos a tu sector. Además, serás de los primeros en recibir promociones especiales de lanzamiento 🎉\n\n¡Gracias por tu paciencia, pronto estaremos más cerca!`;
+
+    await fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: mensaje, account_id: acctId || "1" } }),
+    });
+
+    const { error } = await supabase.from("leads_sin_cobertura").insert([{
+      telefono: phone.replace(/[^\d]/g, ""),
+      nombre: contact?.name?.trim() || null,
+      coordenadas: coordStr || null,
+      conversation_id: convId || null,
+      account_id: acctId || null,
+      mensaje_enviado: true,
+    }]);
+    if (error) throw error;
+  }
+
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
@@ -3014,6 +3040,7 @@ export default function SidebarApp() {
           onClose={() => setShowCoberturaModal(false)}
           onReintentar={() => void extraerCoordsDeChat()}
           onSeleccionarCoord={(c) => { setOrdenForm(p => ({ ...p, coordenadas: c })); setCoordsLista([]); }}
+          onEnviarSinCobertura={enviarMensajeSinCobertura}
         />
       )}
 
