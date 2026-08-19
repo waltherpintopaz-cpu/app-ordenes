@@ -91,6 +91,7 @@ export default function CoberturaMapaModal({
   const [notificandoLead, setNotificandoLead] = useState(false);
   const [errorLead, setErrorLead] = useState("");
   const [showPromos, setShowPromos] = useState(false);
+  const [mostrarLeads, setMostrarLeads] = useState(false);
 
   const punto = parseCoordStr(coordenadas);
 
@@ -187,12 +188,14 @@ export default function CoberturaMapaModal({
     }
   }, [capa]);
 
-  // Marcadores de leads sin cobertura pendientes de notificar
+  // Marcadores de leads sin cobertura pendientes de notificar — ocultos por
+  // defecto, solo se dibujan si el agente activa el toggle "Ver leads".
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
     leadMarkersRef.current.forEach((m) => m.remove());
     leadMarkersRef.current = [];
+    if (!mostrarLeads) return;
 
     leadsPendientes.forEach((lead) => {
       const p = parseCoordStr(lead.coordenadas);
@@ -201,7 +204,7 @@ export default function CoberturaMapaModal({
       m.on("click", () => { setLeadSeleccionado(lead); setErrorLead(""); });
       leadMarkersRef.current.push(m);
     });
-  }, [leadsPendientes]);
+  }, [leadsPendientes, mostrarLeads]);
 
   async function notificarLeadSeleccionado() {
     if (!leadSeleccionado || !onNotificarLead) return;
@@ -294,6 +297,20 @@ export default function CoberturaMapaModal({
               </svg>
             )}
           </button>
+
+          {/* Toggle ver leads sin cobertura (oculto por defecto) */}
+          {leadsPendientes.length > 0 && (
+            <button
+              onClick={() => setMostrarLeads((v) => !v)}
+              style={{ ...s.btnLeadsToggle, background: mostrarLeads ? "#dc2626" : "rgba(15,23,42,0.85)" }}
+              title={mostrarLeads ? "Ocultar leads sin cobertura" : "Ver leads sin cobertura pendientes"}
+            >
+              <span style={{ ...s.checkbox, background: mostrarLeads ? "#fff" : "transparent" }}>
+                {mostrarLeads && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+              </span>
+              Leads ({leadsPendientes.length})
+            </button>
+          )}
 
           {/* Estado / badge flotante */}
           <div style={s.floatTop}>
@@ -422,6 +439,8 @@ const s = {
   btnCopiar: { padding: "8px 16px", background: "#334155", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" },
   btnCapa: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
   btnCapaIcon: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
+  btnLeadsToggle: { position: "absolute", top: 10, left: 52, zIndex: 1000, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, height: 34, padding: "0 12px 0 8px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", color: "#fff", fontSize: 11, fontWeight: 700 },
+  checkbox: { width: 15, height: 15, borderRadius: 4, border: "1.5px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   avisoFuera: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, background: "#fff", border: "1.5px solid #fecaca", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   avisoFueraTexto: { fontSize: 11.5, color: "#7f1d1d", fontWeight: 600, marginBottom: 8, lineHeight: 1.4 },
   btnAviso: { width: "100%", padding: "8px 12px", background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
