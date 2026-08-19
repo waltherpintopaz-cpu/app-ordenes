@@ -7,6 +7,7 @@ import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import { buscarZonaCobertura } from "../utils/cobertura.js";
 import CoberturaMapaModal from "./CoberturaMapaModal.jsx";
+import PromoPicker from "./PromoPicker.jsx";
 
 // ─── Captura temprana de postMessage ─────────────────────────────────────────
 // Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
@@ -526,6 +527,7 @@ export default function SidebarApp() {
   const [agregando,    setAgregando]    = useState(false);
   const [vinculando,   setVinculando]   = useState(false);
   const [modoBusquedaManual, setModoBusquedaManual] = useState(false);
+  const [showPromoDirecta, setShowPromoDirecta] = useState(false);
   // Crear orden desde sidebar
   const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
@@ -3757,6 +3759,22 @@ export default function SidebarApp() {
             style={{ ...S.btn("#0284c7"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
             🗺 Ver cobertura
           </button>
+
+          {/* ── Enviar promoción sin necesidad de ubicación/GPS ── */}
+          <div style={S.divider} />
+          <button onClick={() => { const abrir=!showPromoDirecta; setShowPromoDirecta(abrir); if (abrir) void cargarPromocionesActivas(); }}
+            style={{ ...S.btn(showPromoDirecta ? "#6b7280" : "#16a34a"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: showPromoDirecta ? 8 : 0 }}>
+            🎁 {showPromoDirecta ? "Cerrar promociones" : "Enviar promoción"}
+          </button>
+          {showPromoDirecta && (
+            <div style={{ marginBottom:8 }}>
+              <PromoPicker
+                promociones={promocionesActivas}
+                onEnviarPromocion={enviarPromocionCliente}
+                onEnviarPromocionBloque={enviarBloquePromocion}
+              />
+            </div>
+          )}
 
           {/* ── Demo IPTV para prospecto no registrado ── */}
           <div style={S.divider} />
