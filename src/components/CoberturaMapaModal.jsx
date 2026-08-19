@@ -11,18 +11,32 @@ function parseCoordStr(str) {
   return { lat, lng };
 }
 
-// Pin tipo "gota" (estilo Google Maps) con sombra, para la ubicación del cliente.
-function pinClienteIcon(color, size = 34) {
+// Pin del cliente: siempre azul (para no confundirse con los leads en rojo ni
+// con las zonas verdes/rojas), con un icono de persona y un badge de estado
+// (✓ verde / ✕ rojo / … gris mientras se verifica) en la esquina.
+function pinClienteIcon(estado, size = 36) {
+  // estado: undefined="verificando", true="en cobertura", false="fuera"
   const w = size, h = Math.round(size * 1.35);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 34 46">
+  const badgeColor = estado === undefined ? "#94a3b8" : estado ? "#16a34a" : "#dc2626";
+  const badgeGlyph = estado === undefined
+    ? `<circle cx="0" cy="0" r="2.2" fill="#fff"/>`
+    : estado
+      ? `<path d="M-3 0.5 L-1 2.5 L3.2 -2.2" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<path d="M-2.4 -2.4 L2.4 2.4 M2.4 -2.4 L-2.4 2.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 36 49">
     <defs>
       <filter id="s" x="-60%" y="-20%" width="220%" height="170%">
         <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#0f172a" flood-opacity="0.45"/>
       </filter>
     </defs>
-    <path filter="url(#s)" d="M17 0C7.6 0 0 7.6 0 17c0 12.7 17 29 17 29s17-16.3 17-29C34 7.6 26.4 0 17 0z" fill="${color}"/>
-    <circle cx="17" cy="17" r="12.5" fill="rgba(255,255,255,0.22)"/>
-    <circle cx="17" cy="17" r="7" fill="#fff"/>
+    <path filter="url(#s)" d="M18 0C8.6 0 1 7.6 1 17c0 12.7 17 29 17 29s17-16.3 17-29C35 7.6 27.4 0 18 0z" fill="#2563eb"/>
+    <circle cx="18" cy="17" r="12.5" fill="rgba(255,255,255,0.18)"/>
+    <circle cx="18" cy="12.3" r="3.6" fill="#fff"/>
+    <path d="M9.5 24.5c1.6-4.6 5-6.9 8.5-6.9s6.9 2.3 8.5 6.9c-2.3 2-5.3 3.2-8.5 3.2s-6.2-1.2-8.5-3.2z" fill="#fff"/>
+    <g transform="translate(28,9)">
+      <circle r="6.2" fill="${badgeColor}" stroke="#fff" stroke-width="1.8"/>
+      ${badgeGlyph}
+    </g>
   </svg>`;
   return L.icon({
     iconUrl: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
@@ -145,11 +159,18 @@ export default function CoberturaMapaModal({
     if (clienteMarkerRef.current) { clienteMarkerRef.current.remove(); clienteMarkerRef.current = null; }
     if (!punto) return;
 
-    const color = zona === undefined ? "#94a3b8" : zona ? "#16a34a" : "#dc2626";
-    clienteMarkerRef.current = L.marker([punto.lat, punto.lng], { icon: pinClienteIcon(color), zIndexOffset: 1000 }).addTo(map);
+    clienteMarkerRef.current = L.marker([punto.lat, punto.lng], { icon: pinClienteIcon(undefined), zIndexOffset: 1000 }).addTo(map);
     map.flyTo([punto.lat, punto.lng], 16, { duration: 0.6 });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coordenadas]);
+
+  // Actualiza el badge del pin del cliente cuando se resuelve la verificación
+  // de zona, sin recrear el marcador ni volver a hacer flyTo.
+  useEffect(() => {
+    if (clienteMarkerRef.current) {
+      clienteMarkerRef.current.setIcon(pinClienteIcon(zona === undefined ? undefined : !!zona));
+    }
+  }, [zona]);
 
   // Cambiar entre capa de calles y capa satelital
   useEffect(() => {
