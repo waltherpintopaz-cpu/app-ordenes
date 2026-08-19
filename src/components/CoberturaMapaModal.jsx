@@ -11,6 +11,48 @@ function parseCoordStr(str) {
   return { lat, lng };
 }
 
+// Pin tipo "gota" (estilo Google Maps) con sombra, para la ubicación del cliente.
+function pinClienteIcon(color, size = 34) {
+  const w = size, h = Math.round(size * 1.35);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 34 46">
+    <defs>
+      <filter id="s" x="-60%" y="-20%" width="220%" height="170%">
+        <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#0f172a" flood-opacity="0.45"/>
+      </filter>
+    </defs>
+    <path filter="url(#s)" d="M17 0C7.6 0 0 7.6 0 17c0 12.7 17 29 17 29s17-16.3 17-29C34 7.6 26.4 0 17 0z" fill="${color}"/>
+    <circle cx="17" cy="17" r="12.5" fill="rgba(255,255,255,0.22)"/>
+    <circle cx="17" cy="17" r="7" fill="#fff"/>
+  </svg>`;
+  return L.icon({
+    iconUrl: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
+    popupAnchor: [0, -h],
+  });
+}
+
+// Pin más compacto con un "!" — para leads sin cobertura pendientes de notificar.
+function pinLeadIcon(color = "#dc2626", size = 26) {
+  const w = size, h = Math.round(size * 1.35);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 26 35">
+    <defs>
+      <filter id="s" x="-60%" y="-20%" width="220%" height="170%">
+        <feDropShadow dx="0" dy="1.1" stdDeviation="1.2" flood-color="#0f172a" flood-opacity="0.45"/>
+      </filter>
+    </defs>
+    <path filter="url(#s)" d="M13 0C5.8 0 0 5.8 0 13c0 9.7 13 22 13 22s13-12.3 13-22C26 5.8 20.2 0 13 0z" fill="${color}"/>
+    <rect x="12" y="6.5" width="2" height="8" rx="1" fill="#fff"/>
+    <circle cx="13" cy="17.5" r="1.4" fill="#fff"/>
+  </svg>`;
+  return L.icon({
+    iconUrl: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
+    popupAnchor: [0, -h],
+  });
+}
+
 // Modal de pantalla completa: dibuja las zonas de cobertura (polígonos reales,
 // no un mini-mapa embebido) y marca si la ubicación del cliente cae dentro.
 export default function CoberturaMapaModal({
@@ -104,13 +146,7 @@ export default function CoberturaMapaModal({
     if (!punto) return;
 
     const color = zona === undefined ? "#94a3b8" : zona ? "#16a34a" : "#dc2626";
-    const icon = L.divIcon({
-      className: "",
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-      html: `<div style="width:22px;height:22px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.4);"></div>`,
-    });
-    clienteMarkerRef.current = L.marker([punto.lat, punto.lng], { icon, zIndexOffset: 1000 }).addTo(map);
+    clienteMarkerRef.current = L.marker([punto.lat, punto.lng], { icon: pinClienteIcon(color), zIndexOffset: 1000 }).addTo(map);
     map.flyTo([punto.lat, punto.lng], 16, { duration: 0.6 });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coordenadas]);
@@ -140,13 +176,7 @@ export default function CoberturaMapaModal({
     leadsPendientes.forEach((lead) => {
       const p = parseCoordStr(lead.coordenadas);
       if (!p) return;
-      const icon = L.divIcon({
-        className: "",
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
-        html: `<div style="width:16px;height:16px;border-radius:50%;background:#dc2626;border:2.5px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,0.4);"></div>`,
-      });
-      const m = L.marker([p.lat, p.lng], { icon, zIndexOffset: 500 }).addTo(map);
+      const m = L.marker([p.lat, p.lng], { icon: pinLeadIcon(), zIndexOffset: 500 }).addTo(map);
       m.on("click", () => { setLeadSeleccionado(lead); setErrorLead(""); });
       leadMarkersRef.current.push(m);
     });
