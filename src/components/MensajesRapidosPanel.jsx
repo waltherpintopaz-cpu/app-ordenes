@@ -16,7 +16,7 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
   const cargar = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
-    const { data, error: e } = await supabase.from("mensajes_rapidos").select("*").order("titulo", { ascending: true });
+    const { data, error: e } = await supabase.from("mensajes_rapidos").select("*").order("orden", { ascending: true }).order("id", { ascending: true });
     setError(e ? e.message : "");
     setItems(Array.isArray(data) ? data : []);
     setLoading(false);
@@ -37,7 +37,8 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
         const { error: e } = await supabase.from("mensajes_rapidos").update({ titulo, descripcion, mensaje, compartido: form.compartido }).eq("id", editingId);
         if (e) throw e;
       } else {
-        const { error: e } = await supabase.from("mensajes_rapidos").insert([{ titulo, descripcion, mensaje, compartido: form.compartido, creado_por: miNombre }]);
+        const maxOrden = items.reduce((m, x) => Math.max(m, x.orden || 0), 0);
+        const { error: e } = await supabase.from("mensajes_rapidos").insert([{ titulo, descripcion, mensaje, compartido: form.compartido, creado_por: miNombre, orden: maxOrden + 1 }]);
         if (e) throw e;
       }
       setForm(VACIO);
@@ -63,6 +64,20 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
   const misMensajes = items.filter((m) => m.creado_por === miNombre);
   const compartidosDeOtros = items.filter((m) => m.compartido && m.creado_por !== miNombre);
 
+  const mover = async (m, direccion) => {
+    const idx = misMensajes.findIndex((x) => x.id === m.id);
+    const otroIdx = idx + direccion;
+    if (otroIdx < 0 || otroIdx >= misMensajes.length) return;
+    const otro = misMensajes[otroIdx];
+    const ordenM = m.orden ?? idx;
+    const ordenOtro = otro.orden ?? otroIdx;
+    await Promise.all([
+      supabase.from("mensajes_rapidos").update({ orden: ordenOtro }).eq("id", m.id),
+      supabase.from("mensajes_rapidos").update({ orden: ordenM }).eq("id", otro.id),
+    ]);
+    await cargar();
+  };
+
   const cardBg = isDark ? "#1a2740" : "#fff";
   const borderColor = isDark ? "#2c3c58" : "#e2e8f0";
   const textColor = isDark ? "#e6ecf7" : "#111827";
@@ -78,7 +93,7 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
     fontWeight: 700, fontSize: 12, cursor: "pointer",
   });
 
-  const renderItem = (m, editable) => (
+  const renderItem = (m, editable, idx, total) => (
     <div key={m.id} style={{ background: cardBg, border: `1.5px solid ${m.compartido ? "#93c5fd" : borderColor}`, borderRadius: 10, padding: "10px 14px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -94,6 +109,10 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
         </div>
         {editable && (
           <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button title="Subir" style={{ ...btn("#6b7280", true), padding: "3px 8px" }} onClick={() => mover(m, -1)} disabled={idx === 0}>↑</button>
+              <button title="Bajar" style={{ ...btn("#6b7280", true), padding: "3px 8px" }} onClick={() => mover(m, 1)} disabled={idx === total - 1}>↓</button>
+            </div>
             <button style={{ ...btn("#2563eb", true), padding: "3px 8px", fontSize: 11 }} onClick={() => editar(m)}>Editar</button>
             <button style={{ ...btn("#dc2626", true), padding: "3px 8px", fontSize: 11 }} onClick={() => eliminar(m)}>Eliminar</button>
           </div>
@@ -157,7 +176,7 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
           {loading ? "Cargando..." : `Mis mensajes (${misMensajes.length})`}
         </div>
         <div style={{ display: "grid", gap: 8 }}>
-          {misMensajes.map((m) => renderItem(m, true))}
+          {misMensajes.map((m, i) => renderItem(m, true, i, misMensajes.length))}
           {!loading && misMensajes.length === 0 && (
             <div style={{ fontSize: 12, color: mutedColor, padding: "12px 4px" }}>Aún no tienes mensajes creados.</div>
           )}
@@ -170,7 +189,7 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
           Compartidos por otros agentes ({compartidosDeOtros.length})
         </div>
         <div style={{ display: "grid", gap: 8 }}>
-          {compartidosDeOtros.map((m) => renderItem(m, false))}
+          {compartidosDeOtros.map((m) => renderItem(m, false, 0, 1))}
           {!loading && compartidosDeOtros.length === 0 && (
             <div style={{ fontSize: 12, color: mutedColor, padding: "12px 4px" }}>Nadie más ha compartido mensajes todavía.</div>
           )}

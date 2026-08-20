@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
-import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText } from "lucide-react";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
@@ -202,6 +202,8 @@ const getGlobalCSS = (T) => `
   .sb-tab-btn { transition: color .15s, border-color .15s; }
   .sb-btn-action { transition: opacity .15s, background .15s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
+  .sb-action-btn:hover:not(:disabled) { border-color: #cbd5e1; background: #f8fafc; box-shadow: 0 2px 6px rgba(15,23,42,0.08); }
+  .sb-action-btn { transition: border-color .15s, background .15s, box-shadow .15s; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
   .sb-tbl { border-collapse: collapse; width: 100%; }
   .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
@@ -286,6 +288,27 @@ const getS = (T) => ({
   divider:{ borderTop:`1px solid ${T.border}`, margin:"12px 0" },
   statCard: () => ({ background:T.card, border:`1px solid ${T.border}`, borderRadius:5, padding:"8px 10px", display:"flex", flexDirection:"column", gap:2 }),
 });
+
+// ─── Botón de acción "profesional": icono en circulo + label + chevron ──────
+function ActionBtn({ icon: Icon, label, color, onClick, active, activeLabel, activeColor, disabled }) {
+  const displayLabel = active && activeLabel ? activeLabel : label;
+  const displayColor = active && activeColor ? activeColor : color;
+  return (
+    <button onClick={onClick} disabled={disabled} className="sb-action-btn" style={{
+      display:"flex", alignItems:"center", gap:10, width:"100%",
+      background:"#fff", border:"1px solid #e2e8f0", borderRadius:10,
+      padding:"10px 12px", cursor: disabled ? "default" : "pointer", textAlign:"left",
+      boxShadow:"0 1px 2px rgba(15,23,42,0.05)", opacity: disabled ? 0.6 : 1,
+    }}>
+      <span style={{ width:32, height:32, borderRadius:9, background:`${displayColor}18`,
+        display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+        <Icon size={17} color={displayColor} strokeWidth={2.3} />
+      </span>
+      <span style={{ flex:1, fontSize:12.5, fontWeight:700, color:"#1e293b" }}>{displayLabel}</span>
+      <ChevronRight size={15} color="#cbd5e1" strokeWidth={2.5} />
+    </button>
+  );
+}
 
 // ─── Splash (loading / sin contacto) ─────────────────────────────────────────
 function Splash({ title, subtitle, loading, onRetry }) {
@@ -2497,14 +2520,14 @@ export default function SidebarApp() {
   // ── Mensajes rápidos: personales (solo el dueño los ve) o compartidos ────
   async function cargarMensajesRapidosSidebar() {
     try {
-      const cols = "id,titulo,descripcion,mensaje,creado_por,compartido";
+      const cols = "id,titulo,descripcion,mensaje,creado_por,compartido,orden";
       const [{ data: compartidos }, { data: propios }] = await Promise.all([
         supabase.from("mensajes_rapidos").select(cols).eq("compartido", true),
         agente ? supabase.from("mensajes_rapidos").select(cols).eq("creado_por", agente) : Promise.resolve({ data: [] }),
       ]);
       const porId = new Map();
       [...(compartidos || []), ...(propios || [])].forEach((m) => porId.set(m.id, m));
-      setMensajesRapidosDisponibles(Array.from(porId.values()).sort((a, b) => a.titulo.localeCompare(b.titulo)));
+      setMensajesRapidosDisponibles(Array.from(porId.values()).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.titulo.localeCompare(b.titulo)));
     } catch { /* silencioso */ }
   }
 
@@ -3409,11 +3432,10 @@ export default function SidebarApp() {
           )}
 
           {/* ── Mini-wizard Mikrowisp ── */}
-          <div style={S.divider} />
-          <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
-            style={{ ...S.btn(mwOpen?T.slate:T.blue), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
-            🚀 {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
-          </button>
+          <div style={{ marginBottom: mwOpen ? 8 : 0 }}>
+            <ActionBtn icon={Rocket} color="#1d4ed8" label="Setup Mikrowisp" active={mwOpen} activeLabel="Cerrar Setup Mikrowisp" activeColor="#64748b"
+              onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }} />
+          </div>
 
           {mwOpen && (
             <div style={{ border:`1.5px solid #fcd34d`, borderRadius:8, overflow:"hidden", marginBottom:8 }}>
@@ -3777,18 +3799,16 @@ export default function SidebarApp() {
           )}
 
           {/* ── Ver zona de cobertura ── */}
-          <div style={S.divider} />
-          <button onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); void cargarLeadsPendientesSidebar(); void cargarPromocionesActivas(); }}
-            style={{ ...S.btn("#0284c7"), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-            🗺 Ver cobertura
-          </button>
+          <div style={{ marginTop:8 }}>
+            <ActionBtn icon={Wifi} color="#0284c7" label="Ver cobertura"
+              onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); void cargarLeadsPendientesSidebar(); void cargarPromocionesActivas(); }} />
+          </div>
 
           {/* ── Enviar promoción sin necesidad de ubicación/GPS ── */}
-          <div style={S.divider} />
-          <button onClick={() => { const abrir=!showPromoDirecta; setShowPromoDirecta(abrir); if (abrir) void cargarPromocionesActivas(); }}
-            style={{ ...S.btn(showPromoDirecta ? "#6b7280" : "#16a34a"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: showPromoDirecta ? 8 : 0 }}>
-            🎁 {showPromoDirecta ? "Cerrar promociones" : "Enviar promoción"}
-          </button>
+          <div style={{ marginTop:8, marginBottom: showPromoDirecta ? 8 : 0 }}>
+            <ActionBtn icon={Gift} color="#16a34a" label="Enviar promoción" active={showPromoDirecta} activeLabel="Cerrar promociones" activeColor="#64748b"
+              onClick={() => { const abrir=!showPromoDirecta; setShowPromoDirecta(abrir); if (abrir) void cargarPromocionesActivas(); }} />
+          </div>
           {showPromoDirecta && (
             <div style={{ marginBottom:8 }}>
               <PromoPicker
@@ -3800,11 +3820,10 @@ export default function SidebarApp() {
           )}
 
           {/* ── Mensajes rápidos (personales o compartidos) ── */}
-          <div style={S.divider} />
-          <button onClick={() => { const abrir=!showMensajesRapidos; setShowMensajesRapidos(abrir); if (abrir) void cargarMensajesRapidosSidebar(); }}
-            style={{ ...S.btn(showMensajesRapidos ? "#6b7280" : "#2563eb"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: showMensajesRapidos ? 8 : 0 }}>
-            💬 {showMensajesRapidos ? "Cerrar mensajes rápidos" : "Mensajes rápidos"}
-          </button>
+          <div style={{ marginTop:8, marginBottom: showMensajesRapidos ? 8 : 0 }}>
+            <ActionBtn icon={MessageSquare} color="#2563eb" label="Mensajes rápidos" active={showMensajesRapidos} activeLabel="Cerrar mensajes rápidos" activeColor="#64748b"
+              onClick={() => { const abrir=!showMensajesRapidos; setShowMensajesRapidos(abrir); if (abrir) void cargarMensajesRapidosSidebar(); }} />
+          </div>
           {showMensajesRapidos && (
             <div style={{ marginBottom:8 }}>
               <MensajeRapidoPicker
@@ -3815,15 +3834,14 @@ export default function SidebarApp() {
           )}
 
           {/* ── Demo IPTV para prospecto no registrado ── */}
-          <div style={S.divider} />
-          <button onClick={() => {
-              const abriendo = !showDemoNoRegistrado;
-              setShowDemoNoRegistrado(abriendo);
-              if (abriendo) { setIptvData(null); setDemoNombre(""); setDemoPantallas("1"); setDemoHoras("24"); }
-            }}
-            style={{ ...S.btn(showDemoNoRegistrado ? "#6b7280" : "#7c3aed"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: showDemoNoRegistrado ? 8 : 0 }}>
-            🎬 {showDemoNoRegistrado ? "Cerrar demo" : "Crear demo IPTV"}
-          </button>
+          <div style={{ marginTop:8, marginBottom: showDemoNoRegistrado ? 8 : 0 }}>
+            <ActionBtn icon={Tv} color="#7c3aed" label="Crear demo IPTV" active={showDemoNoRegistrado} activeLabel="Cerrar demo" activeColor="#64748b"
+              onClick={() => {
+                const abriendo = !showDemoNoRegistrado;
+                setShowDemoNoRegistrado(abriendo);
+                if (abriendo) { setIptvData(null); setDemoNombre(""); setDemoPantallas("1"); setDemoHoras("24"); }
+              }} />
+          </div>
           {showDemoNoRegistrado && (
             <div style={{ border:`1px solid ${T.border}`, borderRadius:8, padding:"10px 12px", marginBottom:8 }}>
               {iptvData?.iptv_usuario ? (
@@ -3866,11 +3884,10 @@ export default function SidebarApp() {
           )}
 
           {/* ── Orden nueva para cliente no registrado ── */}
-          <div style={S.divider} />
-          <button onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }}
-            style={{ ...S.btn(showOrdenNuevo ? "#6b7280" : T.blue), display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
-            📋 {showOrdenNuevo ? "Cancelar" : "Crear orden de instalación"}
-          </button>
+          <div style={{ marginTop:8 }}>
+            <ActionBtn icon={ClipboardList} color="#1d4ed8" label="Crear orden de instalación" active={showOrdenNuevo} activeLabel="Cancelar" activeColor="#64748b"
+              onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }} />
+          </div>
 
           {showOrdenNuevo && (<>
             {ordenCreada ? (
