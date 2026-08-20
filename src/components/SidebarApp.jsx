@@ -1886,23 +1886,30 @@ export default function SidebarApp() {
     setDniResultados([]);
     setDniSel(null);
     try {
-      let qBuilder = supabase
-        .from("mikrowisp_clientes")
-        .select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado")
+      const isNumeric = /^\d+$/.test(q);
+
+      let qMkw = supabase.from("mikrowisp_clientes").select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado").limit(6);
+      let qLocal = supabase.from("clientes")
+        .select("id,dni,nombre,celular,direccion,nodo,vlan,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa,ubicacion")
         .limit(6);
 
-      const isNumeric = /^\d+$/.test(q);
       if (isNumeric) {
-        qBuilder = qBuilder.ilike("cedula", `%${q}%`);
+        qMkw = qMkw.ilike("cedula", `%${q}%`);
+        qLocal = qLocal.ilike("dni", `%${q}%`);
       } else {
         // Buscar por cada palabra del nombre (en cualquier orden)
         const palabras = q.split(/\s+/).filter(p => p.length > 1);
-        for (const p of palabras) qBuilder = qBuilder.ilike("nombre", `%${p}%`);
+        for (const p of palabras) { qMkw = qMkw.ilike("nombre", `%${p}%`); qLocal = qLocal.ilike("nombre", `%${p}%`); }
       }
 
-      const { data } = await qBuilder;
-      if (!data?.length) notify("No se encontró cliente", false);
-      else setDniResultados(data);
+      const [{ data: mkwData }, { data: localData }] = await Promise.all([qMkw, qLocal]);
+      const resultados = [
+        ...(mkwData || []).map(r => ({ ...r, _tipo: "mikrowisp" })),
+        // No listar como "local" a un prospecto que ya salió en los resultados de Mikrowisp (mismo DNI)
+        ...(localData || []).filter(r => !(mkwData || []).some(m => String(m.cedula) === String(r.dni))).map(r => ({ ...r, _tipo: "local" })),
+      ];
+      if (!resultados.length) notify("No se encontró cliente", false);
+      else setDniResultados(resultados);
     } catch(e) { notify("Error: " + e.message, false); }
     setDniBuscando(false);
   }
@@ -1916,6 +1923,38 @@ export default function SidebarApp() {
     try { await cargarDesdeRow(row); }
     catch(e) { setError("Error al cargar: " + e.message); }
     setLoading(false);
+  }
+
+  // Prospecto que existe en la tabla interna "clientes" pero aun no tiene
+  // cuenta en Mikrowisp (ej. orden creada antes de activar el servicio).
+  async function verInfoClienteLocal(row) {
+    setError(null);
+    setDniResultados([]);
+    setDniSel(null);
+    setDniBusq("");
+    setLoading(true);
+    try { await cargarDesdeClienteLocal(row); }
+    catch(e) { setError("Error al cargar: " + e.message); }
+    setLoading(false);
+  }
+
+  async function agregarTelefonoLocal(row) {
+    if (!contact?.phone_number) return;
+    setAgregando(true);
+    try {
+      const rawPhone = contact.phone_number.replace(/[^\d]/g, "");
+      const celActual = row.celular || "";
+      if (celActual.includes(rawPhone)) {
+        notify("Este número ya está registrado en el cliente", false);
+        setAgregando(false); return;
+      }
+      const nuevoCel = celActual ? `${celActual},${rawPhone}` : rawPhone;
+      const { error } = await supabase.from("clientes").update({ celular: nuevoCel }).eq("id", row.id);
+      if (error) throw error;
+      notify("✅ Número agregado");
+      await verInfoClienteLocal({ ...row, celular: nuevoCel });
+    } catch(e) { notify("Error al guardar: " + e.message, false); }
+    setAgregando(false);
   }
 
   // Agrega rawPhone al telefonos/movil de una fila de mikrowisp_clientes (cache
@@ -3397,23 +3436,50 @@ export default function SidebarApp() {
           {dniResultados.length > 0 && (
             <div style={{ border:`1px solid ${T.border}`, borderRadius:6, overflow:"hidden", marginBottom:8 }}>
               {dniResultados.map((row, idx) => {
-                const sel = dniSel?.mikrowisp_id === row.mikrowisp_id && dniSel?.nodo === row.nodo;
+                const esLocal = row._tipo === "local";
+                const sel = dniSel?._tipo === row._tipo && dniSel?.nodo === row.nodo &&
+                  (esLocal ? dniSel?.id === row.id : dniSel?.mikrowisp_id === row.mikrowisp_id);
                 return (
-                  <div key={`${row.mikrowisp_id}-${row.nodo}`} onClick={() => setDniSel(sel ? null : row)}
+                  <div key={`${row._tipo}-${esLocal ? row.id : row.mikrowisp_id}-${row.nodo}`} onClick={() => setDniSel(sel ? null : row)}
                     style={{ background: sel ? T.accent : idx % 2 === 0 ? "#fff" : T.bg,
                       borderBottom: idx < dniResultados.length - 1 ? `1px solid ${T.border}` : "none",
                       padding:"8px 12px", cursor:"pointer",
                       borderLeft: sel ? `3px solid ${T.blue}` : "3px solid transparent" }}>
-                    <div style={{ fontWeight:600, fontSize:12, color:T.navy }}>{row.nombre}</div>
-                    <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
-                      DNI {row.cedula} · #{row.mikrowisp_id} · Nodo {row.nodo} · <span style={{ color: row.estado==="ACTIVO"?T.green:T.red }}>{row.estado}</span>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontWeight:600, fontSize:12, color:T.navy }}>{row.nombre}</span>
+                      {esLocal && (
+                        <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:999, background:"#fef9c3", color:"#854d0e" }}>
+                          Sin Mikrowisp
+                        </span>
+                      )}
                     </div>
+                    {esLocal ? (
+                      <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
+                        DNI {row.dni} · Nodo {row.nodo || "—"} · <span style={{ color: row.estado_servicio==="ACTIVO"?T.green:T.red }}>{row.estado_servicio || "sin estado"}</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
+                        DNI {row.cedula} · #{row.mikrowisp_id} · Nodo {row.nodo} · <span style={{ color: row.estado==="ACTIVO"?T.green:T.red }}>{row.estado}</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
-          {dniSel && (
+          {dniSel && dniSel._tipo === "local" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+              <button onClick={() => verInfoClienteLocal(dniSel)} className="sb-btn-action"
+                style={{ ...S.btn(T.blue) }}>Ver información del cliente</button>
+              {contact?.phone_number && (
+                <button onClick={() => agregarTelefonoLocal(dniSel)} disabled={agregando} className="sb-btn-action"
+                  style={{ ...S.btn(T.green), opacity:agregando?0.6:1 }}>
+                  {agregando ? "Guardando..." : `Agregar ${contact.phone_number} a este cliente`}
+                </button>
+              )}
+            </div>
+          )}
+          {dniSel && dniSel._tipo !== "local" && (
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               <button onClick={() => verInfoCliente(dniSel)} className="sb-btn-action"
                 style={{ ...S.btn(T.blue) }}>Ver información del cliente</button>
