@@ -482,13 +482,19 @@ function getEstadoOperativoBadgeStyle(value = "") {
   if (estado.includes("proceso")) {
     return {
       ...base,
-      padding: "8px 14px",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "6px",
+      padding: "7px 14px",
       fontSize: "13px",
       fontWeight: "800",
-      background: "#fef3c7",
-      color: "#92400e",
-      border: "1px solid #f59e0b",
-      boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.18)",
+      letterSpacing: "0.2px",
+      textTransform: "uppercase",
+      background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+      color: "#fff",
+      border: "1px solid #1e40af",
+      boxShadow: "0 2px 8px rgba(37, 99, 235, 0.4)",
+      animation: "pulseEnProceso 1.6s ease-in-out infinite",
     };
   }
   return {
@@ -16504,8 +16510,14 @@ export default function App() {
                   const fechaTexto = String(item.fechaActuacion || "").slice(0, 10);
                   const esPasada = fechaTexto && fechaTexto < today;
                   const bloqueadoPorNodo = esGestorSesion && nodosAccesoGestoraSet.size > 0 && !!item.nodo && !tieneAccesoNodoSesion(item.nodo);
+                  const enProceso = String(item.estado || "").toLowerCase().includes("proceso");
                   return (
-                    <div key={item.id} style={{ background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5", borderLeft: `4px solid ${accentColor}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(15,23,42,0.04)" }}>
+                    <div key={item.id} style={{
+                      background: enProceso ? (isDark ? "#132b4d" : "#eff6ff") : (isDark ? "#1a2740" : "#fff"),
+                      border: enProceso ? "1px solid #93c5fd" : (isDark ? "1px solid #2c3c58" : "1px solid #e8edf5"),
+                      borderLeft: `4px solid ${enProceso ? "#2563eb" : accentColor}`, borderRadius: 14, overflow: "hidden",
+                      boxShadow: enProceso ? "0 1px 10px rgba(37,99,235,0.15)" : "0 1px 6px rgba(15,23,42,0.04)",
+                    }}>
 
                       {/* ── Fila superior: código + hora + badges + acciones ── */}
                       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
@@ -16529,7 +16541,10 @@ export default function App() {
                           )}
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: tipoBadge.bg, color: tipoBadge.color, border: `1px solid ${tipoBadge.border}` }}>{tipoBadge.label}</span>
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad || "Normal"}</span>
-                          <span style={getEstadoOperativoBadgeStyle(item.estado)}>{item.estado || "Pendiente"}</span>
+                          <span style={getEstadoOperativoBadgeStyle(item.estado)}>
+                            {String(item.estado || "").toLowerCase().includes("proceso") && <span style={{ fontSize: 12 }}>⚙️</span>}
+                            {item.estado || "Pendiente"}
+                          </span>
                           {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>Vencida</span>}
                           {bloqueadoPorNodo && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#6b7280", border: "1px solid #d1d5db" }}>🔒 Sin acceso</span>}
                         </div>
