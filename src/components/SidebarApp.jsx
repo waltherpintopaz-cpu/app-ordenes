@@ -202,8 +202,8 @@ const getGlobalCSS = (T) => `
   .sb-tab-btn { transition: color .15s, border-color .15s; }
   .sb-btn-action { transition: opacity .15s, background .15s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
-  .sb-action-btn:hover:not(:disabled) { border-color: #cbd5e1; background: #f8fafc; box-shadow: 0 2px 6px rgba(15,23,42,0.08); }
-  .sb-action-btn { transition: border-color .15s, background .15s, box-shadow .15s; }
+  .sb-action-btn:hover:not(:disabled) { filter: brightness(0.97); box-shadow: 0 2px 8px rgba(15,23,42,0.1); transform: translateY(-1px); }
+  .sb-action-btn { transition: filter .15s, box-shadow .15s, transform .15s; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
   .sb-tbl { border-collapse: collapse; width: 100%; }
   .sb-tbl td, .sb-tbl th { padding: 7px 10px; vertical-align: middle; }
@@ -296,11 +296,11 @@ function ActionBtn({ icon: Icon, label, color, onClick, active, activeLabel, act
   return (
     <button onClick={onClick} disabled={disabled} className="sb-action-btn" style={{
       display:"flex", alignItems:"center", gap:10, width:"100%",
-      background:"#fff", border:"1px solid #e2e8f0", borderRadius:10,
+      background:`${displayColor}0d`, border:`1px solid ${displayColor}30`, borderRadius:10,
       padding:"10px 12px", cursor: disabled ? "default" : "pointer", textAlign:"left",
-      boxShadow:"0 1px 2px rgba(15,23,42,0.05)", opacity: disabled ? 0.6 : 1,
+      boxShadow:"0 1px 2px rgba(15,23,42,0.04)", opacity: disabled ? 0.6 : 1,
     }}>
-      <span style={{ width:32, height:32, borderRadius:9, background:`${displayColor}18`,
+      <span style={{ width:32, height:32, borderRadius:9, background:`${displayColor}22`,
         display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
         <Icon size={17} color={displayColor} strokeWidth={2.3} />
       </span>
