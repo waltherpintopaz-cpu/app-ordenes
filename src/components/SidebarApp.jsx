@@ -8,6 +8,7 @@ import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import { buscarZonaCobertura } from "../utils/cobertura.js";
 import CoberturaMapaModal from "./CoberturaMapaModal.jsx";
 import PromoPicker from "./PromoPicker.jsx";
+import MensajeRapidoPicker from "./MensajeRapidoPicker.jsx";
 
 // ─── Captura temprana de postMessage ─────────────────────────────────────────
 // Chatwoot puede enviar el "appContext" apenas el iframe termina de cargar,
@@ -528,6 +529,8 @@ export default function SidebarApp() {
   const [vinculando,   setVinculando]   = useState(false);
   const [modoBusquedaManual, setModoBusquedaManual] = useState(false);
   const [showPromoDirecta, setShowPromoDirecta] = useState(false);
+  const [showMensajesRapidos, setShowMensajesRapidos] = useState(false);
+  const [mensajesRapidosDisponibles, setMensajesRapidosDisponibles] = useState([]);
   // Crear orden desde sidebar
   const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
@@ -2491,6 +2494,26 @@ export default function SidebarApp() {
     await enviarMensajeChatwootDirecto(phone, texto);
   }
 
+  // ── Mensajes rápidos: personales (solo el dueño los ve) o compartidos ────
+  async function cargarMensajesRapidosSidebar() {
+    try {
+      const cols = "id,titulo,descripcion,mensaje,creado_por,compartido";
+      const [{ data: compartidos }, { data: propios }] = await Promise.all([
+        supabase.from("mensajes_rapidos").select(cols).eq("compartido", true),
+        agente ? supabase.from("mensajes_rapidos").select(cols).eq("creado_por", agente) : Promise.resolve({ data: [] }),
+      ]);
+      const porId = new Map();
+      [...(compartidos || []), ...(propios || [])].forEach((m) => porId.set(m.id, m));
+      setMensajesRapidosDisponibles(Array.from(porId.values()).sort((a, b) => a.titulo.localeCompare(b.titulo)));
+    } catch { /* silencioso */ }
+  }
+
+  async function enviarMensajeRapidoCliente(msg) {
+    const phone = contact?.phone_number;
+    if (!phone) throw new Error("No hay número de contacto en esta conversación");
+    await enviarMensajeChatwootDirecto(phone, msg.mensaje);
+  }
+
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
@@ -3772,6 +3795,21 @@ export default function SidebarApp() {
                 promociones={promocionesActivas}
                 onEnviarPromocion={enviarPromocionCliente}
                 onEnviarPromocionBloque={enviarBloquePromocion}
+              />
+            </div>
+          )}
+
+          {/* ── Mensajes rápidos (personales o compartidos) ── */}
+          <div style={S.divider} />
+          <button onClick={() => { const abrir=!showMensajesRapidos; setShowMensajesRapidos(abrir); if (abrir) void cargarMensajesRapidosSidebar(); }}
+            style={{ ...S.btn(showMensajesRapidos ? "#6b7280" : "#2563eb"), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: showMensajesRapidos ? 8 : 0 }}>
+            💬 {showMensajesRapidos ? "Cerrar mensajes rápidos" : "Mensajes rápidos"}
+          </button>
+          {showMensajesRapidos && (
+            <div style={{ marginBottom:8 }}>
+              <MensajeRapidoPicker
+                mensajes={mensajesRapidosDisponibles}
+                onEnviar={enviarMensajeRapidoCliente}
               />
             </div>
           )}

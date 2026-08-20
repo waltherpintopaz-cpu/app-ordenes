@@ -10,6 +10,7 @@ import PlantaExternaPanel from "./components/PlantaExternaPanel";
 import InventarioPanel from "./components/InventarioPanel";
 import MapaPanel from "./components/MapaPanel";
 import PromocionesPanel from "./components/PromocionesPanel";
+import MensajesRapidosPanel from "./components/MensajesRapidosPanel";
 import SmartOltPanel from "./components/SmartOltPanel";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
@@ -293,6 +294,7 @@ const MENU_VISTAS_WEB = [
   { key: "nap", label: "Cajas NAP" },
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "promociones", label: "Promociones" },
+  { key: "mensajesRapidos", label: "Mensajes Rápidos" },
   { key: "recordatorios", label: "Recordatorios" },
   { key: "reclamaciones", label: "Libro de Reclamos" },
   { key: "logs", label: "Logs" },
@@ -307,7 +309,7 @@ const MENU_VISTAS_WEB = [
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "promociones", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
 };
@@ -21298,6 +21300,10 @@ export default function App() {
 
         {vistaActiva === "promociones" && (
           <PromocionesPanel theme={theme} />
+        )}
+
+        {vistaActiva === "mensajesRapidos" && (
+          <MensajesRapidosPanel theme={theme} sessionUser={usuarioSesion} />
         )}
 
         {vistaActiva === "recordatorios" && (
