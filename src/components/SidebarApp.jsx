@@ -290,22 +290,23 @@ const getS = (T) => ({
 });
 
 // ─── Botón de acción "profesional": icono en circulo + label + chevron ──────
-function ActionBtn({ icon: Icon, label, color, onClick, active, activeLabel, activeColor, disabled }) {
+function ActionBtn({ icon: Icon, label, color, onClick, active, activeLabel, activeColor, disabled, isDark }) {
   const displayLabel = active && activeLabel ? activeLabel : label;
   const displayColor = active && activeColor ? activeColor : color;
   return (
     <button onClick={onClick} disabled={disabled} className="sb-action-btn" style={{
       display:"flex", alignItems:"center", gap:10, width:"100%",
-      background:`${displayColor}0d`, border:`1px solid ${displayColor}30`, borderRadius:10,
+      background: isDark ? `${displayColor}26` : `${displayColor}0d`,
+      border:`1px solid ${displayColor}${isDark ? "55" : "30"}`, borderRadius:10,
       padding:"10px 12px", cursor: disabled ? "default" : "pointer", textAlign:"left",
-      boxShadow:"0 1px 2px rgba(15,23,42,0.04)", opacity: disabled ? 0.6 : 1,
+      boxShadow: isDark ? "none" : "0 1px 2px rgba(15,23,42,0.04)", opacity: disabled ? 0.6 : 1,
     }}>
-      <span style={{ width:32, height:32, borderRadius:9, background:`${displayColor}22`,
+      <span style={{ width:32, height:32, borderRadius:9, background:`${displayColor}${isDark ? "40" : "22"}`,
         display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
         <Icon size={17} color={displayColor} strokeWidth={2.3} />
       </span>
-      <span style={{ flex:1, fontSize:12.5, fontWeight:700, color:"#1e293b" }}>{displayLabel}</span>
-      <ChevronRight size={15} color="#cbd5e1" strokeWidth={2.5} />
+      <span style={{ flex:1, fontSize:12.5, fontWeight:700, color: isDark ? "#e5e7eb" : "#1e293b" }}>{displayLabel}</span>
+      <ChevronRight size={15} color={isDark ? "#5b6472" : "#cbd5e1"} strokeWidth={2.5} />
     </button>
   );
 }
@@ -3433,7 +3434,7 @@ export default function SidebarApp() {
 
           {/* ── Mini-wizard Mikrowisp ── */}
           <div style={{ marginBottom: mwOpen ? 8 : 0 }}>
-            <ActionBtn icon={Rocket} color="#1d4ed8" label="Setup Mikrowisp" active={mwOpen} activeLabel="Cerrar Setup Mikrowisp" activeColor="#64748b"
+            <ActionBtn isDark={isDark} icon={Rocket} color="#1d4ed8" label="Setup Mikrowisp" active={mwOpen} activeLabel="Cerrar Setup Mikrowisp" activeColor="#64748b"
               onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }} />
           </div>
 
@@ -3800,13 +3801,13 @@ export default function SidebarApp() {
 
           {/* ── Ver zona de cobertura ── */}
           <div style={{ marginTop:8 }}>
-            <ActionBtn icon={Wifi} color="#0284c7" label="Ver cobertura"
+            <ActionBtn isDark={isDark} icon={Wifi} color="#0284c7" label="Ver cobertura"
               onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); void cargarLeadsPendientesSidebar(); void cargarPromocionesActivas(); }} />
           </div>
 
           {/* ── Enviar promoción sin necesidad de ubicación/GPS ── */}
           <div style={{ marginTop:8, marginBottom: showPromoDirecta ? 8 : 0 }}>
-            <ActionBtn icon={Gift} color="#16a34a" label="Enviar promoción" active={showPromoDirecta} activeLabel="Cerrar promociones" activeColor="#64748b"
+            <ActionBtn isDark={isDark} icon={Gift} color="#16a34a" label="Enviar promoción" active={showPromoDirecta} activeLabel="Cerrar promociones" activeColor="#64748b"
               onClick={() => { const abrir=!showPromoDirecta; setShowPromoDirecta(abrir); if (abrir) void cargarPromocionesActivas(); }} />
           </div>
           {showPromoDirecta && (
@@ -3821,7 +3822,7 @@ export default function SidebarApp() {
 
           {/* ── Mensajes rápidos (personales o compartidos) ── */}
           <div style={{ marginTop:8, marginBottom: showMensajesRapidos ? 8 : 0 }}>
-            <ActionBtn icon={MessageSquare} color="#2563eb" label="Mensajes rápidos" active={showMensajesRapidos} activeLabel="Cerrar mensajes rápidos" activeColor="#64748b"
+            <ActionBtn isDark={isDark} icon={MessageSquare} color="#2563eb" label="Mensajes rápidos" active={showMensajesRapidos} activeLabel="Cerrar mensajes rápidos" activeColor="#64748b"
               onClick={() => { const abrir=!showMensajesRapidos; setShowMensajesRapidos(abrir); if (abrir) void cargarMensajesRapidosSidebar(); }} />
           </div>
           {showMensajesRapidos && (
@@ -3835,7 +3836,7 @@ export default function SidebarApp() {
 
           {/* ── Demo IPTV para prospecto no registrado ── */}
           <div style={{ marginTop:8, marginBottom: showDemoNoRegistrado ? 8 : 0 }}>
-            <ActionBtn icon={Tv} color="#7c3aed" label="Crear demo IPTV" active={showDemoNoRegistrado} activeLabel="Cerrar demo" activeColor="#64748b"
+            <ActionBtn isDark={isDark} icon={Tv} color="#7c3aed" label="Crear demo IPTV" active={showDemoNoRegistrado} activeLabel="Cerrar demo" activeColor="#64748b"
               onClick={() => {
                 const abriendo = !showDemoNoRegistrado;
                 setShowDemoNoRegistrado(abriendo);
@@ -3885,7 +3886,7 @@ export default function SidebarApp() {
 
           {/* ── Orden nueva para cliente no registrado ── */}
           <div style={{ marginTop:8 }}>
-            <ActionBtn icon={ClipboardList} color="#1d4ed8" label="Crear orden de instalación" active={showOrdenNuevo} activeLabel="Cancelar" activeColor="#64748b"
+            <ActionBtn isDark={isDark} icon={ClipboardList} color="#1d4ed8" label="Crear orden de instalación" active={showOrdenNuevo} activeLabel="Cancelar" activeColor="#64748b"
               onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }} />
           </div>
 
