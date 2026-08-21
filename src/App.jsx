@@ -1032,6 +1032,16 @@ function safeIncludes(value, search) {
   return String(value || "").toLowerCase().includes(search);
 }
 
+// El monto solo cuenta para reportes/totales si el cobro realmente se realizo
+// (cobro_realizado === "SI"). Si el tecnico dejo un monto de referencia pero
+// marco "Cobro realizado: NO", ese dinero no entro a caja y no debe sumarse.
+function montoCobradoEfectivo(item) {
+  const cobrado = String(item?.liquidacion?.cobroRealizado ?? item?.cobroRealizado ?? "NO").trim().toUpperCase() === "SI";
+  if (!cobrado) return 0;
+  const n = Number(item?.liquidacion?.montoCobrado ?? item?.montoCobrado ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function clienteMergeKey(item = {}) {
   const id = String(item?.id || "")
     .trim()
@@ -12342,10 +12352,7 @@ export default function App() {
       String(item.tipoActuacion || "").toLowerCase().includes("recup")
     ).length;
     const costoActuacion = instalaciones * reporteConfigCostoInstal + incidencias * reporteConfigCostoInciden + recuperaciones * reporteConfigCostoRecuperacion;
-    const montoCobrado = liquidacionesReporte.reduce((acc, item) => {
-      const n = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
-      return acc + (Number.isFinite(n) ? n : 0);
-    }, 0);
+    const montoCobrado = liquidacionesReporte.reduce((acc, item) => acc + montoCobradoEfectivo(item), 0);
     return { instalaciones, incidencias, recuperaciones, costoActuacion, montoCobrado };
   }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden, reporteConfigCostoRecuperacion]);
 
@@ -12463,7 +12470,7 @@ export default function App() {
         const ct = Number(m?.costoTotal ?? m?.costo_total ?? cu * cant);
         return acc + (Number.isFinite(ct) ? ct : 0);
       }, 0);
-      const montoCobrado = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+      const montoCobrado = montoCobradoEfectivo(item);
       return { codigo: item.codigo, nombre: item.nombre, tecnico: item.liquidacion?.tecnicoLiquida || item.tecnico || "-", nodo: item.nodo, fecha: item.fechaLiquidacion, tipoActuacion: item.tipoActuacion, costoAct, costoMat, costoTotal: costoAct + costoMat, montoCobrado };
     });
   }, [liquidacionesReporte, reporteConfigCostoInstal, reporteConfigCostoInciden, reporteConfigCostoRecuperacion]);
@@ -12496,13 +12503,13 @@ export default function App() {
         const p = Number(e?.precioUnitario ?? e?.precio_unitario ?? 0);
         return acc + (Number.isFinite(p) ? p : 0);
       }, 0);
-      const montoCobrado = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+      const montoCobrado = montoCobradoEfectivo(item);
       const prev = map.get(tec) || { tecnico: tec, actuaciones: 0, costoMateriales: 0, equiposInstalados: 0, valorEquiposInstalados: 0, montoCobrado: 0 };
       prev.actuaciones += 1;
       prev.costoMateriales += costoMat;
       prev.equiposInstalados += eqs.length;
       prev.valorEquiposInstalados += valorEq;
-      prev.montoCobrado += Number.isFinite(montoCobrado) ? montoCobrado : 0;
+      prev.montoCobrado += montoCobrado;
       map.set(tec, prev);
     }
     return Array.from(map.values()).sort((a, b) => b.actuaciones - a.actuaciones);
@@ -12572,7 +12579,7 @@ export default function App() {
     const rows = liquidacionesReporte
       .map((item, idx) => {
         const tecnico = item.liquidacion?.tecnicoLiquida || item.tecnico || "-";
-        const monto = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+        const monto = montoCobradoEfectivo(item);
         return `<tr>
           <td>${idx + 1}</td>
           <td>${escHtml(item.fechaLiquidacion || "-")}</td>
@@ -12903,7 +12910,7 @@ export default function App() {
     const tiposCountRows = Object.entries(tiposCount).sort((a, b) => b[1] - a[1]);
 
     const rows = liquidacionesReporte.map((item, idx) => {
-      const monto = Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0);
+      const monto = montoCobradoEfectivo(item);
       const usuario = String(item.usuarioNodo || "").trim() || "-";
       const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
       const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
@@ -14136,7 +14143,7 @@ export default function App() {
       item.dni || "-",
       item.nodo || "-",
       item.liquidacion?.tecnicoLiquida || item.tecnico || "-",
-      Number(item.liquidacion?.montoCobrado || item.montoCobrado || 0).toFixed(2),
+      montoCobradoEfectivo(item).toFixed(2),
     ]);
     descargarCsv("reporte_actuaciones.csv", ["Fecha", "Codigo", "Tipo actuacion", "Cliente", "DNI", "Nodo", "Tecnico", "Monto"], rows);
   };
