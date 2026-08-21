@@ -504,7 +504,7 @@ function getEstadoOperativoBadgeStyle(value = "") {
   };
 }
 
-function sugerirUsuarioPorNodo(nodo = "", usados = [], habilitadosManual = []) {
+function sugerirUsuarioPorNodo(nodo = "", usados = [], habilitadosManual = [], siempreExcluir = []) {
   const key = normalizeNodoKey(nodo);
   const rule = NODO_USUARIO_RULES[key];
   if (!rule) return "";
@@ -513,7 +513,12 @@ function sugerirUsuarioPorNodo(nodo = "", usados = [], habilitadosManual = []) {
   const base = Number.isFinite(Number(rule.start)) ? Number(rule.start) : 1;
   const pad = Number.isFinite(Number(rule.pad)) ? Number(rule.pad) : 0;
   const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`, "i");
-  const usadosNorm = new Set((Array.isArray(usados) ? usados : []).map((v) => String(v || "").trim().toLowerCase()).filter(Boolean));
+  const lista = Array.isArray(usados) ? usados : [];
+  // Colisiones: cualquier usuario ya existente (de cualquier nodo) no se debe repetir.
+  const usadosNorm = new Set([
+    ...lista.map((v) => String(v?.usuario ?? v ?? "").trim().toLowerCase()),
+    ...(Array.isArray(siempreExcluir) ? siempreExcluir : []).map((v) => String(v || "").trim().toLowerCase()),
+  ].filter(Boolean));
 
   const manualNums = (Array.isArray(habilitadosManual) ? habilitadosManual : [])
     .map((v) => String(v || "").trim())
@@ -530,20 +535,26 @@ function sugerirUsuarioPorNodo(nodo = "", usados = [], habilitadosManual = []) {
     return `${prefix}${numText}${suffix}`;
   }
 
-  const nums = (Array.isArray(usados) ? usados : [])
-    .map((v) => String(v || "").trim())
+  // La secuencia (para saber por donde continuar) solo cuenta registros que
+  // realmente pertenecen a este nodo — evita que un dato suelto de otro nodo
+  // (o sin nodo, ej. un cliente especial con numero reservado) descuadre el conteo.
+  const nums = lista
+    .filter((v) => normalizeNodoKey(v?.nodo) === key)
+    .map((v) => String(v?.usuario ?? "").trim())
     .filter(Boolean)
     .map((v) => {
       const m = v.match(pattern);
       return m ? Number(m[1]) : NaN;
     })
     .filter((n) => Number.isFinite(n));
-  const next = Math.max(base - 1, ...nums) + 1;
+  let next = Math.max(base - 1, ...nums) + 1;
+  // Por las dudas, si ese numero ya esta ocupado por otro registro (de cualquier nodo), seguir avanzando.
+  while (usadosNorm.has(`${prefix}${pad > 0 ? String(next).padStart(pad, "0") : next}${suffix}`.toLowerCase())) next += 1;
   const numText = pad > 0 ? String(next).padStart(pad, "0") : String(next);
   return `${prefix}${numText}${suffix}`;
 }
 
-function listarUsuariosDisponiblesParaNodo(nodo = "", usados = [], habilitadosManual = [], cantidad = 10) {
+function listarUsuariosDisponiblesParaNodo(nodo = "", usados = [], habilitadosManual = [], cantidad = 10, siempreExcluir = []) {
   const key = normalizeNodoKey(nodo);
   const rule = NODO_USUARIO_RULES[key];
   if (!rule) return [];
@@ -552,7 +563,11 @@ function listarUsuariosDisponiblesParaNodo(nodo = "", usados = [], habilitadosMa
   const base = Number.isFinite(Number(rule.start)) ? Number(rule.start) : 1;
   const pad = Number.isFinite(Number(rule.pad)) ? Number(rule.pad) : 0;
   const pattern = new RegExp(`^${escapeRegExp(prefix)}(\\d+)${escapeRegExp(suffix)}$`, "i");
-  const usadosNorm = new Set((Array.isArray(usados) ? usados : []).map((v) => String(v || "").trim().toLowerCase()).filter(Boolean));
+  const lista = Array.isArray(usados) ? usados : [];
+  const usadosNorm = new Set([
+    ...lista.map((v) => String(v?.usuario ?? v ?? "").trim().toLowerCase()),
+    ...(Array.isArray(siempreExcluir) ? siempreExcluir : []).map((v) => String(v || "").trim().toLowerCase()),
+  ].filter(Boolean));
 
   // Primero los habilitados manualmente que estén libres
   const manualLibres = (Array.isArray(habilitadosManual) ? habilitadosManual : [])
@@ -560,8 +575,10 @@ function listarUsuariosDisponiblesParaNodo(nodo = "", usados = [], habilitadosMa
     .filter((v) => v && !usadosNorm.has(v.toLowerCase()))
     .filter((v) => pattern.test(v));
 
-  const nums = (Array.isArray(usados) ? usados : [])
-    .map((v) => { const m = String(v || "").trim().match(pattern); return m ? Number(m[1]) : NaN; })
+  // Igual que en sugerirUsuarioPorNodo: la secuencia solo cuenta registros de este nodo.
+  const nums = lista
+    .filter((v) => normalizeNodoKey(v?.nodo) === key)
+    .map((v) => { const m = String(v?.usuario ?? "").trim().match(pattern); return m ? Number(m[1]) : NaN; })
     .filter((n) => Number.isFinite(n));
   const maxUsado = nums.length > 0 ? Math.max(...nums) : base - 1;
 
@@ -2817,6 +2834,9 @@ export default function App() {
     [todasEtiquetas, etiquetasUsadas]
   );
 
+  // Cada entrada guarda su propio nodo para que la sugerencia de "siguiente
+  // usuario libre" de un nodo no se descuadre por datos sueltos de otro nodo
+  // (o sin nodo asignado, ej. clientes especiales con un usuario reservado).
   const usuariosNodoUsados = useMemo(() => {
     const fromOrdenes = (Array.isArray(ordenes) ? ordenes : [])
       .filter((o) => {
@@ -2825,15 +2845,28 @@ export default function App() {
           String(o?.usuarioNodoLiberado || "").trim().toLowerCase() === "true";
         return !liberado;
       })
-      .map((o) => String(o?.usuarioNodo || "").trim());
-    const fromClientes = (Array.isArray(clientes) ? clientes : []).map((c) => String(c?.usuarioNodo || "").trim());
-    const fromBloqueados = (Array.isArray(usuariosNodoBloqueados) ? usuariosNodoBloqueados : []).map((x) => String(x || "").trim());
-    return Array.from(new Set([...fromOrdenes, ...fromClientes, ...fromBloqueados].filter(Boolean)));
-  }, [ordenes, clientes, usuariosNodoBloqueados]);
+      .map((o) => ({ usuario: String(o?.usuarioNodo || "").trim(), nodo: o?.nodo || "" }));
+    const fromClientes = (Array.isArray(clientes) ? clientes : []).map((c) => ({ usuario: String(c?.usuarioNodo || "").trim(), nodo: c?.nodo || "" }));
+    const combinadas = [...fromOrdenes, ...fromClientes].filter((x) => x.usuario);
+    const vistos = new Set();
+    return combinadas.filter((x) => {
+      const key = `${x.usuario.toLowerCase()}|${normalizeNodoKey(x.nodo)}`;
+      if (vistos.has(key)) return false;
+      vistos.add(key);
+      return true;
+    });
+  }, [ordenes, clientes]);
+
+  // Usuarios bloqueados a mano por el admin: aplican para cualquier nodo,
+  // sin importar si tienen nodo asignado en clientes/ordenes o no.
+  const usuariosNodoBloqueadosSet = useMemo(
+    () => new Set((Array.isArray(usuariosNodoBloqueados) ? usuariosNodoBloqueados : []).map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)),
+    [usuariosNodoBloqueados]
+  );
 
   const usuariosDisponiblesNodo = useMemo(
-    () => listarUsuariosDisponiblesParaNodo(orden.nodo, usuariosNodoUsados, usuariosNodoHabilitadosManual, 10),
-    [orden.nodo, usuariosNodoUsados, usuariosNodoHabilitadosManual]
+    () => listarUsuariosDisponiblesParaNodo(orden.nodo, usuariosNodoUsados, usuariosNodoHabilitadosManual, 10, usuariosNodoBloqueadosSet),
+    [orden.nodo, usuariosNodoUsados, usuariosNodoHabilitadosManual, usuariosNodoBloqueadosSet]
   );
 
   const usuarioNodoOcupado = useMemo(() => {
@@ -6214,7 +6247,7 @@ export default function App() {
       if (String(prev.generarUsuario || "").toUpperCase() !== "SI") {
         return { ...prev, nodo: nextNodo, empresa: empresaAuto, vlan: vlanAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
       }
-      const sugerido = sugerirUsuarioPorNodo(nextNodo, usuariosNodoUsados, usuariosNodoHabilitadosManual);
+      const sugerido = sugerirUsuarioPorNodo(nextNodo, usuariosNodoUsados, usuariosNodoHabilitadosManual, usuariosNodoBloqueadosSet);
       if (!sugerido) return { ...prev, nodo: nextNodo, empresa: empresaAuto, vlan: vlanAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
       return {
         ...prev,
@@ -12210,23 +12243,26 @@ export default function App() {
       });
     }
     if (!q) return base;
+    // Búsqueda por palabras sueltas (cualquier orden), igual que en Clientes
+    const words = q.split(/\s+/).filter(Boolean);
     return base.filter((item) => {
-      return (
-        safeIncludes(item.codigo, q) ||
-        safeIncludes(item.dni, q) ||
-        safeIncludes(item.nombre, q) ||
-        safeIncludes(item.celular, q) ||
-        safeIncludes(item.direccion, q) ||
-        safeIncludes(item.usuarioNodo, q) ||
-        safeIncludes(item.nodo, q) ||
-        safeIncludes(item.tecnico, q) ||
-        safeIncludes(item.autorOrden, q) ||
-        safeIncludes(item.tipoActuacion, q) ||
-        safeIncludes(item.liquidacion?.tecnicoLiquida, q) ||
-        safeIncludes(item.liquidacion?.resultadoFinal, q) ||
-        safeIncludes(item.liquidacion?.medioPago, q) ||
-        safeIncludes(item.liquidacion?.codigoEtiqueta, q)
-      );
+      const texto = [
+        item.codigo,
+        item.dni,
+        item.nombre,
+        item.celular,
+        item.direccion,
+        item.usuarioNodo,
+        item.nodo,
+        item.tecnico,
+        item.autorOrden,
+        item.tipoActuacion,
+        item.liquidacion?.tecnicoLiquida,
+        item.liquidacion?.resultadoFinal,
+        item.liquidacion?.medioPago,
+        item.liquidacion?.codigoEtiqueta,
+      ].join(" ").toLowerCase();
+      return words.every((w) => texto.includes(w));
     });
   }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion, histFiltroNodo, histFiltroTipo, histFiltroDesde, histFiltroHasta]);
 
