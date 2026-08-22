@@ -67,25 +67,40 @@ function pinLeadIcon(color = "#dc2626", size = 26) {
   });
 }
 
-// Pin cuadrado — caja NAP. Color segun ocupacion (verde=espacio libre,
-// naranja=casi llena, rojo=llena) para que se distinga a simple vista del
-// pin de cliente (gota azul) y de los leads (gota roja con "!").
-function pinCajaIcon(ocupacion, size = 24) {
-  const color = ocupacion == null ? "#0284c7" : ocupacion >= 1 ? "#dc2626" : ocupacion >= 0.75 ? "#d97706" : "#16a34a";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
-    <defs>
-      <filter id="s" x="-60%" y="-60%" width="220%" height="220%">
-        <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#0f172a" flood-opacity="0.5"/>
-      </filter>
-    </defs>
-    <rect filter="url(#s)" x="3" y="3" width="18" height="18" rx="4" fill="${color}" stroke="#fff" stroke-width="2"/>
-    <rect x="7" y="7" width="10" height="10" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+// Pin de caja NAP — misma caja de fibra (con clips laterales y puertos) que
+// se usa en el navegador (Mapa NAP / Cobertura) y en la app mobile, para que
+// se vea igual en todos lados. Color segun ocupacion (verde=espacio libre,
+// naranja=casi llena, rojo=llena).
+function pinCajaIcon(ocupacion, size = 30) {
+  const llena = ocupacion != null && ocupacion >= 1;
+  const casiLlena = ocupacion != null && ocupacion >= 0.75 && ocupacion < 1;
+  const portColor = llena ? "#dc2626" : casiLlena ? "#d97706" : "#16a34a";
+  const borderColor = llena ? "#dc2626" : "#64748b";
+  const W = 22, H = 32;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40">
+    <rect x="3" y="0.5" width="22" height="33" rx="3" fill="#cfd8dc" stroke="${borderColor}" stroke-width="1.4"/>
+    <rect x="0" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/>
+    <rect x="0" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/>
+    <rect x="25" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/>
+    <rect x="25" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/>
+    <line x1="6" y1="7" x2="22" y2="7" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="6" y1="11" x2="22" y2="11" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="6" y1="15" x2="22" y2="15" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="6" y1="19" x2="22" y2="19" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="6" y1="23" x2="22" y2="23" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/>
+    <circle cx="7" cy="30" r="1.5" fill="${portColor}"/>
+    <circle cx="10" cy="30" r="1.5" fill="${portColor}"/>
+    <circle cx="13" cy="30" r="1.5" fill="${portColor}"/>
+    <circle cx="16" cy="30" r="1.5" fill="${portColor}"/>
+    <circle cx="19" cy="30" r="1.5" fill="#64748b"/>
+    <circle cx="22" cy="30" r="1.5" fill="#64748b"/>
+    <polygon points="14,34 9,40 19,40" fill="${borderColor}"/>
   </svg>`;
   return L.icon({
     iconUrl: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2],
+    iconSize: [W, H],
+    iconAnchor: [W / 2, H],
+    popupAnchor: [0, -H],
   });
 }
 
