@@ -9647,16 +9647,22 @@ export default function App() {
     // actualizo via Realtime. Ultimo seguro antes de duplicar un usuario de nodo.
     if (mostrarCamposUsuario && orden.usuarioNodo.trim() && isSupabaseConfigured) {
       const usuarioChequear = orden.usuarioNodo.trim();
+      const dniOrdenActual = String(orden.dni || "").trim();
       try {
         const [{ data: clienteVivo }, { data: ordenesVivas }] = await Promise.all([
           supabase.from(CLIENTES_TABLE).select("nombre,dni").ilike("usuario_nodo", usuarioChequear).limit(1).maybeSingle(),
-          supabase.from(ORDENES_TABLE).select("id,codigo,nombre,usuario_nodo_liberado").ilike("usuario_nodo", usuarioChequear).neq("id", ordenEditandoId ?? -1),
+          supabase.from(ORDENES_TABLE).select("id,codigo,nombre,dni,usuario_nodo_liberado").ilike("usuario_nodo", usuarioChequear).neq("id", ordenEditandoId ?? -1),
         ]);
+        // No es una colision real si el "ya en uso" es el mismo cliente para el
+        // que se esta guardando (ej. una incidencia sobre su propio usuario ya
+        // asignado, no una instalacion nueva pidiendo un usuario libre).
+        const esOtroCliente = clienteVivo && dniOrdenActual && String(clienteVivo.dni || "").trim() !== dniOrdenActual;
         const ordenViva = (ordenesVivas || []).find((o) => {
           const lib = o?.usuario_nodo_liberado === true || String(o?.usuario_nodo_liberado || "").trim().toLowerCase() === "true";
-          return !lib;
+          const mismoCliente = dniOrdenActual && String(o?.dni || "").trim() === dniOrdenActual;
+          return !lib && !mismoCliente;
         });
-        if (clienteVivo) {
+        if (esOtroCliente) {
           alert(`Ese usuario de nodo ya está en uso por el cliente "${clienteVivo.nombre}" (DNI: ${clienteVivo.dni}). Elige otro.`);
           return;
         }
