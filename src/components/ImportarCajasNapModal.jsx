@@ -1,4 +1,5 @@
 import { useState } from "react";
+import JSZip from "jszip";
 import { supabase } from "../supabaseClient";
 
 const NODOS_BASE = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
@@ -46,8 +47,26 @@ function parseKmlPuntos(xmlText) {
   return { docName, puntos };
 }
 
+async function leerKmlDesdeArchivo(file) {
+  const nombre = String(file?.name || "").toLowerCase();
+  if (nombre.endsWith(".kmz")) {
+    const buffer = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buffer);
+    const entradaKml = Object.values(zip.files).find(
+      (f) => !f.dir && f.name.toLowerCase().endsWith(".kml")
+    );
+    if (!entradaKml) throw new Error("Ese .kmz no contiene ningun archivo .kml adentro.");
+    return entradaKml.async("string");
+  }
+  if (nombre.endsWith(".kml")) {
+    return file.text();
+  }
+  throw new Error("El archivo debe ser .kmz o .kml.");
+}
+
 export default function ImportarCajasNapModal({ onClose, onImportado }) {
   const [url, setUrl] = useState("");
+  const [nombreArchivo, setNombreArchivo] = useState("");
   const [nodo, setNodo] = useState(NODOS_BASE[0]);
   const [sectorDefecto, setSectorDefecto] = useState("");
   const [preview, setPreview] = useState(null); // { mid, docName, puntos }
@@ -72,6 +91,26 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
       setPreview({ mid, docName, puntos });
     } catch (e) {
       setError(e?.message || "No se pudo importar el mapa.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onArchivoSeleccionado = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(""); setOk(""); setPreview(null);
+    setNombreArchivo(file.name);
+    setLoading(true);
+    try {
+      const xmlText = await leerKmlDesdeArchivo(file);
+      const { docName, puntos } = parseKmlPuntos(xmlText);
+      if (puntos.length === 0) throw new Error("No se encontraron pines (cajas) en ese archivo.");
+      setSectorDefecto(docName || "");
+      setPreview({ mid: null, docName, puntos });
+    } catch (e) {
+      setError(e?.message || "No se pudo leer ese archivo.");
     } finally {
       setLoading(false);
     }
@@ -119,6 +158,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
       setOk(`Listo: ${creadas} caja${creadas !== 1 ? "s" : ""} nueva${creadas !== 1 ? "s" : ""}, ${actualizadas} actualizada${actualizadas !== 1 ? "s" : ""}.`);
       setPreview(null);
       setUrl("");
+      setNombreArchivo("");
       onImportado?.();
     } catch (e) {
       setError(e?.message || "No se pudo guardar en Supabase.");
@@ -150,6 +190,18 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
               {loading ? "Leyendo..." : "Leer mapa"}
             </button>
           </div>
+
+          <div style={s.divider}>
+            <span style={s.dividerLine} /> <span>o</span> <span style={s.dividerLine} />
+          </div>
+
+          <div style={s.hint}>
+            ¿Tienes el archivo <strong>.kmz</strong> o <strong>.kml</strong> (por ejemplo, uno que te enviaron por WhatsApp)? Súbelo directo, sin necesidad de link.
+          </div>
+          <label style={s.btnArchivo}>
+            {loading ? "Leyendo..." : nombreArchivo || "📎 Elegir archivo .kmz / .kml"}
+            <input type="file" accept=".kmz,.kml" onChange={onArchivoSeleccionado} disabled={loading} style={{ display: "none" }} />
+          </label>
 
           {error && <div style={s.error}>{error}</div>}
           {ok && <div style={s.ok}>✅ {ok}</div>}
@@ -205,4 +257,7 @@ const s = {
   previewCount: { fontSize: 11, color: "#475569", marginTop: 8, marginBottom: 4 },
   previewList: { display: "flex", flexWrap: "wrap", gap: 4, maxHeight: 120, overflowY: "auto" },
   previewChip: { fontSize: 10, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 8px" },
+  divider: { display: "flex", alignItems: "center", gap: 8, fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", margin: "12px 0" },
+  dividerLine: { flex: 1, height: 1, background: "#e2e8f0" },
+  btnArchivo: { display: "block", width: "100%", boxSizing: "border-box", padding: "10px 12px", textAlign: "center", background: "#f8fafc", border: "1px dashed #94a3b8", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#334155", cursor: "pointer" },
 };
