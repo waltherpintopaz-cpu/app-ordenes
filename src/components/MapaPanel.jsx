@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { cargarZonasCobertura, invalidarZonasCobertura } from "../utils/zonasCobertura";
 import ImportarMapaCoberturaModal from "./ImportarMapaCoberturaModal";
+import ImportarCajasNapModal from "./ImportarCajasNapModal";
 
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
@@ -115,6 +116,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [showZonas, setShowZonas] = useState(true);
   const [zonas, setZonas] = useState([]);
   const [showImportarZonas, setShowImportarZonas] = useState(false);
+  const [showImportarCajas, setShowImportarCajas] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [selectedTipo, setSelectedTipo] = useState("caja");
   const [selectedId, setSelectedId] = useState("");
@@ -708,6 +710,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         <button style={{ ...btnStyle(false, "#059669") }} onClick={() => setShowImportarZonas(true)}>
           + Agregar mapa
         </button>
+        <button style={{ ...btnStyle(false, "#0284c7") }} onClick={() => setShowImportarCajas(true)}>
+          + Importar cajas
+        </button>
         <button style={{ ...btnStyle(mapType === "satellite", "#374151") }} onClick={() => setMapType((v) => v === "roadmap" ? "satellite" : "roadmap")}>
           {mapType === "roadmap" ? "🛰 Satélite" : "🗺 Normal"}
         </button>
@@ -1093,6 +1098,14 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
           zonasActuales={zonas}
           onClose={() => setShowImportarZonas(false)}
           onImportado={() => { recargarZonas(); }}
+        />
+      )}
+
+      {/* ── Importar cajas NAP desde Google My Maps ── */}
+      {showImportarCajas && (
+        <ImportarCajasNapModal
+          onClose={() => setShowImportarCajas(false)}
+          onImportado={() => { void cargar(); }}
         />
       )}
     </div>

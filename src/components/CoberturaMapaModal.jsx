@@ -67,11 +67,34 @@ function pinLeadIcon(color = "#dc2626", size = 26) {
   });
 }
 
+// Pin cuadrado — caja NAP. Color segun ocupacion (verde=espacio libre,
+// naranja=casi llena, rojo=llena) para que se distinga a simple vista del
+// pin de cliente (gota azul) y de los leads (gota roja con "!").
+function pinCajaIcon(ocupacion, size = 24) {
+  const color = ocupacion == null ? "#0284c7" : ocupacion >= 1 ? "#dc2626" : ocupacion >= 0.75 ? "#d97706" : "#16a34a";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
+    <defs>
+      <filter id="s" x="-60%" y="-60%" width="220%" height="220%">
+        <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#0f172a" flood-opacity="0.5"/>
+      </filter>
+    </defs>
+    <rect filter="url(#s)" x="3" y="3" width="18" height="18" rx="4" fill="${color}" stroke="#fff" stroke-width="2"/>
+    <rect x="7" y="7" width="10" height="10" rx="1.5" fill="rgba(255,255,255,0.85)"/>
+  </svg>`;
+  return L.icon({
+    iconUrl: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  });
+}
+
 // Modal de pantalla completa: dibuja las zonas de cobertura (polígonos reales,
 // no un mini-mapa embebido) y marca si la ubicación del cliente cae dentro.
 export default function CoberturaMapaModal({
   coordenadas, coordsLista = [], buscando, onClose, onSeleccionarCoord, onReintentar, onEnviarSinCobertura,
   leadsPendientes = [], onNotificarLead, promociones = [], onEnviarPromocion, onEnviarPromocionBloque,
+  cajasNap = [],
 }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -80,6 +103,7 @@ export default function CoberturaMapaModal({
   const capaCallesRef = useRef(null);
   const capaSatRef = useRef(null);
   const leadMarkersRef = useRef([]);
+  const cajaMarkersRef = useRef([]);
   const [zona, setZona] = useState(undefined); // undefined=verificando, null=fuera, obj=dentro
   const [zonasCargando, setZonasCargando] = useState(true);
   const [capa, setCapa] = useState("calles"); // "calles" | "satelite"
@@ -92,6 +116,8 @@ export default function CoberturaMapaModal({
   const [errorLead, setErrorLead] = useState("");
   const [showPromos, setShowPromos] = useState(false);
   const [mostrarLeads, setMostrarLeads] = useState(false);
+  const [mostrarCajas, setMostrarCajas] = useState(false);
+  const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
 
   const punto = parseCoordStr(coordenadas);
 
@@ -206,6 +232,26 @@ export default function CoberturaMapaModal({
     });
   }, [leadsPendientes, mostrarLeads]);
 
+  // Cajas NAP — ocultas por defecto, se dibujan al activar "Ver cajas".
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    cajaMarkersRef.current.forEach((m) => m.remove());
+    cajaMarkersRef.current = [];
+    if (!mostrarCajas) return;
+
+    cajasNap.forEach((caja) => {
+      const lat = Number(caja.lat), lng = Number(caja.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const cap = Number(caja.capacidad || 0);
+      const ocp = Number(caja.puertos_ocupados || 0);
+      const ocupacion = cap > 0 ? ocp / cap : null;
+      const m = L.marker([lat, lng], { icon: pinCajaIcon(ocupacion), zIndexOffset: 400 }).addTo(map);
+      m.on("click", () => setCajaSeleccionada(caja));
+      cajaMarkersRef.current.push(m);
+    });
+  }, [cajasNap, mostrarCajas]);
+
   async function notificarLeadSeleccionado() {
     if (!leadSeleccionado || !onNotificarLead) return;
     setNotificandoLead(true);
@@ -312,6 +358,20 @@ export default function CoberturaMapaModal({
             </button>
           )}
 
+          {/* Toggle ver cajas NAP (oculto por defecto) */}
+          {cajasNap.length > 0 && (
+            <button
+              onClick={() => setMostrarCajas((v) => !v)}
+              style={{ ...s.btnCajasToggle, background: mostrarCajas ? "#0284c7" : "rgba(15,23,42,0.85)" }}
+              title={mostrarCajas ? "Ocultar cajas NAP" : "Ver cajas NAP cercanas"}
+            >
+              <span style={{ ...s.checkbox, background: mostrarCajas ? "#fff" : "transparent" }}>
+                {mostrarCajas && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
+              </span>
+              Cajas ({cajasNap.length})
+            </button>
+          )}
+
           {/* Estado / badge flotante */}
           <div style={s.floatTop}>
             {buscando ? (
@@ -371,13 +431,33 @@ export default function CoberturaMapaModal({
                   <div style={s.avisoLeadNombre}>{leadSeleccionado.nombre || "Sin nombre"}</div>
                   <div style={s.avisoLeadTelefono}>{leadSeleccionado.telefono}</div>
                 </div>
-                <button onClick={() => setLeadSeleccionado(null)} style={s.btnPromoCerrar}>✕</button>
+                <button onClick={() => setLeadSeleccionado(null)} style={s.btnCerrarChico}>✕</button>
               </div>
               <div style={s.avisoFueraTexto}>Este contacto consultó antes y no tenía cobertura aquí. ¿Ya llegaste a esta zona?</div>
               <button onClick={notificarLeadSeleccionado} disabled={notificandoLead} style={{ ...s.btnAviso, background: "#16a34a", opacity: notificandoLead ? 0.7 : 1 }}>
                 {notificandoLead ? "Enviando..." : "📨 Notificar que ya hay cobertura"}
               </button>
               {errorLead && <div style={s.avisoError}>{errorLead}</div>}
+            </div>
+          )}
+
+          {/* Caja NAP seleccionada en el mapa: info de ocupacion */}
+          {cajaSeleccionada && (
+            <div style={s.avisoCaja}>
+              <div style={s.avisoLeadHeader}>
+                <div>
+                  <div style={s.avisoLeadNombre}>📦 {cajaSeleccionada.codigo || "Caja NAP"}</div>
+                  <div style={s.avisoLeadTelefono}>{cajaSeleccionada.sector || "-"} · {cajaSeleccionada.nodo || "-"}</div>
+                </div>
+                <button onClick={() => setCajaSeleccionada(null)} style={s.btnCerrarChico}>✕</button>
+              </div>
+              {Number(cajaSeleccionada.capacidad || 0) > 0 ? (
+                <div style={s.avisoFueraTexto}>
+                  Ocupación: <strong>{cajaSeleccionada.puertos_ocupados || 0}/{cajaSeleccionada.capacidad}</strong> puertos
+                </div>
+              ) : (
+                <div style={s.avisoFueraTexto}>Sin datos de capacidad registrados.</div>
+              )}
             </div>
           )}
 
@@ -440,6 +520,7 @@ const s = {
   btnCapa: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
   btnCapaIcon: { position: "absolute", top: 10, left: 10, zIndex: 1000, background: "rgba(15,23,42,0.85)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)" },
   btnLeadsToggle: { position: "absolute", top: 10, left: 52, zIndex: 1000, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, height: 34, padding: "0 12px 0 8px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", color: "#fff", fontSize: 11, fontWeight: 700 },
+  btnCajasToggle: { position: "absolute", top: 50, left: 10, zIndex: 1000, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, height: 34, padding: "0 12px 0 8px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", color: "#fff", fontSize: 11, fontWeight: 700 },
   checkbox: { width: 15, height: 15, borderRadius: 4, border: "1.5px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
   avisoFuera: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, background: "#fff", border: "1.5px solid #fecaca", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   avisoFueraTexto: { fontSize: 11.5, color: "#7f1d1d", fontWeight: 600, marginBottom: 8, lineHeight: 1.4 },
@@ -448,6 +529,8 @@ const s = {
   avisoPromo: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   btnPromo: { display: "block", width: "100%", padding: "9px 14px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 999, fontWeight: 700, fontSize: 12, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.2)" },
   avisoLead: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #86efac", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
+  avisoCaja: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #93c5fd", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
+  btnCerrarChico: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#64748b", fontWeight: 700 },
   avisoLeadHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   avisoLeadNombre: { fontSize: 13, fontWeight: 800, color: "#14532d" },
   avisoLeadTelefono: { fontSize: 11, color: "#64748b" },

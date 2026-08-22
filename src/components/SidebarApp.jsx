@@ -582,6 +582,7 @@ export default function SidebarApp() {
   const [showDemoNoRegistrado, setShowDemoNoRegistrado] = useState(false);
   const [showCoberturaModal, setShowCoberturaModal] = useState(false);
   const [leadsPendientesSidebar, setLeadsPendientesSidebar] = useState([]);
+  const [cajasNapSidebar, setCajasNapSidebar] = useState([]);
   const [promocionesActivas, setPromocionesActivas] = useState([]);
   const [creandoOrden, setCreandoOrden] = useState(false);
   const [ordenCreada,  setOrdenCreada]  = useState(null);
@@ -2491,6 +2492,18 @@ export default function SidebarApp() {
     } catch { /* silencioso */ }
   }
 
+  async function cargarCajasNapSidebar() {
+    try {
+      const { data } = await supabase
+        .from("nap_cajas")
+        .select("id,codigo,sector,nodo,lat,lng,capacidad,puertos_ocupados")
+        .not("lat", "is", null)
+        .not("lng", "is", null)
+        .limit(2000);
+      setCajasNapSidebar(Array.isArray(data) ? data : []);
+    } catch { /* silencioso */ }
+  }
+
   async function notificarLeadSidebar(lead) {
     const mensaje = await obtenerMensajeSistema("cobertura_disponible", lead.nombre);
     const res = await fetch(PROXY_URL, {
@@ -3236,6 +3249,7 @@ export default function SidebarApp() {
           promociones={promocionesActivas}
           onEnviarPromocion={enviarPromocionCliente}
           onEnviarPromocionBloque={enviarBloquePromocion}
+          cajasNap={cajasNapSidebar}
         />
       )}
 
@@ -3868,7 +3882,7 @@ export default function SidebarApp() {
           {/* ── Ver zona de cobertura ── */}
           <div style={{ marginTop:8 }}>
             <ActionBtn isDark={isDark} icon={Wifi} color="#0284c7" label="Ver cobertura"
-              onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); void cargarLeadsPendientesSidebar(); void cargarPromocionesActivas(); }} />
+              onClick={() => { setShowCoberturaModal(true); void extraerCoordsDeChat(); void cargarLeadsPendientesSidebar(); void cargarPromocionesActivas(); void cargarCajasNapSidebar(); }} />
           </div>
 
           {/* ── Enviar promoción sin necesidad de ubicación/GPS ── */}
