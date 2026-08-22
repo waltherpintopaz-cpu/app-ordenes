@@ -148,6 +148,7 @@ export default function CoberturaMapaModal({
   const leadMarkersRef = useRef([]);
   const cajaMarkersRef = useRef([]);
   const rutaCajaLineRef = useRef(null);
+  const radioCajasCircleRef = useRef(null);
   const [zona, setZona] = useState(undefined); // undefined=verificando, null=fuera, obj=dentro
   const [zonasCargando, setZonasCargando] = useState(true);
   const [capa, setCapa] = useState("calles"); // "calles" | "satelite"
@@ -162,6 +163,8 @@ export default function CoberturaMapaModal({
   const [mostrarLeads, setMostrarLeads] = useState(false);
   const [mostrarCajas, setMostrarCajas] = useState(false);
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
+  const [radioCajasAmpliado, setRadioCajasAmpliado] = useState(false);
+  const RADIO_CAJAS_M = 500;
   const [rutaCaja, setRutaCaja] = useState(null); // { distanciaM, duracionS } | null
   const [rutaCajaCargando, setRutaCajaCargando] = useState(false);
   const [rutaCajaError, setRutaCajaError] = useState(false);
@@ -180,6 +183,17 @@ export default function CoberturaMapaModal({
     });
     return mejor;
   })();
+
+  // Cajas dentro del radio por defecto (500m) del cliente — para no saturar el
+  // mapa. Si no hay ubicacion aun, o el tecnico pidio "ver todas", no filtra.
+  const cajasEnRadio = (!punto || radioCajasAmpliado)
+    ? cajasNap
+    : cajasNap.filter((caja) => {
+        const lat = Number(caja.lat), lng = Number(caja.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+        return haversineM(punto.lat, punto.lng, lat, lng) <= RADIO_CAJAS_M;
+      });
+  const filtroRadioActivo = !!punto && !radioCajasAmpliado;
 
   // Al tener cliente + caja mas cercana, pide la distancia real por calles a OSRM.
   useEffect(() => {
@@ -323,7 +337,8 @@ export default function CoberturaMapaModal({
     });
   }, [leadsPendientes, mostrarLeads]);
 
-  // Cajas NAP — ocultas por defecto, se dibujan al activar "Ver cajas".
+  // Cajas NAP — ocultas por defecto, se dibujan al activar "Ver cajas". Por
+  // defecto solo las que estan a <=500m del cliente, para no saturar el mapa.
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -331,7 +346,7 @@ export default function CoberturaMapaModal({
     cajaMarkersRef.current = [];
     if (!mostrarCajas) return;
 
-    cajasNap.forEach((caja) => {
+    cajasEnRadio.forEach((caja) => {
       const lat = Number(caja.lat), lng = Number(caja.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const cap = Number(caja.capacidad || 0);
@@ -341,7 +356,24 @@ export default function CoberturaMapaModal({
       m.on("click", () => setCajaSeleccionada(caja));
       cajaMarkersRef.current.push(m);
     });
-  }, [cajasNap, mostrarCajas]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cajasEnRadio, mostrarCajas]);
+
+  // Circulo de referencia del radio de 500m alrededor del cliente, para que
+  // se entienda por que solo se ven algunas cajas y no "faltan" las demas.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (radioCajasCircleRef.current) { radioCajasCircleRef.current.remove(); radioCajasCircleRef.current = null; }
+    if (!map || !mostrarCajas || !punto || !filtroRadioActivo) return;
+    radioCajasCircleRef.current = L.circle([punto.lat, punto.lng], {
+      radius: RADIO_CAJAS_M,
+      color: "#0284c7",
+      weight: 1,
+      fillColor: "#0284c7",
+      fillOpacity: 0.05,
+      dashArray: "4, 6",
+    }).addTo(map);
+  }, [mostrarCajas, punto?.lat, punto?.lng, filtroRadioActivo]);
 
   async function notificarLeadSeleccionado() {
     if (!leadSeleccionado || !onNotificarLead) return;
@@ -459,7 +491,19 @@ export default function CoberturaMapaModal({
               <span style={{ ...s.checkbox, background: mostrarCajas ? "#fff" : "transparent" }}>
                 {mostrarCajas && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0284c7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
               </span>
-              Cajas ({cajasNap.length})
+              Cajas ({cajasEnRadio.length}{filtroRadioActivo ? ` · ${RADIO_CAJAS_M}m` : ""})
+            </button>
+          )}
+
+          {/* Aviso cuando el radio de 500m no encuentra ninguna caja cerca */}
+          {mostrarCajas && filtroRadioActivo && cajasEnRadio.length === 0 && (
+            <button onClick={() => setRadioCajasAmpliado(true)} style={s.btnAmpliarRadio}>
+              Sin cajas a {RADIO_CAJAS_M}m — ver todas ({cajasNap.length})
+            </button>
+          )}
+          {mostrarCajas && radioCajasAmpliado && (
+            <button onClick={() => setRadioCajasAmpliado(false)} style={s.btnAmpliarRadio}>
+              Volver a {RADIO_CAJAS_M}m
             </button>
           )}
 
@@ -636,7 +680,8 @@ const s = {
   btnPromo: { display: "block", width: "100%", padding: "9px 14px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 999, fontWeight: 700, fontSize: 12, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.2)" },
   avisoLead: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #86efac", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   avisoCaja: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #93c5fd", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
-  avisoCajaCercana: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 955, background: "rgba(15,23,42,0.9)", color: "#e2e8f0", fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: "7px 10px", maxWidth: 420, marginLeft: "auto", marginRight: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" },
+  avisoCajaCercana: { position: "absolute", top: 92, left: 10, right: 10, zIndex: 955, background: "rgba(15,23,42,0.9)", color: "#e2e8f0", fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: "7px 10px", maxWidth: 420, marginLeft: "auto", marginRight: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" },
+  btnAmpliarRadio: { position: "absolute", top: 132, left: 10, right: 10, zIndex: 955, background: "#fff", color: "#0f172a", fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "6px 12px", maxWidth: 320, marginLeft: "auto", marginRight: "auto", border: "1px solid #cbd5e1", boxShadow: "0 4px 14px rgba(0,0,0,0.2)", cursor: "pointer" },
   btnCerrarChico: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#64748b", fontWeight: 700 },
   avisoLeadHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   avisoLeadNombre: { fontSize: 13, fontWeight: 800, color: "#14532d" },
