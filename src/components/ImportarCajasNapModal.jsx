@@ -17,6 +17,19 @@ function tagText(scope, tag) {
   return el ? el.textContent.trim() : "";
 }
 
+// Nombre de la carpeta (<Folder>) mas cercana que contiene este Placemark.
+// Muchos KMZ de Google My Maps agrupan los pines por sector en carpetas y
+// nombran cada pin solo "c01", "c02"... (sin el nombre de la carpeta), lo que
+// genera codigos repetidos entre sectores si no se prefija con la carpeta.
+function nombreCarpeta(placemarkEl) {
+  let node = placemarkEl.parentNode;
+  while (node && node.tagName !== "Folder" && node.tagName !== "Document") {
+    node = node.parentNode;
+  }
+  if (!node || node.tagName !== "Folder") return "";
+  return tagText(node, "name");
+}
+
 // Parsea el KML de un mapa de Google My Maps a una lista de puntos { codigo, lat, lng }.
 // A diferencia del importador de zonas (poligonos), aca cada Placemark es un
 // pin suelto — la caja NAP que dibujaron en Google My Maps.
@@ -38,8 +51,13 @@ function parseKmlPuntos(xmlText) {
     const [lng, lat] = coordsEl.textContent.trim().split(",").map(Number);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-    const codigo = tagText(pm, "name").trim();
-    if (!codigo) return;
+    const nombrePropio = tagText(pm, "name").trim();
+    if (!nombrePropio) return;
+    const carpeta = nombreCarpeta(pm).trim();
+    // Si el nombre propio ya parece un codigo completo (trae letras y numero,
+    // ej. "NAP-026"), no lo prefijamos de nuevo para no duplicar el sector.
+    const yaCompleto = /^[a-z]+[.\- ]?\d+/i.test(nombrePropio) && nombrePropio.length > 4;
+    const codigo = carpeta && !yaCompleto ? `${carpeta}-${nombrePropio}` : nombrePropio;
     const descripcion = tagText(pm, "description").trim();
     puntos.push({ codigo, lat, lng, descripcion });
   });
