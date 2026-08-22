@@ -195,6 +195,12 @@ export default function CoberturaMapaModal({
       });
   const filtroRadioActivo = !!punto && !radioCajasAmpliado;
 
+  // Apenas hay ubicacion del cliente y ya cargaron las cajas, las muestra solo
+  // (dentro del radio de 500m) sin que el tecnico tenga que activarlas a mano.
+  useEffect(() => {
+    if (punto && cajasNap.length > 0) setMostrarCajas(true);
+  }, [coordenadas, cajasNap.length]);
+
   // Al tener cliente + caja mas cercana, pide la distancia real por calles a OSRM.
   useEffect(() => {
     let cancelled = false;
