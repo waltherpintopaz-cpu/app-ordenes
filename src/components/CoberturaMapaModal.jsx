@@ -29,13 +29,14 @@ function formatDist(m) {
 // OSRM — gratis, sin API key. Perfil "foot" porque se acerca mas al recorrido
 // real del cable/tendido que el perfil de carro (que respeta sentidos unicos).
 async function calcularRutaOsrm(origen, destino) {
-  const url = `https://router.project-osrm.org/route/v1/foot/${origen.lng},${origen.lat};${destino.lng},${destino.lat}?overview=false`;
+  const url = `https://router.project-osrm.org/route/v1/foot/${origen.lng},${origen.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`OSRM respondio ${res.status}`);
   const data = await res.json();
   const ruta = data?.routes?.[0];
   if (data.code !== "Ok" || !ruta) throw new Error("Sin ruta disponible");
-  return { distanciaM: ruta.distance, duracionS: ruta.duration };
+  const puntos = (ruta.geometry?.coordinates || []).map(([lng, lat]) => [lat, lng]);
+  return { distanciaM: ruta.distance, duracionS: ruta.duration, puntos };
 }
 
 // Pin del cliente: siempre azul (para no confundirse con los leads en rojo ni
@@ -146,6 +147,7 @@ export default function CoberturaMapaModal({
   const capaSatRef = useRef(null);
   const leadMarkersRef = useRef([]);
   const cajaMarkersRef = useRef([]);
+  const rutaCajaLineRef = useRef(null);
   const [zona, setZona] = useState(undefined); // undefined=verificando, null=fuera, obj=dentro
   const [zonasCargando, setZonasCargando] = useState(true);
   const [capa, setCapa] = useState("calles"); // "calles" | "satelite"
@@ -193,6 +195,22 @@ export default function CoberturaMapaModal({
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [punto?.lat, punto?.lng, cajaMasCercana?.codigo, cajaMasCercana?.lat, cajaMasCercana?.lng]);
+
+  // Dibuja la ruta a la caja mas cercana como linea punteada sobre el mapa.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (rutaCajaLineRef.current) { rutaCajaLineRef.current.remove(); rutaCajaLineRef.current = null; }
+    if (!map || !punto || !cajaMasCercana) return;
+    const puntos = rutaCaja?.puntos?.length
+      ? rutaCaja.puntos
+      : [[punto.lat, punto.lng], [Number(cajaMasCercana.lat), Number(cajaMasCercana.lng)]];
+    rutaCajaLineRef.current = L.polyline(puntos, {
+      color: "#0284c7",
+      weight: 3,
+      opacity: 0.85,
+      dashArray: "6, 8",
+    }).addTo(map);
+  }, [rutaCaja, punto?.lat, punto?.lng, cajaMasCercana?.codigo, cajaMasCercana?.lat, cajaMasCercana?.lng]);
 
   useEffect(() => {
     let cancelled = false;
