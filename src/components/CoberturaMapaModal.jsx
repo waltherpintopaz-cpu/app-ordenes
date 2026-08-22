@@ -11,6 +11,33 @@ function parseCoordStr(str) {
   return { lat, lng };
 }
 
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDist(m) {
+  if (!Number.isFinite(m)) return "-";
+  return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${Math.round(m)} m`;
+}
+
+// Distancia real por calles (no linea recta) usando el servidor publico de
+// OSRM — gratis, sin API key. Perfil "foot" porque se acerca mas al recorrido
+// real del cable/tendido que el perfil de carro (que respeta sentidos unicos).
+async function calcularRutaOsrm(origen, destino) {
+  const url = `https://router.project-osrm.org/route/v1/foot/${origen.lng},${origen.lat};${destino.lng},${destino.lat}?overview=false`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OSRM respondio ${res.status}`);
+  const data = await res.json();
+  const ruta = data?.routes?.[0];
+  if (data.code !== "Ok" || !ruta) throw new Error("Sin ruta disponible");
+  return { distanciaM: ruta.distance, duracionS: ruta.duration };
+}
+
 // Pin del cliente: siempre azul (para no confundirse con los leads en rojo ni
 // con las zonas verdes/rojas), con un icono de persona y un badge de estado
 // (✓ verde / ✕ rojo / … gris mientras se verifica) en la esquina.
@@ -133,8 +160,39 @@ export default function CoberturaMapaModal({
   const [mostrarLeads, setMostrarLeads] = useState(false);
   const [mostrarCajas, setMostrarCajas] = useState(false);
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
+  const [rutaCaja, setRutaCaja] = useState(null); // { distanciaM, duracionS } | null
+  const [rutaCajaCargando, setRutaCajaCargando] = useState(false);
+  const [rutaCajaError, setRutaCajaError] = useState(false);
 
   const punto = parseCoordStr(coordenadas);
+
+  // Caja NAP mas cercana al cliente (linea recta, para elegir cual medir por ruta).
+  const cajaMasCercana = (() => {
+    if (!punto || !cajasNap.length) return null;
+    let mejor = null, mejorDist = Infinity;
+    cajasNap.forEach((caja) => {
+      const lat = Number(caja.lat), lng = Number(caja.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const d = haversineM(punto.lat, punto.lng, lat, lng);
+      if (d < mejorDist) { mejorDist = d; mejor = { ...caja, distanciaLineaRecta: d }; }
+    });
+    return mejor;
+  })();
+
+  // Al tener cliente + caja mas cercana, pide la distancia real por calles a OSRM.
+  useEffect(() => {
+    let cancelled = false;
+    setRutaCaja(null);
+    setRutaCajaError(false);
+    if (!punto || !cajaMasCercana) return;
+    setRutaCajaCargando(true);
+    calcularRutaOsrm(punto, { lat: Number(cajaMasCercana.lat), lng: Number(cajaMasCercana.lng) })
+      .then((r) => { if (!cancelled) setRutaCaja(r); })
+      .catch(() => { if (!cancelled) setRutaCajaError(true); })
+      .finally(() => { if (!cancelled) setRutaCajaCargando(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [punto?.lat, punto?.lng, cajaMasCercana?.codigo, cajaMasCercana?.lat, cajaMasCercana?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -408,6 +466,21 @@ export default function CoberturaMapaModal({
             )}
           </div>
 
+          {/* Caja NAP mas cercana al cliente, con distancia real por calles (OSRM) */}
+          {punto && cajaMasCercana && (
+            <div style={s.avisoCajaCercana}>
+              📦 Caja más cercana: <strong>{cajaMasCercana.codigo || "-"}</strong>
+              {" · "}
+              {rutaCajaCargando
+                ? "calculando ruta..."
+                : rutaCaja
+                  ? `${formatDist(rutaCaja.distanciaM)} por ruta (~${Math.round(rutaCaja.duracionS / 60)} min a pie)`
+                  : rutaCajaError
+                    ? `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta (sin ruta disponible)`
+                    : `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta`}
+            </div>
+          )}
+
           {/* Aviso de zona fuera de cobertura: enviar mensaje + guardar lead */}
           {punto && zona === null && (
             <div style={s.avisoFuera}>
@@ -545,6 +618,7 @@ const s = {
   btnPromo: { display: "block", width: "100%", padding: "9px 14px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 999, fontWeight: 700, fontSize: 12, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.2)" },
   avisoLead: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #86efac", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   avisoCaja: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #93c5fd", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
+  avisoCajaCercana: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 955, background: "rgba(15,23,42,0.9)", color: "#e2e8f0", fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: "7px 10px", maxWidth: 420, marginLeft: "auto", marginRight: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" },
   btnCerrarChico: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#64748b", fontWeight: 700 },
   avisoLeadHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   avisoLeadNombre: { fontSize: 13, fontWeight: 800, color: "#14532d" },
