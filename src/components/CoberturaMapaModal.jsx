@@ -165,24 +165,28 @@ export default function CoberturaMapaModal({
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
   const [radioCajasAmpliado, setRadioCajasAmpliado] = useState(false);
   const RADIO_CAJAS_M = 500;
-  const [rutaCaja, setRutaCaja] = useState(null); // { distanciaM, duracionS } | null
-  const [rutaCajaCargando, setRutaCajaCargando] = useState(false);
-  const [rutaCajaError, setRutaCajaError] = useState(false);
+  const [cajaElegida, setCajaElegida] = useState(null); // { ...caja, distanciaLineaRecta, distanciaM?, duracionS?, puntos?, sinRuta? }
+  const [eligiendoCaja, setEligiendoCaja] = useState(false);
 
   const punto = parseCoordStr(coordenadas);
 
-  // Caja NAP mas cercana al cliente (linea recta, para elegir cual medir por ruta).
-  const cajaMasCercana = (() => {
-    if (!punto || !cajasNap.length) return null;
-    let mejor = null, mejorDist = Infinity;
-    cajasNap.forEach((caja) => {
-      const lat = Number(caja.lat), lng = Number(caja.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const d = haversineM(punto.lat, punto.lng, lat, lng);
-      if (d < mejorDist) { mejorDist = d; mejor = { ...caja, distanciaLineaRecta: d }; }
-    });
-    return mejor;
+  // Top 5 cajas mas cercanas por linea recta — candidatas a medir por ruta.
+  // No basta con la mas cercana en linea recta: a veces esa exige un rodeo
+  // largo (sin camino directo mapeado) y otra un poco "mas lejos" en linea
+  // recta en realidad tiene una ruta caminable mucho mas corta.
+  const candidatasCercanas = (() => {
+    if (!punto || !cajasNap.length) return [];
+    return cajasNap
+      .map((caja) => {
+        const lat = Number(caja.lat), lng = Number(caja.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        return { ...caja, distanciaLineaRecta: haversineM(punto.lat, punto.lng, lat, lng) };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.distanciaLineaRecta - b.distanciaLineaRecta)
+      .slice(0, 5);
   })();
+  const candidatasFingerprint = candidatasCercanas.map((c) => c.codigo).join("|");
 
   // Cajas dentro del radio por defecto (500m) del cliente — para no saturar el
   // mapa. Si no hay ubicacion aun, o el tecnico pidio "ver todas", no filtra.
@@ -201,29 +205,44 @@ export default function CoberturaMapaModal({
     if (punto && cajasNap.length > 0) setMostrarCajas(true);
   }, [coordenadas, cajasNap.length]);
 
-  // Al tener cliente + caja mas cercana, pide la distancia real por calles a OSRM.
+  // Pide la ruta a cada una de las candidatas cercanas (en paralelo) y se
+  // queda con la de distancia REAL mas corta, no con la mas cercana en linea
+  // recta — asi no elige una caja "cerca en el mapa" pero con un rodeo largo
+  // si otra un poco mas lejos en linea recta tiene camino directo.
   useEffect(() => {
     let cancelled = false;
-    setRutaCaja(null);
-    setRutaCajaError(false);
-    if (!punto || !cajaMasCercana) return;
-    setRutaCajaCargando(true);
-    calcularRutaOsrm(punto, { lat: Number(cajaMasCercana.lat), lng: Number(cajaMasCercana.lng) })
-      .then((r) => { if (!cancelled) setRutaCaja(r); })
-      .catch(() => { if (!cancelled) setRutaCajaError(true); })
-      .finally(() => { if (!cancelled) setRutaCajaCargando(false); });
+    setCajaElegida(null);
+    if (!punto || !candidatasCercanas.length) return;
+    setEligiendoCaja(true);
+    Promise.allSettled(
+      candidatasCercanas.map((caja) =>
+        calcularRutaOsrm(punto, { lat: Number(caja.lat), lng: Number(caja.lng) }).then((r) => ({ caja, ruta: r }))
+      )
+    ).then((resultados) => {
+      if (cancelled) return;
+      const exitosas = resultados.filter((r) => r.status === "fulfilled").map((r) => r.value);
+      let elegida;
+      if (exitosas.length) {
+        const mejor = exitosas.reduce((a, b) => (a.ruta.distanciaM <= b.ruta.distanciaM ? a : b));
+        elegida = { ...mejor.caja, distanciaM: mejor.ruta.distanciaM, duracionS: mejor.ruta.duracionS, puntos: mejor.ruta.puntos };
+      } else {
+        elegida = { ...candidatasCercanas[0], sinRuta: true };
+      }
+      setCajaElegida(elegida);
+      setEligiendoCaja(false);
+    });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [punto?.lat, punto?.lng, cajaMasCercana?.codigo, cajaMasCercana?.lat, cajaMasCercana?.lng]);
+  }, [punto?.lat, punto?.lng, candidatasFingerprint]);
 
-  // Dibuja la ruta a la caja mas cercana como linea punteada sobre el mapa.
+  // Dibuja la ruta a la caja elegida como linea punteada sobre el mapa.
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (rutaCajaLineRef.current) { rutaCajaLineRef.current.remove(); rutaCajaLineRef.current = null; }
-    if (!map || !punto || !cajaMasCercana) return;
-    const puntos = rutaCaja?.puntos?.length
-      ? rutaCaja.puntos
-      : [[punto.lat, punto.lng], [Number(cajaMasCercana.lat), Number(cajaMasCercana.lng)]];
+    if (!map || !punto || !cajaElegida) return;
+    const puntos = cajaElegida.puntos?.length
+      ? cajaElegida.puntos
+      : [[punto.lat, punto.lng], [Number(cajaElegida.lat), Number(cajaElegida.lng)]];
     rutaCajaLineRef.current = L.polyline(puntos, {
       color: "#0284c7",
       weight: 3,
@@ -231,15 +250,15 @@ export default function CoberturaMapaModal({
       dashArray: "6, 8",
       className: "ruta-caja-animada",
     }).addTo(map);
-    const distanciaTexto = rutaCaja?.distanciaM != null
-      ? formatDist(rutaCaja.distanciaM)
-      : `~${formatDist(cajaMasCercana.distanciaLineaRecta)}`;
+    const distanciaTexto = cajaElegida.distanciaM != null
+      ? formatDist(cajaElegida.distanciaM)
+      : `~${formatDist(cajaElegida.distanciaLineaRecta)}`;
     rutaCajaLineRef.current.bindTooltip(distanciaTexto, {
       permanent: true,
       direction: "center",
       className: "ruta-caja-tooltip",
     });
-  }, [rutaCaja, punto?.lat, punto?.lng, cajaMasCercana?.codigo, cajaMasCercana?.lat, cajaMasCercana?.lng]);
+  }, [cajaElegida, punto?.lat, punto?.lng]);
 
   useEffect(() => {
     let cancelled = false;
@@ -567,18 +586,16 @@ export default function CoberturaMapaModal({
               </div>
             )}
 
-            {/* Caja NAP mas cercana al cliente, con distancia real por calles (OSRM) */}
-            {punto && cajaMasCercana && (
+            {/* Caja NAP con la ruta real mas corta (compara varias candidatas, no solo la mas cercana en linea recta) */}
+            {punto && (eligiendoCaja || cajaElegida) && (
               <div style={s.avisoCajaCercana}>
-                📦 Caja más cercana: <strong>{cajaMasCercana.codigo || "-"}</strong>
+                📦 Caja más cercana: <strong>{cajaElegida?.codigo || "-"}</strong>
                 {" · "}
-                {rutaCajaCargando
-                  ? "calculando ruta..."
-                  : rutaCaja
-                    ? `${formatDist(rutaCaja.distanciaM)} por ruta (~${Math.round(rutaCaja.duracionS / 60)} min a pie)`
-                    : rutaCajaError
-                      ? `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta (sin ruta disponible)`
-                      : `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta`}
+                {eligiendoCaja
+                  ? "comparando rutas cercanas..."
+                  : cajaElegida?.sinRuta
+                    ? `~${formatDist(cajaElegida.distanciaLineaRecta)} línea recta (sin ruta disponible)`
+                    : `${formatDist(cajaElegida.distanciaM)} por ruta (~${Math.round(cajaElegida.duracionS / 60)} min a pie)`}
               </div>
             )}
 
