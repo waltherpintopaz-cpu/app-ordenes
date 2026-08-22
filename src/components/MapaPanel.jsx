@@ -566,8 +566,13 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     if (!caja?.codigo) return;
     setClientesCajaLoading(true);
     setClientesCaja([]);
-    supabase.from("clientes").select("id,nombre,dni,estado_servicio,celular,usuario_nodo").eq("caja_nap", caja.codigo).limit(50)
-      .then(({ data }) => { setClientesCaja(Array.isArray(data) ? data : []); setClientesCajaLoading(false); })
+    const codigoNorm = String(caja.codigo).trim().toLowerCase();
+    supabase.from("clientes").select("id,nombre,dni,estado_servicio,celular,usuario_nodo").ilike("caja_nap", caja.codigo.trim()).limit(50)
+      .then(({ data }) => {
+        const lista = (data || []).filter((c) => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
+        setClientesCaja(lista);
+        setClientesCajaLoading(false);
+      })
       .catch(() => setClientesCajaLoading(false));
   }, [simCajaSelUid, cajasFiltradas]);
 

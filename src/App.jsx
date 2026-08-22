@@ -14421,9 +14421,10 @@ export default function App() {
         handleChange("cajaNap", caja.codigo);
         m.setPopupContent(popupBase + `<br><span style="font-size:11px;color:#6b7280">Cargando clientes...</span></div>`);
         m.openPopup();
-        supabase.from("clientes").select("nombre,dni").eq("caja_nap", caja.codigo).order("nombre")
+        supabase.from("clientes").select("nombre,dni,caja_nap").ilike("caja_nap", String(caja.codigo).trim()).order("nombre")
           .then(({ data }) => {
-            const lista = data || [];
+            const codigoNorm = String(caja.codigo).trim().toLowerCase();
+            const lista = (data || []).filter((c) => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
             const clientesHtml = lista.length > 0
               ? `<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:4px"><b style="font-size:11px;color:#92400e">Clientes (${lista.length}):</b><br>${lista.map(c => `<span style="font-size:10px;display:block">${c.nombre||'-'}<span style="color:#9ca3af;margin-left:6px">${c.dni||''}</span></span>`).join('')}</div>`
               : `<div style="margin-top:4px;font-size:10px;color:#9ca3af">Sin clientes registrados en esta caja.</div>`;

@@ -196,12 +196,17 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
     setLoadingClientes(true);
     setClientes([]);
     try {
+      const codigoBuscado = String(caja.codigo || "").trim();
       const { data } = await supabase
         .from("clientes")
         .select("id,nombre,dni,celular,direccion,nodo,usuario_nodo,estado_servicio,sn_onu,caja_nap,puerto_nap")
-        .eq("caja_nap", caja.codigo)
+        .ilike("caja_nap", codigoBuscado)
         .order("nombre");
-      const lista = data || [];
+      // El match exacto (.eq) fallaba con la minima diferencia de mayusculas/
+      // espacios entre el codigo del cliente y el de la caja (comun tras
+      // reimportar KMZ), borrando puertos_ocupados a 0 sin que nadie lo tocara.
+      const codigoNorm = codigoBuscado.toLowerCase();
+      const lista = (data || []).filter((c) => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
       setClientes(lista);
       // Sincronizar puertos_ocupados con el conteo real si difiere
       const realCount = lista.length;
