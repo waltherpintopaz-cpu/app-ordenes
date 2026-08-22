@@ -2751,6 +2751,22 @@ export default function App() {
   const esAdminSesion = rolSesion === "Administrador";
   const esGestorSesion = rolSesion === "Gestora";
   const esAlmacenSesion = rolSesion === "Almacen";
+
+  // Nombres (en minusculas) que un tecnico puede ver: el suyo propio + los de
+  // cualquier otro tecnico que comparta su mismo "grupo" (equipo). Mismo criterio
+  // que ya usa la app movil. null = sin restriccion (no es tecnico).
+  const nombresGrupoTecnicoLower = useMemo(() => {
+    if (rolSesion !== "Tecnico") return null;
+    const nombrePropio = String(usuarioSesion?.nombre || "").trim().toLowerCase();
+    const set = new Set([nombrePropio].filter(Boolean));
+    const grupoPropio = String(usuarioSesion?.grupo || "").trim();
+    if (grupoPropio) {
+      (Array.isArray(usuarios) ? usuarios : []).forEach((u) => {
+        if (String(u?.grupo || "").trim() === grupoPropio) set.add(String(u?.nombre || "").trim().toLowerCase());
+      });
+    }
+    return set;
+  }, [rolSesion, usuarioSesion, usuarios]);
   const accesosSesion = useMemo(() => {
     const base = normalizarAccesosMenuWeb(usuarioSesion?.accesosMenu ?? usuarioSesion?.accesos_menu, usuarioSesion?.rol);
     if (rolSesion !== "Administrador") return base;
@@ -3147,6 +3163,7 @@ export default function App() {
         safeIncludes(u.email, q) ||
         safeIncludes(u.empresa, q) ||
         safeIncludes(u.activo ? "activo" : "inactivo", q) ||
+        safeIncludes(u.grupo, q) ||
         safeIncludes(accesosTexto, q) ||
         safeIncludes(historialSubmenusTexto, q) ||
         safeIncludes(nodosTexto, q) ||
@@ -12239,6 +12256,10 @@ export default function App() {
 
     let lista = ordenes.filter((item) => esEstadoOperativoOrden(item?.estado));
 
+    if (nombresGrupoTecnicoLower) {
+      lista = lista.filter((o) => nombresGrupoTecnicoLower.has(String(o.tecnico || "").trim().toLowerCase()));
+    }
+
     if (filtroTecnico === "SIN") {
       lista = lista.filter((o) => !o.tecnico);
     }
@@ -12283,13 +12304,20 @@ export default function App() {
         safeIncludes(item.tipoActuacion, q)
       );
     });
-  }, [ordenes, busquedaPendientes, filtroTecnico, filtroTipoOrden, filtroNodoPendientes]);
+  }, [ordenes, busquedaPendientes, filtroTecnico, filtroTipoOrden, filtroNodoPendientes, nombresGrupoTecnicoLower]);
 
   const liquidacionesFiltradas = useMemo(() => {
     const q = busquedaHistorial.trim().toLowerCase();
     let base = (Array.isArray(liquidaciones) ? liquidaciones : []).filter((item) =>
       tieneAccesoNodoSesion(firstText(item?.nodo, item?.payload?.nodo, item?.payload?.Nodo))
     );
+    if (nombresGrupoTecnicoLower) {
+      base = base.filter((item) => {
+        const t1 = String(item.liquidacion?.tecnicoLiquida || "").trim().toLowerCase();
+        const t2 = String(item.tecnico || "").trim().toLowerCase();
+        return nombresGrupoTecnicoLower.has(t1) || nombresGrupoTecnicoLower.has(t2);
+      });
+    }
     // Filtro nodo (normalizado para cubrir variaciones de capitalización)
     if (histFiltroNodo !== "TODOS") {
       const nodoNorm = normalizeNodoKey(histFiltroNodo);
@@ -12336,7 +12364,7 @@ export default function App() {
       ].join(" ").toLowerCase();
       return words.every((w) => texto.includes(w));
     });
-  }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion, histFiltroNodo, histFiltroTipo, histFiltroDesde, histFiltroHasta]);
+  }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion, histFiltroNodo, histFiltroTipo, histFiltroDesde, histFiltroHasta, nombresGrupoTecnicoLower]);
 
   const liquidacionesReporte = useMemo(() => {
     const q = reporteBusqueda.trim().toLowerCase();
@@ -20313,6 +20341,11 @@ export default function App() {
                                       : <span style={{ color: "#DC2626", fontSize: 11, fontWeight: 600 }}>Inactivo</span>}
                                     {usuario.sesion_token_web && <span style={{ color: "#16A34A", fontSize: 11, fontWeight: 600 }}>• Web</span>}
                                     {usuario.sesion_token_mobile && <span style={{ color: "#0284c7", fontSize: 11, fontWeight: 600 }}>• Móvil</span>}
+                                    {usuario.grupo && (
+                                      <span style={{ background: "#FEF3C7", color: "#92400E", borderRadius: 4, padding: "1px 8px", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                        👥 {usuario.grupo}
+                                      </span>
+                                    )}
                                   </div>
                                   <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
                                     <span>{usuario.username || "-"}</span>
