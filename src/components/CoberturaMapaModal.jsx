@@ -229,7 +229,16 @@ export default function CoberturaMapaModal({
       weight: 3,
       opacity: 0.85,
       dashArray: "6, 8",
+      className: "ruta-caja-animada",
     }).addTo(map);
+    const distanciaTexto = rutaCaja?.distanciaM != null
+      ? formatDist(rutaCaja.distanciaM)
+      : `~${formatDist(cajaMasCercana.distanciaLineaRecta)}`;
+    rutaCajaLineRef.current.bindTooltip(distanciaTexto, {
+      permanent: true,
+      direction: "center",
+      className: "ruta-caja-tooltip",
+    });
   }, [rutaCaja, punto?.lat, punto?.lng, cajaMasCercana?.codigo, cajaMasCercana?.lat, cajaMasCercana?.lng]);
 
   useEffect(() => {
@@ -449,6 +458,12 @@ export default function CoberturaMapaModal({
         {/* Body */}
         <div style={s.body}>
           <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+          <style>{`
+            .ruta-caja-animada { animation: rutaCajaMarchandoHormigas 0.8s linear infinite; }
+            @keyframes rutaCajaMarchandoHormigas { to { stroke-dashoffset: -14; } }
+            .ruta-caja-tooltip { background: #0f172a; color: #fff; border: none; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+            .ruta-caja-tooltip::before { display: none; }
+          `}</style>
 
           {/* Toggle capa calles/satelital */}
           <button
@@ -527,9 +542,7 @@ export default function CoberturaMapaModal({
             {/* Aviso de zona fuera de cobertura: enviar mensaje + guardar lead */}
             {punto && zona === null && (
               <div style={s.avisoFuera}>
-                <div style={s.avisoFueraTexto}>
-                  📍 Ubicación fuera de cobertura — puedes avisarle al cliente y guardar sus datos para notificarlo cuando lleguemos a su zona.
-                </div>
+                <div style={s.avisoFueraTexto}>📍 Fuera de cobertura</div>
                 <button onClick={enviarAvisoSinCobertura} disabled={enviandoAviso || avisoEnviado}
                   style={{ ...s.btnAviso, background: avisoEnviado ? "#16a34a" : "#dc2626", opacity: enviandoAviso ? 0.7 : 1 }}>
                   {avisoEnviado ? "✅ Mensaje enviado y guardado" : enviandoAviso ? "Enviando..." : "📨 Avisar al cliente y guardar"}
