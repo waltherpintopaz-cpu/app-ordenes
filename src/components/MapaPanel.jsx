@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { cargarZonasCobertura, invalidarZonasCobertura } from "../utils/zonasCobertura";
 import ImportarMapaCoberturaModal from "./ImportarMapaCoberturaModal";
@@ -14,6 +13,7 @@ const NODOS_BASE = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
 const ORDENES_MAX = 450;
 const CAJAS_MAX = 1600;
 const RENDER_ORDENES = 90;
+const RENDER_CAJAS = 600;
 const NEAR_TOP = 20;
 const NEAR_LINES = 5;
 const RADIO_CAJA_ORDEN = 400; // metros — radio para mostrar cajas cercanas a cada orden
@@ -153,11 +153,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const infoWindowRef = useRef(null);
   const gpsMarkerRef = useRef(null);
   const gpsCircleRef = useRef(null);
-  const clustererCajasRef = useRef(null);
   const shouldAutoFrameRef = useRef(true);
 
   const limpiarMarkers = useCallback(() => {
-    if (clustererCajasRef.current) { try { clustererCajasRef.current.clearMarkers(); } catch { } }
     markersRef.current.forEach((m) => { try { m.setMap(null); } catch { } });
     markersRef.current = [];
     polylinesRef.current.forEach((l) => { try { l.setMap(null); } catch { } });
@@ -433,23 +431,23 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     });
 
     if (showCajas) {
-      const cajaMarkers = cajasVisibles.map((caja) => {
+      cajasVisibles.slice(0, RENDER_CAJAS).forEach((caja) => {
         const isSelected = selectedTipo === "caja" && String(selectedId) === String(caja.uid);
         const cap = Number(caja?.capacidad || 0);
         const ocp = Number(caja?.puertos_ocupados || 0);
         const llena = cap > 0 && ocp >= cap;
         const color = llena ? "#dc2626" : isSelected ? "#F97316" : "#0284c7";
         const m = new maps.Marker({
+          map,
           position: { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) },
           icon: { url: napBoxSvg(color, isSelected), scaledSize: new maps.Size(isSelected ? 28 : 22, isSelected ? 40 : 32), anchor: new maps.Point(isSelected ? 14 : 11, isSelected ? 40 : 32) },
           title: `Caja ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
           zIndex: isSelected ? 20 : 2,
         });
         m.addListener("click", () => { setSelectedTipo("caja"); setSelectedId(String(caja.uid || "")); setTab("cajas"); shouldAutoFrameRef.current = false; });
+        markersRef.current.push(m);
         points.push({ lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) });
-        return m;
       });
-      clustererCajasRef.current = new MarkerClusterer({ map, markers: cajaMarkers });
     }
 
     if (showLeads) {

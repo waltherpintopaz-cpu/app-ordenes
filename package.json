@@ -19,7 +19,6 @@
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@fontsource/inter": "^5.2.8",
-    "@googlemaps/markerclusterer": "^2.6.2",
     "@supabase/supabase-js": "^2.57.4",
     "@zxing/browser": "^0.1.5",
     "jspdf": "^4.2.1",
