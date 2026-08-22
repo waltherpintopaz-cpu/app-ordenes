@@ -9625,6 +9625,34 @@ export default function App() {
       return;
     }
 
+    // Chequeo en vivo contra la base de datos (no solo lo cargado en este navegador):
+    // por si dos personas guardan casi al mismo tiempo y el estado local aun no se
+    // actualizo via Realtime. Ultimo seguro antes de duplicar un usuario de nodo.
+    if (mostrarCamposUsuario && orden.usuarioNodo.trim() && isSupabaseConfigured) {
+      const usuarioChequear = orden.usuarioNodo.trim();
+      try {
+        const [{ data: clienteVivo }, { data: ordenesVivas }] = await Promise.all([
+          supabase.from(CLIENTES_TABLE).select("nombre,dni").ilike("usuario_nodo", usuarioChequear).limit(1).maybeSingle(),
+          supabase.from(ORDENES_TABLE).select("id,codigo,nombre,usuario_nodo_liberado").ilike("usuario_nodo", usuarioChequear).neq("id", ordenEditandoId ?? -1),
+        ]);
+        const ordenViva = (ordenesVivas || []).find((o) => {
+          const lib = o?.usuario_nodo_liberado === true || String(o?.usuario_nodo_liberado || "").trim().toLowerCase() === "true";
+          return !lib;
+        });
+        if (clienteVivo) {
+          alert(`Ese usuario de nodo ya está en uso por el cliente "${clienteVivo.nombre}" (DNI: ${clienteVivo.dni}). Elige otro.`);
+          return;
+        }
+        if (ordenViva) {
+          alert(`Ese usuario de nodo ya está en uso por la orden ${ordenViva.codigo} (${ordenViva.nombre}). Elige otro.`);
+          return;
+        }
+      } catch (_) {
+        // Si falla la verificacion en vivo, no bloquear el guardado (mejor no
+        // trabar al tecnico por un problema de red pasajero).
+      }
+    }
+
     // Evitar solicitar de nuevo un recojo de equipo ya pendiente o ya completado para el mismo DNI
     if (!ordenEditandoId && orden.tipoActuacion === "Recojo de equipo") {
       const dniLimpioRecojo = String(orden.dni || "").replace(/\D/g, "");
