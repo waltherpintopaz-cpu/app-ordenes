@@ -501,18 +501,6 @@ export default function CoberturaMapaModal({
             </button>
           )}
 
-          {/* Aviso cuando el radio de 500m no encuentra ninguna caja cerca */}
-          {mostrarCajas && filtroRadioActivo && cajasEnRadio.length === 0 && (
-            <button onClick={() => setRadioCajasAmpliado(true)} style={s.btnAmpliarRadio}>
-              Sin cajas a {RADIO_CAJAS_M}m — ver todas ({cajasNap.length})
-            </button>
-          )}
-          {mostrarCajas && radioCajasAmpliado && (
-            <button onClick={() => setRadioCajasAmpliado(false)} style={s.btnAmpliarRadio}>
-              Volver a {RADIO_CAJAS_M}m
-            </button>
-          )}
-
           {/* Estado / badge flotante */}
           <div style={s.floatTop}>
             {buscando ? (
@@ -534,50 +522,65 @@ export default function CoberturaMapaModal({
             )}
           </div>
 
-          {/* Caja NAP mas cercana al cliente, con distancia real por calles (OSRM) */}
-          {punto && cajaMasCercana && (
-            <div style={s.avisoCajaCercana}>
-              📦 Caja más cercana: <strong>{cajaMasCercana.codigo || "-"}</strong>
-              {" · "}
-              {rutaCajaCargando
-                ? "calculando ruta..."
-                : rutaCaja
-                  ? `${formatDist(rutaCaja.distanciaM)} por ruta (~${Math.round(rutaCaja.duracionS / 60)} min a pie)`
-                  : rutaCajaError
-                    ? `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta (sin ruta disponible)`
-                    : `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta`}
-            </div>
-          )}
-
-          {/* Aviso de zona fuera de cobertura: enviar mensaje + guardar lead */}
-          {punto && zona === null && (
-            <div style={s.avisoFuera}>
-              <div style={s.avisoFueraTexto}>
-                📍 Ubicación fuera de cobertura — puedes avisarle al cliente y guardar sus datos para notificarlo cuando lleguemos a su zona.
+          {/* Pila de avisos: fluyen uno debajo del otro, sin superponerse */}
+          <div style={s.floatStack}>
+            {/* Aviso de zona fuera de cobertura: enviar mensaje + guardar lead */}
+            {punto && zona === null && (
+              <div style={s.avisoFuera}>
+                <div style={s.avisoFueraTexto}>
+                  📍 Ubicación fuera de cobertura — puedes avisarle al cliente y guardar sus datos para notificarlo cuando lleguemos a su zona.
+                </div>
+                <button onClick={enviarAvisoSinCobertura} disabled={enviandoAviso || avisoEnviado}
+                  style={{ ...s.btnAviso, background: avisoEnviado ? "#16a34a" : "#dc2626", opacity: enviandoAviso ? 0.7 : 1 }}>
+                  {avisoEnviado ? "✅ Mensaje enviado y guardado" : enviandoAviso ? "Enviando..." : "📨 Avisar al cliente y guardar"}
+                </button>
+                {errorAviso && <div style={s.avisoError}>{errorAviso}</div>}
               </div>
-              <button onClick={enviarAvisoSinCobertura} disabled={enviandoAviso || avisoEnviado}
-                style={{ ...s.btnAviso, background: avisoEnviado ? "#16a34a" : "#dc2626", opacity: enviandoAviso ? 0.7 : 1 }}>
-                {avisoEnviado ? "✅ Mensaje enviado y guardado" : enviandoAviso ? "Enviando..." : "📨 Avisar al cliente y guardar"}
-              </button>
-              {errorAviso && <div style={s.avisoError}>{errorAviso}</div>}
-            </div>
-          )}
+            )}
 
-          {/* Cliente en cobertura: enviar una promoción */}
-          {punto && zona && (
-            <div style={s.avisoPromo}>
-              {!showPromos ? (
-                <button onClick={() => setShowPromos(true)} style={s.btnPromo}>🎁 Enviar promoción</button>
-              ) : (
-                <PromoPicker
-                  promociones={promociones}
-                  onEnviarPromocion={onEnviarPromocion}
-                  onEnviarPromocionBloque={onEnviarPromocionBloque}
-                  onClose={() => setShowPromos(false)}
-                />
-              )}
-            </div>
-          )}
+            {/* Cliente en cobertura: enviar una promoción */}
+            {punto && zona && (
+              <div style={s.avisoPromo}>
+                {!showPromos ? (
+                  <button onClick={() => setShowPromos(true)} style={s.btnPromo}>🎁 Enviar promoción</button>
+                ) : (
+                  <PromoPicker
+                    promociones={promociones}
+                    onEnviarPromocion={onEnviarPromocion}
+                    onEnviarPromocionBloque={onEnviarPromocionBloque}
+                    onClose={() => setShowPromos(false)}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Caja NAP mas cercana al cliente, con distancia real por calles (OSRM) */}
+            {punto && cajaMasCercana && (
+              <div style={s.avisoCajaCercana}>
+                📦 Caja más cercana: <strong>{cajaMasCercana.codigo || "-"}</strong>
+                {" · "}
+                {rutaCajaCargando
+                  ? "calculando ruta..."
+                  : rutaCaja
+                    ? `${formatDist(rutaCaja.distanciaM)} por ruta (~${Math.round(rutaCaja.duracionS / 60)} min a pie)`
+                    : rutaCajaError
+                      ? `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta (sin ruta disponible)`
+                      : `~${formatDist(cajaMasCercana.distanciaLineaRecta)} línea recta`}
+              </div>
+            )}
+
+            {/* Aviso cuando el radio de 500m no encuentra ninguna caja cerca */}
+            {mostrarCajas && filtroRadioActivo && cajasEnRadio.length === 0 && (
+              <button onClick={() => setRadioCajasAmpliado(true)} style={s.btnAmpliarRadio}>
+                Sin cajas a {RADIO_CAJAS_M}m — ver todas ({cajasNap.length})
+              </button>
+            )}
+            {mostrarCajas && radioCajasAmpliado && (
+              <button onClick={() => setRadioCajasAmpliado(false)} style={s.btnAmpliarRadio}>
+                Volver a {RADIO_CAJAS_M}m
+              </button>
+            )}
+          </div>
 
           {/* Lead sin cobertura seleccionado en el mapa: notificar que ya hay cobertura */}
           {leadSeleccionado && (
@@ -678,16 +681,17 @@ const s = {
   btnLeadsToggle: { position: "absolute", top: 10, left: 52, zIndex: 1000, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, height: 34, padding: "0 12px 0 8px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", color: "#fff", fontSize: 11, fontWeight: 700 },
   btnCajasToggle: { position: "absolute", top: 50, left: 10, zIndex: 1000, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 999, height: 34, padding: "0 12px 0 8px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)", color: "#fff", fontSize: 11, fontWeight: 700 },
   checkbox: { width: 15, height: 15, borderRadius: 4, border: "1.5px solid #fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  avisoFuera: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, background: "#fff", border: "1.5px solid #fecaca", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
+  floatStack: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" },
+  avisoFuera: { pointerEvents: "auto", width: "100%", background: "#fff", border: "1.5px solid #fecaca", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420 },
   avisoFueraTexto: { fontSize: 11.5, color: "#7f1d1d", fontWeight: 600, marginBottom: 8, lineHeight: 1.4 },
   btnAviso: { width: "100%", padding: "8px 12px", background: "#dc2626", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" },
   avisoError: { fontSize: 11, color: "#dc2626", fontWeight: 600, marginTop: 6 },
-  avisoPromo: { position: "absolute", top: 54, left: 10, right: 10, zIndex: 950, maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
+  avisoPromo: { pointerEvents: "auto", width: "100%", maxWidth: 420 },
   btnPromo: { display: "block", width: "100%", padding: "9px 14px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 999, fontWeight: 700, fontSize: 12, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.2)" },
   avisoLead: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #86efac", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
   avisoCaja: { position: "absolute", bottom: 10, left: 10, right: 10, zIndex: 960, background: "#fff", border: "1.5px solid #93c5fd", borderRadius: 12, padding: "10px 12px", boxShadow: "0 8px 24px rgba(0,0,0,0.2)", maxWidth: 420, marginLeft: "auto", marginRight: "auto" },
-  avisoCajaCercana: { position: "absolute", top: 92, left: 10, right: 10, zIndex: 955, background: "rgba(15,23,42,0.9)", color: "#e2e8f0", fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: "7px 10px", maxWidth: 420, marginLeft: "auto", marginRight: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.25)" },
-  btnAmpliarRadio: { position: "absolute", top: 132, left: 10, right: 10, zIndex: 955, background: "#fff", color: "#0f172a", fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "6px 12px", maxWidth: 320, marginLeft: "auto", marginRight: "auto", border: "1px solid #cbd5e1", boxShadow: "0 4px 14px rgba(0,0,0,0.2)", cursor: "pointer" },
+  avisoCajaCercana: { pointerEvents: "auto", width: "100%", background: "rgba(15,23,42,0.9)", color: "#e2e8f0", fontSize: 11.5, fontWeight: 600, borderRadius: 10, padding: "7px 10px", maxWidth: 420, boxShadow: "0 4px 14px rgba(0,0,0,0.25)" },
+  btnAmpliarRadio: { pointerEvents: "auto", width: "100%", background: "#fff", color: "#0f172a", fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "6px 12px", maxWidth: 320, border: "1px solid #cbd5e1", boxShadow: "0 4px 14px rgba(0,0,0,0.2)", cursor: "pointer" },
   btnCerrarChico: { background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#64748b", fontWeight: 700 },
   avisoLeadHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   avisoLeadNombre: { fontSize: 13, fontWeight: 800, color: "#14532d" },
