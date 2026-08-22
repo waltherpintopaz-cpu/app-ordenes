@@ -129,6 +129,15 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
       if (buscarErr) throw buscarErr;
       const idPorCodigo = new Map((existentes || []).map((r) => [String(r.codigo || "").trim().toLowerCase(), r.id]));
 
+      const { data: maxRow, error: maxErr } = await supabase
+        .from("nap_cajas")
+        .select("ctoid")
+        .order("ctoid", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (maxErr) throw maxErr;
+      let siguienteCtoid = Number(maxRow?.ctoid || 0) + 1;
+
       let creadas = 0, actualizadas = 0;
       for (const punto of preview.puntos) {
         const idExistente = idPorCodigo.get(punto.codigo.trim().toLowerCase());
@@ -142,7 +151,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
           actualizadas += 1;
         } else {
           const { error: insErr } = await supabase.from("nap_cajas").insert([{
-            ctoid: Date.now() + Math.floor(Math.random() * 1000),
+            ctoid: siguienteCtoid++,
             codigo: punto.codigo,
             sector: sectorDefecto.trim() || null,
             nodo,
