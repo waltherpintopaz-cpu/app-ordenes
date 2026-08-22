@@ -2538,6 +2538,40 @@ export default function App() {
     void cargarOrdenesDesdeSupabase({ silent: true });
   }, []);
 
+  // Realtime: refleja al instante ordenes creadas/actualizadas/eliminadas por
+  // otros usuarios (web, sidebar de Chatwoot, app movil) sin tener que recargar
+  // la pagina a mano. Mismo patron que "clientes-estado-web".
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const channel = supabase
+      .channel("ordenes-realtime-web")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: ORDENES_TABLE }, (payload) => {
+        const nueva = deserializeOrderFromSupabase(payload.new);
+        setOrdenes((prev) => (prev.some((o) => String(o.id) === String(nueva.id)) ? prev : [nueva, ...prev]));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: ORDENES_TABLE }, (payload) => {
+        const actualizada = deserializeOrderFromSupabase(payload.new);
+        setOrdenes((prev) => prev.map((o) => (String(o.id) === String(actualizada.id) ? actualizada : o)));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: ORDENES_TABLE }, (payload) => {
+        const idBorrado = payload.old?.id;
+        if (idBorrado == null) return;
+        setOrdenes((prev) => prev.filter((o) => String(o.id) !== String(idBorrado)));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Respaldo silencioso: si el websocket de Realtime se cae sin avisar (redes
+  // inestables), esto vuelve a traer todo cada pocos minutos igual.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const interval = setInterval(() => {
+      void cargarOrdenesDesdeSupabase({ silent: true });
+    }, 150000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Pre-cargar señales almacenadas en clientes para todas las órdenes con snOnu
   useEffect(() => {
     if (!ordenes.length) return;
