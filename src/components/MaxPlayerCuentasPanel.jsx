@@ -248,11 +248,11 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     try {
       let query = supabase
         .from("iptv_clientes")
-        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo,plan,ultima_conexion,en_linea")
+        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo,plan,ultima_conexion,en_linea,ips_24h")
         .order("created_at", { ascending: false });
       query = dniExacto ? query.eq("dni", dniExacto) : query;
       let { data: iptv, error: errIptv } = await query;
-      if (errIptv && /column .*ultima_conexion|column .*en_linea/i.test(errIptv.message || "")) {
+      if (errIptv && /column .*ultima_conexion|column .*en_linea|column .*ips_24h/i.test(errIptv.message || "")) {
         // Migracion supabase/sql/20260826_iptv_ultima_conexion.sql aun no corrida.
         let fallback = supabase
           .from("iptv_clientes")
@@ -517,14 +517,29 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     setConexionesError("");
     setCargandoConexiones(true);
     try {
-      const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/connections`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: row.xtream_user_id, limit: 30 }),
+      const [resConn, resTop, resStatus] = await Promise.all([
+        fetch(`${XTREAM_PROXY_URL}/api/xtream/connections`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: row.xtream_user_id, limit: 30 }),
+        }),
+        fetch(`${XTREAM_PROXY_URL}/api/xtream/top-channels`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: row.xtream_user_id, limit: 5 }),
+        }),
+        fetch(`${XTREAM_PROXY_URL}/api/xtream/xtream-status`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_ids: [row.xtream_user_id] }),
+        }),
+      ]);
+      const data = await resConn.json().catch(() => ({}));
+      if (!resConn.ok || !data?.success) throw new Error(data?.error || `Error ${resConn.status}`);
+      const topData = await resTop.json().catch(() => ({}));
+      const statusData = await resStatus.json().catch(() => ({}));
+      setConexionesData({
+        ...data,
+        channels: topData?.success ? topData.channels : [],
+        xtreamStatus: statusData?.success ? statusData.result?.[String(row.xtream_user_id)] : null,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
-      setConexionesData(data);
     } catch (e) {
       setConexionesError(e?.message || "No se pudo cargar las conexiones.");
     }
@@ -650,6 +665,12 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                     </td>
                     <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>
                       {c.es_demo && <span style={{ background: "#ede9fe", color: "#7c3aed", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6 }}>DEMO</span>}
+                      {(c.ips_24h || 0) > (c.max_connections || 1) && (
+                        <span title={`${c.ips_24h} IPs distintas en las últimas 24h (contrató ${c.max_connections || 1} pantalla${(c.max_connections || 1) !== 1 ? "s" : ""})`}
+                          style={{ background: "#fef3c7", color: "#92400e", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6, cursor: "help" }}>
+                          ⚠ COMPARTIDA
+                        </span>
+                      )}
                       {c.nombre || c.cliente?.nombre || "—"}
                     </td>
                     <td style={tdSt}>
@@ -830,6 +851,18 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
               <div style={{ fontSize: 13, color: "#dc2626" }}>{conexionesError}</div>
             ) : (
               <>
+                {conexionesData?.xtreamStatus && !conexionesData.xtreamStatus.enabled && (
+                  <div style={{ background: "#fee2e2", color: "#991b1b", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, marginBottom: 14 }}>
+                    ⚠ Esta línea está deshabilitada directamente en Xtream (no coincide con el estado del sistema).
+                  </div>
+                )}
+
+                {(conexionesRow?.ips_24h || 0) > (conexionesRow?.max_connections || 1) && (
+                  <div style={{ background: "#fef3c7", color: "#92400e", borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 600, marginBottom: 14 }}>
+                    ⚠ {conexionesRow.ips_24h} IPs distintas en las últimas 24h — contrató {conexionesRow.max_connections || 1} pantalla{(conexionesRow.max_connections || 1) !== 1 ? "s" : ""}. Posible cuenta compartida.
+                  </div>
+                )}
+
                 <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
                   En línea ahora ({conexionesData?.online?.length || 0})
                 </div>
@@ -871,6 +904,22 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                       </div>
                     ))}
                   </div>
+                )}
+
+                {conexionesData?.channels?.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, margin: "16px 0 6px" }}>
+                      Canales más vistos
+                    </div>
+                    <div>
+                      {conexionesData.channels.map((ch, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "6px 0", borderTop: i > 0 ? (isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6") : "none", fontSize: 12 }}>
+                          <span style={{ color: isDark ? "#c3d3ee" : "#374151", fontWeight: 600 }}>{ch.stream_name || `Canal ${ch.stream_id}`}</span>
+                          <span style={{ color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{ch.veces}x · {formatearDuracion(ch.total_seconds)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </>
             )}

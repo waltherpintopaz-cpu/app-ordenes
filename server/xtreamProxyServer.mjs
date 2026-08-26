@@ -143,6 +143,7 @@ async function sincronizarUltimaConexion() {
           body: JSON.stringify({
             ultima_conexion: info.last_seen || null,
             en_linea: Boolean(info.online),
+            ips_24h: Number(info.ips_24h) || 0,
           }),
         });
         actualizadas += 1;
@@ -192,6 +193,26 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/xtream/connections") {
       const body = await readJsonBody(req);
       const result = await forwardToXtream("/user_connections_api.php", { action: "connections", ...body });
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/xtream/online-all") {
+      const result = await forwardToXtream("/user_connections_api.php", { action: "online_all" });
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/xtream/top-channels") {
+      const body = await readJsonBody(req);
+      const result = await forwardToXtream("/user_connections_api.php", { action: "top_channels", ...body });
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/xtream/xtream-status") {
+      const body = await readJsonBody(req);
+      const result = await forwardToXtream("/user_connections_api.php", { action: "xtream_status", ...body });
       writeJson(res, result.status, result.json);
       return;
     }

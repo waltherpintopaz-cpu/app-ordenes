@@ -39,6 +39,7 @@ import IptvPanel from "./components/IptvPanel";
 import MaxPlayerCuentasPanel from "./components/MaxPlayerCuentasPanel";
 import MaxPlayerDashboardPanel from "./components/MaxPlayerDashboardPanel";
 import MaxPlayerReportesPanel from "./components/MaxPlayerReportesPanel";
+import MaxPlayerEnVivoPanel from "./components/MaxPlayerEnVivoPanel";
 import GastosPersonalesPanel from "./components/GastosPersonalesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
@@ -445,11 +446,13 @@ const BOT_LUCIDE_ICONS = {
 const MAXPLAYER_SUBMENU_ITEMS = [
   { key: "dashboard", label: "Dashboard", sideLabel: "Dashboard" },
   { key: "cuentas",   label: "Cuentas",   sideLabel: "Cuentas"   },
+  { key: "enVivo",    label: "En vivo",   sideLabel: "Conectados ahora" },
   { key: "reportes",  label: "Reportes",  sideLabel: "Reportes por nodo" },
 ];
 const MAXPLAYER_LUCIDE_ICONS = {
   dashboard: LayoutDashboard,
   cuentas:   MonitorPlay,
+  enVivo:    Radio,
   reportes:  BarChart2,
 };
 
@@ -21538,6 +21541,10 @@ export default function App() {
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "cuentas" && (esAdminSesion || esGestorSesion) && (
           <MaxPlayerCuentasPanel theme={theme} soloBusquedaDni={!esAdminSesion} />
+        )}
+
+        {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "enVivo" && esAdminSesion && (
+          <MaxPlayerEnVivoPanel theme={theme} />
         )}
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "reportes" && esAdminSesion && (
