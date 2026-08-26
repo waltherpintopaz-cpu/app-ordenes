@@ -227,9 +227,9 @@ function IconActionBtn({ onClick, disabled, title, bg, fg, children }) {
       title={title}
       aria-label={title}
       style={{
-        background: bg, color: fg, border: "none", borderRadius: 8, width: 30, height: 30,
+        background: bg, color: fg, border: "none", borderRadius: 7, width: 26, height: 26,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, marginLeft: 6,
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, marginLeft: 5,
       }}
     >
       {children}
@@ -623,8 +623,8 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
   };
 
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
-  const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
-  const tdSt = { padding: "10px 14px", verticalAlign: "middle", fontSize: 13 };
+  const thSt = { padding: "7px 10px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
+  const tdSt = { padding: "6px 10px", verticalAlign: "middle", fontSize: 13 };
 
   return (
     <div style={{ padding: "28px 24px", maxWidth: 1100, margin: "0 auto" }}>
@@ -762,15 +762,19 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 return (
                   <tr key={c.dni} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" }}>
                     {columnasVisibles.usuario && (
-                      <td style={tdSt}>
-                        <span style={{ fontFamily: "monospace" }}>{c.iptv_usuario}</span>
-                        <CopyBtn text={c.iptv_usuario} />
+                      <td style={{ ...tdSt, whiteSpace: "nowrap" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontFamily: "monospace" }}>{c.iptv_usuario}</span>
+                          <CopyBtn text={c.iptv_usuario} />
+                        </span>
                       </td>
                     )}
                     {columnasVisibles.dni && (
-                      <td style={tdSt}>
-                        <span style={{ fontFamily: "monospace" }}>{c.dni}</span>
-                        <CopyBtn text={c.dni} />
+                      <td style={{ ...tdSt, whiteSpace: "nowrap" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontFamily: "monospace" }}>{c.dni}</span>
+                          <CopyBtn text={c.dni} />
+                        </span>
                       </td>
                     )}
                     {columnasVisibles.cliente && (
