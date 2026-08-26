@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Tv, Search, Trash2, RefreshCw, Copy, Plus, Send, X, Activity } from "lucide-react";
+import { Tv, Search, Trash2, RefreshCw, Copy, Plus, Send, X, Activity, Columns3 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 
@@ -174,6 +174,28 @@ function formatearDuracion(seg) {
   return `${Math.floor(seg / 3600)}h ${Math.floor((seg % 3600) / 60)}min`;
 }
 
+const COLUMNAS_CUENTAS = [
+  { key: "usuario",        label: "Usuario MaxPlayer", defecto: false },
+  { key: "dni",             label: "DNI",               defecto: true },
+  { key: "cliente",         label: "Nombre",            defecto: true },
+  { key: "estado",          label: "Estado",            defecto: false },
+  { key: "nodo",            label: "Nodo",               defecto: true },
+  { key: "plan",            label: "Plan",               defecto: true },
+  { key: "pantallas",       label: "Pantallas",          defecto: true },
+  { key: "ultimaConexion",  label: "Última conexión",    defecto: true },
+  { key: "creado",          label: "Creación",           defecto: true },
+];
+const COLUMNAS_STORAGE_KEY = "maxplayer_cuentas_columnas_v1";
+
+function cargarColumnasVisibles() {
+  const base = Object.fromEntries(COLUMNAS_CUENTAS.map((c) => [c.key, c.defecto]));
+  try {
+    const guardado = JSON.parse(localStorage.getItem(COLUMNAS_STORAGE_KEY) || "null");
+    if (guardado && typeof guardado === "object") return { ...base, ...guardado };
+  } catch (_) { /* localStorage no disponible o corrupto: usar defecto */ }
+  return base;
+}
+
 const ESTADO_COLOR = {
   ACTIVO: { bg: "#dcfce7", fg: "#166534" },
   SUSPENDIDO: { bg: "#fef3c7", fg: "#92400e" },
@@ -192,6 +214,24 @@ function CopyBtn({ text }) {
     <button onClick={copy} title="Copiar"
       style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: copied ? "#16a34a" : "#9ca3af", display: "inline-flex" }}>
       <Copy size={12} />
+    </button>
+  );
+}
+
+function IconActionBtn({ onClick, disabled, title, bg, fg, children }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      style={{
+        background: bg, color: fg, border: "none", borderRadius: 8, width: 30, height: 30,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, marginLeft: 6,
+      }}
+    >
+      {children}
     </button>
   );
 }
@@ -224,6 +264,18 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
 
   // Editar pantallas
   const [actualizandoDni, setActualizandoDni] = useState("");
+
+  // Columnas visibles de la tabla (elegibles por el usuario, persistidas)
+  const [columnasVisibles, setColumnasVisibles] = useState(cargarColumnasVisibles);
+  const [mostrarColumnas, setMostrarColumnas] = useState(false);
+
+  const toggleColumna = (key) => {
+    setColumnasVisibles((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem(COLUMNAS_STORAGE_KEY, JSON.stringify(next)); } catch (_) { /* best-effort */ }
+      return next;
+    });
+  };
 
   // Ver conexiones (online + historial en vivo desde Xtream)
   const [conexionesRow, setConexionesRow] = useState(null);
@@ -582,6 +634,27 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
               <RefreshCw size={14} /> Actualizar
             </button>
           )}
+          {!soloBusquedaDni && (
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setMostrarColumnas((v) => !v)} title="Elegir columnas visibles"
+                style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+                <Columns3 size={14} /> Columnas
+              </button>
+              {mostrarColumnas && (
+                <>
+                  <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onClick={() => setMostrarColumnas(false)} />
+                  <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 9999, background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", padding: 10, width: 210 }}>
+                    {COLUMNAS_CUENTAS.map((col) => (
+                      <label key={col.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", fontSize: 13, color: isDark ? "#e6ecf7" : "#111827", cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!columnasVisibles[col.key]} onChange={() => toggleColumna(col.key)} />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -630,21 +703,21 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
           <table style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: isDark ? "#16213a" : "#f8fafc" }}>
-                <th style={thSt}>Usuario MaxPlayer</th>
-                <th style={thSt}>DNI</th>
-                <th style={thSt}>Cliente</th>
-                <th style={thSt}>Estado</th>
-                <th style={thSt}>Nodo</th>
-                <th style={thSt}>Plan</th>
-                <th style={thSt}>Pantallas</th>
-                <th style={thSt}>Última conexión</th>
-                <th style={thSt}>Creado</th>
+                {columnasVisibles.usuario && <th style={thSt}>Usuario MaxPlayer</th>}
+                {columnasVisibles.dni && <th style={thSt}>DNI</th>}
+                {columnasVisibles.cliente && <th style={thSt}>Nombre</th>}
+                {columnasVisibles.estado && <th style={thSt}>Estado</th>}
+                {columnasVisibles.nodo && <th style={thSt}>Nodo</th>}
+                {columnasVisibles.plan && <th style={thSt}>Plan</th>}
+                {columnasVisibles.pantallas && <th style={thSt}>Pantallas</th>}
+                {columnasVisibles.ultimaConexion && <th style={thSt}>Última conexión</th>}
+                {columnasVisibles.creado && <th style={thSt}>Creación</th>}
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filas.length === 0 && (
-                <tr><td colSpan={10} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
+                <tr><td colSpan={COLUMNAS_CUENTAS.filter((c) => columnasVisibles[c.key]).length + 1} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
                   {soloBusquedaDni
                     ? (yaBusco ? "No se encontró una cuenta con ese DNI." : "Ingresa un DNI y presiona Buscar.")
                     : (busqueda || filtroEstado ? "Sin resultados." : "Sin cuentas registradas.")}
@@ -655,87 +728,103 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 const colores = estado ? ESTADO_COLOR[estado] : { bg: "#f3f4f6", fg: "#6b7280" };
                 return (
                   <tr key={c.dni} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" }}>
-                    <td style={tdSt}>
-                      <span style={{ fontFamily: "monospace" }}>{c.iptv_usuario}</span>
-                      <CopyBtn text={c.iptv_usuario} />
-                    </td>
-                    <td style={tdSt}>
-                      <span style={{ fontFamily: "monospace" }}>{c.dni}</span>
-                      <CopyBtn text={c.dni} />
-                    </td>
-                    <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>
-                      {c.es_demo && <span style={{ background: "#ede9fe", color: "#7c3aed", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6 }}>DEMO</span>}
-                      {(c.ips_24h || 0) > (c.max_connections || 1) && (
-                        <span title={`${c.ips_24h} IPs distintas en las últimas 24h (contrató ${c.max_connections || 1} pantalla${(c.max_connections || 1) !== 1 ? "s" : ""})`}
-                          style={{ background: "#fef3c7", color: "#92400e", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6, cursor: "help" }}>
-                          ⚠ COMPARTIDA
+                    {columnasVisibles.usuario && (
+                      <td style={tdSt}>
+                        <span style={{ fontFamily: "monospace" }}>{c.iptv_usuario}</span>
+                        <CopyBtn text={c.iptv_usuario} />
+                      </td>
+                    )}
+                    {columnasVisibles.dni && (
+                      <td style={tdSt}>
+                        <span style={{ fontFamily: "monospace" }}>{c.dni}</span>
+                        <CopyBtn text={c.dni} />
+                      </td>
+                    )}
+                    {columnasVisibles.cliente && (
+                      <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>
+                        {c.es_demo && <span style={{ background: "#ede9fe", color: "#7c3aed", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6 }}>DEMO</span>}
+                        {(c.ips_24h || 0) > (c.max_connections || 1) && (
+                          <span title={`${c.ips_24h} IPs distintas en las últimas 24h (contrató ${c.max_connections || 1} pantalla${(c.max_connections || 1) !== 1 ? "s" : ""})`}
+                            style={{ background: "#fef3c7", color: "#92400e", borderRadius: 6, padding: "1px 7px", fontSize: 10, fontWeight: 800, marginRight: 6, cursor: "help" }}>
+                            ⚠ COMPARTIDA
+                          </span>
+                        )}
+                        {c.nombre || c.cliente?.nombre || "—"}
+                      </td>
+                    )}
+                    {columnasVisibles.estado && (
+                      <td style={tdSt}>
+                        <span style={{ background: colores.bg, color: colores.fg, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+                          {estado || "No encontrado"}
                         </span>
-                      )}
-                      {c.nombre || c.cliente?.nombre || "—"}
-                    </td>
-                    <td style={tdSt}>
-                      <span style={{ background: colores.bg, color: colores.fg, borderRadius: 6, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
-                        {estado || "No encontrado"}
-                      </span>
-                    </td>
-                    <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{normalizarEtiquetaNodo(c.nodo) || "—"}</td>
-                    <td style={tdSt}>
-                      <select
-                        value={c.plan || "Premium"}
-                        disabled={actualizandoDni === c.dni || !c.xtream_user_id}
-                        onChange={(e) => actualizarPlan(c, e.target.value)}
-                        title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar plan"}
-                        style={{ ...inputSt, padding: "4px 8px", fontSize: 12, opacity: !c.xtream_user_id ? 0.5 : 1 }}
-                      >
-                        {PLANES_IPTV_NOMBRES.map((p) => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </td>
-                    <td style={tdSt}>
-                      <select
-                        value={c.max_connections || 1}
-                        disabled={actualizandoDni === c.dni || !c.xtream_user_id}
-                        onChange={(e) => actualizarPantallas(c, e.target.value)}
-                        title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar pantallas"}
-                        style={{ ...inputSt, padding: "4px 8px", fontSize: 12, opacity: !c.xtream_user_id ? 0.5 : 1 }}
-                      >
-                        {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                    </td>
-                    <td style={tdSt}>
-                      {c.en_linea ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#16a34a", fontWeight: 700, fontSize: 12 }}>
-                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} />
-                          En línea
-                        </span>
-                      ) : (
-                        <span style={{ color: isDark ? "#93a2bd" : "#6b7280", fontSize: 12 }}>{formatearUltimaConexion(c.ultima_conexion)}</span>
-                      )}
-                    </td>
-                    <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>
-                      {c.created_at ? new Date(c.created_at).toLocaleDateString("es-PE") : "—"}
-                    </td>
+                      </td>
+                    )}
+                    {columnasVisibles.nodo && (
+                      <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#6b7280" }}>{normalizarEtiquetaNodo(c.nodo) || "—"}</td>
+                    )}
+                    {columnasVisibles.plan && (
+                      <td style={tdSt}>
+                        <select
+                          value={c.plan || "Premium"}
+                          disabled={actualizandoDni === c.dni || !c.xtream_user_id}
+                          onChange={(e) => actualizarPlan(c, e.target.value)}
+                          title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar plan"}
+                          style={{ ...inputSt, padding: "4px 8px", fontSize: 12, opacity: !c.xtream_user_id ? 0.5 : 1 }}
+                        >
+                          {PLANES_IPTV_NOMBRES.map((p) => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </td>
+                    )}
+                    {columnasVisibles.pantallas && (
+                      <td style={tdSt}>
+                        <select
+                          value={c.max_connections || 1}
+                          disabled={actualizandoDni === c.dni || !c.xtream_user_id}
+                          onChange={(e) => actualizarPantallas(c, e.target.value)}
+                          title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Editar pantallas"}
+                          style={{ ...inputSt, padding: "4px 8px", fontSize: 12, opacity: !c.xtream_user_id ? 0.5 : 1 }}
+                        >
+                          {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </td>
+                    )}
+                    {columnasVisibles.ultimaConexion && (
+                      <td style={tdSt}>
+                        {c.en_linea ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#16a34a", fontWeight: 700, fontSize: 12 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} />
+                            En línea
+                          </span>
+                        ) : (
+                          <span style={{ color: isDark ? "#93a2bd" : "#6b7280", fontSize: 12 }}>{formatearUltimaConexion(c.ultima_conexion)}</span>
+                        )}
+                      </td>
+                    )}
+                    {columnasVisibles.creado && (
+                      <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>
+                        {c.created_at ? new Date(c.created_at).toLocaleDateString("es-PE") : "—"}
+                      </td>
+                    )}
                     <td style={{ ...tdSt, textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button
+                      <IconActionBtn
                         onClick={() => abrirConexiones(c)}
                         disabled={!c.xtream_user_id}
                         title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Ver conexiones"}
-                        style={{ background: "#eff6ff", color: "#2563eb", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: c.xtream_user_id ? "pointer" : "default", fontSize: 12, opacity: c.xtream_user_id ? 1 : 0.5, display: "inline-flex", alignItems: "center", gap: 5, marginRight: 6 }}
+                        bg="#eff6ff" fg="#2563eb"
                       >
-                        <Activity size={13} /> Conexiones
-                      </button>
-                      <button
-                        onClick={() => abrirEnviar(c)}
-                        style={{ background: "#dcfce7", color: "#16a34a", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5, marginRight: 6 }}
-                      >
-                        <Send size={13} /> Enviar
-                      </button>
-                      <button
+                        <Activity size={15} />
+                      </IconActionBtn>
+                      <IconActionBtn onClick={() => abrirEnviar(c)} title="Enviar credenciales por WhatsApp" bg="#dcfce7" fg="#16a34a">
+                        <Send size={15} />
+                      </IconActionBtn>
+                      <IconActionBtn
                         onClick={() => eliminarCuenta(c)}
                         disabled={eliminandoDni === c.dni}
-                        style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: eliminandoDni === c.dni ? "default" : "pointer", fontSize: 12, opacity: eliminandoDni === c.dni ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 5 }}
+                        title={eliminandoDni === c.dni ? "Eliminando..." : "Eliminar cuenta"}
+                        bg="#fee2e2" fg="#dc2626"
                       >
-                        <Trash2 size={13} /> {eliminandoDni === c.dni ? "Eliminando..." : "Eliminar"}
-                      </button>
+                        <Trash2 size={15} />
+                      </IconActionBtn>
                     </td>
                   </tr>
                 );
