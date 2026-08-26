@@ -21540,7 +21540,7 @@ export default function App() {
         )}
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "cuentas" && (esAdminSesion || esGestorSesion) && (
-          <MaxPlayerCuentasPanel theme={theme} soloBusquedaDni={!esAdminSesion} />
+          <MaxPlayerCuentasPanel theme={theme} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />
         )}
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "enVivo" && esAdminSesion && (

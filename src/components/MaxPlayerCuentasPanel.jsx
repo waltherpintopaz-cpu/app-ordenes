@@ -237,8 +237,15 @@ function IconActionBtn({ onClick, disabled, title, bg, fg, children }) {
   );
 }
 
-export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }) {
+export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false, nodosPermitidos = [] }) {
   const isDark = theme === "dark";
+  const restringidoPorNodo = nodosPermitidos.length > 0;
+  const nodosPermitidosNormalizados = useMemo(
+    () => nodosPermitidos.map((n) => normalizarEtiquetaNodo(n)).filter(Boolean),
+    [nodosPermitidos]
+  );
+  const nodosPermitidosSet = useMemo(() => new Set(nodosPermitidosNormalizados), [nodosPermitidosNormalizados]);
+  const nodosSelector = restringidoPorNodo ? nodosPermitidosNormalizados : NODOS;
   const [cuentas, setCuentas] = useState([]);
   const [clientesMap, setClientesMap] = useState({});
   const [loading, setLoading] = useState(false);
@@ -255,7 +262,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
 
   // Crear cuenta
   const [mostrarCrear, setMostrarCrear] = useState(false);
-  const [crearForm, setCrearForm] = useState({ dni: "", nombre: "", nodo: NODOS[0], pantallas: "1", plan: "Premium" });
+  const [crearForm, setCrearForm] = useState({ dni: "", nombre: "", nodo: nodosSelector[0], pantallas: "1", plan: "Premium" });
   const [buscandoCliente, setBuscandoCliente] = useState(false);
   const [creando, setCreando] = useState(false);
   const [crearMsg, setCrearMsg] = useState("");
@@ -354,9 +361,14 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     cargar(dni);
   };
 
+  const cuentasVisibles = useMemo(() => {
+    if (!restringidoPorNodo) return cuentas;
+    return cuentas.filter((c) => nodosPermitidosSet.has(normalizarEtiquetaNodo(c.nodo)));
+  }, [cuentas, restringidoPorNodo, nodosPermitidosSet]);
+
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    let resultado = cuentas
+    let resultado = cuentasVisibles
       .map((c) => ({ ...c, cliente: clientesMap[c.dni] || null }))
       .filter((c) => {
         if (filtroNodo && normalizarEtiquetaNodo(c.nodo) !== filtroNodo) return false;
@@ -378,7 +390,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
       });
     }
     return resultado;
-  }, [cuentas, clientesMap, busqueda, filtroNodo, orden]);
+  }, [cuentasVisibles, clientesMap, busqueda, filtroNodo, orden]);
 
   const ordenarPor = (columna) => {
     setOrden((prev) => prev.columna === columna
@@ -391,13 +403,13 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
   const filasPagina = useMemo(() => filas.slice((pagina - 1) * pageSize, pagina * pageSize), [filas, pagina, pageSize]);
 
   const stats = useMemo(() => {
-    const total = cuentas.length;
-    const inactivas = cuentas.filter((c) => {
+    const total = cuentasVisibles.length;
+    const inactivas = cuentasVisibles.filter((c) => {
       const cli = clientesMap[c.dni];
       return !cli || cli.estado === "SUSPENDIDO" || cli.estado === "CORTADO";
     }).length;
     return { total, inactivas };
-  }, [cuentas, clientesMap]);
+  }, [cuentasVisibles, clientesMap]);
 
   const eliminarCuenta = async (row) => {
     const nombreRef = row.nombre || row.cliente?.nombre || row.iptv_usuario;
@@ -437,7 +449,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
       const match = (data || []).find((c) => c.estado === "ACTIVO") || (data || [])[0] || null;
       if (match) {
         const nodoNormalizado = normalizarEtiquetaNodo(match.nodo);
-        setCrearForm((p) => ({ ...p, nombre: match.nombre || p.nombre, nodo: NODOS.includes(nodoNormalizado) ? nodoNormalizado : p.nodo }));
+        setCrearForm((p) => ({ ...p, nombre: match.nombre || p.nombre, nodo: nodosSelector.includes(nodoNormalizado) ? nodoNormalizado : p.nodo }));
         setCrearMsg("");
       } else {
         setCrearMsg("No se encontró un cliente con ese DNI en Mikrowisp — completa nombre y nodo manualmente.");
@@ -482,7 +494,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     try {
       const nueva = await crearCuentaMaxPlayer({
         dniRaw: dniDemo,
-        nodoRaw: "Nod_01",
+        nodoRaw: nodosSelector[0] || "Nod_01",
         nombreRaw: `DEMO - ${demoForm.nombre.trim()}`,
         maxConnections: demoForm.pantallas,
         creadoPor: "Panel MaxPlayer (demo)",
@@ -710,14 +722,14 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
           />
         </div>
         <select value={filtroNodo} onChange={(e) => setFiltroNodo(e.target.value)} style={inputSt}>
-          <option value="">Todos los nodos</option>
-          {NODOS.map((n) => <option key={n} value={n}>{n}</option>)}
+          <option value="">{restringidoPorNodo ? "Todos mis nodos" : "Todos los nodos"}</option>
+          {nodosSelector.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
         <label style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>Mostrar</label>
         <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={inputSt}>
           {PAGE_SIZE_OPCIONES.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
-        <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{filas.length} de {cuentas.length}</span>
+        <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{filas.length} de {cuentasVisibles.length}</span>
       </div>
       )}
 
@@ -905,7 +917,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Nodo</label>
                 <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={crearForm.nodo}
                   onChange={(e) => setCrearForm((p) => ({ ...p, nodo: e.target.value }))}>
-                  {NODOS.map((n) => <option key={n} value={n}>{n}</option>)}
+                  {nodosSelector.map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
               <div style={{ width: 90 }}>
