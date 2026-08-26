@@ -186,6 +186,7 @@ const COLUMNAS_CUENTAS = [
   { key: "creado",          label: "Creación",           defecto: true },
 ];
 const COLUMNAS_STORAGE_KEY = "maxplayer_cuentas_columnas_v1";
+const PAGE_SIZE_OPCIONES = [10, 25, 50, 100, 250];
 
 function cargarColumnasVisibles() {
   const base = Object.fromEntries(COLUMNAS_CUENTAS.map((c) => [c.key, c.defecto]));
@@ -247,6 +248,8 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
   const [yaBusco, setYaBusco] = useState(false);
   const [filtroNodo, setFiltroNodo] = useState("");
   const [orden, setOrden] = useState({ columna: null, dir: "desc" });
+  const [pageSize, setPageSize] = useState(25);
+  const [pagina, setPagina] = useState(1);
   const [eliminandoDni, setEliminandoDni] = useState("");
   const [toast, setToast] = useState("");
 
@@ -382,6 +385,10 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
       ? { columna, dir: prev.dir === "desc" ? "asc" : "desc" }
       : { columna, dir: "desc" });
   };
+
+  useEffect(() => { setPagina(1); }, [busqueda, filtroNodo, orden, pageSize]);
+  const totalPaginas = Math.max(1, Math.ceil(filas.length / pageSize));
+  const filasPagina = useMemo(() => filas.slice((pagina - 1) * pageSize, pagina * pageSize), [filas, pagina, pageSize]);
 
   const stats = useMemo(() => {
     const total = cuentas.length;
@@ -706,6 +713,10 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
           <option value="">Todos los nodos</option>
           {NODOS.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
+        <label style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>Mostrar</label>
+        <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={inputSt}>
+          {PAGE_SIZE_OPCIONES.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
         <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{filas.length} de {cuentas.length}</span>
       </div>
       )}
@@ -745,7 +756,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                     : (busqueda || filtroNodo ? "Sin resultados." : "Sin cuentas registradas.")}
                 </td></tr>
               )}
-              {filas.map((c) => {
+              {filasPagina.map((c) => {
                 const estado = c.cliente?.estado || null;
                 const colores = estado ? ESTADO_COLOR[estado] : { bg: "#f3f4f6", fg: "#6b7280" };
                 return (
@@ -853,6 +864,16 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!loading && totalPaginas > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 16 }}>
+          <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={pagina === 1}
+            style={{ ...inputSt, cursor: pagina === 1 ? "default" : "pointer", opacity: pagina === 1 ? 0.5 : 1 }}>‹</button>
+          <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>Página {pagina} de {totalPaginas}</span>
+          <button onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} disabled={pagina === totalPaginas}
+            style={{ ...inputSt, cursor: pagina === totalPaginas ? "default" : "pointer", opacity: pagina === totalPaginas ? 0.5 : 1 }}>›</button>
         </div>
       )}
 
