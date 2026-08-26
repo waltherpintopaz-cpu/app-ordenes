@@ -19,6 +19,13 @@ const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || "sb_publishabl
 const MP_TOKEN = String(process.env.MP_TOKEN || "mNTO0Z5ynAIsPx7LWBzFX90N").trim();
 const CLEANUP_INTERVAL_MIN = Number(process.env.CLEANUP_INTERVAL_MIN || 15) || 15;
 
+// ---------- Sincronizacion periodica de "ultima conexion" ----------
+// Cada CONNECTIONS_SYNC_INTERVAL_MIN minutos consulta a Xtream (user_connections_api.php,
+// action=last_seen) la ultima conexion de cada cuenta con linea propia y la
+// persiste en iptv_clientes (columnas ultima_conexion / en_linea), asi el panel
+// la muestra sin tener que golpear a Xtream en cada carga.
+const CONNECTIONS_SYNC_INTERVAL_MIN = Number(process.env.CONNECTIONS_SYNC_INTERVAL_MIN || 5) || 5;
+
 const writeJson = (res, status, data) => {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -97,6 +104,56 @@ async function limpiarDemosVencidas() {
   return { ok: true, eliminadas, total_vencidas: vencidas.length };
 }
 
+async function sincronizarUltimaConexion() {
+  if (!XTREAM_API_KEY) return { ok: false, error: "server_misconfigured" };
+
+  const url = `${SUPABASE_URL}/rest/v1/iptv_clientes?xtream_user_id=not.is.null&select=dni,xtream_user_id`;
+  let cuentas = [];
+  try {
+    const res = await fetch(url, { headers: supabaseHeaders });
+    cuentas = await res.json();
+    if (!Array.isArray(cuentas)) cuentas = [];
+  } catch (e) {
+    console.error("[sync-conexiones] error consultando Supabase:", e?.message || e);
+    return { ok: false, error: "supabase_query_failed" };
+  }
+  if (cuentas.length === 0) return { ok: true, actualizadas: 0 };
+
+  const porUserId = new Map();
+  for (const c of cuentas) {
+    if (c.xtream_user_id) porUserId.set(Number(c.xtream_user_id), c.dni);
+  }
+  const userIds = Array.from(porUserId.keys());
+
+  // La API acepta como maximo 500 ids por llamada.
+  let actualizadas = 0;
+  for (let i = 0; i < userIds.length; i += 500) {
+    const lote = userIds.slice(i, i + 500);
+    const result = await forwardToXtream("/user_connections_api.php", { action: "last_seen", user_ids: lote });
+    const datos = result?.json?.result || {};
+    for (const uid of lote) {
+      const info = datos[String(uid)];
+      if (!info) continue;
+      const dni = porUserId.get(uid);
+      if (!dni) continue;
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/iptv_clientes?dni=eq.${encodeURIComponent(dni)}`, {
+          method: "PATCH",
+          headers: { ...supabaseHeaders, Prefer: "return=minimal" },
+          body: JSON.stringify({
+            ultima_conexion: info.last_seen || null,
+            en_linea: Boolean(info.online),
+          }),
+        });
+        actualizadas += 1;
+      } catch (e) {
+        console.error(`[sync-conexiones] error actualizando dni ${dni}:`, e?.message || e);
+      }
+    }
+  }
+  return { ok: true, actualizadas, total: userIds.length };
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "OPTIONS") {
@@ -132,8 +189,21 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/xtream/connections") {
+      const body = await readJsonBody(req);
+      const result = await forwardToXtream("/user_connections_api.php", { action: "connections", ...body });
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/api/xtream/cleanup-demos") {
       const result = await limpiarDemosVencidas();
+      writeJson(res, result.ok ? 200 : 500, result);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/xtream/sync-connections") {
+      const result = await sincronizarUltimaConexion();
       writeJson(res, result.ok ? 200 : 500, result);
       return;
     }
@@ -152,3 +222,8 @@ server.listen(SERVER_PORT, SERVER_HOST, () => {
 // (para no competir con el arranque), luego cada CLEANUP_INTERVAL_MIN minutos.
 setTimeout(() => { limpiarDemosVencidas().catch(() => {}); }, 30000);
 setInterval(() => { limpiarDemosVencidas().catch(() => {}); }, CLEANUP_INTERVAL_MIN * 60000);
+
+// Sincronizacion de "ultima conexion": primera pasada a los 45s de arrancar,
+// luego cada CONNECTIONS_SYNC_INTERVAL_MIN minutos.
+setTimeout(() => { sincronizarUltimaConexion().catch(() => {}); }, 45000);
+setInterval(() => { sincronizarUltimaConexion().catch(() => {}); }, CONNECTIONS_SYNC_INTERVAL_MIN * 60000);

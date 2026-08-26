@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Tv, Search, Trash2, RefreshCw, Copy, Plus, Send, X } from "lucide-react";
+import { Tv, Search, Trash2, RefreshCw, Copy, Plus, Send, X, Activity } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 
@@ -156,6 +156,24 @@ async function enviarCredencialesWhatsapp({ empresa, celular, nombre, iptv_usuar
   }
 }
 
+function formatearUltimaConexion(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const diffSeg = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diffSeg < 60) return "hace unos segundos";
+  if (diffSeg < 3600) return `hace ${Math.floor(diffSeg / 60)} min`;
+  if (diffSeg < 86400) return `hace ${Math.floor(diffSeg / 3600)} h`;
+  if (diffSeg < 86400 * 30) return `hace ${Math.floor(diffSeg / 86400)} d`;
+  return d.toLocaleDateString("es-PE");
+}
+
+function formatearDuracion(seg) {
+  if (seg == null) return "—";
+  if (seg < 60) return `${seg}s`;
+  if (seg < 3600) return `${Math.floor(seg / 60)}min`;
+  return `${Math.floor(seg / 3600)}h ${Math.floor((seg % 3600) / 60)}min`;
+}
+
 const ESTADO_COLOR = {
   ACTIVO: { bg: "#dcfce7", fg: "#166534" },
   SUSPENDIDO: { bg: "#fef3c7", fg: "#92400e" },
@@ -207,6 +225,12 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
   // Editar pantallas
   const [actualizandoDni, setActualizandoDni] = useState("");
 
+  // Ver conexiones (online + historial en vivo desde Xtream)
+  const [conexionesRow, setConexionesRow] = useState(null);
+  const [conexionesData, setConexionesData] = useState(null);
+  const [cargandoConexiones, setCargandoConexiones] = useState(false);
+  const [conexionesError, setConexionesError] = useState("");
+
   // Crear demo
   const [mostrarDemo, setMostrarDemo] = useState(false);
   const [demoForm, setDemoForm] = useState({ nombre: "", pantallas: "1", horas: "24" });
@@ -224,10 +248,19 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     try {
       let query = supabase
         .from("iptv_clientes")
-        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo,plan")
+        .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo,plan,ultima_conexion,en_linea")
         .order("created_at", { ascending: false });
       query = dniExacto ? query.eq("dni", dniExacto) : query;
-      const { data: iptv, error: errIptv } = await query;
+      let { data: iptv, error: errIptv } = await query;
+      if (errIptv && /column .*ultima_conexion|column .*en_linea/i.test(errIptv.message || "")) {
+        // Migracion supabase/sql/20260826_iptv_ultima_conexion.sql aun no corrida.
+        let fallback = supabase
+          .from("iptv_clientes")
+          .select("dni,iptv_usuario,iptv_password,iptv_user_id,nodo,creado_por,created_at,xtream_user_id,max_connections,nombre,es_demo,plan")
+          .order("created_at", { ascending: false });
+        fallback = dniExacto ? fallback.eq("dni", dniExacto) : fallback;
+        ({ data: iptv, error: errIptv } = await fallback);
+      }
       if (errIptv) throw errIptv;
 
       const dnis = (iptv || []).map((r) => r.dni).filter(Boolean);
@@ -470,6 +503,34 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
     setActualizandoDni("");
   };
 
+  const abrirConexiones = async (row) => {
+    if (!row.xtream_user_id) {
+      showToast("❌ Esta cuenta no tiene línea Xtream asociada (creada antes de la actualización).");
+      return;
+    }
+    if (!XTREAM_PROXY_URL) {
+      showToast("❌ Falta configurar VITE_XTREAM_PROXY_URL.");
+      return;
+    }
+    setConexionesRow(row);
+    setConexionesData(null);
+    setConexionesError("");
+    setCargandoConexiones(true);
+    try {
+      const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/connections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: row.xtream_user_id, limit: 30 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
+      setConexionesData(data);
+    } catch (e) {
+      setConexionesError(e?.message || "No se pudo cargar las conexiones.");
+    }
+    setCargandoConexiones(false);
+  };
+
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
   const thSt = { padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" };
   const tdSt = { padding: "10px 14px", verticalAlign: "middle", fontSize: 13 };
@@ -561,13 +622,14 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 <th style={thSt}>Nodo</th>
                 <th style={thSt}>Plan</th>
                 <th style={thSt}>Pantallas</th>
+                <th style={thSt}>Última conexión</th>
                 <th style={thSt}>Creado</th>
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filas.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
+                <tr><td colSpan={10} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
                   {soloBusquedaDni
                     ? (yaBusco ? "No se encontró una cuenta con ese DNI." : "Ingresa un DNI y presiona Buscar.")
                     : (busqueda || filtroEstado ? "Sin resultados." : "Sin cuentas registradas.")}
@@ -618,10 +680,28 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                         {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}</option>)}
                       </select>
                     </td>
+                    <td style={tdSt}>
+                      {c.en_linea ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#16a34a", fontWeight: 700, fontSize: 12 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} />
+                          En línea
+                        </span>
+                      ) : (
+                        <span style={{ color: isDark ? "#93a2bd" : "#6b7280", fontSize: 12 }}>{formatearUltimaConexion(c.ultima_conexion)}</span>
+                      )}
+                    </td>
                     <td style={{ ...tdSt, color: isDark ? "#93a2bd" : "#9ca3af", fontSize: 12 }}>
                       {c.created_at ? new Date(c.created_at).toLocaleDateString("es-PE") : "—"}
                     </td>
                     <td style={{ ...tdSt, textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button
+                        onClick={() => abrirConexiones(c)}
+                        disabled={!c.xtream_user_id}
+                        title={!c.xtream_user_id ? "Cuenta antigua sin línea Xtream asociada" : "Ver conexiones"}
+                        style={{ background: "#eff6ff", color: "#2563eb", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: c.xtream_user_id ? "pointer" : "default", fontSize: 12, opacity: c.xtream_user_id ? 1 : 0.5, display: "inline-flex", alignItems: "center", gap: 5, marginRight: 6 }}
+                      >
+                        <Activity size={13} /> Conexiones
+                      </button>
                       <button
                         onClick={() => abrirEnviar(c)}
                         style={{ background: "#dcfce7", color: "#16a34a", border: "none", borderRadius: 8, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5, marginRight: 6 }}
@@ -728,6 +808,72 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
               style={{ width: "100%", background: creandoDemo ? "#9ca3af" : "#7c3aed", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: creandoDemo ? "default" : "pointer", fontSize: 13 }}>
               {creandoDemo ? "Creando..." : "Crear demo"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {conexionesRow && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000 }}
+          onClick={() => setConexionesRow(null)}>
+          <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, padding: 22, width: 520, maxWidth: "92vw", maxHeight: "80vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#111827" }}>Conexiones</h3>
+              <button onClick={() => setConexionesRow(null)} style={{ background: "none", border: "none", cursor: "pointer", color: isDark ? "#93a2bd" : "#6b7280" }}><X size={18} /></button>
+            </div>
+            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", marginBottom: 14 }}>
+              {conexionesRow.nombre || conexionesRow.cliente?.nombre || conexionesRow.iptv_usuario} · <span style={{ fontFamily: "monospace" }}>{conexionesRow.iptv_usuario}</span>
+            </div>
+
+            {cargandoConexiones ? (
+              <div style={{ textAlign: "center", padding: 30, color: isDark ? "#93a2bd" : "#6b7280", fontSize: 13 }}>Cargando...</div>
+            ) : conexionesError ? (
+              <div style={{ fontSize: 13, color: "#dc2626" }}>{conexionesError}</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                  En línea ahora ({conexionesData?.online?.length || 0})
+                </div>
+                {(!conexionesData?.online || conexionesData.online.length === 0) ? (
+                  <div style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#9ca3af", marginBottom: 16 }}>Sin conexiones activas.</div>
+                ) : (
+                  <div style={{ marginBottom: 16 }}>
+                    {conexionesData.online.map((o, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderTop: i > 0 ? (isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6") : "none", fontSize: 12 }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 700, color: "#16a34a" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#16a34a", display: "inline-block" }} /> {o.stream_name || `Canal ${o.stream_id}`}
+                          </div>
+                          <div style={{ color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2 }}>{o.user_ip} · {o.user_agent}</div>
+                        </div>
+                        <div style={{ color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{formatearDuracion(o.duration_seconds)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ fontSize: 12, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                  Historial reciente
+                </div>
+                {(!conexionesData?.history || conexionesData.history.length === 0) ? (
+                  <div style={{ fontSize: 13, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin conexiones registradas.</div>
+                ) : (
+                  <div>
+                    {conexionesData.history.map((h, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderTop: i > 0 ? (isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6") : "none", fontSize: 12 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{h.stream_name || `Canal ${h.stream_id}`}</div>
+                          <div style={{ color: isDark ? "#93a2bd" : "#6b7280", marginTop: 2 }}>{h.user_ip} · {h.user_agent}</div>
+                        </div>
+                        <div style={{ textAlign: "right", color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>
+                          <div>{formatearUltimaConexion(h.started_at)}</div>
+                          <div>{formatearDuracion(h.duration_seconds)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
