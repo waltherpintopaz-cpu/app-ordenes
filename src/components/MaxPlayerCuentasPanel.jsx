@@ -245,7 +245,8 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
   const [busqueda, setBusqueda] = useState("");
   const [busquedaDni, setBusquedaDni] = useState("");
   const [yaBusco, setYaBusco] = useState(false);
-  const [filtroEstado, setFiltroEstado] = useState("");
+  const [filtroNodo, setFiltroNodo] = useState("");
+  const [orden, setOrden] = useState({ columna: null, dir: "desc" });
   const [eliminandoDni, setEliminandoDni] = useState("");
   const [toast, setToast] = useState("");
 
@@ -352,11 +353,10 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
 
   const filas = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return cuentas
+    let resultado = cuentas
       .map((c) => ({ ...c, cliente: clientesMap[c.dni] || null }))
       .filter((c) => {
-        if (filtroEstado === "sin_cliente" && c.cliente) return false;
-        if (filtroEstado && filtroEstado !== "sin_cliente" && c.cliente?.estado !== filtroEstado) return false;
+        if (filtroNodo && normalizarEtiquetaNodo(c.nodo) !== filtroNodo) return false;
         if (!q) return true;
         return (
           String(c.dni || "").toLowerCase().includes(q) ||
@@ -364,7 +364,24 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
           String(c.nombre || c.cliente?.nombre || "").toLowerCase().includes(q)
         );
       });
-  }, [cuentas, clientesMap, busqueda, filtroEstado]);
+
+    if (orden.columna === "ultimaConexion" || orden.columna === "creado") {
+      const campo = orden.columna === "ultimaConexion" ? "ultima_conexion" : "created_at";
+      const factor = orden.dir === "asc" ? 1 : -1;
+      resultado = [...resultado].sort((a, b) => {
+        const ta = a[campo] ? new Date(a[campo]).getTime() : 0;
+        const tb = b[campo] ? new Date(b[campo]).getTime() : 0;
+        return (ta - tb) * factor;
+      });
+    }
+    return resultado;
+  }, [cuentas, clientesMap, busqueda, filtroNodo, orden]);
+
+  const ordenarPor = (columna) => {
+    setOrden((prev) => prev.columna === columna
+      ? { columna, dir: prev.dir === "desc" ? "asc" : "desc" }
+      : { columna, dir: "desc" });
+  };
 
   const stats = useMemo(() => {
     const total = cuentas.length;
@@ -685,12 +702,9 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
             onChange={(e) => setBusqueda(e.target.value)}
           />
         </div>
-        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} style={inputSt}>
-          <option value="">Todos los estados</option>
-          <option value="ACTIVO">Cliente activo</option>
-          <option value="SUSPENDIDO">Cliente suspendido</option>
-          <option value="CORTADO">Cliente cortado</option>
-          <option value="sin_cliente">Sin cliente encontrado</option>
+        <select value={filtroNodo} onChange={(e) => setFiltroNodo(e.target.value)} style={inputSt}>
+          <option value="">Todos los nodos</option>
+          {NODOS.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
         <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{filas.length} de {cuentas.length}</span>
       </div>
@@ -710,8 +724,16 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 {columnasVisibles.nodo && <th style={thSt}>Nodo</th>}
                 {columnasVisibles.plan && <th style={thSt}>Plan</th>}
                 {columnasVisibles.pantallas && <th style={thSt}>Pantallas</th>}
-                {columnasVisibles.ultimaConexion && <th style={thSt}>Última conexión</th>}
-                {columnasVisibles.creado && <th style={thSt}>Creación</th>}
+                {columnasVisibles.ultimaConexion && (
+                  <th style={{ ...thSt, cursor: "pointer", userSelect: "none" }} onClick={() => ordenarPor("ultimaConexion")}>
+                    Última conexión {orden.columna === "ultimaConexion" ? (orden.dir === "desc" ? "▼" : "▲") : ""}
+                  </th>
+                )}
+                {columnasVisibles.creado && (
+                  <th style={{ ...thSt, cursor: "pointer", userSelect: "none" }} onClick={() => ordenarPor("creado")}>
+                    Creación {orden.columna === "creado" ? (orden.dir === "desc" ? "▼" : "▲") : ""}
+                  </th>
+                )}
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
               </tr>
             </thead>
@@ -720,7 +742,7 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false }
                 <tr><td colSpan={COLUMNAS_CUENTAS.filter((c) => columnasVisibles[c.key]).length + 1} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>
                   {soloBusquedaDni
                     ? (yaBusco ? "No se encontró una cuenta con ese DNI." : "Ingresa un DNI y presiona Buscar.")
-                    : (busqueda || filtroEstado ? "Sin resultados." : "Sin cuentas registradas.")}
+                    : (busqueda || filtroNodo ? "Sin resultados." : "Sin cuentas registradas.")}
                 </td></tr>
               )}
               {filas.map((c) => {
