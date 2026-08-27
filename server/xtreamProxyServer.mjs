@@ -217,6 +217,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/xtream/top-channels-global") {
+      const body = await readJsonBody(req);
+      const result = await forwardToXtream("/user_connections_api.php", { action: "top_channels_global", ...body });
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/xtream/channel-viewers") {
+      const body = await readJsonBody(req);
+      const result = await forwardToXtream("/user_connections_api.php", { action: "channel_viewers", ...body });
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/api/xtream/cleanup-demos") {
       const result = await limpiarDemosVencidas();
       writeJson(res, result.ok ? 200 : 500, result);

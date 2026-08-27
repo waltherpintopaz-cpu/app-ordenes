@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -40,6 +40,7 @@ import MaxPlayerCuentasPanel from "./components/MaxPlayerCuentasPanel";
 import MaxPlayerDashboardPanel from "./components/MaxPlayerDashboardPanel";
 import MaxPlayerReportesPanel from "./components/MaxPlayerReportesPanel";
 import MaxPlayerEnVivoPanel from "./components/MaxPlayerEnVivoPanel";
+import MaxPlayerCanalesPanel from "./components/MaxPlayerCanalesPanel";
 import GastosPersonalesPanel from "./components/GastosPersonalesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
@@ -447,12 +448,14 @@ const MAXPLAYER_SUBMENU_ITEMS = [
   { key: "dashboard", label: "Dashboard", sideLabel: "Dashboard" },
   { key: "cuentas",   label: "Cuentas",   sideLabel: "Cuentas"   },
   { key: "enVivo",    label: "En vivo",   sideLabel: "Conectados ahora" },
+  { key: "canales",   label: "Canales",   sideLabel: "Canales más vistos" },
   { key: "reportes",  label: "Reportes",  sideLabel: "Reportes por nodo" },
 ];
 const MAXPLAYER_LUCIDE_ICONS = {
   dashboard: LayoutDashboard,
   cuentas:   MonitorPlay,
   enVivo:    Radio,
+  canales:   Film,
   reportes:  BarChart2,
 };
 
@@ -21545,6 +21548,10 @@ export default function App() {
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "enVivo" && esAdminSesion && (
           <MaxPlayerEnVivoPanel theme={theme} />
+        )}
+
+        {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "canales" && esAdminSesion && (
+          <MaxPlayerCanalesPanel theme={theme} />
         )}
 
         {vistaActiva === "maxplayerCuentas" && maxplayerSubmenu === "reportes" && esAdminSesion && (
