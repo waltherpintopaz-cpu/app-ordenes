@@ -57,6 +57,40 @@ const forwardToXtream = async (path, body) => {
   return { status: res.status, json };
 };
 
+// ---------- Resolver links cortos de Google Maps (maps.app.goo.gl) ----------
+// El sidebar de ordenes ya extrae coordenadas de links largos por regex (texto
+// plano), pero los links cortos no traen coordenadas visibles: hay que seguir
+// la redireccion y leerlas de la URL final.
+const ALLOWED_MAPS_HOSTS = new Set(["maps.app.goo.gl", "goo.gl", "google.com", "www.google.com", "maps.google.com"]);
+
+async function resolveMapsLink(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl || ""));
+  } catch {
+    return { ok: false, error: "invalid_url" };
+  }
+  if (!ALLOWED_MAPS_HOSTS.has(parsed.hostname)) {
+    return { ok: false, error: "host_not_allowed" };
+  }
+  let res;
+  try {
+    res = await fetch(parsed.toString(), { redirect: "follow" });
+  } catch (e) {
+    return { ok: false, error: "fetch_failed", detail: String(e?.message || e) };
+  }
+  const finalUrl = res.url || parsed.toString();
+  // Prioridad: el pin exacto del lugar (!3d lat !4d lng) sobre el centro del
+  // mapa (@lat,lng), que puede estar desplazado si el usuario movio la vista.
+  const mPin = finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  const mCenter = finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const match = mPin || mCenter;
+  if (!match) {
+    return { ok: false, error: "coords_not_found", final_url: finalUrl };
+  }
+  return { ok: true, lat: match[1], lng: match[2], final_url: finalUrl };
+}
+
 const supabaseHeaders = {
   "Content-Type": "application/json",
   apikey: SUPABASE_ANON_KEY,
@@ -168,6 +202,13 @@ const server = http.createServer(async (req, res) => {
         service: "xtream-proxy",
         configured: Boolean(XTREAM_API_KEY),
       });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/resolve-maps-link") {
+      const body = await readJsonBody(req);
+      const result = await resolveMapsLink(body?.url);
+      writeJson(res, result.ok ? 200 : 400, result);
       return;
     }
 

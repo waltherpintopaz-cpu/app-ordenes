@@ -2859,6 +2859,7 @@ export default function SidebarApp() {
       const messages = (data.messages || []).slice().reverse(); // más recientes primero
       const found = [];
       const seen = new Set();
+      const shortLinks = [];
 
       const addCoord = (lat, lng) => {
         const key = `${parseFloat(lat).toFixed(5)},${parseFloat(lng).toFixed(5)}`;
@@ -2911,11 +2912,32 @@ export default function SidebarApp() {
         const m5 = text.match(/(-?\d{1,3}\.\d{4,})[,\s]+(-?\d{1,3}\.\d{4,})/);
         if (m5) addCoord(m5[1], m5[2]);
 
+        // Escenario 10: link corto de Google Maps (maps.app.goo.gl) — no trae
+        // coordenadas en el texto, hay que resolver la redireccion (mas abajo).
+        const mShort = text.match(/(https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps)\/[A-Za-z0-9_-]+)/i);
+        if (mShort) shortLinks.push(mShort[1]);
+
         // Escenario 9: attachments (coordinates_lat/long de Chatwoot)
         for (const att of (msg.attachments || [])) {
           const aLat = att.coordinates_lat ?? att.lat ?? att.latitude;
           const aLng = att.coordinates_long ?? att.long ?? att.longitude ?? att.lng;
           if (aLat != null && aLng != null) addCoord(aLat, aLng);
+        }
+      }
+
+      // Si no se encontraron coordenadas en texto plano, intentar resolver
+      // links cortos de Maps (siguen la redireccion via el proxy propio).
+      if (found.length === 0 && shortLinks.length > 0 && XTREAM_PROXY_URL) {
+        for (const link of shortLinks) {
+          try {
+            const rr = await fetch(`${XTREAM_PROXY_URL}/api/resolve-maps-link`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: link }),
+            });
+            const rd = await rr.json().catch(() => ({}));
+            if (rd?.ok && rd.lat && rd.lng) { addCoord(rd.lat, rd.lng); break; }
+          } catch (_) { /* probar el siguiente link */ }
         }
       }
 
