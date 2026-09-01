@@ -193,6 +193,43 @@ const HIST_TECNICO_CODE_TO_NAME = {
   "AFS-ALE-02": "Alejandro Juño",
 };
 
+const DNI_API_KEY = "cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx";
+
+// Acepta DNI (8 digitos) o RUC (11 digitos) — mismo proveedor (PeruDevs), pero
+// son dos endpoints distintos con distinta forma de respuesta.
+function tipoDocumento(documento) {
+  const d = String(documento || "").replace(/\D/g, "");
+  if (d.length === 8) return "dni";
+  if (d.length === 11) return "ruc";
+  return null;
+}
+
+/** Busca un DNI o RUC segun su longitud. Devuelve { tipo, nombre, direccion } (direccion solo para RUC). */
+async function buscarDniORuc(documento) {
+  const d = String(documento || "").replace(/\D/g, "");
+  const tipo = tipoDocumento(d);
+  if (!tipo) throw new Error("Documento invalido: debe tener 8 (DNI) u 11 (RUC) digitos");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const url = tipo === "dni"
+      ? `https://api.perudevs.com/api/v1/dni/simple?document=${d}&key=${DNI_API_KEY}`
+      : `https://api.perudevs.com/api/v1/ruc?document=${d}&key=${DNI_API_KEY}`;
+    const res = await fetch(url, { signal: ctrl.signal });
+    const data = await res.json();
+    if (!data?.estado) return null;
+    if (tipo === "dni") {
+      const nombre = data?.resultado?.nombre_completo;
+      return nombre ? { tipo, nombre } : null;
+    }
+    const nombre = data?.resultado?.razon_social;
+    const direccion = data?.resultado?.direccion;
+    return nombre ? { tipo, nombre, direccion: direccion && direccion.trim() !== "-" ? direccion : "" } : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const NODO_USUARIO_RULES = {
   NOD_01: { prefix: "user", start: 801, suffix: "@americanet" },
   NOD_02: { prefix: "usuario_", start: 600, suffix: "" },
@@ -4007,25 +4044,21 @@ export default function App() {
     finally { setMkwCliLoading((p) => ({ ...p, [cid]: false })); }
   };
 
-  // ── Buscar en RENIEC el nombre del nuevo titular a partir del DNI ─────────
+  // ── Buscar en RENIEC/SUNAT el nombre del nuevo titular a partir del DNI o RUC ──
   const buscarDniTitular = async () => {
-    const dni = titularForm.dni.trim();
-    if (!/^\d{8}$/.test(dni)) { window.alert("Ingresa un DNI válido de 8 dígitos."); return; }
+    const doc = titularForm.dni.trim();
+    const tipo = tipoDocumento(doc);
+    if (!tipo) { window.alert("Ingresa un DNI (8 dígitos) o RUC (11 dígitos) válido."); return; }
     setBuscandoDniTitular(true);
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000);
-      try {
-        const res = await fetch(`https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx`, { signal: ctrl.signal });
-        const data = await res.json();
-        if (data?.estado && data?.resultado?.nombre_completo) {
-          setTitularForm((f) => ({ ...f, nombre: data.resultado.nombre_completo }));
-        } else {
-          window.alert("DNI no encontrado en RENIEC.");
-        }
-      } finally { clearTimeout(timer); }
+      const hallado = await buscarDniORuc(doc);
+      if (hallado?.nombre) {
+        setTitularForm((f) => ({ ...f, nombre: hallado.nombre }));
+      } else {
+        window.alert(tipo === "dni" ? "DNI no encontrado en RENIEC." : "RUC no encontrado en SUNAT.");
+      }
     } catch (e) {
-      window.alert("Error al buscar DNI: " + e.message);
+      window.alert("Error al buscar: " + e.message);
     }
     setBuscandoDniTitular(false);
   };
@@ -4056,7 +4089,7 @@ export default function App() {
     if (!cli) return;
     const dniNuevo = titularForm.dni.trim();
     const nombreNuevo = titularForm.nombre.trim();
-    if (!/^\d{8}$/.test(dniNuevo)) { window.alert("Ingresa un DNI válido de 8 dígitos."); return; }
+    if (!tipoDocumento(dniNuevo)) { window.alert("Ingresa un DNI (8 dígitos) o RUC (11 dígitos) válido."); return; }
     if (!nombreNuevo) { window.alert("Ingresa el nombre del nuevo titular."); return; }
 
     const dniAnterior = String(cli.dni || "");
@@ -9426,33 +9459,23 @@ export default function App() {
     const dni = orden.dni.trim();
 
     if (!dni) {
-      alert("Ingresa un DNI");
+      alert("Ingresa un DNI o RUC");
       return;
     }
 
-    if (dni.length !== 8) {
-      alert("El DNI debe tener 8 dígitos");
+    const tipo = tipoDocumento(dni);
+    if (!tipo) {
+      alert("El documento debe tener 8 dígitos (DNI) u 11 dígitos (RUC)");
       return;
     }
 
     try {
       setBuscandoDni(true);
 
-      const dniController = new AbortController();
-      const dniTimeout = setTimeout(() => dniController.abort(), 10000);
-      let response;
-      try {
-        response = await fetch(
-          `https://api.perudevs.com/api/v1/dni/simple?document=${dni}&key=cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx`,
-          { method: "GET", signal: dniController.signal }
-        );
-      } finally {
-        clearTimeout(dniTimeout);
-      }
+      let hallado = null;
+      try { hallado = await buscarDniORuc(dni); } catch (e) { console.error(e); }
 
-      const result = await response.json();
-
-      // Buscar TODOS los servicios del DNI en DB interna
+      // Buscar TODOS los servicios del documento en DB interna
       let todosServiciosDB = [];
       if (isSupabaseConfigured) {
         const { data: srvs } = await supabase
@@ -9466,21 +9489,21 @@ export default function App() {
       const esInstalacionActual = ["Instalacion Internet", "Instalacion Internet y Cable", "Instalacion TV"].includes(orden.tipoActuacion);
 
       if (todosServiciosDB.length > 1 || (todosServiciosDB.length === 1 && esInstalacionActual)) {
-        const nombreReniec = (result?.estado && result?.resultado?.nombre_completo) || "";
-        setModalSelectorServicio({ servicios: todosServiciosDB, dni, nombreReniec, permitirNuevo: esInstalacionActual });
+        setModalSelectorServicio({ servicios: todosServiciosDB, dni, nombreReniec: hallado?.nombre || "", permitirNuevo: esInstalacionActual });
       } else if (todosServiciosDB.length === 1) {
         await _aplicarClienteInternoAOrden(todosServiciosDB[0], dni);
-      } else if (result.estado && result.resultado) {
+      } else if (hallado?.nombre) {
         setOrden((prev) => ({
           ...prev,
-          nombre: result.resultado.nombre_completo || "",
+          nombre: hallado.nombre,
+          direccion: (!prev.direccion.trim() && hallado.direccion) ? hallado.direccion : prev.direccion,
         }));
       } else {
-        alert("No se encontraron datos para ese DNI");
+        alert(tipo === "dni" ? "No se encontraron datos para ese DNI" : "No se encontraron datos para ese RUC");
       }
     } catch (error) {
       console.error(error);
-      alert("Ocurrió un error al consultar el DNI");
+      alert("Ocurrió un error al consultar el documento");
     } finally {
       setBuscandoDni(false);
     }
@@ -15984,15 +16007,15 @@ export default function App() {
                 <h2 style={{ ...sectionTitleStyle, marginBottom: "12px" }}>Paso 2. Datos del cliente</h2>
                 <div style={formGridStyle}>
                   <div>
-                    <label style={labelStyle}>DNI</label>
+                    <label style={labelStyle}>DNI/RUC</label>
                     <div style={{ display: "flex", gap: "8px" }}>
-                      <input style={inputStyle} value={orden.dni} onChange={(e) => { handleChange("dni", e.target.value); setClienteEnDB(false); }} placeholder="Ingrese DNI" maxLength={8} />
+                      <input style={inputStyle} value={orden.dni} onChange={(e) => { handleChange("dni", e.target.value.replace(/\D/g, "")); setClienteEnDB(false); }} placeholder="DNI (8) o RUC (11)" maxLength={11} />
                       <button
                         onClick={buscarDni}
                         style={lupaButtonStyle}
                         disabled={buscandoDni}
-                        title="Buscar por DNI"
-                        aria-label="Buscar por DNI"
+                        title="Buscar por DNI o RUC"
+                        aria-label="Buscar por DNI o RUC"
                       >
                         {buscandoDni ? (
                           "..."
@@ -23284,13 +23307,13 @@ export default function App() {
               {!titularExito ? (
                 <div style={{ padding: "18px 22px", display: "grid", gap: 12 }}>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>DNI nuevo titular</label>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 4 }}>DNI o RUC nuevo titular</label>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <input style={{ ...inputStyle, flex: 1 }} type="text" maxLength={8} placeholder="Ej: 12345678"
+                      <input style={{ ...inputStyle, flex: 1 }} type="text" maxLength={11} placeholder="DNI (8) o RUC (11)"
                         value={titularForm.dni} onChange={(e) => setTitularForm((f) => ({ ...f, dni: e.target.value.replace(/\D/g, "") }))} />
-                      <button type="button" onClick={buscarDniTitular} disabled={buscandoDniTitular || titularForm.dni.length !== 8}
-                        style={{ ...secondaryButton, whiteSpace: "nowrap", opacity: (buscandoDniTitular || titularForm.dni.length !== 8) ? 0.5 : 1 }}>
-                        {buscandoDniTitular ? "..." : "🔍 RENIEC"}
+                      <button type="button" onClick={buscarDniTitular} disabled={buscandoDniTitular || !tipoDocumento(titularForm.dni)}
+                        style={{ ...secondaryButton, whiteSpace: "nowrap", opacity: (buscandoDniTitular || !tipoDocumento(titularForm.dni)) ? 0.5 : 1 }}>
+                        {buscandoDniTitular ? "..." : "🔍 Buscar"}
                       </button>
                     </div>
                   </div>
