@@ -10373,7 +10373,7 @@ export default function App() {
             direccion: registroLiquidado.direccion || existente.direccion || "",
             celular: registroLiquidado.celular || existente.celular || "",
             nodo: registroLiquidado.nodo || existente.nodo || "",
-            snOnu: registroLiquidado.snOnu || existente.snOnu || "",
+            snOnu: registroLiquidado.liquidacion?.snOnu || registroLiquidado.snOnu || existente.snOnu || "",
             usuarioNodo: registroLiquidado.usuarioNodo || existente.usuarioNodo || "",
             cajaNap: cajaNapLiq || existente.cajaNap || "",
             ubicacion: ubicacionLiq || existente.ubicacion || "",
