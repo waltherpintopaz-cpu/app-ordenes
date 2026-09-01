@@ -78,6 +78,17 @@ const iconoParaTipoActuacion = (tipoActuacion) => {
   return TIPO_ORDEN_ICON.find((t) => tipoLow.includes(t.match)) || TIPO_ORDEN_ICON_DEFAULT;
 };
 
+// Icono de caja NAP — mismo dibujo que usa MapaPanel.jsx, para que se vea
+// igual en todos los mapas del sistema. Azul normal, rojo si esta llena.
+const napBoxSvg = (portColor = "#0284c7", selected = false) => {
+  const W = selected ? 28 : 22;
+  const H = selected ? 40 : 32;
+  const borderColor = selected ? "#F97316" : "#64748b";
+  const triColor = selected ? "#F97316" : "#64748b";
+  const sw = selected ? 2 : 0.8;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40"><rect x="3" y="0.5" width="22" height="33" rx="3" fill="#cfd8dc" stroke="${borderColor}" stroke-width="${sw}"/><rect x="0" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="0" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><line x1="6" y1="7" x2="22" y2="7" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="11" x2="22" y2="11" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="15" x2="22" y2="15" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="19" x2="22" y2="19" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="23" x2="22" y2="23" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="30" r="1.5" fill="${portColor}"/><circle cx="10" cy="30" r="1.5" fill="${portColor}"/><circle cx="13" cy="30" r="1.5" fill="${portColor}"/><circle cx="16" cy="30" r="1.5" fill="${portColor}"/><circle cx="19" cy="30" r="1.5" fill="#64748b"/><circle cx="22" cy="30" r="1.5" fill="#64748b"/><polygon points="14,34 9,40 19,40" fill="${triColor}"/></svg>`)}`;
+};
+
 // Icono circular por orden: color del anillo = estado, icono central = tipo
 // de actuacion (instalacion/incidencia/recuperacion/otro) — asi se distingue
 // de un vistazo el tipo de trabajo sin abrir cada marcador. Dibuja los paths
@@ -387,6 +398,10 @@ export default function SeguimientoVehiculosPanel() {
   const orderMarkersRef = useRef([]);
   const arrivedPulsesRef = useRef([]);
 
+  const [cajas, setCajas] = useState([]);
+  const [showCajas, setShowCajas] = useState(false);
+  const cajaMarkersRef = useRef([]);
+
   const [analyticsDate, setAnalyticsDate] = useState(() => todayLocalDateStr());
   const [analyticsByVehiculo, setAnalyticsByVehiculo] = useState({});
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
@@ -494,6 +509,66 @@ export default function SeguimientoVehiculosPanel() {
       .filter((row) => row.coords);
     setOrdenesHoy(rows);
   }, []);
+
+  // Cajas NAP: no cambian de posicion, se cargan una sola vez al montar (no
+  // en el auto-refresh rapido de vehiculos).
+  const cargarCajas = useCallback(async () => {
+    const { data, error: fetchError } = await supabase
+      .from("nap_cajas")
+      .select("id,ctoid,codigo,sector,nodo,capacidad,puertos_ocupados,lat,lng")
+      .limit(2000);
+    if (fetchError) {
+      if (tableMissing(fetchError, "nap_cajas")) { setCajas([]); return; }
+      setCajas([]);
+      return;
+    }
+    const rows = (Array.isArray(data) ? data : [])
+      .map((row) => ({ ...row, coords: { lat: Number(row.lat), lng: Number(row.lng) } }))
+      .filter((row) => Number.isFinite(row.coords.lat) && Number.isFinite(row.coords.lng));
+    setCajas(rows);
+  }, []);
+
+  useEffect(() => { void cargarCajas(); }, [cargarCajas]);
+
+  const clearCajaOverlays = useCallback(() => {
+    cajaMarkersRef.current.forEach((m) => { try { m.setMap(null); } catch { /* noop */ } });
+    cajaMarkersRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    clearCajaOverlays();
+
+    if (showCajas) {
+      cajas.forEach((caja) => {
+        const cap = Number(caja?.capacidad || 0);
+        const ocp = Number(caja?.puertos_ocupados || 0);
+        const llena = cap > 0 && ocp >= cap;
+        const color = llena ? "#dc2626" : "#0284c7";
+        const marker = new maps.Marker({
+          map,
+          position: caja.coords,
+          title: `Caja ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
+          icon: { url: napBoxSvg(color, false), scaledSize: new maps.Size(22, 32), anchor: new maps.Point(11, 32) },
+          zIndex: 3,
+        });
+        const info = new maps.InfoWindow({
+          content: `<div style="font-size:12px;max-width:200px">
+            <strong>Caja ${caja.codigo || "-"}</strong><br/>
+            Nodo: ${caja.nodo || "-"}<br/>
+            Sector: ${caja.sector || "-"}<br/>
+            Puertos: ${ocp}/${cap || "-"}
+          </div>`
+        });
+        marker.addListener("click", () => info.open({ map, anchor: marker }));
+        cajaMarkersRef.current.push(marker);
+      });
+    }
+
+    return () => clearCajaOverlays();
+  }, [cajas, showCajas, clearCajaOverlays, mapReady]);
 
   const abrirEdicion = useCallback((v) => {
     setEditError("");
@@ -1708,6 +1783,10 @@ export default function SeguimientoVehiculosPanel() {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b" }}>
           <input type="checkbox" checked={showOrdenes} onChange={(e) => setShowOrdenes(e.target.checked)} />
           Mostrar ordenes del dia ({ordenesHoy.length})
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#64748b" }}>
+          <input type="checkbox" checked={showCajas} onChange={(e) => setShowCajas(e.target.checked)} />
+          Mostrar cajas NAP ({cajas.length})
         </label>
         <label
           style={{
