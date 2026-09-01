@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
-import { streetViewEmbedUrl } from "../utils/streetView.js";
+import { streetViewUrl, streetViewEmbedUrl } from "../utils/streetView.js";
 
-// Boton "Ver vista de calle 360°" para el contenido HTML de un InfoWindow de
-// Google Maps — opcional, no carga el iframe hasta que se toca. Usa un
-// handler global compartido (definido una sola vez) para no pelear con el
-// escapado de comillas anidadas de un onclick inline con la URL completa.
-if (typeof window !== "undefined" && !window.__toggleStreetView) {
-  window.__toggleStreetView = (btn, url, height) => {
-    btn.outerHTML = `<iframe src="${url}" loading="lazy" style="width:100%;height:${height}px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>`;
+// Foto de Street View para el contenido HTML de un InfoWindow de Google Maps
+// — se muestra directo, con un boton chico para pasar a la vista 360°
+// interactiva (recien ahi carga el iframe). Usa un handler global compartido
+// (definido una sola vez) para no pelear con el escapado de comillas
+// anidadas de un onclick inline con la URL completa.
+if (typeof window !== "undefined" && !window.__toggleStreetView360) {
+  window.__toggleStreetView360 = (btn, embedUrl, height) => {
+    const wrap = btn.closest("[data-sv-wrap]");
+    if (wrap) wrap.outerHTML = `<iframe src="${embedUrl}" loading="lazy" style="width:100%;height:${height}px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>`;
   };
 }
-function botonStreetView(url, height) {
-  return `<br/><button data-sv-url="${url}" onclick="window.__toggleStreetView(this, this.dataset.svUrl, ${height})"
-    style="display:flex;align-items:center;gap:6px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;width:100%;justify-content:center;margin-top:6px">
-    📷 Ver vista de calle 360°
-  </button>`;
+function fotoStreetView(lat, lng, height) {
+  const fotoUrl = streetViewUrl(lat, lng, { width: 280, height });
+  const embedUrl = streetViewEmbedUrl(lat, lng);
+  if (!fotoUrl || !embedUrl) return "";
+  return `<div data-sv-wrap style="position:relative;margin-top:6px">
+    <img src="${fotoUrl}" style="width:100%;height:${height}px;object-fit:cover;border-radius:6px;display:block" />
+    <button onclick="window.__toggleStreetView360(this, '${embedUrl}', ${height})"
+      style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:5px;padding:3px 7px;font-size:10px;font-weight:600;cursor:pointer">
+      🔄 360°
+    </button>
+  </div>`;
 }
 import {
   colorForSpeedKmh,
@@ -571,14 +579,13 @@ export default function SeguimientoVehiculosPanel() {
           icon: { url: napBoxSvg(color, false), scaledSize: new maps.Size(22, 32), anchor: new maps.Point(11, 32) },
           zIndex: 3,
         });
-        const svUrlCaja = streetViewEmbedUrl(caja.coords?.lat, caja.coords?.lng);
         const info = new maps.InfoWindow({
           content: `<div style="font-size:12px;max-width:260px">
             <strong>Caja ${caja.codigo || "-"}</strong><br/>
             Nodo: ${caja.nodo || "-"}<br/>
             Sector: ${caja.sector || "-"}<br/>
             Puertos: ${ocp}/${cap || "-"}
-            ${svUrlCaja ? botonStreetView(svUrlCaja, 150) : ""}
+            ${fotoStreetView(caja.coords?.lat, caja.coords?.lng, 150)}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
@@ -1545,7 +1552,6 @@ export default function SeguimientoVehiculosPanel() {
           },
           zIndex: 500
         });
-        const svUrlOrden = streetViewEmbedUrl(orden.coords?.lat, orden.coords?.lng);
         const info = new maps.InfoWindow({
           content: `<div style="font-size:12px;max-width:280px">
             <strong>${orden.codigo || "Orden"}</strong><br/>
@@ -1554,7 +1560,7 @@ export default function SeguimientoVehiculosPanel() {
             ${orden.direccion || ""}<br/>
             Tecnico: ${orden.tecnico || "-"}<br/>
             <span style="color:${color};font-weight:700">${orden.estado || ""}</span>
-            ${svUrlOrden ? botonStreetView(svUrlOrden, 160) : ""}
+            ${fotoStreetView(orden.coords?.lat, orden.coords?.lng, 160)}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));

@@ -1,37 +1,49 @@
 import { useState } from "react";
-import { streetViewEmbedUrlFromStr, parseCoordsStr } from "../utils/streetView.js";
+import { streetViewUrlFromStr, streetViewEmbedUrlFromStr, parseCoordsStr } from "../utils/streetView.js";
 
-/** Street View interactivo (360°, arrastrable) a partir de un string de
- * coordenadas "lat, lng". Oculto por defecto — se muestra recien al
- * tocar el boton, para no cargarlo de mas cuando no se necesita. */
+/** Foto de Google Street View a partir de un string de coordenadas
+ * "lat, lng" — se muestra directo. Boton opcional para pasar a la vista
+ * interactiva 360° (arrastrable), que recien ahi carga el iframe. */
 export default function StreetViewThumb({ coordenadas, height = 220, style }) {
-  const [mostrar, setMostrar] = useState(false);
-  const url = streetViewEmbedUrlFromStr(coordenadas);
-  if (!url || !parseCoordsStr(coordenadas)) return null;
+  const [modo360, setModo360] = useState(false);
+  const [error, setError] = useState(false);
+  if (!parseCoordsStr(coordenadas)) return null;
 
-  if (!mostrar) {
+  if (modo360) {
+    const embedUrl = streetViewEmbedUrlFromStr(coordenadas);
+    if (!embedUrl) return null;
     return (
-      <button
-        type="button"
-        onClick={() => setMostrar(true)}
-        style={{
-          display: "flex", alignItems: "center", gap: 6, background: "#eff6ff", color: "#2563eb",
-          border: "1px solid #bfdbfe", borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 600,
-          cursor: "pointer", width: "100%", justifyContent: "center", ...style,
-        }}
-      >
-        📷 Ver vista de calle 360°
-      </button>
+      <iframe
+        src={embedUrl}
+        title="Vista de calle"
+        loading="lazy"
+        allowFullScreen
+        style={{ width: "100%", height, border: "none", borderRadius: 10, display: "block", ...style }}
+      />
     );
   }
 
+  const url = streetViewUrlFromStr(coordenadas, { width: 500, height });
+  if (!url || error) return null;
   return (
-    <iframe
-      src={url}
-      title="Vista de calle"
-      loading="lazy"
-      allowFullScreen
-      style={{ width: "100%", height, border: "none", borderRadius: 10, display: "block", ...style }}
-    />
+    <div style={{ position: "relative", ...style }}>
+      <img
+        src={url}
+        alt="Vista de calle"
+        onError={() => setError(true)}
+        style={{ width: "100%", height, objectFit: "cover", borderRadius: 10, display: "block" }}
+      />
+      <button
+        type="button"
+        onClick={() => setModo360(true)}
+        title="Ver vista interactiva 360°"
+        style={{
+          position: "absolute", bottom: 8, right: 8, background: "rgba(0,0,0,0.65)", color: "#fff",
+          border: "none", borderRadius: 6, padding: "4px 9px", fontSize: 11, fontWeight: 600, cursor: "pointer",
+        }}
+      >
+        🔄 Ver en 360°
+      </button>
+    </div>
   );
 }
