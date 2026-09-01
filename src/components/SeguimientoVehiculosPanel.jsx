@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
+import { streetViewUrl } from "../utils/streetView.js";
 import {
   colorForSpeedKmh,
   NEUTRAL_CAR_PAINT,
@@ -554,12 +555,14 @@ export default function SeguimientoVehiculosPanel() {
           icon: { url: napBoxSvg(color, false), scaledSize: new maps.Size(22, 32), anchor: new maps.Point(11, 32) },
           zIndex: 3,
         });
+        const svUrlCaja = streetViewUrl(caja.coords?.lat, caja.coords?.lng, { width: 260, height: 130 });
         const info = new maps.InfoWindow({
           content: `<div style="font-size:12px;max-width:200px">
             <strong>Caja ${caja.codigo || "-"}</strong><br/>
             Nodo: ${caja.nodo || "-"}<br/>
             Sector: ${caja.sector || "-"}<br/>
             Puertos: ${ocp}/${cap || "-"}
+            ${svUrlCaja ? `<br/><img src="${svUrlCaja}" style="width:100%;margin-top:6px;border-radius:6px;display:block" />` : ""}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
@@ -1526,6 +1529,7 @@ export default function SeguimientoVehiculosPanel() {
           },
           zIndex: 500
         });
+        const svUrlOrden = streetViewUrl(orden.coords?.lat, orden.coords?.lng, { width: 280, height: 140 });
         const info = new maps.InfoWindow({
           content: `<div style="font-size:12px;max-width:220px">
             <strong>${orden.codigo || "Orden"}</strong><br/>
@@ -1534,6 +1538,7 @@ export default function SeguimientoVehiculosPanel() {
             ${orden.direccion || ""}<br/>
             Tecnico: ${orden.tecnico || "-"}<br/>
             <span style="color:${color};font-weight:700">${orden.estado || ""}</span>
+            ${svUrlOrden ? `<br/><img src="${svUrlOrden}" style="width:100%;margin-top:6px;border-radius:6px;display:block" />` : ""}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));

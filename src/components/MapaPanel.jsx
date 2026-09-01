@@ -3,6 +3,7 @@ import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { cargarZonasCobertura, invalidarZonasCobertura } from "../utils/zonasCobertura";
 import ImportarMapaCoberturaModal from "./ImportarMapaCoberturaModal";
 import ImportarCajasNapModal from "./ImportarCajasNapModal";
+import StreetViewThumb from "./StreetViewThumb";
 
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
@@ -921,6 +922,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                     </div>
                     <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>Sector: {caja.sector || "-"} · {caja.nodo || "-"}</div>
                     {miUbicacion && caja.coords && <div style={{ fontSize: 10, color: "#94a3b8" }}>{formatDist(haversineM(miUbicacion.lat, miUbicacion.lng, Number(caja.coords.lat), Number(caja.coords.lng)))}</div>}
+                    {isSelected && caja.coords && (
+                      <StreetViewThumb coordenadas={`${caja.coords.lat}, ${caja.coords.lng}`} height={110} style={{ marginTop: 6 }} />
+                    )}
                   </button>
                 );
               })}
@@ -944,6 +948,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                     </div>
                     <div style={{ fontSize: 12, color: isDark ? "#c3d3ee" : "#374151" }}>{item.nombre || "-"}</div>
                     <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{item.nodo || "-"} · {item.tecnico || "-"}</div>
+                    {isSelected && item.coords && (
+                      <StreetViewThumb coordenadas={`${item.coords.lat}, ${item.coords.lng}`} height={110} style={{ marginTop: 6 }} />
+                    )}
                   </button>
                 );
               })}
@@ -980,6 +987,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
                     </div>
                     <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#6b7280" }}>{lead.telefono || "-"}</div>
                     <div style={{ fontSize: 10, color: "#94a3b8" }}>{lead.created_at ? new Date(lead.created_at).toLocaleDateString("es-PE") : "-"}</div>
+                    {isSelected && lead.coords && (
+                      <StreetViewThumb coordenadas={`${lead.coords.lat}, ${lead.coords.lng}`} height={110} style={{ marginTop: 6 }} />
+                    )}
                   </button>
                 );
               })}

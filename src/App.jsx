@@ -41,6 +41,7 @@ import MaxPlayerDashboardPanel from "./components/MaxPlayerDashboardPanel";
 import MaxPlayerReportesPanel from "./components/MaxPlayerReportesPanel";
 import MaxPlayerEnVivoPanel from "./components/MaxPlayerEnVivoPanel";
 import MaxPlayerCanalesPanel from "./components/MaxPlayerCanalesPanel";
+import StreetViewThumb from "./components/StreetViewThumb";
 import GastosPersonalesPanel from "./components/GastosPersonalesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
@@ -22881,6 +22882,7 @@ export default function App() {
                         style={{ width: "100%", height: 220, border: "none", display: "block" }}
                         loading="lazy"
                       />
+                      <StreetViewThumb coordenadas={coords} height={200} style={{ borderRadius: 0 }} />
                     </div>
                   );
                 })()}
@@ -26570,6 +26572,7 @@ export default function App() {
                   ) : null
                 )}
               </div>
+              <StreetViewThumb coordenadas={ordenDetalle.ubicacion} height={180} style={{ marginTop: 16 }} />
               {fotosOrdenDetalle.length > 0 && (
                 <div style={{ marginTop: "16px" }}>
                   <p style={{ fontWeight: 600, color: "#374151", marginBottom: "8px", fontSize: "14px" }}>Fotos del cliente ({fotosOrdenDetalle.length})</p>

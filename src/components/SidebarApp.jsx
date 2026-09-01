@@ -7,6 +7,7 @@ import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio
 import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 import { buscarZonaCobertura } from "../utils/cobertura.js";
 import CoberturaMapaModal from "./CoberturaMapaModal.jsx";
+import StreetViewThumb from "./StreetViewThumb.jsx";
 import PromoPicker from "./PromoPicker.jsx";
 import MensajeRapidoPicker from "./MensajeRapidoPicker.jsx";
 
@@ -4166,6 +4167,7 @@ export default function SidebarApp() {
                             </a>
                           </div>);
                         })()}
+                        <StreetViewThumb coordenadas={ordenForm.coordenadas} height={130} style={{ marginTop: 4 }} />
                         {/* Selector múltiples ubicaciones */}
                         {coordsLista.length > 0 && (
                           <div style={{ marginTop:4, background:"#f0fdf4", border:`1px solid #86efac`, borderRadius:4, padding:"6px 8px" }}>
@@ -5833,6 +5835,7 @@ export default function SidebarApp() {
                         style={{ position:"absolute", bottom:6, right:8, background:"rgba(0,0,0,0.6)", color:"#fff", fontSize:10, padding:"3px 8px", borderRadius:4, textDecoration:"none", fontWeight:600 }}>
                         Google Maps ↗
                       </a>
+                      <StreetViewThumb coordenadas={ordenForm.coordenadas} height={160} style={{ marginTop: 4, borderRadius: 0 }} />
                     </div>
                   );
                 })()}
