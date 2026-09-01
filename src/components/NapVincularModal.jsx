@@ -175,14 +175,13 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       );
     }
 
-    // Tile profesional: CartoDB Positron (limpio, moderno, sin ruido visual)
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      subdomains: "abcd",
+      subdomains: "abc",
     }).addTo(map);
 
     L.control.attribution({ prefix: false })
-      .addAttribution('© <a href="https://carto.com">CARTO</a> · © OpenStreetMap')
+      .addAttribution('© OpenStreetMap')
       .addTo(map);
 
     L.control.zoom({ position: "bottomright" }).addTo(map);

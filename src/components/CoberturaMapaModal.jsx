@@ -278,16 +278,16 @@ export default function CoberturaMapaModal({
 
     const map = L.map(mapRef.current, { zoomControl: false, attributionControl: false }).setView([-16.398, -71.55], 12);
 
-    capaCallesRef.current = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    capaCallesRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      subdomains: "abcd",
+      subdomains: "abc",
     }).addTo(map);
 
     capaSatRef.current = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
       maxZoom: 19,
     });
 
-    L.control.attribution({ prefix: false }).addAttribution('© <a href="https://carto.com">CARTO</a> · © OpenStreetMap · © Esri').addTo(map);
+    L.control.attribution({ prefix: false }).addAttribution('© OpenStreetMap · © Esri').addTo(map);
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
     mapInstanceRef.current = map;

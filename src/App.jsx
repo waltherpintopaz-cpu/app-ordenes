@@ -14294,10 +14294,10 @@ export default function App() {
         return;
       }
       const map = L.map(node, { zoomControl: true }).setView(coords, 16);
-      const tileNormal = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
-        subdomains: "abcd",
-        maxZoom: 20,
+      const tileNormal = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        subdomains: "abc",
+        maxZoom: 19,
       });
       const tileSatelite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
         attribution: "Tiles &copy; Esri",
