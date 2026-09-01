@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
-import { streetViewUrl } from "../utils/streetView.js";
+import { streetViewEmbedUrl } from "../utils/streetView.js";
 import {
   colorForSpeedKmh,
   NEUTRAL_CAR_PAINT,
@@ -555,14 +555,14 @@ export default function SeguimientoVehiculosPanel() {
           icon: { url: napBoxSvg(color, false), scaledSize: new maps.Size(22, 32), anchor: new maps.Point(11, 32) },
           zIndex: 3,
         });
-        const svUrlCaja = streetViewUrl(caja.coords?.lat, caja.coords?.lng, { width: 260, height: 130 });
+        const svUrlCaja = streetViewEmbedUrl(caja.coords?.lat, caja.coords?.lng);
         const info = new maps.InfoWindow({
-          content: `<div style="font-size:12px;max-width:200px">
+          content: `<div style="font-size:12px;max-width:260px">
             <strong>Caja ${caja.codigo || "-"}</strong><br/>
             Nodo: ${caja.nodo || "-"}<br/>
             Sector: ${caja.sector || "-"}<br/>
             Puertos: ${ocp}/${cap || "-"}
-            ${svUrlCaja ? `<br/><img src="${svUrlCaja}" style="width:100%;margin-top:6px;border-radius:6px;display:block" />` : ""}
+            ${svUrlCaja ? `<br/><iframe src="${svUrlCaja}" loading="lazy" style="width:100%;height:150px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>` : ""}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
@@ -1529,16 +1529,16 @@ export default function SeguimientoVehiculosPanel() {
           },
           zIndex: 500
         });
-        const svUrlOrden = streetViewUrl(orden.coords?.lat, orden.coords?.lng, { width: 280, height: 140 });
+        const svUrlOrden = streetViewEmbedUrl(orden.coords?.lat, orden.coords?.lng);
         const info = new maps.InfoWindow({
-          content: `<div style="font-size:12px;max-width:220px">
+          content: `<div style="font-size:12px;max-width:280px">
             <strong>${orden.codigo || "Orden"}</strong><br/>
             ${orden.tipo_actuacion || ""}<br/>
             ${orden.nombre || ""}<br/>
             ${orden.direccion || ""}<br/>
             Tecnico: ${orden.tecnico || "-"}<br/>
             <span style="color:${color};font-weight:700">${orden.estado || ""}</span>
-            ${svUrlOrden ? `<br/><img src="${svUrlOrden}" style="width:100%;margin-top:6px;border-radius:6px;display:block" />` : ""}
+            ${svUrlOrden ? `<br/><iframe src="${svUrlOrden}" loading="lazy" style="width:100%;height:160px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>` : ""}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
