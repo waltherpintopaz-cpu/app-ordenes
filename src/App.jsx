@@ -798,6 +798,7 @@ const buildInitialOrder = () => ({
   snOnu: "",
 
   ubicacion: "",
+  ubicacionReferencial: false,
   cajaNap: "",
   descripcion: "",
   fotoFachada: "",
@@ -849,6 +850,7 @@ function serializeOrderToSupabase(orderItem = {}, opts = {}) {
     autor_orden: String(orderItem.autorOrden || opts.autorOrden || "").trim(),
     tecnico: String(orderItem.tecnico || "").trim(),
     fecha_creacion: String(orderItem.fecha_creacion || orderItem.fechaCreacion || "").trim() || new Date().toISOString(),
+    ubicacion_referencial: !!orderItem.ubicacionReferencial,
   };
   return payload;
 }
@@ -892,6 +894,7 @@ function sanitizeOrderPayloadForSupabase(rawPayload = {}) {
     "autor_orden",
     "tecnico",
     "fecha_creacion",
+    "ubicacion_referencial",
   ];
   const clean = {};
   allowedKeys.forEach((key) => {
@@ -932,6 +935,10 @@ function deserializeOrderFromSupabase(row = {}) {
     snOnu: String(row.sn_onu || "").trim(),
     codigoEtiqueta: String(row.codigo_etiqueta || "").trim(),
     ubicacion: String(row.ubicacion || "").trim(),
+    ubicacionReferencial:
+      row.ubicacion_referencial === true ||
+      row.ubicacion_referencial === 1 ||
+      String(row.ubicacion_referencial || "").trim().toLowerCase() === "true",
     cajaNap: String(row.caja_nap || "").trim(),
     descripcion: String(row.descripcion || "").trim(),
     fotoFachada: String(row.foto_fachada || "").trim(),
@@ -10646,11 +10653,16 @@ export default function App() {
       alert(`Se requieren mínimo 3 fotos de evidencia.\nActualmente tienes ${(liquidacion.fotos || []).length}.`);
       return;
     }
-    const ubicacionFinalLiq = (liquidacion.actualizarUbicacion === "SI" && String(liquidacion.nuevaUbicacion || "").trim())
+    const seActualizoUbicacionLiq = liquidacion.actualizarUbicacion === "SI" && String(liquidacion.nuevaUbicacion || "").trim();
+    const ubicacionFinalLiq = seActualizoUbicacionLiq
       ? String(liquidacion.nuevaUbicacion).trim()
       : String(ordenEnLiquidacion.ubicacion || "").trim();
     if (!ubicacionFinalLiq) {
       alert("Esta orden no tiene ubicación registrada. Activa \"Actualizar ubicación\" e ingresa la ubicación real antes de guardar.");
+      return;
+    }
+    if (ordenEnLiquidacion.ubicacionReferencial && !seActualizoUbicacionLiq) {
+      alert("Esta orden quedó marcada con ubicación solo referencial. Activa \"Actualizar ubicación\" e ingresa la ubicación exacta antes de guardar.");
       return;
     }
 
@@ -10814,6 +10826,7 @@ export default function App() {
       const ordenUpdate = { estado: "Liquidada", sn_onu: String(liquidacion.snOnu || ""), usuario_nodo_liberado: !esCompletada };
       if (liquidacion.actualizarUbicacion === "SI" && String(liquidacion.nuevaUbicacion || "").trim()) {
         ordenUpdate.ubicacion = String(liquidacion.nuevaUbicacion).trim();
+        ordenUpdate.ubicacion_referencial = false;
       }
       if (String(liquidacion.cajaNap || "").trim()) {
         ordenUpdate.caja_nap = String(liquidacion.cajaNap).trim();
@@ -16239,6 +16252,17 @@ export default function App() {
                   <div style={fullWidth}>
                     <label style={labelStyle}>Ubicación domicilio</label>
                     <input style={inputStyle} value={orden.ubicacion} onChange={(e) => handleChange("ubicacion", e.target.value)} placeholder="-16.438490, -71.598208" />
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, cursor: "pointer", userSelect: "none" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!orden.ubicacionReferencial}
+                        onChange={(e) => handleChange("ubicacionReferencial", e.target.checked)}
+                        style={{ width: 16, height: 16, cursor: "pointer" }}
+                      />
+                      <span style={{ fontSize: 12, color: "#92400e", fontWeight: 600 }}>
+                        📍 Es una ubicación referencial — falta la exacta (obligará a actualizarla al liquidar)
+                      </span>
+                    </label>
                     <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "12px", marginBottom: "12px" }}>
                       <button onClick={usarMiUbicacion} style={secondaryButton}>Usar mi ubicación</button>
                     </div>
