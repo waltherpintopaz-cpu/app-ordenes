@@ -797,7 +797,7 @@ const buildInitialOrder = () => ({
   passwordUsuario: "",
   snOnu: "",
 
-  ubicacion: "-16.438490, -71.598208",
+  ubicacion: "",
   cajaNap: "",
   descripcion: "",
   fotoFachada: "",
@@ -10644,6 +10644,13 @@ export default function App() {
     if (eqsRecSinFoto.length > 0) { alert("Cada equipo recuperado del cliente debe tener al menos una foto."); return; }
     if ((liquidacion.fotos || []).length < 3) {
       alert(`Se requieren mínimo 3 fotos de evidencia.\nActualmente tienes ${(liquidacion.fotos || []).length}.`);
+      return;
+    }
+    const ubicacionFinalLiq = (liquidacion.actualizarUbicacion === "SI" && String(liquidacion.nuevaUbicacion || "").trim())
+      ? String(liquidacion.nuevaUbicacion).trim()
+      : String(ordenEnLiquidacion.ubicacion || "").trim();
+    if (!ubicacionFinalLiq) {
+      alert("Esta orden no tiene ubicación registrada. Activa \"Actualizar ubicación\" e ingresa la ubicación real antes de guardar.");
       return;
     }
 
