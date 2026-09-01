@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { streetViewEmbedUrl } from "../utils/streetView.js";
+
+// Boton "Ver vista de calle 360°" para el contenido HTML de un InfoWindow de
+// Google Maps — opcional, no carga el iframe hasta que se toca. Usa un
+// handler global compartido (definido una sola vez) para no pelear con el
+// escapado de comillas anidadas de un onclick inline con la URL completa.
+if (typeof window !== "undefined" && !window.__toggleStreetView) {
+  window.__toggleStreetView = (btn, url, height) => {
+    btn.outerHTML = `<iframe src="${url}" loading="lazy" style="width:100%;height:${height}px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>`;
+  };
+}
+function botonStreetView(url, height) {
+  return `<br/><button data-sv-url="${url}" onclick="window.__toggleStreetView(this, this.dataset.svUrl, ${height})"
+    style="display:flex;align-items:center;gap:6px;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;width:100%;justify-content:center;margin-top:6px">
+    📷 Ver vista de calle 360°
+  </button>`;
+}
 import {
   colorForSpeedKmh,
   NEUTRAL_CAR_PAINT,
@@ -562,7 +578,7 @@ export default function SeguimientoVehiculosPanel() {
             Nodo: ${caja.nodo || "-"}<br/>
             Sector: ${caja.sector || "-"}<br/>
             Puertos: ${ocp}/${cap || "-"}
-            ${svUrlCaja ? `<br/><iframe src="${svUrlCaja}" loading="lazy" style="width:100%;height:150px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>` : ""}
+            ${svUrlCaja ? botonStreetView(svUrlCaja, 150) : ""}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
@@ -1538,7 +1554,7 @@ export default function SeguimientoVehiculosPanel() {
             ${orden.direccion || ""}<br/>
             Tecnico: ${orden.tecnico || "-"}<br/>
             <span style="color:${color};font-weight:700">${orden.estado || ""}</span>
-            ${svUrlOrden ? `<br/><iframe src="${svUrlOrden}" loading="lazy" style="width:100%;height:160px;border:none;margin-top:6px;border-radius:6px;display:block"></iframe>` : ""}
+            ${svUrlOrden ? botonStreetView(svUrlOrden, 160) : ""}
           </div>`
         });
         marker.addListener("click", () => info.open({ map, anchor: marker }));
