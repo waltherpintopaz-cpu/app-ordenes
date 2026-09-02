@@ -2378,7 +2378,9 @@ export default function App() {
 
   const [reporteDesde, setReporteDesde] = useState("");
   const [reporteHasta, setReporteHasta] = useState("");
-  const [reporteNodo, setReporteNodo] = useState("TODOS");
+  const [reporteNodos, setReporteNodos] = useState(["TODOS"]);
+  const [reporteNodoDropdownOpen, setReporteNodoDropdownOpen] = useState(false);
+  const reporteNodoLabel = reporteNodos.includes("TODOS") || reporteNodos.length === 0 ? "Todos" : reporteNodos.join(", ");
   const [reporteTecnico, setReporteTecnico] = useState("TODOS");
   const [reporteTipo, setReporteTipo] = useState("TODOS");
   const [reporteBusqueda, setReporteBusqueda] = useState("");
@@ -3156,18 +3158,18 @@ export default function App() {
 
   useEffect(() => {
     setReportePaginaAct(1);
-  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
+  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
 
   useEffect(() => {
     setReportePaginaMat(1);
-  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
+  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
 
   useEffect(() => {
     setReportePaginaDetMat(1);
     setReportePaginaDetEq(1);
     setReportePaginaCosto(1);
     setReportePaginaTecnico(1);
-  }, [reporteDesde, reporteHasta, reporteNodo, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
+  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
 
   const menuLabelByKeyWeb = useMemo(
     () => Object.fromEntries(MENU_VISTAS_WEB.map((item) => [item.key, item.label])),
@@ -12433,7 +12435,7 @@ export default function App() {
         }
         return true;
       })
-      .filter((item) => (reporteNodo === "TODOS" ? true : normalizarEtiquetaNodo(item.nodo) === reporteNodo))
+      .filter((item) => (reporteNodos.includes("TODOS") || reporteNodos.length === 0 ? true : reporteNodos.includes(normalizarEtiquetaNodo(item.nodo))))
       .filter((item) =>
         reporteTecnico === "TODOS"
           ? true
@@ -12480,7 +12482,7 @@ export default function App() {
     liquidaciones,
     reporteDesde,
     reporteHasta,
-    reporteNodo,
+    reporteNodos,
     reporteTecnico,
     reporteTipo,
     reporteBusqueda,
@@ -12758,7 +12760,7 @@ export default function App() {
 <body>
   <h1>Reporte de actuaciones</h1>
   <p>Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</p>
-  <p>Filtro nodo: ${escHtml(reporteNodo === "TODOS" ? "Todos" : reporteNodo)} | Filtro tecnico: ${escHtml(
+  <p>Filtro nodo: ${escHtml(reporteNodoLabel)} | Filtro tecnico: ${escHtml(
       reporteTecnico === "TODOS" ? "Todos" : reporteTecnico
     )} | Tipo: ${escHtml(reporteTipo)}</p>
   <div class="kpi">
@@ -12946,7 +12948,7 @@ export default function App() {
 
   <div class="info-bar">
     <div class="info-item"><span class="info-label">Periodo</span><span class="info-value">${escHtml(reporteDesde || "-")} — ${escHtml(reporteHasta || "-")}</span></div>
-    ${reporteNodo !== "TODOS" ? `<div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(reporteNodo)}</span></div>` : ""}
+    ${reporteNodoLabel !== "Todos" ? `<div class="info-item"><span class="info-label">Nodo</span><span class="info-value">${escHtml(reporteNodoLabel)}</span></div>` : ""}
     ${reporteTecnico !== "TODOS" ? `<div class="info-item"><span class="info-label">Técnico</span><span class="info-value">${escHtml(reporteTecnico)}</span></div>` : ""}
     <div class="info-item"><span class="info-label">Materiales</span><span class="info-value">${reporteMateriales.length} productos</span></div>
     <div class="info-item"><span class="info-label">Equipos</span><span class="info-value">${equiposResumen.length} tipos</span></div>
@@ -13126,7 +13128,7 @@ export default function App() {
     const totalACobrar = sumMatVenta + sumEqVenta + sumActuacion - (reporteConfigRestarPago ? sumPagoRecibido : 0);
 
     const filtroTecnico = reporteTecnico !== "TODOS" ? reporteTecnico : "Todos";
-    const filtroNodo = reporteNodo !== "TODOS" ? reporteNodo : "Todos";
+    const filtroNodo = reporteNodoLabel;
 
     const html = `<!doctype html>
 <html>
@@ -13271,7 +13273,7 @@ export default function App() {
     const filtroTexto = [
       reporteDesde ? `Desde: ${reporteDesde}` : null,
       reporteHasta ? `Hasta: ${reporteHasta}` : null,
-      reporteNodo !== "TODOS" ? `Nodo: ${reporteNodo}` : null,
+      reporteNodoLabel !== "Todos" ? `Nodo: ${reporteNodoLabel}` : null,
       reporteTecnico !== "TODOS" ? `Técnico: ${reporteTecnico}` : null,
       reporteTipo !== "TODOS" ? `Tipo: ${reporteTipo}` : null,
       reporteMedioPago !== "TODOS" ? `Cobro: ${reporteMedioPago}` : null,
@@ -14256,7 +14258,7 @@ export default function App() {
   <h1>Detalle de materiales por orden</h1>
   <p>Generado: ${escHtml(new Date().toLocaleString("es-PE"))}</p>
   <p>Periodo: <b>${escHtml(reporteDesde || "-")}</b> al <b>${escHtml(reporteHasta || "-")}</b>
-  ${reporteNodo !== "TODOS" ? ` | Nodo: <b>${escHtml(reporteNodo)}</b>` : ""}
+  ${reporteNodoLabel !== "Todos" ? ` | Nodo: <b>${escHtml(reporteNodoLabel)}</b>` : ""}
   ${reporteTecnico !== "TODOS" ? ` | Técnico: <b>${escHtml(reporteTecnico)}</b>` : ""}
   </p>
   <table>
@@ -18939,16 +18941,47 @@ export default function App() {
                     onChange={(e) => setReporteHasta(e.target.value)}
                   />
                 </div>
-                <div>
+                <div style={{ position: "relative" }}>
                   <label style={labelStyle}>Nodo</label>
-                  <select style={inputStyle} value={reporteNodo} onChange={(e) => setReporteNodo(e.target.value)}>
-                    <option value="TODOS">Todos</option>
-                    {nodosReporte.map((nodo) => (
-                      <option key={nodo} value={nodo}>
-                        {nodo}
-                      </option>
-                    ))}
-                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setReporteNodoDropdownOpen((v) => !v)}
+                    style={{ ...inputStyle, textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff" }}
+                  >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reporteNodoLabel}</span>
+                    <span style={{ marginLeft: 6, color: "#94a3b8" }}>▾</span>
+                  </button>
+                  {reporteNodoDropdownOpen && (
+                    <>
+                      <div style={{ position: "fixed", inset: 0, zIndex: 15 }} onClick={() => setReporteNodoDropdownOpen(false)} />
+                      <div style={{ position: "absolute", zIndex: 20, top: "100%", left: 0, right: 0, marginTop: 4, background: "#fff", border: "1px solid #dbe2ea", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)", maxHeight: 260, overflowY: "auto", padding: 6 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", cursor: "pointer", fontWeight: 700, fontSize: 13, borderBottom: "1px solid #f1f5f9", marginBottom: 4 }}>
+                          <input type="checkbox" checked={reporteNodos.includes("TODOS")} onChange={() => setReporteNodos(["TODOS"])} />
+                          Todos
+                        </label>
+                        {nodosReporte.map((nodo) => {
+                          const checked = !reporteNodos.includes("TODOS") && reporteNodos.includes(nodo);
+                          return (
+                            <label key={nodo} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", cursor: "pointer", fontSize: 13 }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setReporteNodos((prev) => {
+                                    const base = prev.includes("TODOS") ? [] : prev;
+                                    if (e.target.checked) return [...base, nodo];
+                                    const next = base.filter((n) => n !== nodo);
+                                    return next.length ? next : ["TODOS"];
+                                  });
+                                }}
+                              />
+                              {nodo}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>Tecnico</label>
