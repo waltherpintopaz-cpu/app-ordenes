@@ -12428,6 +12428,9 @@ export default function App() {
         item.liquidacion?.resultadoFinal,
         item.liquidacion?.medioPago,
         item.liquidacion?.codigoEtiqueta,
+        item.snOnu,
+        item.liquidacion?.snOnu,
+        ...((item.liquidacion?.equipos || []).flatMap((e) => [e.codigo, e.serial])),
       ].join(" ").toLowerCase();
       return words.every((w) => texto.includes(w));
     });
@@ -16986,7 +16989,7 @@ export default function App() {
                   style={{ ...inputStyle, flex: "1 1 220px", minWidth: 0 }}
                   value={busquedaHistorial}
                   onChange={(e) => setBusquedaHistorial(e.target.value)}
-                  placeholder="🔍  Buscar código, cliente, DNI, técnico..."
+                  placeholder="🔍  Buscar código, cliente, DNI, técnico, SN/código de equipo..."
                 />
                 {/* Nodos */}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
