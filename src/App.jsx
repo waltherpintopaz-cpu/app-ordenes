@@ -13129,7 +13129,7 @@ export default function App() {
         <td style="padding:7px 8px;font-size:11px;color:#374151">${eqDetalle || "-"}</td>
         <td style="padding:7px 8px;font-size:11px;text-align:right;color:#1d4ed8;font-weight:600">${eqVenta > 0 ? "S/ " + eqVenta.toFixed(2) : "-"}</td>
         <td style="padding:7px 8px;font-size:11px;text-align:right;color:#7c3aed;font-weight:600">${costoAct > 0 ? "S/ " + costoAct.toFixed(2) : "-"}</td>
-        <td style="padding:7px 8px;font-size:11px;color:#374151">${esIncidencia ? escHtml(item.liquidacion?.observacionFinal || "-") : "-"}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151">${escHtml(item.liquidacion?.observacionFinal || "-")}</td>
       </tr>`;
     }).join("");
 
@@ -13232,7 +13232,7 @@ export default function App() {
         <th>Equipos</th>
         <th class="r">Eq. Venta</th>
         <th class="r">Actuación</th>
-        <th>Observaciones (incidencias)</th>
+        <th>Observaciones</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
