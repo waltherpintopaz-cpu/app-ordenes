@@ -12728,7 +12728,6 @@ export default function App() {
       .map((item, idx) => {
         const tecnico = item.liquidacion?.tecnicoLiquida || item.tecnico || "-";
         const monto = montoCobradoEfectivo(item);
-        const esIncidencia = String(item.tipoActuacion || "").toLowerCase().includes("inciden");
         return `<tr>
           <td>${idx + 1}</td>
           <td>${escHtml(item.fechaLiquidacion || "-")}</td>
@@ -12739,7 +12738,6 @@ export default function App() {
           <td>${escHtml(item.nodo || "-")}</td>
           <td>${escHtml(tecnico)}</td>
           <td>S/ ${monto.toFixed(2)}</td>
-          <td>${esIncidencia ? escHtml(item.liquidacion?.observacionFinal || "-") : "-"}</td>
         </tr>`;
       })
       .join("");
@@ -12784,7 +12782,6 @@ export default function App() {
         <th>Nodo</th>
         <th>Tecnico</th>
         <th>Monto</th>
-        <th>Observaciones (incidencias)</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
@@ -13082,8 +13079,9 @@ export default function App() {
 
       // Tipo de actuación (debe declararse primero)
       const tipo = String(item.tipoActuacion || "").toLowerCase();
+      const esIncidencia = tipo.includes("inciden");
       const costoAct = tipo.includes("instal") ? Number(reporteConfigCostoInstal || 0)
-        : tipo.includes("inciden") ? Number(reporteConfigCostoInciden || 0)
+        : esIncidencia ? Number(reporteConfigCostoInciden || 0)
         : tipo.includes("recup")   ? Number(reporteConfigCostoRecuperacion || 0) : 0;
 
       // Materiales
@@ -13131,6 +13129,7 @@ export default function App() {
         <td style="padding:7px 8px;font-size:11px;color:#374151">${eqDetalle || "-"}</td>
         <td style="padding:7px 8px;font-size:11px;text-align:right;color:#1d4ed8;font-weight:600">${eqVenta > 0 ? "S/ " + eqVenta.toFixed(2) : "-"}</td>
         <td style="padding:7px 8px;font-size:11px;text-align:right;color:#7c3aed;font-weight:600">${costoAct > 0 ? "S/ " + costoAct.toFixed(2) : "-"}</td>
+        <td style="padding:7px 8px;font-size:11px;color:#374151">${esIncidencia ? escHtml(item.liquidacion?.observacionFinal || "-") : "-"}</td>
       </tr>`;
     }).join("");
 
@@ -13211,6 +13210,7 @@ export default function App() {
         <th>Equipos</th>
         <th class="r">Eq. Venta</th>
         <th class="r">Actuación</th>
+        <th>Observaciones (incidencias)</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
@@ -13223,6 +13223,7 @@ export default function App() {
         <td></td>
         <td style="color:#1d4ed8">S/ ${sumEqVenta.toFixed(2)}</td>
         <td style="color:#7c3aed">S/ ${sumActuacion.toFixed(2)}</td>
+        <td></td>
       </tr>
     </tfoot>
   </table>
