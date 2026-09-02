@@ -148,7 +148,7 @@ const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
 const empresaPorNodo = (n) => DIM_NODOS.has(String(normalizarEtiquetaNodo(n) || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 const NODOS_OLT_SSH = new Set(["Nod_04", "Nod_05", "Nod_06"]);
-const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"];
+const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06","Nod_07"];
 // VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
 const VLAN_POR_NODO = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
 
@@ -159,10 +159,12 @@ const NODO_USUARIO_RULES = {
   NOD_04: { prefix:"user",     start:467, suffix:"@fiber",      pad:0 },
   NOD_05: { prefix:"",         start:1,   suffix:"@dim",        pad:3 },
   NOD_06: { prefix:"",         start:130, suffix:"@amnet",      pad:0 },
+  NOD_07: { prefix:"Acliente", start:208, suffix:"",            pad:0 },
 };
 const NODO_PASSWORD_RULES = {
   NOD_01:"madrid0021", NOD_02:"speedy2000", NOD_03:"aqp0021",
   NOD_04:"uchumayo0021", NOD_05:"selva0021", NOD_06:"apipa0021",
+  // NOD_07 no tiene clave fija — su contraseña es el DNI del cliente.
 };
 const normalizeNodoKey = (v="") => String(v||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"_");
 function listarUsuariosParaNodo(nodo="", usados=[], cantidad=8) {
@@ -1577,7 +1579,7 @@ export default function SidebarApp() {
     return MW_NODO_MAP[n] ?? 1;
   };
   const MW_NODOS_OK  = ["Nod_01","Nod_03","Nod_04"];
-  const mwEsDim = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo||""));
+  const mwEsDim = (nodo) => ["Nod_04","Nod_05","Nod_06","Nod_07"].includes(String(nodo||""));
 
   async function mwBuscarEnClientes() {
     const q = mwBusqVal.trim();
@@ -2868,8 +2870,12 @@ export default function SidebarApp() {
       const usadosClientes = (clts||[]).map(c=>c.usuario_nodo).filter(Boolean);
       const todosUsados = [...new Set([...usados,...usadosClientes])];
       setUsuariosNodo(listarUsuariosParaNodo(nodo, todosUsados, 10));
-      const pwd = NODO_PASSWORD_RULES[normalizeNodoKey(nodo)];
-      setOrdenForm(p=>({ ...p, empresa: empresaPorNodo(nodo), passwordUsuario: pwd || p.passwordUsuario }));
+      // Nod_07 no usa clave fija — su contraseña es el DNI del cliente.
+      const esNod07 = normalizeNodoKey(nodo) === "NOD_07";
+      setOrdenForm(p=>{
+        const pwd = esNod07 ? String(p.dni||"").replace(/\D/g,"") : NODO_PASSWORD_RULES[normalizeNodoKey(nodo)];
+        return { ...p, empresa: empresaPorNodo(nodo), passwordUsuario: pwd || p.passwordUsuario };
+      });
     } catch(e) {}
   }
 
@@ -4112,7 +4118,10 @@ export default function SidebarApp() {
                     {fila("DNI/RUC *",
                       <div style={{ display:"flex", alignItems:"center", gap:0 }}>
                         <input style={{...S.input,border:"none",borderRadius:0,fontSize:12,flex:1}} type="text" placeholder="DNI (8) o RUC (11)" maxLength={11}
-                          value={ordenForm.dni} onChange={e=>setOrdenForm(p=>({...p,dni:e.target.value.replace(/\D/g,"")}))}
+                          value={ordenForm.dni} onChange={e=>{
+                            const dniValue = e.target.value.replace(/\D/g,"");
+                            setOrdenForm(p=>({ ...p, dni: dniValue, passwordUsuario: normalizeNodoKey(p.nodo)==="NOD_07" ? dniValue : p.passwordUsuario }));
+                          }}
                           onKeyDown={e=>e.key==="Enter"&&buscarDniNuevo()} />
                         <button onClick={buscarDniNuevo} disabled={buscandoDniNew||!tipoDocumento(ordenForm.dni)}
                           style={{...S.btnSm(buscandoDniNew?"#9ca3af":T.blue),borderRadius:0,padding:"0 12px",height:"100%",fontSize:11,flexShrink:0,opacity:!tipoDocumento(ordenForm.dni)?0.5:1}}>

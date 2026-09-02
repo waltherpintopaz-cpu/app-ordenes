@@ -2,7 +2,7 @@ import { useState } from "react";
 import JSZip from "jszip";
 import { supabase } from "../supabaseClient";
 
-const NODOS_BASE = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
+const NODOS_BASE = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 
 function extraerMid(input) {
   const raw = String(input || "").trim();

@@ -14,7 +14,7 @@ function collectFotos(caja) {
   return fotos;
 }
 
-const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
+const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const ESTADOS = ["Activa", "Dañada", "Mantenimiento", "Retirada"];
 const CAPACIDADES = [8, 16, 32];
 const EMPRESAS = ["Americanet", "DIM"];
@@ -599,7 +599,7 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
                 <div style={s.fg}>
                   <label style={s.label}>Nodo *</label>
                   <select style={s.input} value={form.nodo} onChange={e => sf("nodo", e.target.value)}>
-                    {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n => <option key={n}>{n}</option>)}
+                    {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06","Nod_07"].map(n => <option key={n}>{n}</option>)}
                   </select>
                 </div>
                 <div style={s.fg}>

@@ -237,6 +237,7 @@ const NODO_USUARIO_RULES = {
   NOD_04: { prefix: "user", start: 467, suffix: "@fiber" },
   NOD_05: { prefix: "", start: 1, suffix: "@dim", pad: 3 },
   NOD_06: { prefix: "", start: 130, suffix: "@amnet" },
+  NOD_07: { prefix: "Acliente", start: 208, suffix: "" },
 };
 
 const NODO_PASSWORD_RULES = {
@@ -246,12 +247,14 @@ const NODO_PASSWORD_RULES = {
   NOD_04: "uchumayo0021",
   NOD_05: "selva0021",
   NOD_06: "apipa0021",
+  // NOD_07 no usa una clave fija — la contraseña sugerida es el DNI del
+  // cliente (ver sugerirPasswordPorNodo).
 };
 
 const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen"];
 const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
-const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
-const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06"]);
+const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
+const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06", "nod_07"]);
 // Algunos clientes (sincronizados desde Mikrowisp) guardan el nodo como el
 // numero crudo de router ("5") en vez de la etiqueta "Nod_04" — normalizar
 // con el mismo mapeo que usa normalizarEtiquetaNodo antes de comparar.
@@ -306,6 +309,7 @@ const DEFAULT_MIKROTIK_NODO_ROUTER_WEB = [
   { nodo: "Nod_04", routerKey: "congata", activo: true, observacion: "" },
   { nodo: "Nod_05", routerKey: "", activo: false, observacion: "Sin router asignado." },
   { nodo: "Nod_06", routerKey: "apipa", activo: true, observacion: "" },
+  { nodo: "Nod_07", routerKey: "", activo: false, observacion: "Sin router asignado." },
 ];
 const MENU_VISTAS_WEB = [
   { key: "dashboard", label: "Dashboard" },
@@ -648,8 +652,11 @@ function usuarioNodoCoincideRegla(usuario = "", nodo = "") {
   return pattern.test(String(usuario || "").trim());
 }
 
-function sugerirPasswordPorNodo(nodo = "") {
+function sugerirPasswordPorNodo(nodo = "", dni = "") {
   const key = normalizeNodoKey(nodo);
+  // Nod_07 no usa una clave fija de nodo — la contraseña del cliente es su
+  // propio DNI.
+  if (key === "NOD_07") return String(dni || "").replace(/\D/g, "").trim();
   return String(NODO_PASSWORD_RULES[key] || "").trim();
 }
 
@@ -2628,7 +2635,7 @@ export default function App() {
   // Pre-cargar señales almacenadas en clientes para todas las órdenes con snOnu
   useEffect(() => {
     if (!ordenes.length) return;
-    const NODOS_SENAL = new Set(["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"]);
+    const NODOS_SENAL = new Set(["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06","Nod_07"]);
     const targets = ordenes.filter(o => o.snOnu && NODOS_SENAL.has(String(o.nodo || "")));
     if (!targets.length) return;
     // Normalizar a mayúsculas para matching consistente
@@ -3632,7 +3639,7 @@ export default function App() {
   };
 
   // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
-  const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06"].includes(String(nodo || ""));
+  const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06","Nod_07"].includes(String(nodo || ""));
 
   const abrirFactPanel = async (cli) => {
     setFactPanelOpen(cli.id);
@@ -6351,7 +6358,7 @@ export default function App() {
   const handleNodoChange = (nodoValue) => {
     setOrden((prev) => {
       const nextNodo = String(nodoValue || "").trim();
-      const passwordSugerido = sugerirPasswordPorNodo(nextNodo);
+      const passwordSugerido = sugerirPasswordPorNodo(nextNodo, prev.dni);
       const empresaAuto = prev.empresa || empresaPorNodo(nextNodo);
       const vlanAuto = VLAN_POR_NODO_WEB[nextNodo] || "";
       if (String(prev.generarUsuario || "").toUpperCase() !== "SI") {
@@ -11707,7 +11714,7 @@ export default function App() {
       precioPlan: firstText(cliente.precioPlan),
       nodo: firstText(cliente.nodo),
       usuarioNodo: firstText(cliente.usuarioNodo),
-      passwordUsuario: firstText(cliente.passwordUsuario) || sugerirPasswordPorNodo(firstText(cliente.nodo)),
+      passwordUsuario: firstText(cliente.passwordUsuario) || sugerirPasswordPorNodo(firstText(cliente.nodo), cliente.dni),
       codigoEtiqueta: firstText(cliente.codigoEtiqueta),
       snOnu: firstText(cliente.snOnu),
       ubicacion: firstText(cliente.ubicacion, base.ubicacion),
@@ -15739,7 +15746,7 @@ export default function App() {
           };
           const NODO_COLORS = {
             Nod_01: "#2b5fb8", Nod_02: "#7c3aed", Nod_03: "#059669",
-            Nod_04: "#d97706", Nod_05: "#dc2626", Nod_06: "#0891b2",
+            Nod_04: "#d97706", Nod_05: "#dc2626", Nod_06: "#0891b2", Nod_07: "#7c3aed",
           };
 
           const kpiCard = (label, value, color, sub) => (
@@ -16098,7 +16105,16 @@ export default function App() {
                   <div>
                     <label style={labelStyle}>DNI/RUC</label>
                     <div style={{ display: "flex", gap: "8px" }}>
-                      <input style={inputStyle} value={orden.dni} onChange={(e) => { handleChange("dni", e.target.value.replace(/\D/g, "")); setClienteEnDB(false); }} placeholder="DNI (8) o RUC (11)" maxLength={11} />
+                      <input style={inputStyle} value={orden.dni} onChange={(e) => {
+                        const dniValue = e.target.value.replace(/\D/g, "");
+                        setOrden((prev) => ({
+                          ...prev,
+                          dni: dniValue,
+                          // Nod_07 usa el DNI como contraseña — mantenerla sincronizada mientras se escribe
+                          passwordUsuario: normalizeNodoKey(prev.nodo) === "NOD_07" ? dniValue : prev.passwordUsuario,
+                        }));
+                        setClienteEnDB(false);
+                      }} placeholder="DNI (8) o RUC (11)" maxLength={11} />
                       <button
                         onClick={buscarDni}
                         style={lupaButtonStyle}
@@ -16208,6 +16224,7 @@ export default function App() {
                           <option>Nod_04</option>
                           <option>Nod_05</option>
                           <option>Nod_06</option>
+                          <option>Nod_07</option>
                         </select>
                       </div>
 

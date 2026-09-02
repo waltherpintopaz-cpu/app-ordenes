@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
 import { supabase } from "../supabaseClient";
 
-const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
+const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const ZOOM_CLIENTES = 14;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

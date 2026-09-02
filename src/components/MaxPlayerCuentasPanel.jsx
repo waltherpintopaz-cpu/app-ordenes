@@ -7,7 +7,7 @@ import { normalizarEtiquetaNodo } from "../utils/nodos.js";
 const MP_TOKEN  = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN = "1777119384974866697";
 const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
-const NODOS = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
+const NODOS = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const EMPRESAS_WHATSAPP = ["Americanet", "DIM"];
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 // Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN

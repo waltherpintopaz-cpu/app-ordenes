@@ -4949,7 +4949,7 @@ ${filasNodos}
 
             <label className="rend-label">Nodo</label>
             <div className="rend-nodo-chips">
-              {["", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06"].map((n) => {
+              {["", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"].map((n) => {
                 const active = n === "" ? !rendicionNodo : rendicionNodo === n;
                 return (
                   <button

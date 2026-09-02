@@ -13,6 +13,7 @@ const NODO_COLORS = {
   Nod_04: { bg: "#fce7f3", text: "#be185d", border: "#f9a8d4" },
   Nod_05: { bg: "#ede9fe", text: "#6d28d9", border: "#c4b5fd" },
   Nod_06: { bg: "#ffedd5", text: "#c2410c", border: "#fdba74" },
+  Nod_07: { bg: "#e0e7ff", text: "#4338ca", border: "#a5b4fc" },
 };
 
 // ── Utilidades ──────────────────────────────────────────────────────────────
