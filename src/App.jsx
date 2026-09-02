@@ -13135,6 +13135,28 @@ export default function App() {
 
     const totalACobrar = sumMatVenta + sumEqVenta + sumActuacion - (reporteConfigRestarPago ? sumPagoRecibido : 0);
 
+    // Resumen de cantidades: materiales usados y equipos instalados en todo el filtro
+    const materialesResumenMap = new Map();
+    const equiposResumenMap = new Map();
+    liquidacionesReporte.forEach((item) => {
+      const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
+      mats.forEach((m) => {
+        const nombre = String(m?.material || m?.nombre || "?").trim() || "?";
+        const cant = Number(m?.cantidad ?? 0);
+        materialesResumenMap.set(nombre, (materialesResumenMap.get(nombre) || 0) + cant);
+      });
+      const tipoItem = String(item.tipoActuacion || "").toLowerCase();
+      if (!tipoItem.includes("recup")) {
+        const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
+        eqs.forEach((e) => {
+          const desc = [e?.tipo, e?.marca, e?.modelo].filter(Boolean).join(" ") || "Equipo";
+          equiposResumenMap.set(desc, (equiposResumenMap.get(desc) || 0) + 1);
+        });
+      }
+    });
+    const materialesResumenRows = Array.from(materialesResumenMap.entries()).sort((a, b) => b[1] - a[1]);
+    const equiposResumenRows = Array.from(equiposResumenMap.entries()).sort((a, b) => b[1] - a[1]);
+
     const filtroTecnico = reporteTecnico !== "TODOS" ? reporteTecnico : "Todos";
     const filtroNodo = reporteNodoLabel;
 
@@ -13235,6 +13257,35 @@ export default function App() {
     <div class="resumen-row"><span>Precio actuaciones</span><span style="color:#7c3aed;font-weight:700">S/ ${sumActuacion.toFixed(2)}</span></div>
     ${reporteConfigRestarPago ? `<div class="resumen-row"><span class="resumen-neg">— Pago recibido</span><span class="resumen-neg" style="font-weight:700">- S/ ${sumPagoRecibido.toFixed(2)}</span></div>` : ""}
     <div class="resumen-total"><span>TOTAL A COBRAR</span><span>S/ ${totalACobrar.toFixed(2)}</span></div>
+  </div>
+
+  <div style="display:flex;gap:16px;margin-top:20px;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <div style="font-size:13px;font-weight:800;color:${accentColor};margin-bottom:8px">Materiales usados (resumen)</div>
+      ${materialesResumenRows.length === 0 ? `<p style="font-size:11px;color:#9ca3af">Sin materiales registrados.</p>` : `
+      <table>
+        <thead><tr><th>Material</th><th class="r" style="width:80px">Cantidad</th></tr></thead>
+        <tbody>
+          ${materialesResumenRows.map(([nombre, cant], i) => `<tr style="background:${i % 2 === 0 ? "#ffffff" : "#fff7f0"}">
+            <td style="padding:6px 8px;font-size:11px;color:#374151">${escHtml(nombre)}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-weight:600">${cant}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`}
+    </div>
+    <div style="flex:1;min-width:260px">
+      <div style="font-size:13px;font-weight:800;color:${accentColor};margin-bottom:8px">Equipos instalados (resumen)</div>
+      ${equiposResumenRows.length === 0 ? `<p style="font-size:11px;color:#9ca3af">Sin equipos registrados.</p>` : `
+      <table>
+        <thead><tr><th>Equipo</th><th class="r" style="width:80px">Cantidad</th></tr></thead>
+        <tbody>
+          ${equiposResumenRows.map(([desc, cant], i) => `<tr style="background:${i % 2 === 0 ? "#ffffff" : "#fff7f0"}">
+            <td style="padding:6px 8px;font-size:11px;color:#374151">${escHtml(desc)}</td>
+            <td style="padding:6px 8px;font-size:11px;text-align:right;font-weight:600">${cant}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>`}
+    </div>
   </div>
 
   <div class="footer">
