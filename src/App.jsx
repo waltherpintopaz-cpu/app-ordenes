@@ -12502,7 +12502,14 @@ export default function App() {
           safeIncludes(item.liquidacion?.tecnicoLiquida, q)
         );
       })
-      .sort((a, b) => (a.fechaLiquidacionTs || 0) - (b.fechaLiquidacionTs || 0));
+      .sort((a, b) => {
+        if (!reporteUsarFechaOrden) return (a.fechaLiquidacionTs || 0) - (b.fechaLiquidacionTs || 0);
+        const fa = ordenesFechaActuacionPorId.get(Number(a.ordenOriginalId));
+        const fb = ordenesFechaActuacionPorId.get(Number(b.ordenOriginalId));
+        const ta = fa ? new Date(fa).getTime() : (a.fechaLiquidacionTs || 0);
+        const tb = fb ? new Date(fb).getTime() : (b.fechaLiquidacionTs || 0);
+        return ta - tb;
+      });
   }, [
     liquidaciones,
     reporteDesde,
