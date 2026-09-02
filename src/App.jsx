@@ -12847,8 +12847,11 @@ export default function App() {
   };
 
   const imprimirReporteMateriales = () => {
-    const empresa = String(usuarioSesion?.empresa || "Americanet");
-    const esDim = empresa.toLowerCase().includes("dim");
+    // Logo/marca flexible segun los nodos filtrados en el reporte (no segun la
+    // empresa del usuario logueado) — si se filtro por nodos de DIM, va el
+    // logo de DIM; si son de Americanet o esta en "Todos", va Americanet.
+    const esDim = reporteNodos.length > 0 && !reporteNodos.includes("TODOS") && reporteNodos.every((n) => empresaPorNodo(n) === "DIM");
+    const empresa = esDim ? "DIM" : "Americanet";
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = esDim ? "#0f3460" : "#1a3a6b";
 
@@ -13037,8 +13040,11 @@ export default function App() {
   };
 
   const imprimirReporteDetalladoActuaciones = () => {
-    const empresa = String(usuarioSesion?.empresa || "Americanet");
-    const esDim = empresa.toLowerCase().includes("dim");
+    // Logo/marca flexible segun los nodos filtrados en el reporte (no segun la
+    // empresa del usuario logueado) — si se filtro por nodos de DIM, va el
+    // logo de DIM; si son de Americanet o esta en "Todos", va Americanet.
+    const esDim = reporteNodos.length > 0 && !reporteNodos.includes("TODOS") && reporteNodos.every((n) => empresaPorNodo(n) === "DIM");
+    const empresa = esDim ? "DIM" : "Americanet";
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = "#c2500a";
     const margenEq = Number(reporteConfigMargenEquipos || 0);
@@ -13237,8 +13243,11 @@ export default function App() {
   };
 
   const imprimirAsignacionesTecnico = () => {
-    const empresa = String(usuarioSesion?.empresa || "Americanet");
-    const esDim = empresa.toLowerCase().includes("dim");
+    // Logo/marca flexible segun los nodos filtrados en el reporte (no segun la
+    // empresa del usuario logueado) — si se filtro por nodos de DIM, va el
+    // logo de DIM; si son de Americanet o esta en "Todos", va Americanet.
+    const esDim = reporteNodos.length > 0 && !reporteNodos.includes("TODOS") && reporteNodos.every((n) => empresaPorNodo(n) === "DIM");
+    const empresa = esDim ? "DIM" : "Americanet";
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = esDim ? "#0f3460" : "#1a3a6b";
 
@@ -13381,8 +13390,11 @@ export default function App() {
   };
 
   const imprimirReporteEquiposTecnico = () => {
-    const empresa = String(usuarioSesion?.empresa || "Americanet");
-    const esDim = empresa.toLowerCase().includes("dim");
+    // Logo/marca flexible segun los nodos filtrados en el reporte (no segun la
+    // empresa del usuario logueado) — si se filtro por nodos de DIM, va el
+    // logo de DIM; si son de Americanet o esta en "Todos", va Americanet.
+    const esDim = reporteNodos.length > 0 && !reporteNodos.includes("TODOS") && reporteNodos.every((n) => empresaPorNodo(n) === "DIM");
+    const empresa = esDim ? "DIM" : "Americanet";
     const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
     const accentColor = esDim ? "#0f3460" : "#1a3a6b";
 
@@ -13546,8 +13558,8 @@ export default function App() {
   const imprimirFichaTecnico = async () => {
     setFichaRptLoading(true);
     try {
-      const empresa   = String(usuarioSesion?.empresa || "Americanet");
-      const esDim     = empresa.toLowerCase().includes("dim");
+      const esDim     = reporteNodos.length > 0 && !reporteNodos.includes("TODOS") && reporteNodos.every((n) => empresaPorNodo(n) === "DIM");
+      const empresa   = esDim ? "DIM" : "Americanet";
       const logoSrc   = esDim ? logoDimB64 : logoAmericanetB64;
       const accentColor = esDim ? "#0f3460" : "#1a3a6b";
       const mostrarCosto = reporteConfigMostrarCosto;
@@ -13927,8 +13939,8 @@ export default function App() {
   const imprimirReporteMaterialesTecnico = async () => {
     setMatRptLoading(true);
     try {
-      const empresa = String(usuarioSesion?.empresa || "Americanet");
-      const esDim = empresa.toLowerCase().includes("dim");
+      const esDim = reporteNodos.length > 0 && !reporteNodos.includes("TODOS") && reporteNodos.every((n) => empresaPorNodo(n) === "DIM");
+      const empresa = esDim ? "DIM" : "Americanet";
       const logoSrc = esDim ? logoDimB64 : logoAmericanetB64;
       const accentColor = esDim ? "#0f3460" : "#1a3a6b";
 
