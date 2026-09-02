@@ -13096,8 +13096,11 @@ export default function App() {
       const mats = Array.isArray(item?.liquidacion?.materiales) ? item.liquidacion.materiales : [];
       const eqs = Array.isArray(item?.liquidacion?.equipos) ? item.liquidacion.equipos : [];
 
-      // Fecha corta dd/mm/yyyy
-      const fechaISO = item.fechaLiquidacionISO || "";
+      // Fecha corta dd/mm/yyyy — usa la fecha de la orden si se activo esa
+      // opcion en el filtro (caso raro: tecnico liquida en fecha distinta a
+      // la actuacion real).
+      const fechaOrdenItem = ordenesFechaActuacionPorId.get(Number(item.ordenOriginalId));
+      const fechaISO = (reporteUsarFechaOrden && fechaOrdenItem) || item.fechaLiquidacionISO || "";
       let fechaCorta = fechaISO;
       if (/^\d{4}-\d{2}-\d{2}$/.test(fechaISO)) {
         const [y, m, d] = fechaISO.split("-");
