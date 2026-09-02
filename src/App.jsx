@@ -10284,7 +10284,7 @@ export default function App() {
 
         return {
           ...eq,
-          estado: "instalado",
+          estado: "liquidado",
           tecnicoAsignado: "",
           clienteDni: registroLiquidado.dni || "",
           clienteNombre: registroLiquidado.nombre || "",
@@ -10748,7 +10748,7 @@ export default function App() {
               fecha_retiro_cliente: nowPeruTs(),
             }
           : {
-              estado: "instalado",
+              estado: "liquidado",
               cliente_dni: String(ordenEnLiquidacion.dni || ""),
               cliente_nombre: String(ordenEnLiquidacion.nombre || ""),
               orden_codigo: codigoOrden,
