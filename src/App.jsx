@@ -10292,7 +10292,6 @@ export default function App() {
         return {
           ...eq,
           estado: "liquidado",
-          tecnicoAsignado: "",
           clienteDni: registroLiquidado.dni || "",
           clienteNombre: registroLiquidado.nombre || "",
           ordenCodigo: registroLiquidado.codigo || "",
@@ -10760,7 +10759,9 @@ export default function App() {
               cliente_nombre: String(ordenEnLiquidacion.nombre || ""),
               orden_codigo: codigoOrden,
               fecha_ultima_instalacion: nowPeruTs(),
-              tecnico_asignado: "",
+              // No borrar tecnico_asignado: la app movil lo mantiene con el
+              // tecnico que instalo, y el panel Inventario Catalogo filtra
+              // por ese campo incluso para equipos ya liquidados.
               pendiente_retorno_almacen: false,
               fecha_retiro_cliente: null,
             };
