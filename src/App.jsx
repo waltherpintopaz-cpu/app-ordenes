@@ -12728,6 +12728,7 @@ export default function App() {
       .map((item, idx) => {
         const tecnico = item.liquidacion?.tecnicoLiquida || item.tecnico || "-";
         const monto = montoCobradoEfectivo(item);
+        const esIncidencia = String(item.tipoActuacion || "").toLowerCase().includes("inciden");
         return `<tr>
           <td>${idx + 1}</td>
           <td>${escHtml(item.fechaLiquidacion || "-")}</td>
@@ -12738,6 +12739,7 @@ export default function App() {
           <td>${escHtml(item.nodo || "-")}</td>
           <td>${escHtml(tecnico)}</td>
           <td>S/ ${monto.toFixed(2)}</td>
+          <td>${esIncidencia ? escHtml(item.liquidacion?.observacionFinal || "-") : "-"}</td>
         </tr>`;
       })
       .join("");
@@ -12782,6 +12784,7 @@ export default function App() {
         <th>Nodo</th>
         <th>Tecnico</th>
         <th>Monto</th>
+        <th>Observaciones (incidencias)</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
