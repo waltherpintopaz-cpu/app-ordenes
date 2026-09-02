@@ -2391,6 +2391,7 @@ export default function App() {
   const [reporteTecnico, setReporteTecnico] = useState("TODOS");
   const [reporteTipo, setReporteTipo] = useState("TODOS");
   const [reporteBusqueda, setReporteBusqueda] = useState("");
+  const [reporteUsarFechaOrden, setReporteUsarFechaOrden] = useState(false);
   const [reporteMedioPago, setReporteMedioPago] = useState("TODOS");
   const [reportePaginaAct, setReportePaginaAct] = useState(1);
   const [reportePaginaMat, setReportePaginaMat] = useState(1);
@@ -3165,18 +3166,18 @@ export default function App() {
 
   useEffect(() => {
     setReportePaginaAct(1);
-  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
+  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago, reporteUsarFechaOrden]);
 
   useEffect(() => {
     setReportePaginaMat(1);
-  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
+  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago, reporteUsarFechaOrden]);
 
   useEffect(() => {
     setReportePaginaDetMat(1);
     setReportePaginaDetEq(1);
     setReportePaginaCosto(1);
     setReportePaginaTecnico(1);
-  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago]);
+  }, [reporteDesde, reporteHasta, reporteNodos, reporteTecnico, reporteTipo, reporteBusqueda, reporteMedioPago, reporteUsarFechaOrden]);
 
   const menuLabelByKeyWeb = useMemo(
     () => Object.fromEntries(MENU_VISTAS_WEB.map((item) => [item.key, item.label])),
@@ -12432,10 +12433,26 @@ export default function App() {
     });
   }, [liquidaciones, busquedaHistorial, tieneAccesoNodoSesion, histFiltroNodo, histFiltroTipo, histFiltroDesde, histFiltroHasta, nombresGrupoTecnicoLower]);
 
+  // Solo para el caso raro donde el tecnico liquida en una fecha distinta a
+  // la de la actuacion real — permite filtrar Reportes por la fecha de la
+  // orden en vez de la fecha en que se guardo la liquidacion.
+  const ordenesFechaActuacionPorId = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(ordenes) ? ordenes : []).forEach((o) => {
+      if (o?.id != null && o?.fechaActuacion) map.set(Number(o.id), o.fechaActuacion);
+    });
+    return map;
+  }, [ordenes]);
+
   const liquidacionesReporte = useMemo(() => {
     const q = reporteBusqueda.trim().toLowerCase();
     return liquidaciones
-      .filter((item) => fechaDentroDeRango(item.fechaLiquidacionISO || item.fechaLiquidacion, reporteDesde, reporteHasta))
+      .filter((item) => {
+        const fechaLiq = item.fechaLiquidacionISO || item.fechaLiquidacion;
+        const fechaOrden = ordenesFechaActuacionPorId.get(Number(item.ordenOriginalId));
+        const fechaUsar = reporteUsarFechaOrden ? (fechaOrden || fechaLiq) : fechaLiq;
+        return fechaDentroDeRango(fechaUsar, reporteDesde, reporteHasta);
+      })
       .filter((item) => {
         // Filtrar por nodos asignados al usuario (solo si es Gestora con nodos específicos)
         if (esGestorSesion && nodosAccesoGestoraSet.size > 0) {
@@ -12495,6 +12512,8 @@ export default function App() {
     reporteTipo,
     reporteBusqueda,
     reporteMedioPago,
+    reporteUsarFechaOrden,
+    ordenesFechaActuacionPorId,
   ]);
 
   const reporteResumen = useMemo(() => {
@@ -19025,6 +19044,17 @@ export default function App() {
                     value={reporteHasta}
                     onChange={(e) => setReporteHasta(e.target.value)}
                   />
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, cursor: "pointer", userSelect: "none" }}>
+                    <input
+                      type="checkbox"
+                      checked={reporteUsarFechaOrden}
+                      onChange={(e) => setReporteUsarFechaOrden(e.target.checked)}
+                      style={{ width: 14, height: 14, cursor: "pointer" }}
+                    />
+                    <span style={{ fontSize: 10.5, color: "#64748b" }} title="Para el caso raro donde el tecnico liquida en una fecha distinta a la de la actuacion real">
+                      Usar fecha de la orden (no de la liquidación)
+                    </span>
+                  </label>
                 </div>
                 <div style={{ position: "relative" }}>
                   <label style={labelStyle}>Nodo</label>
