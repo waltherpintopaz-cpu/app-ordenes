@@ -26,6 +26,12 @@ const estadoStyle  = (e) => ESTADO_COLORS[normalizeEstado(e)]
   : { background: "#f3f4f6", color: "#374151", borderRadius: 6, padding: "2px 8px", fontSize: 12 };
 
 const fmt$ = (v) => `S/ ${Number(v || 0).toFixed(2)}`;
+const fechaCorta = (v) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
+};
 
 export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }) {
   const [equipos, setEquipos]         = useState([]);
@@ -114,7 +120,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     while (true) {
       const { data, error } = await supabase
         .from("equipos_catalogo")
-        .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado,tecnico_asignado")
+        .select("id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,estado,tecnico_asignado,fecha_ultima_instalacion")
         .order("empresa").order("tipo").order("modelo")
         .range(offset, offset + pageSize - 1);
       if (error) { setError(error.message); setLoading(false); return; }
@@ -123,7 +129,37 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       if (chunk.length < pageSize) break;
       offset += pageSize;
     }
-    setEquipos(all);
+
+    // Fecha de asignacion: no existe como columna en equipos_catalogo, pero si
+    // queda registrada en el kardex (inventario_movimientos) cada vez que se
+    // asigna un equipo a un tecnico. Se cruza por codigo QR (referencia), y si
+    // un equipo fue asignado mas de una vez se toma la mas reciente.
+    const fechaAsignadoPorReferencia = new Map();
+    try {
+      let movOffset = 0;
+      while (true) {
+        const { data: movs, error: movErr } = await supabase
+          .from("inventario_movimientos")
+          .select("referencia,created_at")
+          .eq("motivo", "Asignacion a tecnico")
+          .order("created_at", { ascending: false })
+          .range(movOffset, movOffset + pageSize - 1);
+        if (movErr) break;
+        (movs || []).forEach((m) => {
+          const ref = String(m?.referencia || "").trim().toLowerCase();
+          if (ref && !fechaAsignadoPorReferencia.has(ref)) fechaAsignadoPorReferencia.set(ref, m.created_at);
+        });
+        if (!movs || movs.length < pageSize) break;
+        movOffset += pageSize;
+      }
+    } catch { /* si falla el kardex, se muestra sin fecha de asignacion */ }
+
+    const allConFechas = all.map((e) => ({
+      ...e,
+      fecha_asignado: fechaAsignadoPorReferencia.get(String(e.codigo_qr || "").trim().toLowerCase()) || null,
+    }));
+
+    setEquipos(allConFechas);
     setLoading(false);
   }
 
@@ -278,7 +314,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
     doc.text(`Filtros: ${filtrosDesc}   Fecha: ${now}`, 148, 18, { align: "center" });
 
     // Tabla
-    const cols = ["#", "Empresa", "Tipo", "Marca", "Modelo", "Serial / MAC", "Código QR", "Estado", "Técnico Asignado", "Precio"];
+    const cols = ["#", "Empresa", "Tipo", "Marca", "Modelo", "Serial / MAC", "Código QR", "Estado", "Técnico Asignado", "Fecha Asignado", "Fecha Liquidado", "Precio"];
     const rows = filtrados.map((e, i) => [
       i + 1,
       e.empresa           || "—",
@@ -289,6 +325,8 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       e.codigo_qr         || "—",
       estadoLabel(e.estado),
       e.tecnico_asignado  || "—",
+      fechaCorta(e.fecha_asignado),
+      fechaCorta(e.fecha_ultima_instalacion),
       fmt$(getPrecio(e)),
     ]);
 
@@ -299,7 +337,7 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
       styles:      { fontSize: 7, cellPadding: 2 },
       headStyles:  { fillColor: [30, 58, 138], textColor: 255, fontStyle: "bold" },
       alternateRowStyles: { fillColor: [239, 246, 255] },
-      columnStyles: { 0: { cellWidth: 7 }, 9: { halign: "right", fontStyle: "bold" } },
+      columnStyles: { 0: { cellWidth: 7 }, 11: { halign: "right", fontStyle: "bold" } },
     });
 
     // Total
@@ -556,6 +594,8 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
                     { label: "Código QR",       col: "codigo_qr" },
                     { label: "Estado",          col: "estado" },
                     { label: "Técnico Asignado",col: "tecnico_asignado" },
+                    { label: "Fecha Asignado",  col: "fecha_asignado" },
+                    { label: "Fecha Liquidado", col: "fecha_ultima_instalacion" },
                     { label: "Precio",          col: "precio" },
                   ].map(({ label, col }) => (
                     <th key={label}
@@ -585,13 +625,15 @@ export default function InventarioCatalogoPanel({ cardStyle, sectionTitleStyle }
                     <td style={{ padding: "8px 12px", fontFamily: "monospace", fontSize: 12 }}>{e.codigo_qr || "—"}</td>
                     <td style={{ padding: "8px 12px" }}><span style={estadoStyle(e.estado)}>{estadoLabel(e.estado)}</span></td>
                     <td style={{ padding: "8px 12px", fontSize: 12 }}>{e.tecnico_asignado || "—"}</td>
+                    <td style={{ padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap" }}>{fechaCorta(e.fecha_asignado)}</td>
+                    <td style={{ padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap" }}>{fechaCorta(e.fecha_ultima_instalacion)}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700, color: "#1d4ed8", textAlign: "right" }}>{fmt$(getPrecio(e))}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ background: "#eff6ff", fontWeight: 700 }}>
-                  <td colSpan={10} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
+                  <td colSpan={12} style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 13 }}>
                     Total ({filtrados.length} equipos)
                   </td>
                   <td style={{ padding: "10px 12px", color: "#1d4ed8", fontSize: 14, textAlign: "right" }}>
