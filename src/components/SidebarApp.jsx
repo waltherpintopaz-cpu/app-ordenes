@@ -594,7 +594,7 @@ export default function SidebarApp() {
   const [showMensajesRapidos, setShowMensajesRapidos] = useState(false);
   const [mensajesRapidosDisponibles, setMensajesRapidosDisponibles] = useState([]);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
@@ -2734,6 +2734,7 @@ export default function SidebarApp() {
         sn_onu:         snOnuFinal,
         caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
+        ubicacion_referencial: !!ordenForm.ubicacionReferencial,
         descripcion:    [
           ordenForm.descripcion || "",
           iptvInfo ? `📺 Cuenta IPTV MaxPlayer — Usuario: ${iptvInfo.iptv_usuario} / Contraseña: ${iptvInfo.iptv_password}` : "",
@@ -2756,6 +2757,7 @@ export default function SidebarApp() {
       setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
       setOrdenIncluirIptv(false);
       setOrdenIptvPantallas("1");
+      setOrdenForm(p => ({ ...p, ubicacionReferencial: false }));
       notify(`✅ Orden ${codigoFinal} creada`);
 
       // WhatsApp al cliente
@@ -4209,6 +4211,10 @@ export default function SidebarApp() {
                           </div>);
                         })()}
                         <StreetViewThumb coordenadas={ordenForm.coordenadas} height={130} style={{ marginTop: 4 }} />
+                        <label style={{display:"flex",alignItems:"center",gap:6,marginTop:4,fontSize:10,color:"#92400e",cursor:"pointer"}}>
+                          <input type="checkbox" checked={!!ordenForm.ubicacionReferencial} onChange={e=>setOrdenForm(p=>({...p,ubicacionReferencial:e.target.checked}))} />
+                          📍 Es una ubicación referencial — falta la exacta
+                        </label>
                         {/* Selector múltiples ubicaciones */}
                         {coordsLista.length > 0 && (
                           <div style={{ marginTop:4, background:"#f0fdf4", border:`1px solid #86efac`, borderRadius:4, padding:"6px 8px" }}>
@@ -5864,6 +5870,10 @@ export default function SidebarApp() {
                     })()}
                   </div>
                 </div>
+                <label style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",fontSize:11,color:"#92400e",cursor:"pointer",borderBottom:`1px solid ${T.border}`}}>
+                  <input type="checkbox" checked={!!ordenForm.ubicacionReferencial} onChange={e=>setOrdenForm(p=>({...p,ubicacionReferencial:e.target.checked}))} />
+                  📍 Es una ubicación referencial — falta la exacta
+                </label>
                 {/* Mapa */}
                 {showOrdenMap && (() => {
                   const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
