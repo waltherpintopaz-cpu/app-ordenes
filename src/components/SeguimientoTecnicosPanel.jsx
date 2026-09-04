@@ -181,7 +181,14 @@ const loadGoogleMapsSdk = () => {
   return window.__gmapsPromise;
 };
 
-export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
+export default function SeguimientoTecnicosPanel({
+  sessionUser,
+  rolSesion,
+  rolFiltro = "tecnico",
+  rolPropio = "Tecnico",
+  titulo = "Seguimiento tecnicos",
+  etiquetaPlural = "Tecnicos",
+}) {
   const mapCanvasRef = useRef(null);
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
@@ -208,13 +215,14 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   const [statsDate, setStatsDate] = useState(() => startOfDay(new Date()));
   const [statsTechId, setStatsTechId] = useState("");
   const [statsData, setStatsData] = useState(null);
+  const [statsPoints, setStatsPoints] = useState([]);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState("");
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
   const [pingStates, setPingStates] = useState({}); // { [tecnicoId]: "idle"|"waiting"|"ok"|"timeout" }
 
   const _esAdmin = rolSesion === "Administrador";
-  const esTecnico = rolSesion === "Tecnico";
+  const esTecnico = rolSesion === rolPropio;
   const tecnicoIdSesion = parseTecnicoId(sessionUser?.id);
   const tecnicoNombreSesion = toText(sessionUser?.nombre || sessionUser?.username || tecnicoIdSesion);
 
@@ -287,16 +295,17 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   const cargarConfigYTecnicos = useCallback(async () => {
     const { data: usuariosData, error: usuariosError } = await supabase
       .from("usuarios")
-      .select("id,nombre,rol,activo")
+      .select("id,nombre,rol,activo,celular")
       .eq("activo", true)
       .limit(2000);
     if (usuariosError) throw usuariosError;
 
     const tecnicos = (Array.isArray(usuariosData) ? usuariosData : [])
-      .filter((row) => toText(row?.rol).toLowerCase().includes("tecnico"))
+      .filter((row) => toText(row?.rol).toLowerCase().includes(rolFiltro))
       .map((row) => ({
         id: parseTecnicoId(row?.id),
         nombre: toText(row?.nombre || row?.id),
+        celular: toText(row?.celular),
       }))
       .filter((row) => row.id);
     setTechUsers(tecnicos);
@@ -341,7 +350,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
       if (habilitados.length > 0) return habilitados;
       return tecnicos.map((t) => t.id);
     });
-  }, [esTecnico, tecnicoIdSesion]);
+  }, [esTecnico, tecnicoIdSesion, rolFiltro]);
 
   const idsObjetivoTraza = useMemo(() => {
     if (esTecnico && tecnicoIdSesion) return [tecnicoIdSesion];
@@ -403,6 +412,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
       const techId = parseTecnicoId(targetTechId);
       if (!techId) {
         setStatsData(null);
+        setStatsPoints([]);
         setStatsError("");
         return;
       }
@@ -429,8 +439,10 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
         }
         const rows = Array.isArray(res.data) ? res.data : [];
         setStatsData(calcularEstadisticaDia(rows));
+        setStatsPoints(rows.filter((r) => isValidCoord(Number(r.lat), Number(r.lng))));
       } catch (e) {
         setStatsData(null);
+        setStatsPoints([]);
         setStatsError(String(e?.message || "No se pudo cargar estadistica diaria."));
       } finally {
         setStatsLoading(false);
@@ -438,6 +450,40 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
     },
     [statsTechId, statsDate]
   );
+
+  const exportarKml = useCallback(() => {
+    if (statsPoints.length === 0) return;
+    const nombre = selectedStatsTechName || "recorrido";
+    const coords = statsPoints.map((p) => `${Number(p.lng)},${Number(p.lat)},0`).join(" ");
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+<name>${nombre} — ${formatDateInput(statsDate)}</name>
+<Placemark><name>${nombre}</name>
+<LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
+</Placemark></Document></kml>`;
+    const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recorrido_${nombre.replace(/\s+/g, "_")}_${formatDateInput(statsDate)}.kml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [statsPoints, selectedStatsTechName, statsDate]);
+
+  const compartirWhatsapp = useCallback(() => {
+    if (!statsData) return;
+    const ultimo = statsPoints[statsPoints.length - 1];
+    const linkMapa = ultimo ? `https://maps.google.com/?q=${ultimo.lat},${ultimo.lng}` : "";
+    const texto = [
+      `📍 Recorrido de ${selectedStatsTechName} — ${formatDateInput(statsDate)}`,
+      `Distancia: ${Number(statsData.distanciaKm || 0).toFixed(2)} km`,
+      `Trayectos: ${Number(statsData.trayectos || 0)}`,
+      linkMapa ? `Ultima ubicacion: ${linkMapa}` : "",
+    ].filter(Boolean).join("\n");
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+  }, [statsData, statsPoints, selectedStatsTechName, statsDate]);
 
   const cargarTodo = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -520,6 +566,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
       rows.push({
         id,
         nombre: toText(u?.nombre || id),
+        celular: toText(u?.celular),
         habilitado: Boolean(configByTech[id]?.habilitado),
       });
     });
@@ -763,7 +810,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   if (!isSupabaseConfigured) {
     return (
       <section className="panel">
-        <h2>Seguimiento tecnicos</h2>
+        <h2>{titulo}</h2>
         <p className="warn-text">Supabase no esta configurado.</p>
       </section>
     );
@@ -772,7 +819,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
   return (
     <section className="panel maptech-panel">
       <div className="panel-toolbar">
-        <h2>Seguimiento tecnicos</h2>
+        <h2>{titulo}</h2>
         <button type="button" className="secondary-btn small" onClick={() => void onRefresh()} disabled={refreshing || loading}>
           {refreshing || loading ? "Actualizando..." : "Actualizar"}
         </button>
@@ -790,7 +837,7 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
 
       <div className="orders-kpi-grid">
         <article className="orders-kpi-card">
-          <span>Tecnicos visibles</span>
+          <span>{etiquetaPlural} visibles</span>
           <strong>{kpi.total}</strong>
         </article>
         <article className="orders-kpi-card">
@@ -947,10 +994,10 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
         </section>
 
         <section className="maptech-list-card">
-          <h3>Tecnicos ({techOptions.length})</h3>
+          <h3>{etiquetaPlural} ({techOptions.length})</h3>
           <div className="maptech-list">
             {techOptions.length === 0 ? (
-              <p className="empty">No hay tecnicos activos.</p>
+              <p className="empty">No hay {etiquetaPlural.toLowerCase()} activos.</p>
             ) : (
               techOptions.map((tecnico) => {
                 const row = rowsList.find((item) => item.tecnico_id === tecnico.id);
@@ -966,20 +1013,47 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
                     <p className="maptech-row-meta">
                       {row ? `Ultimo ping: ${formatDateTime(row.updated_at)} (${formatAgo(row.updated_at)})` : "Sin ubicacion actual."}
                     </p>
-                    {!esTecnico && (() => {
-                      const ps = pingStates[tecnico.id] || "idle";
-                      return (
-                        <button
-                          type="button"
-                          className="secondary-btn small"
-                          style={{ marginTop: 6, minWidth: 130 }}
-                          disabled={ps === "waiting"}
-                          onClick={(e) => { e.stopPropagation(); pedirUbicacion(tecnico.id); }}
-                        >
-                          {ps === "waiting" ? "Solicitando..." : ps === "ok" ? "✓ Actualizado" : ps === "timeout" ? "Sin respuesta" : "📍 Pedir ubicación"}
-                        </button>
-                      );
-                    })()}
+                    {!esTecnico && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                        {(() => {
+                          const ps = pingStates[tecnico.id] || "idle";
+                          return (
+                            <button
+                              type="button"
+                              className="secondary-btn small"
+                              style={{ minWidth: 130 }}
+                              disabled={ps === "waiting"}
+                              onClick={(e) => { e.stopPropagation(); pedirUbicacion(tecnico.id); }}
+                            >
+                              {ps === "waiting" ? "Solicitando..." : ps === "ok" ? "✓ Actualizado" : ps === "timeout" ? "Sin respuesta" : "📍 Pedir ubicación"}
+                            </button>
+                          );
+                        })()}
+                        {tecnico.celular ? (
+                          <>
+                            <button
+                              type="button"
+                              className="secondary-btn small"
+                              onClick={(e) => { e.stopPropagation(); window.open(`tel:${tecnico.celular}`, "_self"); }}
+                            >
+                              📞 Llamar
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-btn small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const digits = String(tecnico.celular).replace(/\D/g, "");
+                                const phone = digits.length === 9 ? `51${digits}` : digits;
+                                window.open(`https://wa.me/${phone}`, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              💬 WhatsApp
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -991,7 +1065,15 @@ export default function SeguimientoTecnicosPanel({ sessionUser, rolSesion }) {
       <section className="maptech-list-card">
         <div className="panel-toolbar">
           <h3>Estadistica diaria</h3>
-          <p className="panel-meta">Distancia, trayectos, tiempos detenidos y velocidad por tecnico.</p>
+          <p className="panel-meta">Distancia, trayectos, tiempos detenidos y velocidad.</p>
+          <div className="maptech-actions">
+            <button type="button" className="secondary-btn small" onClick={exportarKml} disabled={statsPoints.length === 0}>
+              ⬇ Exportar KML
+            </button>
+            <button type="button" className="secondary-btn small" onClick={compartirWhatsapp} disabled={!statsData}>
+              📤 Compartir por WhatsApp
+            </button>
+          </div>
         </div>
         <div className="pendientes-filters">
           {!esTecnico ? (

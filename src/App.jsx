@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -251,7 +251,7 @@ const NODO_PASSWORD_RULES = {
   // cliente (ver sugerirPasswordPorNodo).
 };
 
-const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen"];
+const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen", "Volanteador"];
 const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
 const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06", "nod_07"]);
@@ -325,6 +325,7 @@ const MENU_VISTAS_WEB = [
   { key: "smartOlt", label: "Smart OLT" },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
   { key: "seguimientoVehiculos", label: "Seguimiento vehiculos" },
+  { key: "seguimientoVolanteadores", label: "Seguimiento volanteadores" },
   { key: "plantaExterna", label: "Planta externa" },
   { key: "inventario", label: "Inventario" },
   { key: "almacenes", label: "Almacenes" },
@@ -356,6 +357,7 @@ const PERMISOS_MENU_POR_ROL_WEB = {
   Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
+  Volanteador: [],
 };
 
 // Solo recordatorios se garantiza siempre — todo lo demás es flexible
@@ -364,6 +366,7 @@ const MENU_ITEMS_GARANTIZADOS_POR_ROL = {
   Gestora: ["recordatorios"],
   Tecnico: ["recordatorios"],
   Almacen: ["recordatorios"],
+  Volanteador: [],
 };
 
 const HISTORIAL_APPSHEET_SUBMENU_ITEMS = [
@@ -412,6 +415,7 @@ const MENU_LUCIDE_ICONS = {
   smartOlt:            Signal,
   seguimientoTecnicos: Users2,
   seguimientoVehiculos: Truck,
+  seguimientoVolanteadores: Footprints,
   plantaExterna:       MapPin,
   inventario:          Package,
   almacenes:           Warehouse,
@@ -1656,6 +1660,7 @@ function normalizarRolSimple(value) {
   if (rol.includes("admin")) return "Administrador";
   if (rol.includes("gest")) return "Gestora";
   if (rol.includes("alma")) return "Almacen";
+  if (rol.includes("volante")) return "Volanteador";
   return "Tecnico";
 }
 
@@ -1664,6 +1669,7 @@ function normalizarRolParaSupabase(value) {
   if (rol.includes("admin")) return "Administrador";
   if (rol.includes("gest")) return "Gestora";
   if (rol.includes("alma")) return "Almacen";
+  if (rol.includes("volante")) return "Volanteador";
   return "Tecnico";
 }
 
@@ -20321,6 +20327,17 @@ export default function App() {
         )}
 
         {vistaActiva === "seguimientoVehiculos" && <SeguimientoVehiculosPanel />}
+
+        {vistaActiva === "seguimientoVolanteadores" && (
+          <SeguimientoTecnicosPanel
+            sessionUser={usuarioSesion}
+            rolSesion={rolSesion}
+            rolFiltro="volanteador"
+            rolPropio="Volanteador"
+            titulo="Seguimiento volanteadores"
+            etiquetaPlural="Volanteadores"
+          />
+        )}
 
         {puedeVerPlantaExterna && vistaActiva === "plantaExterna" ? (
           <PlantaExternaPanel sessionUser={usuarioSesion} />
