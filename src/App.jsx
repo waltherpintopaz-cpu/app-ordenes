@@ -5,6 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import SeguimientoTecnicosPanel from "./components/SeguimientoTecnicosPanel";
+import SeguimientoVolanteadoresPanel from "./components/SeguimientoVolanteadoresPanel";
 import SeguimientoVehiculosPanel from "./components/SeguimientoVehiculosPanel";
 import PlantaExternaPanel from "./components/PlantaExternaPanel";
 import InventarioPanel from "./components/InventarioPanel";
@@ -20349,16 +20350,7 @@ export default function App() {
 
         {vistaActiva === "seguimientoVehiculos" && <SeguimientoVehiculosPanel />}
 
-        {vistaActiva === "seguimientoVolanteadores" && (
-          <SeguimientoTecnicosPanel
-            sessionUser={usuarioSesion}
-            rolSesion={rolSesion}
-            rolFiltro="volanteador"
-            rolPropio="Volanteador"
-            titulo="Seguimiento volanteadores"
-            etiquetaPlural="Volanteadores"
-          />
-        )}
+        {vistaActiva === "seguimientoVolanteadores" && <SeguimientoVolanteadoresPanel />}
 
         {puedeVerPlantaExterna && vistaActiva === "plantaExterna" ? (
           <PlantaExternaPanel sessionUser={usuarioSesion} />
