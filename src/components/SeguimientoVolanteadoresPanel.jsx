@@ -5,7 +5,12 @@ const GOOGLE_MAPS_API_KEY = String(
   import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
 ).trim();
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
-const TRAIL_COLORS = ["#EA580C", "#0891B2", "#7C3AED", "#16A34A", "#DB2777", "#CA8A04"];
+// Paleta amplia para que nadie del mismo grupo repita color (se asigna por
+// posicion en la lista visible, no por hash — ver colorMap mas abajo).
+const TRAIL_COLORS = [
+  "#EA580C", "#0891B2", "#7C3AED", "#16A34A", "#DB2777", "#CA8A04",
+  "#1E4F9C", "#DC2626", "#059669", "#4F46E5", "#0D9488", "#EC4899"
+];
 const TRAIL_MAX_POINTS = 400;
 const MAX_SEGMENT_SECONDS = 300;
 const STOP_SPEED_THRESHOLD_MPS = 0.6;
@@ -347,6 +352,19 @@ export default function SeguimientoVolanteadoresPanel() {
       });
   }, [volanteadoresVisibles, currentById, statsByVolanteador]);
 
+  // Color unico por persona dentro del grupo filtrado: se asigna por
+  // posicion en una lista ordenada por id (estable entre refrescos), no por
+  // hash, para que nunca dos compañeros del mismo grupo compartan color.
+  const colorMap = useMemo(() => {
+    const idsOrdenados = [...filas.map((f) => f.id)].sort();
+    const map = {};
+    idsOrdenados.forEach((id, i) => {
+      map[id] = TRAIL_COLORS[i % TRAIL_COLORS.length];
+    });
+    return map;
+  }, [filas]);
+  const colorDe = useCallback((id) => colorMap[parseId(id)] || TRAIL_COLORS[0], [colorMap]);
+
   const kpi = useMemo(() => {
     const enLinea = filas.filter((f) => f.pos && f.staleMin <= 20).length;
     const kmTotal = filas.reduce((acc, f) => acc + Number(f.stats?.distanciaKm || 0), 0);
@@ -424,7 +442,7 @@ export default function SeguimientoVolanteadoresPanel() {
     const visibleIds = new Set(filas.map((f) => f.id));
     Object.entries(trailById).forEach(([id, pts]) => {
       if (!visibleIds.has(id) || pts.length < 2) return;
-      const line = new maps.Polyline({ map, path: pts, strokeColor: colorForId(id), strokeOpacity: 0.9, strokeWeight: 4 });
+      const line = new maps.Polyline({ map, path: pts, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
       polylinesRef.current.push(line);
     });
 
@@ -432,16 +450,32 @@ export default function SeguimientoVolanteadoresPanel() {
       const lat = Number(f.pos.lat);
       const lng = Number(f.pos.lng);
       const size = f.id === selectedId ? 44 : 36;
+      const heading = Number(f.pos.heading);
+      const tieneRumbo = Number.isFinite(heading) && heading >= 0;
+      const icon = tieneRumbo
+        ? {
+            // Flecha de direccion (como el puntero de navegacion de Google
+            // Maps) rotada segun el rumbo GPS — se ve completa porque es un
+            // simbolo vectorial, no una imagen recortada.
+            path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: f.id === selectedId ? 7.5 : 6,
+            rotation: heading,
+            fillColor: colorDe(f.id),
+            fillOpacity: 1,
+            strokeColor: "#fff",
+            strokeWeight: 1.6,
+          }
+        : {
+            url: avatarIconUrl(f.avatar, colorDe(f.id), size),
+            scaledSize: new maps.Size(size, size),
+            anchor: new maps.Point(size / 2, size / 2),
+          };
       const marker = new maps.Marker({
         map,
         position: { lat, lng },
         title: `${f.nombre} — ${f.grupo}`,
         opacity: f.staleMin > 20 ? 0.55 : 1,
-        icon: {
-          url: avatarIconUrl(f.avatar, colorForId(f.id), size),
-          scaledSize: new maps.Size(size, size),
-          anchor: new maps.Point(size / 2, size / 2),
-        },
+        icon,
         zIndex: f.id === selectedId ? 999 : 1,
       });
       marker.addListener("click", () => setSelectedId(f.id));
@@ -607,7 +641,7 @@ export default function SeguimientoVolanteadoresPanel() {
           <article className="maptech-detail">
             <div className="maptech-detail-head">
               <img
-                src={avatarIconUrl(selectedRow.avatar, colorForId(selectedRow.id), 36)}
+                src={avatarIconUrl(selectedRow.avatar, colorDe(selectedRow.id), 36)}
                 alt=""
                 style={{ width: 32, height: 32, borderRadius: "50%" }}
               />
@@ -664,7 +698,7 @@ export default function SeguimientoVolanteadoresPanel() {
                 onClick={() => (f.pos ? centrar(f) : setSelectedId(f.id))}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <img src={avatarIconUrl(f.avatar, colorForId(f.id), 30)} alt="" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0 }} />
+                  <img src={avatarIconUrl(f.avatar, colorDe(f.id), 30)} alt="" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0 }} />
                   <p className="maptech-row-title" style={{ margin: 0 }}>
                     {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
                   </p>
