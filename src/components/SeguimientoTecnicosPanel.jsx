@@ -451,40 +451,6 @@ export default function SeguimientoTecnicosPanel({
     [statsTechId, statsDate]
   );
 
-  const exportarKml = useCallback(() => {
-    if (statsPoints.length === 0) return;
-    const nombre = selectedStatsTechName || "recorrido";
-    const coords = statsPoints.map((p) => `${Number(p.lng)},${Number(p.lat)},0`).join(" ");
-    const kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-<name>${nombre} — ${formatDateInput(statsDate)}</name>
-<Placemark><name>${nombre}</name>
-<LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
-</Placemark></Document></kml>`;
-    const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `recorrido_${nombre.replace(/\s+/g, "_")}_${formatDateInput(statsDate)}.kml`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [statsPoints, selectedStatsTechName, statsDate]);
-
-  const compartirWhatsapp = useCallback(() => {
-    if (!statsData) return;
-    const ultimo = statsPoints[statsPoints.length - 1];
-    const linkMapa = ultimo ? `https://maps.google.com/?q=${ultimo.lat},${ultimo.lng}` : "";
-    const texto = [
-      `📍 Recorrido de ${selectedStatsTechName} — ${formatDateInput(statsDate)}`,
-      `Distancia: ${Number(statsData.distanciaKm || 0).toFixed(2)} km`,
-      `Trayectos: ${Number(statsData.trayectos || 0)}`,
-      linkMapa ? `Ultima ubicacion: ${linkMapa}` : "",
-    ].filter(Boolean).join("\n");
-    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
-  }, [statsData, statsPoints, selectedStatsTechName, statsDate]);
-
   const cargarTodo = useCallback(async () => {
     if (!isSupabaseConfigured) {
       setError("Supabase no esta configurado.");
@@ -659,6 +625,40 @@ export default function SeguimientoTecnicosPanel({
     if (esTecnico) return tecnicoNombreSesion;
     return toText(techById[id]?.nombre || configByTech[id]?.tecnico_nombre || id);
   }, [statsTechId, esTecnico, tecnicoNombreSesion, techById, configByTech]);
+
+  const exportarKml = useCallback(() => {
+    if (statsPoints.length === 0) return;
+    const nombre = selectedStatsTechName || "recorrido";
+    const coords = statsPoints.map((p) => `${Number(p.lng)},${Number(p.lat)},0`).join(" ");
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+<name>${nombre} — ${formatDateInput(statsDate)}</name>
+<Placemark><name>${nombre}</name>
+<LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
+</Placemark></Document></kml>`;
+    const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recorrido_${nombre.replace(/\s+/g, "_")}_${formatDateInput(statsDate)}.kml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [statsPoints, selectedStatsTechName, statsDate]);
+
+  const compartirWhatsapp = useCallback(() => {
+    if (!statsData) return;
+    const ultimo = statsPoints[statsPoints.length - 1];
+    const linkMapa = ultimo ? `https://maps.google.com/?q=${ultimo.lat},${ultimo.lng}` : "";
+    const texto = [
+      `📍 Recorrido de ${selectedStatsTechName} — ${formatDateInput(statsDate)}`,
+      `Distancia: ${Number(statsData.distanciaKm || 0).toFixed(2)} km`,
+      `Trayectos: ${Number(statsData.trayectos || 0)}`,
+      linkMapa ? `Ultima ubicacion: ${linkMapa}` : "",
+    ].filter(Boolean).join("\n");
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
+  }, [statsData, statsPoints, selectedStatsTechName, statsDate]);
 
   const kpi = useMemo(() => {
     const total = rowsList.length;
