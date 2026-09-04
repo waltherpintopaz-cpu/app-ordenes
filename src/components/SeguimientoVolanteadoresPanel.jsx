@@ -102,6 +102,30 @@ const colorForId = (value) => {
   for (let i = 0; i < id.length; i += 1) acc = (acc + id.charCodeAt(i) * (i + 11)) % 997;
   return TRAIL_COLORS[acc % TRAIL_COLORS.length];
 };
+// Mismas claves que el picker de avatar en la app movil (VolanteoScreen.js)
+// — se dibujan como SVG real aca porque el navegador lo soporta nativo.
+const AVATAR_PRESETS = {
+  person: { color: "#2563EB", glyph: '<circle cx="12" cy="8.5" r="3.4"/><rect x="6.5" y="13" width="11" height="8" rx="5"/>' },
+  walk: {
+    color: "#EA580C",
+    glyph:
+      '<ellipse cx="9" cy="8" rx="2.1" ry="3.1" transform="rotate(-20 9 8)"/><ellipse cx="15" cy="16" rx="2.1" ry="3.1" transform="rotate(20 15 16)"/>',
+  },
+  star: { color: "#7C3AED", glyph: '<path d="M12,2 L14,10 L22,12 L14,14 L12,22 L10,14 L2,12 L10,10 Z"/>' },
+  heart: { color: "#DB2777", glyph: '<circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><polygon points="4,11 20,11 12,21"/>' },
+  flash: { color: "#CA8A04", glyph: '<polygon points="13,2 5,14 11,14 9,22 19,10 12,10"/>' },
+  flag: { color: "#16A34A", glyph: '<line x1="6" y1="3" x2="6" y2="21" stroke="#fff" stroke-width="2"/><polygon points="6,4 19,7 6,10"/>' },
+};
+function avatarIconUrl(avatar, fallbackColor, size = 40) {
+  const v = toText(avatar);
+  if (v.startsWith("data:image")) return v;
+  const preset = v.startsWith("preset:") ? AVATAR_PRESETS[v.slice(7)] : null;
+  const bg = preset?.color || fallbackColor || "#6B7280";
+  const glyph = preset?.glyph || '<circle cx="12" cy="8.5" r="3.4"/><rect x="6.5" y="13" width="11" height="8" rx="5"/>';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11.5" fill="${bg}" stroke="#fff" stroke-width="1.5"/><g fill="#fff">${glyph}</g></svg>`;
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+}
+
 const tableMissing = (err, tableName) => {
   const code = String(err?.code || "").trim();
   const msg = String(err?.message || "").toLowerCase();
@@ -163,7 +187,7 @@ export default function SeguimientoVolanteadoresPanel() {
   const cargarVolanteadores = useCallback(async () => {
     const { data, error: err } = await supabase
       .from("usuarios")
-      .select("id,nombre,celular,activo,grupo_volanteo,alias_volanteo")
+      .select("id,nombre,celular,activo,grupo_volanteo,alias_volanteo,avatar_volanteo")
       .eq("rol", "Volanteador")
       .eq("activo", true)
       .limit(2000);
@@ -174,6 +198,7 @@ export default function SeguimientoVolanteadoresPanel() {
         nombre: toText(u.alias_volanteo) || toText(u.nombre) || parseId(u.id),
         celular: toText(u.celular),
         grupo: toText(u.grupo_volanteo) || "(sin grupo)",
+        avatar: toText(u.avatar_volanteo),
       }))
     );
   }, []);
@@ -406,18 +431,18 @@ export default function SeguimientoVolanteadoresPanel() {
     marcadores.forEach((f) => {
       const lat = Number(f.pos.lat);
       const lng = Number(f.pos.lng);
+      const size = f.id === selectedId ? 44 : 36;
       const marker = new maps.Marker({
         map,
         position: { lat, lng },
-        title: f.nombre,
+        title: `${f.nombre} — ${f.grupo}`,
+        opacity: f.staleMin > 20 ? 0.55 : 1,
         icon: {
-          path: maps.SymbolPath.CIRCLE,
-          fillColor: f.staleMin > 20 ? "#9CA3AF" : colorForId(f.id),
-          fillOpacity: 0.95,
-          strokeColor: "#fff",
-          strokeWeight: f.id === selectedId ? 2.4 : 1.4,
-          scale: f.id === selectedId ? 10 : 8,
+          url: avatarIconUrl(f.avatar, colorForId(f.id), size),
+          scaledSize: new maps.Size(size, size),
+          anchor: new maps.Point(size / 2, size / 2),
         },
+        zIndex: f.id === selectedId ? 999 : 1,
       });
       marker.addListener("click", () => setSelectedId(f.id));
       markersRef.current.push(marker);
@@ -536,13 +561,38 @@ export default function SeguimientoVolanteadoresPanel() {
           <button type="button" className="secondary-btn small" onClick={fitMap}>
             Ajustar mapa
           </button>
-          <button type="button" className="secondary-btn small" onClick={exportarKml}>
-            ⬇ Exportar rutas (KML)
-          </button>
-          <button type="button" className="secondary-btn small" onClick={compartirResumenWhatsapp}>
-            📤 Compartir resumen
-          </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+          background: "#FFF7ED",
+          border: "1px solid #FED7AA",
+          borderRadius: 10,
+          padding: "10px 14px",
+        }}
+      >
+        <strong style={{ fontSize: 13, color: "#9A3412" }}>
+          Recorrido de {grupoFiltro === "TODOS" ? "todos los grupos" : `"${grupoFiltro}"`} — {formatDateInput(statsDate)}:
+        </strong>
+        <button
+          type="button"
+          onClick={exportarKml}
+          style={{ background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          ⬇ Descargar rutas del equipo (KML)
+        </button>
+        <button
+          type="button"
+          onClick={compartirResumenWhatsapp}
+          style={{ background: "#16A34A", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          📤 Compartir resumen del equipo por WhatsApp
+        </button>
       </div>
 
       <div className="maptech-map-card">
@@ -556,6 +606,11 @@ export default function SeguimientoVolanteadoresPanel() {
         {selectedRow ? (
           <article className="maptech-detail">
             <div className="maptech-detail-head">
+              <img
+                src={avatarIconUrl(selectedRow.avatar, colorForId(selectedRow.id), 36)}
+                alt=""
+                style={{ width: 32, height: 32, borderRadius: "50%" }}
+              />
               <strong>{selectedRow.nombre}</strong>
               <span className={`orders-status ${selectedRow.pos && selectedRow.staleMin <= 20 ? "ok" : "warn"}`}>
                 {selectedRow.pos ? (selectedRow.staleMin <= 20 ? "En linea" : "Desactualizado") : "Sin ubicacion hoy"}
@@ -608,9 +663,12 @@ export default function SeguimientoVolanteadoresPanel() {
                 style={{ cursor: "pointer" }}
                 onClick={() => (f.pos ? centrar(f) : setSelectedId(f.id))}
               >
-                <p className="maptech-row-title">
-                  {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
-                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <img src={avatarIconUrl(f.avatar, colorForId(f.id), 30)} alt="" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0 }} />
+                  <p className="maptech-row-title" style={{ margin: 0 }}>
+                    {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
+                  </p>
+                </div>
                 <p className="maptech-row-meta">
                   {f.pos ? `Ultimo ping: ${formatDateTime(f.pos.updated_at)} (${formatAgo(f.pos.updated_at)})` : "Sin ubicacion hoy."}
                 </p>
