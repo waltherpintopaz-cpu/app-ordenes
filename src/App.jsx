@@ -5373,6 +5373,7 @@ export default function App() {
       empresa: nullIfEmpty(u?.empresa) || "Americanet",
       activo: Boolean(u?.activo),
       grupo: nullIfEmpty(u?.grupo),
+      grupo_volanteo: nullIfEmpty(u?.grupoVolanteo ?? u?.grupo_volanteo),
       accesos_menu: accesosMenuSerializados,
       nodos_acceso: normalizarNodosAccesoWeb(u?.nodosAcceso ?? u?.nodos_acceso),
     };
@@ -5391,6 +5392,7 @@ export default function App() {
       empresa: String(row.empresa || "").trim() || "Americanet",
       activo: row.activo !== false,
       grupo: String(row.grupo || "").trim(),
+      grupoVolanteo: String(row.grupo_volanteo || "").trim(),
       fechaCreacion: row.fecha_creacion ? formatFechaFlexible(row.fecha_creacion) : new Date().toLocaleString(),
       accesosMenu: row.accesos_menu,
       accesosHistorialAppsheet: row.accesos_menu,
@@ -5409,6 +5411,11 @@ export default function App() {
   const esErrorColumnaNodosWeb = (error) => {
     const msg = String(error?.message || "").toLowerCase();
     return msg.includes("nodos_acceso") && (msg.includes("does not exist") || msg.includes("schema cache"));
+  };
+
+  const esErrorColumnaGrupoVolanteoWeb = (error) => {
+    const msg = String(error?.message || "").toLowerCase();
+    return msg.includes("grupo_volanteo") && (msg.includes("does not exist") || msg.includes("schema cache"));
   };
 
   const guardarUsuariosEnSupabase = async (lista = usuarios) => {
@@ -5432,6 +5439,10 @@ export default function App() {
           if (intento > 0) await new Promise((r) => setTimeout(r, intento * 1500));
           const { error } = await supabase.from(USUARIOS_TABLE).upsert(chunkFinal, { onConflict: "username" });
           if (!error) break;
+          if (esErrorColumnaGrupoVolanteoWeb(error)) {
+            chunkFinal = chunkFinal.map(({ grupo_volanteo, ...rest }) => ({ ...rest }));
+            continue;
+          }
           if (esErrorColumnaAccesosWeb(error)) {
             chunkFinal = chunkFinal.map(({ accesos_menu, ...rest }) => ({ ...rest }));
             continue;
@@ -5464,11 +5475,20 @@ export default function App() {
     try {
       const queryPromise = supabase
         .from(USUARIOS_TABLE)
-        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,sesion_token_web,sesion_token_mobile,ultimo_acceso")
+        .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,grupo_volanteo,sesion_token_web,sesion_token_mobile,ultimo_acceso")
         .order("id", { ascending: true })
         .limit(5000);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000));
       let { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+      if (error && esErrorColumnaGrupoVolanteoWeb(error)) {
+        const sinGrupoVolanteo = await supabase
+          .from(USUARIOS_TABLE)
+          .select("id,nombre,username,password,rol,celular,email,empresa,activo,fecha_creacion,accesos_menu,nodos_acceso,grupo,sesion_token_web,sesion_token_mobile,ultimo_acceso")
+          .order("id", { ascending: true })
+          .limit(5000);
+        data = sinGrupoVolanteo.data;
+        error = sinGrupoVolanteo.error;
+      }
       if (error && (esErrorColumnaAccesosWeb(error) || esErrorColumnaNodosWeb(error))) {
         const fallback = await supabase
           .from(USUARIOS_TABLE)
@@ -11470,7 +11490,7 @@ export default function App() {
 
             let { data: updatedRows, error } = await updater;
             if (error) {
-              const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
+              const { accesos_menu, nodos_acceso, grupo_volanteo, ...serializadoBase } = serializado;
               const updaterBase = buildUpdate(serializadoBase);
               if (!updaterBase) {
                 alert("No se pudo identificar el usuario en Supabase para actualizar. Refresca y vuelve a intentar.");
@@ -11492,7 +11512,7 @@ export default function App() {
             // Insertar solo cuando es creación
             const { error: err3 } = await supabase.from(USUARIOS_TABLE).insert(serializado);
             if (err3) {
-              const { accesos_menu, nodos_acceso, ...serializadoBase } = serializado;
+              const { accesos_menu, nodos_acceso, grupo_volanteo, ...serializadoBase } = serializado;
               const resBase = await supabase.from(USUARIOS_TABLE).insert(serializadoBase);
               if (resBase.error) {
                 alert(`Error al guardar usuario:\n${resBase.error.message}`);
@@ -11529,6 +11549,7 @@ export default function App() {
       accesosDiagnosticoServicio:
         usuario.accesosDiagnosticoServicio ?? usuario.accesos_diagnostico_servicio ?? usuario.accesosMenu ?? usuario.accesos_menu,
       nodosAcceso: usuario.nodosAcceso ?? usuario.nodos_acceso,
+      grupoVolanteo: usuario.grupoVolanteo ?? usuario.grupo_volanteo ?? "",
     }));
     setUsuarioEditandoId(usuario.id);
     setVistaActiva("usuarios");
@@ -20546,6 +20567,21 @@ export default function App() {
                               );
                             })}
                           </div>
+                        </div>
+                      )}
+
+                      {normalizarRolSimple(usuarioForm.rol) === "Volanteador" && (
+                        <div style={{ marginTop: 14 }}>
+                          <label style={{ ...labelStyle, margin: 0, marginBottom: 8, display: "block" }}>Grupo de volanteo</label>
+                          <input
+                            style={{ ...inputStyle, maxWidth: 280 }}
+                            value={usuarioForm.grupoVolanteo || ""}
+                            onChange={(e) => setUsuarioForm((prev) => ({ ...prev, grupoVolanteo: e.target.value }))}
+                            placeholder="ej: equipo-centro"
+                          />
+                          <p style={{ margin: "6px 0 0", fontSize: 11, color: "#94A3B8" }}>
+                            Los volanteadores con el mismo grupo se ven entre sí en tiempo real desde la app.
+                          </p>
                         </div>
                       )}
 
