@@ -193,52 +193,62 @@ function esColorValido(value) {
   return /^#[0-9A-Fa-f]{6}$/.test(toText(value));
 }
 
-// El recorrido ya llega filtrado/suavizado desde el origen (ver
+// El recorrido ya llega filtrado desde el origen (ver
 // VolanteadorTrackingService.kt y VolanteadorTrackingAgent.js) -- se
-// descartan lecturas de mala precision y "saltos" imposibles a pie. Ademas,
-// para que la linea dibujada se vea sobre la calle (no "flotando" al lado
-// por el ruido normal del GPS), se ajusta a la red vial real con el servidor
-// publico de OSRM (perfil "foot"). Si OSRM no responde o no encuentra una
-// calle cerca, esa porcion se deja con las coordenadas crudas -- nunca se
-// bloquea el dibujo del mapa por esto.
-const OSRM_MATCH_URL = "https://router.project-osrm.org/match/v1/foot";
-const OSRM_MAX_POINTS_PER_REQUEST = 95;
-
-async function snapChunkToRoads(points) {
-  if (points.length < 2) return points;
-  const coordsStr = points.map((p) => `${p.lng},${p.lat}`).join(";");
-  const radios = points.map(() => "25").join(";");
-  const url = `${OSRM_MATCH_URL}/${coordsStr}?geometries=geojson&overview=full&radiuses=${radios}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("OSRM no disponible");
-  const json = await res.json();
-  if (json.code !== "Ok" || !Array.isArray(json.matchings) || json.matchings.length === 0) {
-    throw new Error("Sin coincidencia de calles");
-  }
-  const coords = [];
-  json.matchings.forEach((m) => {
-    (m.geometry?.coordinates || []).forEach(([lng, lat]) => {
-      if (isValidCoord(lat, lng)) coords.push({ lat, lng });
-    });
+// descartan lecturas de mala precision y "saltos" imposibles a pie. Para
+// dibujarlo limpio NO se ajusta a la red vial (asi lo hacen Strava/Garmin/
+// AllTrails para caminatas -- eso es solo para autos, con un grafo vial
+// denso y cerrado; con datos de OSM peatonal incompletos como los de aca,
+// forzar la linea a "la calle mas cercana" es lo que producia tramos
+// zigzagueados / chuecos). En cambio se aplica, aca al momento de dibujar:
+// (1) un promedio movil para reducir el ruido normal del GPS urbano, y
+// (2) Douglas-Peucker para quitar puntos redundantes sin cambiar la forma.
+function suavizarPromedioMovil(points) {
+  if (!Array.isArray(points) || points.length < 3) return points;
+  return points.map((p, i) => {
+    const prev = points[Math.max(0, i - 1)];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    return { ...p, lat: (prev.lat + p.lat + next.lat) / 3, lng: (prev.lng + p.lng + next.lng) / 3 };
   });
-  return coords.length > 1 ? coords : points;
 }
 
-async function snapToRoads(points) {
-  if (!Array.isArray(points) || points.length < 2) return points;
-  const chunks = [];
-  for (let i = 0; i < points.length; i += OSRM_MAX_POINTS_PER_REQUEST - 1) {
-    chunks.push(points.slice(i, i + OSRM_MAX_POINTS_PER_REQUEST));
-  }
-  const snappedChunks = [];
-  for (const chunk of chunks) {
-    try {
-      snappedChunks.push(await snapChunkToRoads(chunk));
-    } catch {
-      snappedChunks.push(chunk);
+function distanciaPerpendicularM(pt, a, b) {
+  const lat0 = a.lat;
+  const toXY = (p) => ({
+    x: (p.lng * Math.PI) / 180 * 6371000 * Math.cos((lat0 * Math.PI) / 180),
+    y: (p.lat * Math.PI) / 180 * 6371000,
+  });
+  const P = toXY(pt), A = toXY(a), B = toXY(b);
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(P.x - A.x, P.y - A.y);
+  const t = ((P.x - A.x) * dx + (P.y - A.y) * dy) / len2;
+  const projX = A.x + t * dx, projY = A.y + t * dy;
+  return Math.hypot(P.x - projX, P.y - projY);
+}
+
+function douglasPeucker(points, epsilonM) {
+  if (points.length < 3) return points;
+  let maxDist = 0;
+  let index = 0;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const d = distanciaPerpendicularM(points[i], points[0], points[points.length - 1]);
+    if (d > maxDist) {
+      maxDist = d;
+      index = i;
     }
   }
-  return snappedChunks.flat();
+  if (maxDist > epsilonM) {
+    const left = douglasPeucker(points.slice(0, index + 1), epsilonM);
+    const right = douglasPeucker(points.slice(index), epsilonM);
+    return left.slice(0, -1).concat(right);
+  }
+  return [points[0], points[points.length - 1]];
+}
+
+function limpiarTrazoParaDibujar(points) {
+  if (!Array.isArray(points) || points.length < 3) return points;
+  return douglasPeucker(suavizarPromedioMovil(points), 6);
 }
 
 const tableMissing = (err, tableName) => {
@@ -278,7 +288,6 @@ const loadGoogleMapsSdk = () => {
 
 export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const mapCanvasRef = useRef(null);
-  const lastSnapKeyRef = useRef({});
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
@@ -297,7 +306,6 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [statsDate, setStatsDate] = useState(() => startOfDay(new Date()));
   const [statsByVolanteador, setStatsByVolanteador] = useState({});
   const [trailById, setTrailById] = useState({});
-  const [snappedTrailById, setSnappedTrailById] = useState({});
   const [grupoFiltro, setGrupoFiltro] = useState("TODOS");
   const [selectedId, setSelectedId] = useState("");
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
@@ -579,43 +587,6 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     if (volanteadores.length > 0) void cargarEstadisticasYRutas(statsDate);
   }, [volanteadores, statsDate, cargarEstadisticasYRutas]);
 
-  // Ajusta cada recorrido a la red vial real (OSRM) para dibujarlo -- por
-  // TRAMO (no la ruta completa), separando donde hubo una pausa/hueco grande,
-  // para no pedirle a OSRM que conecte dos puntos que nunca estuvieron unidos
-  // caminando. Uno por uno, no en paralelo, para no saturar el servidor
-  // publico. Si falla para algun tramo, ese tramo se sigue mostrando crudo
-  // (sin bloquear el mapa). El calculo de cobertura de zona sigue usando
-  // siempre las coordenadas crudas (trailById), nunca las ajustadas a calle.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      for (const [id, pts] of Object.entries(trailById)) {
-        if (cancelled) return;
-        const segmentos = splitTrailByGaps(pts);
-        if (segmentos.length === 0) continue;
-        const ultimo = pts[pts.length - 1];
-        const key = `${pts.length}|${ultimo.lat.toFixed(5)},${ultimo.lng.toFixed(5)}`;
-        if (lastSnapKeyRef.current[id] === key) continue;
-        try {
-          const snappedSegmentos = [];
-          for (const seg of segmentos) {
-            if (cancelled) return;
-            snappedSegmentos.push(await snapToRoads(seg));
-          }
-          if (!cancelled) {
-            lastSnapKeyRef.current[id] = key;
-            setSnappedTrailById((prev) => ({ ...prev, [id]: snappedSegmentos }));
-          }
-        } catch {
-          // se dejan los tramos crudos para esta persona
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [trailById]);
-
   // Realtime: apenas alguien manda un ping, se refresca su posicion actual.
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
@@ -818,16 +789,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       // Se corta en tramos donde hubo un hueco grande (pausa) para no dibujar
       // una linea recta "fantasma" entre pausar y reanudar.
       const segmentosCrudos = splitTrailByGaps(pts);
-      const segmentosAjustados = snappedTrailById[id];
-      segmentosCrudos.forEach((seg, idx) => {
-        const ajustado = Array.isArray(segmentosAjustados) ? segmentosAjustados[idx] : null;
-        const path = (Array.isArray(ajustado) ? ajustado : []).filter((p) => isValidCoord(p.lat, p.lng)).length > 1
-          ? ajustado
-          : seg;
-        // Aislado en su propio try/catch: si un tramo trae datos raros (ej.
-        // de un ajuste a calle fallido) no debe tumbar el dibujo del resto
-        // del mapa -- eso es lo que dejaba el mapa "congelado" hasta
-        // refrescar.
+      segmentosCrudos.forEach((seg) => {
+        const path = limpiarTrazoParaDibujar(seg);
+        // Aislado en su propio try/catch: un tramo con datos raros no debe
+        // tumbar el dibujo del resto del mapa.
         try {
           const line = new maps.Polyline({ map, path, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
           polylinesRef.current.push(line);
@@ -904,7 +869,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, snappedTrailById, marcadores, selectedId, fitMap, supervisores]);
+  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -939,11 +904,9 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       .map(([id, pts]) => {
         const nombre = filas.find((f) => f.id === id)?.nombre || id;
         const segmentosCrudos = splitTrailByGaps(pts);
-        const segmentosAjustados = snappedTrailById[id];
         const lineStrings = segmentosCrudos
-          .map((seg, idx) => {
-            const ajustado = Array.isArray(segmentosAjustados) ? segmentosAjustados[idx] : null;
-            const path = ajustado?.length > 1 ? ajustado : seg;
+          .map((seg) => {
+            const path = limpiarTrazoParaDibujar(seg);
             const coords = path.map((p) => `${p.lng},${p.lat},0`).join(" ");
             return `<LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>`;
           })
@@ -961,7 +924,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [trailById, snappedTrailById, filas, statsDate, grupoFiltro]);
+  }, [trailById, filas, statsDate, grupoFiltro]);
 
   const compartirResumenWhatsapp = useCallback(() => {
     const texto = [
