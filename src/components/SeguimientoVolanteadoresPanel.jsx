@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 
 const GOOGLE_MAPS_API_KEY = String(
@@ -100,6 +103,59 @@ const calcularEstadisticaDia = (rows) => {
     fin: points[points.length - 1]?.created_at || null,
   };
 };
+// Ray casting clasico: true si (lat,lng) esta dentro del poligono (array de {lat,lng}).
+const pointInPolygon = (lat, lng, poly) => {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const yi = poly[i].lat, xi = poly[i].lng;
+    const yj = poly[j].lat, xj = poly[j].lng;
+    const intersect = yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
+// % de la zona asignada que ya fue recorrido: se muestrea el poligono con una
+// grilla (resolucion adaptativa para no tronar en zonas grandes) y se marca
+// cada celda como "cubierta" si algun punto de la ruta caminada paso cerca.
+// No requiere ninguna libreria de geometria (turf, etc.) -- suficiente para
+// dar una cifra util sin agregar dependencias nuevas.
+const calcularCobertura = (poly, puntos) => {
+  if (!Array.isArray(poly) || poly.length < 3 || !Array.isArray(puntos) || puntos.length === 0) {
+    return { pct: 0, totalCeldas: 0, cubiertas: 0 };
+  }
+  const lats = poly.map((p) => p.lat);
+  const lngs = poly.map((p) => p.lng);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const midLat = (minLat + maxLat) / 2;
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((midLat * Math.PI) / 180) || 1;
+  const widthM = Math.max(1, (maxLng - minLng) * mPerDegLng);
+  const heightM = Math.max(1, (maxLat - minLat) * mPerDegLat);
+  let cellSizeM = 25;
+  const estCells = (widthM / cellSizeM) * (heightM / cellSizeM);
+  if (estCells > 4000) cellSizeM = Math.sqrt((widthM * heightM) / 4000);
+  const coverRadiusM = Math.max(20, cellSizeM * 0.9);
+  const stepLat = cellSizeM / mPerDegLat;
+  const stepLng = cellSizeM / mPerDegLng;
+  let total = 0;
+  let cubiertas = 0;
+  for (let lat = minLat; lat <= maxLat; lat += stepLat) {
+    for (let lng = minLng; lng <= maxLng; lng += stepLng) {
+      if (!pointInPolygon(lat, lng, poly)) continue;
+      total += 1;
+      for (let i = 0; i < puntos.length; i += 1) {
+        if (haversineMeters(lat, lng, puntos[i].lat, puntos[i].lng) <= coverRadiusM) {
+          cubiertas += 1;
+          break;
+        }
+      }
+    }
+  }
+  return { pct: total > 0 ? Math.round((cubiertas / total) * 100) : 0, totalCeldas: total, cubiertas };
+};
+
 const colorForId = (value) => {
   const id = parseId(value);
   if (!id) return TRAIL_COLORS[0];
@@ -448,6 +504,29 @@ export default function SeguimientoVolanteadoresPanel() {
   }, [filas]);
   const colorDe = useCallback((id) => colorMap[parseId(id)] || TRAIL_COLORS[0], [colorMap]);
 
+  // Todos los puntos de ruta de las personas visibles (el grupo cubre la
+  // zona en equipo, no una sola persona) -- usado para calcular % cubierto.
+  const puntosGrupoParaCobertura = useMemo(() => {
+    const ids = new Set(filas.map((f) => f.id));
+    const puntos = [];
+    Object.entries(trailById).forEach(([id, pts]) => {
+      if (ids.has(id)) puntos.push(...pts);
+    });
+    return puntos;
+  }, [filas, trailById]);
+
+  const coberturaPorZona = useMemo(
+    () =>
+      zonasAsignadas.map((z) => ({
+        ...z,
+        cobertura: calcularCobertura(
+          (Array.isArray(z.coordinates) ? z.coordinates : []).filter((c) => isValidCoord(Number(c.lat), Number(c.lng))),
+          puntosGrupoParaCobertura
+        ),
+      })),
+    [zonasAsignadas, puntosGrupoParaCobertura]
+  );
+
   const kpi = useMemo(() => {
     const enLinea = filas.filter((f) => f.pos && f.staleMin <= 20).length;
     const kmTotal = filas.reduce((acc, f) => acc + Number(f.stats?.distanciaKm || 0), 0);
@@ -626,6 +705,78 @@ export default function SeguimientoVolanteadoresPanel() {
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
   }, [grupoFiltro, statsDate, kpi, filas]);
 
+  const generarExcelReporte = useCallback(() => {
+    const wb = XLSX.utils.book_new();
+    const resumen = XLSX.utils.aoa_to_sheet([
+      ["Reporte de Volanteo — Americanet"],
+      [`Grupo: ${grupoFiltro === "TODOS" ? "Todos" : grupoFiltro} | Fecha: ${formatDateInput(statsDate)}`],
+      [`Generado: ${formatDateTime(new Date())}`],
+      [],
+      ["Volanteadores", kpi.total],
+      ["En linea ahora", kpi.enLinea],
+      ["Km recorridos (equipo)", kpi.kmTotal.toFixed(2)],
+      ["Grupos activos", kpi.gruposActivos],
+    ]);
+    XLSX.utils.book_append_sheet(wb, resumen, "Resumen");
+
+    const filasExcel = filas.map((f) => ({
+      Nombre: f.nombre,
+      Grupo: f.grupo,
+      "Hora inicio": f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-",
+      "Hora fin": f.stats?.fin ? formatDateTime(f.stats.fin) : "-",
+      "Tiempo caminando": formatDuration(f.stats?.tiempoCaminandoSec),
+      "Tiempo detenido": formatDuration(f.stats?.tiempoDetenidoSec),
+      "Km recorridos": Number(f.stats?.distanciaKm || 0).toFixed(2),
+    }));
+    const wsPersonas = XLSX.utils.json_to_sheet(filasExcel);
+    wsPersonas["!cols"] = [{ wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsPersonas, "Volanteadores");
+
+    if (coberturaPorZona.length > 0) {
+      const wsZonas = XLSX.utils.json_to_sheet(
+        coberturaPorZona.map((z) => ({ Grupo: z.grupo, Zona: z.nombre, "% Cubierto": z.cobertura.pct }))
+      );
+      XLSX.utils.book_append_sheet(wb, wsZonas, "Zonas cubiertas");
+    }
+    XLSX.writeFile(wb, `reporte_volanteo_${grupoFiltro}_${formatDateInput(statsDate)}.xlsx`);
+  }, [filas, coberturaPorZona, grupoFiltro, statsDate, kpi]);
+
+  const generarPdfReporte = useCallback(() => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("Reporte de Volanteo", 14, 18);
+    doc.setFontSize(10);
+    doc.text(`Grupo: ${grupoFiltro === "TODOS" ? "Todos" : grupoFiltro} | Fecha: ${formatDateInput(statsDate)}`, 14, 26);
+    doc.text(`Volanteadores: ${kpi.total} | Km recorridos (equipo): ${kpi.kmTotal.toFixed(2)} km`, 14, 32);
+    autoTable(doc, {
+      startY: 38,
+      head: [["Nombre", "Grupo", "Inicio", "Fin", "Caminando", "Detenido", "Km"]],
+      body: filas.map((f) => [
+        f.nombre,
+        f.grupo,
+        f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-",
+        f.stats?.fin ? formatDateTime(f.stats.fin) : "-",
+        formatDuration(f.stats?.tiempoCaminandoSec),
+        formatDuration(f.stats?.tiempoDetenidoSec),
+        Number(f.stats?.distanciaKm || 0).toFixed(2),
+      ]),
+      styles: { fontSize: 8 },
+    });
+    if (coberturaPorZona.length > 0) {
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Cobertura de zonas asignadas", 14, doc.lastAutoTable.finalY + 10);
+      doc.setFont("helvetica", "normal");
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY + 14,
+        head: [["Grupo", "Zona", "% Cubierto"]],
+        body: coberturaPorZona.map((z) => [z.grupo, z.nombre, `${z.cobertura.pct}%`]),
+        styles: { fontSize: 9 },
+      });
+    }
+    doc.save(`reporte_volanteo_${grupoFiltro}_${formatDateInput(statsDate)}.pdf`);
+  }, [filas, coberturaPorZona, grupoFiltro, statsDate, kpi]);
+
   const fallbackQuery = selectedRow?.pos
     ? `${Number(selectedRow.pos.lat).toFixed(6)}, ${Number(selectedRow.pos.lng).toFixed(6)}`
     : `${DEFAULT_CENTER.lat}, ${DEFAULT_CENTER.lng}`;
@@ -715,18 +866,19 @@ export default function SeguimientoVolanteadoresPanel() {
           <strong style={{ fontSize: 13, color: "#1E40AF" }}>
             Zona a cubrir por "{grupoFiltro}" el {formatDateInput(statsDate)}:
           </strong>
-          {zonasAsignadas.length === 0 ? (
+          {coberturaPorZona.length === 0 ? (
             <span style={{ fontSize: 12, color: "#64748B" }}>Sin zona asignada.</span>
           ) : (
-            zonasAsignadas.map((z) => (
+            coberturaPorZona.map((z) => (
               <span
                 key={z.asignacionId}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
                   color: "#fff", background: z.stroke_color || "#2563eb", borderRadius: 999, padding: "4px 10px",
                 }}
+                title={`${z.cobertura.cubiertas}/${z.cobertura.totalCeldas} celdas de la zona con recorrido cerca`}
               >
-                {z.grupo} · {z.nombre}
+                {z.grupo} · {z.nombre} · {z.cobertura.pct}% cubierto
                 <button
                   type="button"
                   onClick={() => quitarZonaAsignada(z.asignacionId)}
@@ -842,6 +994,84 @@ export default function SeguimientoVolanteadoresPanel() {
           </article>
         ) : null}
       </div>
+
+      <section className="maptech-list-card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <h3 style={{ margin: 0 }}>
+            Reporte del día — {grupoFiltro === "TODOS" ? "todos los grupos" : grupoFiltro} — {formatDateInput(statsDate)}
+          </h3>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              onClick={generarExcelReporte}
+              disabled={filas.length === 0}
+              style={{ background: "#16A34A", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+            >
+              📊 Descargar Excel
+            </button>
+            <button
+              type="button"
+              onClick={generarPdfReporte}
+              disabled={filas.length === 0}
+              style={{ background: "#DC2626", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+            >
+              📄 Descargar PDF
+            </button>
+          </div>
+        </div>
+        {filas.length === 0 ? (
+          <p className="empty">No hay volanteadores para este filtro.</p>
+        ) : (
+          <div style={{ overflowX: "auto", marginTop: 10 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: "2px solid #E5E7EB" }}>
+                  <th style={{ padding: "6px 8px" }}>Nombre</th>
+                  <th style={{ padding: "6px 8px" }}>Grupo</th>
+                  <th style={{ padding: "6px 8px" }}>Inicio</th>
+                  <th style={{ padding: "6px 8px" }}>Fin</th>
+                  <th style={{ padding: "6px 8px" }}>Caminando</th>
+                  <th style={{ padding: "6px 8px" }}>Detenido</th>
+                  <th style={{ padding: "6px 8px" }}>Km</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((f) => (
+                  <tr key={`rep-${f.id}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.nombre}</td>
+                    <td style={{ padding: "6px 8px" }}>{f.grupo}</td>
+                    <td style={{ padding: "6px 8px" }}>{f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-"}</td>
+                    <td style={{ padding: "6px 8px" }}>{f.stats?.fin ? formatDateTime(f.stats.fin) : "-"}</td>
+                    <td style={{ padding: "6px 8px" }}>{formatDuration(f.stats?.tiempoCaminandoSec)}</td>
+                    <td style={{ padding: "6px 8px" }}>{formatDuration(f.stats?.tiempoDetenidoSec)}</td>
+                    <td style={{ padding: "6px 8px" }}>{Number(f.stats?.distanciaKm || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: "2px solid #E5E7EB", fontWeight: 700 }}>
+                  <td style={{ padding: "6px 8px" }} colSpan={6}>
+                    Total equipo
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>{kpi.kmTotal.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            {coberturaPorZona.length > 0 ? (
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {coberturaPorZona.map((z) => (
+                  <span
+                    key={`cob-${z.asignacionId}`}
+                    style={{ fontSize: 12, fontWeight: 600, color: "#1E40AF", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 999, padding: "4px 10px" }}
+                  >
+                    Zona {z.nombre}: {z.cobertura.pct}% cubierto
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
 
       <section className="maptech-list-card">
         <h3>Volanteadores ({filas.length})</h3>
