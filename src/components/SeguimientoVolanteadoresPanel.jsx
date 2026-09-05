@@ -68,6 +68,12 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
+// Si el hueco real entre dos pings supera esto, se asume que hubo una pausa
+// (o un corte de GPS) y NO se cuenta ese tramo como caminado -- de lo
+// contrario, un cambio de ubicacion durante la pausa (ej. moverse en auto)
+// se contaba entero como distancia/tiempo caminando al reanudar.
+const MAX_GAP_FOR_SEGMENT_SEC = 180;
+
 const calcularEstadisticaDia = (rows) => {
   const points = Array.isArray(rows) ? rows : [];
   if (points.length === 0) return { totalPings: 0, distanciaKm: 0, tiempoCaminandoSec: 0, tiempoDetenidoSec: 0, inicio: null, fin: null };
@@ -78,8 +84,9 @@ const calcularEstadisticaDia = (rows) => {
     const prevTime = new Date(points[i - 1].created_at).getTime();
     const currTime = new Date(points[i].created_at).getTime();
     if (!Number.isFinite(prevTime) || !Number.isFinite(currTime)) continue;
-    const dt = Math.min(Math.floor((currTime - prevTime) / 1000), MAX_SEGMENT_SECONDS);
-    if (dt <= 0) continue;
+    const realDtSec = (currTime - prevTime) / 1000;
+    if (realDtSec <= 0 || realDtSec > MAX_GAP_FOR_SEGMENT_SEC) continue;
+    const dt = Math.min(Math.floor(realDtSec), MAX_SEGMENT_SECONDS);
     const lat1 = Number(points[i - 1].lat);
     const lng1 = Number(points[i - 1].lng);
     const lat2 = Number(points[i].lat);
@@ -154,6 +161,23 @@ const calcularCobertura = (poly, puntos) => {
     }
   }
   return { pct: total > 0 ? Math.round((cubiertas / total) * 100) : 0, totalCeldas: total, cubiertas };
+};
+
+// Corta el recorrido en varios tramos donde hubo un hueco de tiempo grande
+// (pausa, o cualquier corte de GPS) -- para no dibujar una linea recta
+// "fantasma" uniendo el punto de antes de pausar con el de despues de
+// reanudar (esa distancia nunca fue caminada, se desconoce el trayecto).
+const splitTrailByGaps = (points) => {
+  if (!Array.isArray(points) || points.length === 0) return [];
+  const segments = [[points[0]]];
+  for (let i = 1; i < points.length; i += 1) {
+    const prevTime = new Date(points[i - 1].created_at).getTime();
+    const currTime = new Date(points[i].created_at).getTime();
+    const gapSec = Number.isFinite(prevTime) && Number.isFinite(currTime) ? (currTime - prevTime) / 1000 : 0;
+    if (gapSec > MAX_GAP_FOR_SEGMENT_SEC) segments.push([]);
+    segments[segments.length - 1].push(points[i]);
+  }
+  return segments.filter((s) => s.length > 1);
 };
 
 const colorForId = (value) => {
@@ -252,7 +276,7 @@ const loadGoogleMapsSdk = () => {
   return window.__gmapsPromise;
 };
 
-export default function SeguimientoVolanteadoresPanel() {
+export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const mapCanvasRef = useRef(null);
   const lastSnapKeyRef = useRef({});
   const mapRef = useRef(null);
@@ -283,6 +307,11 @@ export default function SeguimientoVolanteadoresPanel() {
   const [zonaParaAsignar, setZonaParaAsignar] = useState("");
   const [asignandoZona, setAsignandoZona] = useState(false);
   const [finalizandoId, setFinalizandoId] = useState("");
+
+  const [supervisores, setSupervisores] = useState([]);
+  const [compartiendoUbicacion, setCompartiendoUbicacion] = useState(false);
+  const [geoError, setGeoError] = useState("");
+  const geoWatchIdRef = useRef(null);
 
   // Permite finalizar remotamente la sesion de un volanteador desde el
   // navegador (ej. se olvido de presionar "Finalizar", perdio el celular,
@@ -391,6 +420,88 @@ export default function SeguimientoVolanteadoresPanel() {
     setCurrentRows(Array.isArray(data) ? data : []);
   }, []);
 
+  // Supervisores compartiendo su ubicacion en vivo (sin ruta -- solo
+  // posicion actual, ver compartirUbicacionSupervisor).
+  const cargarSupervisores = useCallback(async () => {
+    const { data, error: err } = await supabase
+      .from("tecnico_ubicacion_actual")
+      .select("*")
+      .eq("tecnico_rol", "Supervisor")
+      .limit(200);
+    if (err) {
+      if (tableMissing(err, "tecnico_ubicacion_actual")) return;
+      return;
+    }
+    setSupervisores(Array.isArray(data) ? data : []);
+  }, []);
+
+  // El admin/supervisor viendo el navegador tambien puede compartir su
+  // propia ubicacion en vivo con el equipo (ej. esta en campo supervisando).
+  // Nunca se guarda historial (tecnico_ubicaciones) para el -- solo la
+  // posicion actual, y al desactivar se borra su fila para "desaparecer" de
+  // inmediato del mapa de los demas.
+  const detenerCompartirUbicacion = useCallback(async () => {
+    if (geoWatchIdRef.current != null && typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+    }
+    geoWatchIdRef.current = null;
+    setCompartiendoUbicacion(false);
+    const myId = parseId(sessionUser?.id);
+    if (myId) {
+      await supabase.from("tecnico_ubicacion_actual").delete().eq("tecnico_id", myId).eq("tecnico_rol", "Supervisor");
+      void cargarSupervisores();
+    }
+  }, [sessionUser, cargarSupervisores]);
+
+  const iniciarCompartirUbicacion = useCallback(() => {
+    const myId = parseId(sessionUser?.id);
+    if (!myId) {
+      setGeoError("No se pudo identificar tu usuario de sesion.");
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoError("Tu navegador no soporta geolocalizacion.");
+      return;
+    }
+    setGeoError("");
+    const myName = toText(sessionUser?.nombre) || "Supervisor";
+    const watchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (!isValidCoord(lat, lng)) return;
+        const heading = Number(pos.coords.heading);
+        await supabase.from("tecnico_ubicacion_actual").upsert(
+          {
+            tecnico_id: myId,
+            tecnico_nombre: myName,
+            tecnico_rol: "Supervisor",
+            lat,
+            lng,
+            heading: Number.isFinite(heading) && heading >= 0 ? heading : null,
+            accuracy_m: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
+            source: "supervisor_navegador",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "tecnico_id" }
+        );
+        void cargarSupervisores();
+      },
+      (err) => setGeoError(err?.message || "No se pudo obtener tu ubicacion."),
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+    geoWatchIdRef.current = watchId;
+    setCompartiendoUbicacion(true);
+  }, [sessionUser, cargarSupervisores]);
+
+  useEffect(() => {
+    return () => {
+      if (geoWatchIdRef.current != null && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      }
+    };
+  }, []);
+
   const cargarEstadisticasYRutas = useCallback(
     async (targetDate = statsDate) => {
       const ids = volanteadores.map((v) => v.id);
@@ -426,7 +537,7 @@ export default function SeguimientoVolanteadoresPanel() {
       Object.entries(grouped).forEach(([id, rows]) => {
         stats[id] = calcularEstadisticaDia(rows);
         const pts = rows
-          .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), accuracy_m: r.accuracy_m }))
+          .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), accuracy_m: r.accuracy_m, created_at: r.created_at }))
           .filter((p) => isValidCoord(p.lat, p.lng));
         trailsCrudos[id] = pts.length > TRAIL_MAX_POINTS ? pts.slice(pts.length - TRAIL_MAX_POINTS) : pts;
       });
@@ -447,13 +558,14 @@ export default function SeguimientoVolanteadoresPanel() {
       await cargarVolanteadores();
       await cargarPosicionesActuales();
       await cargarZonasDisponibles();
+      await cargarSupervisores();
       setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo cargar el seguimiento de volanteadores."));
     } finally {
       setLoading(false);
     }
-  }, [cargarVolanteadores, cargarPosicionesActuales, cargarZonasDisponibles]);
+  }, [cargarVolanteadores, cargarPosicionesActuales, cargarZonasDisponibles, cargarSupervisores]);
 
   useEffect(() => {
     void cargarTodo();
@@ -467,28 +579,35 @@ export default function SeguimientoVolanteadoresPanel() {
     if (volanteadores.length > 0) void cargarEstadisticasYRutas(statsDate);
   }, [volanteadores, statsDate, cargarEstadisticasYRutas]);
 
-  // Ajusta cada recorrido a la red vial real (OSRM) para dibujarlo -- uno por
-  // uno, no en paralelo, para no saturar el servidor publico de OSRM. Si
-  // falla para alguien, esa ruta se sigue mostrando cruda (sin bloquear el
-  // mapa). El calculo de cobertura de zona sigue usando siempre las
-  // coordenadas crudas (trailById), nunca las ajustadas a calle.
+  // Ajusta cada recorrido a la red vial real (OSRM) para dibujarlo -- por
+  // TRAMO (no la ruta completa), separando donde hubo una pausa/hueco grande,
+  // para no pedirle a OSRM que conecte dos puntos que nunca estuvieron unidos
+  // caminando. Uno por uno, no en paralelo, para no saturar el servidor
+  // publico. Si falla para algun tramo, ese tramo se sigue mostrando crudo
+  // (sin bloquear el mapa). El calculo de cobertura de zona sigue usando
+  // siempre las coordenadas crudas (trailById), nunca las ajustadas a calle.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       for (const [id, pts] of Object.entries(trailById)) {
         if (cancelled) return;
-        if (pts.length < 2) continue;
+        const segmentos = splitTrailByGaps(pts);
+        if (segmentos.length === 0) continue;
         const ultimo = pts[pts.length - 1];
         const key = `${pts.length}|${ultimo.lat.toFixed(5)},${ultimo.lng.toFixed(5)}`;
         if (lastSnapKeyRef.current[id] === key) continue;
         try {
-          const snapped = await snapToRoads(pts);
+          const snappedSegmentos = [];
+          for (const seg of segmentos) {
+            if (cancelled) return;
+            snappedSegmentos.push(await snapToRoads(seg));
+          }
           if (!cancelled) {
             lastSnapKeyRef.current[id] = key;
-            setSnappedTrailById((prev) => ({ ...prev, [id]: snapped }));
+            setSnappedTrailById((prev) => ({ ...prev, [id]: snappedSegmentos }));
           }
         } catch {
-          // se deja el trazo crudo para esta persona
+          // se dejan los tramos crudos para esta persona
         }
       }
     })();
@@ -515,9 +634,12 @@ export default function SeguimientoVolanteadoresPanel() {
   // se quedaba congelado mientras la ruta trazada si seguia avanzando (esa
   // se recarga por consulta directa, no por realtime).
   useEffect(() => {
-    const id = setInterval(() => void cargarPosicionesActuales(), 20000);
+    const id = setInterval(() => {
+      void cargarPosicionesActuales();
+      void cargarSupervisores();
+    }, 20000);
     return () => clearInterval(id);
-  }, [cargarPosicionesActuales]);
+  }, [cargarPosicionesActuales, cargarSupervisores]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -692,20 +814,27 @@ export default function SeguimientoVolanteadoresPanel() {
 
     const visibleIds = new Set(filas.map((f) => f.id));
     Object.entries(trailById).forEach(([id, pts]) => {
-      if (!visibleIds.has(id) || pts.length < 2) return;
-      const snapped = snappedTrailById[id];
-      const path = (Array.isArray(snapped) ? snapped : []).filter((p) => isValidCoord(p.lat, p.lng)).length > 1
-        ? snapped
-        : pts;
-      // Aislado en su propio try/catch: si una ruta trae datos raros (ej. de
-      // un ajuste a calle fallido) no debe tumbar el dibujo del resto del
-      // mapa -- eso es lo que dejaba el mapa "congelado" hasta refrescar.
-      try {
-        const line = new maps.Polyline({ map, path, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
-        polylinesRef.current.push(line);
-      } catch (e) {
-        console.warn("No se pudo dibujar la ruta de", id, e);
-      }
+      if (!visibleIds.has(id)) return;
+      // Se corta en tramos donde hubo un hueco grande (pausa) para no dibujar
+      // una linea recta "fantasma" entre pausar y reanudar.
+      const segmentosCrudos = splitTrailByGaps(pts);
+      const segmentosAjustados = snappedTrailById[id];
+      segmentosCrudos.forEach((seg, idx) => {
+        const ajustado = Array.isArray(segmentosAjustados) ? segmentosAjustados[idx] : null;
+        const path = (Array.isArray(ajustado) ? ajustado : []).filter((p) => isValidCoord(p.lat, p.lng)).length > 1
+          ? ajustado
+          : seg;
+        // Aislado en su propio try/catch: si un tramo trae datos raros (ej.
+        // de un ajuste a calle fallido) no debe tumbar el dibujo del resto
+        // del mapa -- eso es lo que dejaba el mapa "congelado" hasta
+        // refrescar.
+        try {
+          const line = new maps.Polyline({ map, path, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
+          polylinesRef.current.push(line);
+        } catch (e) {
+          console.warn("No se pudo dibujar un tramo de la ruta de", id, e);
+        }
+      });
     });
 
     marcadores.forEach((f) => {
@@ -742,12 +871,40 @@ export default function SeguimientoVolanteadoresPanel() {
       }
     });
 
+    // Supervisores compartiendo ubicacion en vivo -- nunca tienen ruta (no se
+    // les guarda historial), solo un marcador distinto (circulo con "S").
+    supervisores.forEach((s) => {
+      const lat = Number(s.lat);
+      const lng = Number(s.lng);
+      if (!isValidCoord(lat, lng)) return;
+      try {
+        const marker = new maps.Marker({
+          map,
+          position: { lat, lng },
+          title: `Supervisor: ${s.tecnico_nombre || s.tecnico_id}`,
+          icon: {
+            path: maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#111827",
+            fillOpacity: 1,
+            strokeColor: "#fff",
+            strokeWeight: 2,
+          },
+          label: { text: "S", color: "#fff", fontSize: "11px", fontWeight: "700" },
+          zIndex: 1000,
+        });
+        markersRef.current.push(marker);
+      } catch (e) {
+        console.warn("No se pudo dibujar el marcador del supervisor", s.tecnico_id, e);
+      }
+    });
+
     if (!selectedId && filas.length > 0) setSelectedId(filas[0].id);
     if (marcadores.length > 0 && !autoFitDoneRef.current) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, snappedTrailById, marcadores, selectedId, fitMap]);
+  }, [filas, trailById, snappedTrailById, marcadores, selectedId, fitMap, supervisores]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -781,9 +938,17 @@ export default function SeguimientoVolanteadoresPanel() {
     const placemarks = conRuta
       .map(([id, pts]) => {
         const nombre = filas.find((f) => f.id === id)?.nombre || id;
-        const path = snappedTrailById[id]?.length > 1 ? snappedTrailById[id] : pts;
-        const coords = path.map((p) => `${p.lng},${p.lat},0`).join(" ");
-        return `<Placemark><name>${nombre}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+        const segmentosCrudos = splitTrailByGaps(pts);
+        const segmentosAjustados = snappedTrailById[id];
+        const lineStrings = segmentosCrudos
+          .map((seg, idx) => {
+            const ajustado = Array.isArray(segmentosAjustados) ? segmentosAjustados[idx] : null;
+            const path = ajustado?.length > 1 ? ajustado : seg;
+            const coords = path.map((p) => `${p.lng},${p.lat},0`).join(" ");
+            return `<LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>`;
+          })
+          .join("");
+        return `<Placemark><name>${nombre}</name><MultiGeometry>${lineStrings}</MultiGeometry></Placemark>`;
       })
       .join("\n");
     const kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Volanteo ${formatDateInput(statsDate)}</name>${placemarks}</Document></kml>`;
@@ -957,7 +1122,18 @@ export default function SeguimientoVolanteadoresPanel() {
           <button type="button" className="secondary-btn small" onClick={fitMap}>
             Ajustar mapa
           </button>
+          <button
+            type="button"
+            className="secondary-btn small"
+            onClick={() => (compartiendoUbicacion ? void detenerCompartirUbicacion() : iniciarCompartirUbicacion())}
+            disabled={!sessionUser?.id}
+            style={compartiendoUbicacion ? { background: "#111827", color: "#fff", borderColor: "#111827" } : undefined}
+            title={!sessionUser?.id ? "No se pudo identificar tu usuario de sesion" : ""}
+          >
+            {compartiendoUbicacion ? "🟢 Compartiendo mi ubicación (Supervisor)" : "📍 Compartir mi ubicación (Supervisor)"}
+          </button>
         </div>
+        {geoError ? <p className="warn-text" style={{ margin: "6px 0 0" }}>{geoError}</p> : null}
       </div>
 
       {grupoFiltro !== "TODOS" && (

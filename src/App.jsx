@@ -252,7 +252,7 @@ const NODO_PASSWORD_RULES = {
   // cliente (ver sugerirPasswordPorNodo).
 };
 
-const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen", "Volanteador"];
+const ROLES_USUARIO_WEB = ["Administrador", "Gestora", "Tecnico", "Almacen", "Volanteador", "Supervisor"];
 const EMPRESAS_USUARIO_WEB = ["Americanet", "DIM"];
 const NODOS_BASE_WEB = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const DIM_NODOS_WEB = new Set(["nod_04", "nod_05", "nod_06", "nod_07"]);
@@ -359,6 +359,7 @@ const PERMISOS_MENU_POR_ROL_WEB = {
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
   Volanteador: [],
+  Supervisor: [],
 };
 
 // Solo recordatorios se garantiza siempre — todo lo demás es flexible
@@ -368,6 +369,7 @@ const MENU_ITEMS_GARANTIZADOS_POR_ROL = {
   Tecnico: ["recordatorios"],
   Almacen: ["recordatorios"],
   Volanteador: [],
+  Supervisor: [],
 };
 
 const HISTORIAL_APPSHEET_SUBMENU_ITEMS = [
@@ -1662,6 +1664,7 @@ function normalizarRolSimple(value) {
   if (rol.includes("gest")) return "Gestora";
   if (rol.includes("alma")) return "Almacen";
   if (rol.includes("volante")) return "Volanteador";
+  if (rol.includes("supervis")) return "Supervisor";
   return "Tecnico";
 }
 
@@ -1671,6 +1674,7 @@ function normalizarRolParaSupabase(value) {
   if (rol.includes("gest")) return "Gestora";
   if (rol.includes("alma")) return "Almacen";
   if (rol.includes("volante")) return "Volanteador";
+  if (rol.includes("supervis")) return "Supervisor";
   return "Tecnico";
 }
 
@@ -20358,7 +20362,7 @@ export default function App() {
 
         {vistaActiva === "seguimientoVehiculos" && <SeguimientoVehiculosPanel />}
 
-        {vistaActiva === "seguimientoVolanteadores" && <SeguimientoVolanteadoresPanel />}
+        {vistaActiva === "seguimientoVolanteadores" && <SeguimientoVolanteadoresPanel sessionUser={usuarioSesion} />}
 
         {puedeVerPlantaExterna && vistaActiva === "plantaExterna" ? (
           <PlantaExternaPanel sessionUser={usuarioSesion} />
@@ -20418,6 +20422,8 @@ export default function App() {
                   if (r === "Administrador") return { color: "#6D28D9", bg: "#EDE9FE" };
                   if (r === "Gestora") return { color: "#0369A1", bg: "#E0F2FE" };
                   if (r === "Almacen") return { color: "#C2410C", bg: "#FFF0E6" };
+                  if (r === "Volanteador") return { color: "#EA580C", bg: "#FFEDD5" };
+                  if (r === "Supervisor") return { color: "#111827", bg: "#E5E7EB" };
                   return { color: "#15803D", bg: "#DCFCE7" };
                 };
                 return (

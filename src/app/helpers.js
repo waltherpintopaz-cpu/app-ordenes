@@ -10,6 +10,7 @@ export function normalizarRolUsuario(rol) {
   if (text === "almacen") return "Almacen";
   if (text === "administrador") return "Administrador";
   if (text === "volanteador" || text === "volanteadora") return "Volanteador";
+  if (text === "supervisor" || text === "supervisora") return "Supervisor";
   return "Tecnico";
 }
 
