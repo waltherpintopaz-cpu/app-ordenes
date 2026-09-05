@@ -637,6 +637,7 @@ export default function SidebarApp() {
   const [errorPerf,     setErrorPerf]     = useState(false);
   const [svcForm,       setSvcForm]       = useState({ id_perfil:"", precio:"", pppuser:"", ppppass:"", ip:"" });
   const [guardandoSvc,  setGuardandoSvc]  = useState(false);
+  const [guardandoCoordMkw, setGuardandoCoordMkw] = useState(false);
   const [ordenesCliente,      setOrdenesCliente]      = useState([]);
   const [liquidacionesCliente,setLiquidacionesCliente] = useState([]);
   const [historialLoad, setHistorialLoad] = useState(false);
@@ -2409,6 +2410,33 @@ export default function SidebarApp() {
       });
     return () => { cancelado = true; };
   }, [detalle?._servicio?.coordenadas, cliente?.cedula]);
+
+  // ── Guardar en MikroWisp la coordenada cuando ahi esta vacia ─────────────
+  // MikroWisp no acepta coordenadas al crear el servicio (NewService) -- solo
+  // se puede escribir con EditService, igual que hace editarServicio() para
+  // cambiar el plan/PPPoE. Se reusa el mismo endpoint, pasando el id_perfil
+  // actual sin cambios para no tocar el plan del cliente.
+  async function guardarCoordEnMikrowisp() {
+    const svc = detalle?._servicio;
+    const coord = (ordenForm.coordenadas || "").trim();
+    if (!svc?.id || !coord) return;
+    setGuardandoCoordMkw(true);
+    try {
+      const tkn = getToken(cliente.empresa, agente);
+      const payload = {
+        id_servicio: svc.id,
+        id_router:   Number(svc.nodo),
+        id_perfil:   Number(svc.idperfil || svc.id_perfil),
+        coordenadas: coord,
+      };
+      const res = await mkwProxy(Number(cliente.nodo), "EditService", payload, tkn);
+      const ok = (res?.estado || res?.code || "").toString().toLowerCase() === "exito"
+               || (res?.estado || res?.code || "").toString() === "200";
+      if (!ok) { notify("Error al guardar en MikroWisp: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
+      else { notify("✅ Coordenada guardada en MikroWisp"); await buscarCliente(contact?.phone_number || ""); }
+    } catch (e) { notify("Error: " + e.message, false); }
+    setGuardandoCoordMkw(false);
+  }
 
   // ── Auto-consultar señal y diagnóstico cuando todo el cliente esté cargado
   useEffect(() => {
@@ -4231,6 +4259,12 @@ export default function SidebarApp() {
                           <input type="checkbox" checked={!!ordenForm.ubicacionReferencial} onChange={e=>setOrdenForm(p=>({...p,ubicacionReferencial:e.target.checked}))} />
                           📍 Es una ubicación referencial — falta la exacta
                         </label>
+                        {detalle?._servicio?.id && !detalle._servicio.coordenadas && ordenForm.coordenadas && (
+                          <button onClick={guardarCoordEnMikrowisp} disabled={guardandoCoordMkw}
+                            style={{...S.btnSm("#7c3aed"),marginTop:4,fontSize:10,opacity:guardandoCoordMkw?0.6:1}}>
+                            {guardandoCoordMkw?"Guardando...":"📤 MikroWisp no tiene esta ubicación — guardarla ahí"}
+                          </button>
+                        )}
                         {/* Selector múltiples ubicaciones */}
                         {coordsLista.length > 0 && (
                           <div style={{ marginTop:4, background:"#f0fdf4", border:`1px solid #86efac`, borderRadius:4, padding:"6px 8px" }}>
@@ -5890,6 +5924,14 @@ export default function SidebarApp() {
                   <input type="checkbox" checked={!!ordenForm.ubicacionReferencial} onChange={e=>setOrdenForm(p=>({...p,ubicacionReferencial:e.target.checked}))} />
                   📍 Es una ubicación referencial — falta la exacta
                 </label>
+                {detalle?._servicio?.id && !detalle._servicio.coordenadas && ordenForm.coordenadas && (
+                  <div style={{ padding:"6px 10px", borderBottom:`1px solid ${T.border}` }}>
+                    <button onClick={guardarCoordEnMikrowisp} disabled={guardandoCoordMkw}
+                      style={{...S.btnSm("#7c3aed"),fontSize:11,opacity:guardandoCoordMkw?0.6:1}}>
+                      {guardandoCoordMkw?"Guardando...":"📤 MikroWisp no tiene esta ubicación — guardarla ahí"}
+                    </button>
+                  </div>
+                )}
                 {/* Mapa */}
                 {showOrdenMap && (() => {
                   const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
