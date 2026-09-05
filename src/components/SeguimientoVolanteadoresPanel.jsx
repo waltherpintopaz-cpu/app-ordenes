@@ -169,11 +169,51 @@ function esColorValido(value) {
   return /^#[0-9A-Fa-f]{6}$/.test(toText(value));
 }
 
-// Nota: el recorrido ya llega filtrado/suavizado desde el origen (ver
+// El recorrido ya llega filtrado/suavizado desde el origen (ver
 // VolanteadorTrackingService.kt y VolanteadorTrackingAgent.js) -- se
-// descartan lecturas de mala precision y "saltos" imposibles a pie, sin
-// forzar la posicion a la calle mas cercana (eso es para vehiculos, no para
-// alguien caminando que puede cortar por una vereda/plaza no mapeada).
+// descartan lecturas de mala precision y "saltos" imposibles a pie. Ademas,
+// para que la linea dibujada se vea sobre la calle (no "flotando" al lado
+// por el ruido normal del GPS), se ajusta a la red vial real con el servidor
+// publico de OSRM (perfil "foot"). Si OSRM no responde o no encuentra una
+// calle cerca, esa porcion se deja con las coordenadas crudas -- nunca se
+// bloquea el dibujo del mapa por esto.
+const OSRM_MATCH_URL = "https://router.project-osrm.org/match/v1/foot";
+const OSRM_MAX_POINTS_PER_REQUEST = 95;
+
+async function snapChunkToRoads(points) {
+  if (points.length < 2) return points;
+  const coordsStr = points.map((p) => `${p.lng},${p.lat}`).join(";");
+  const radios = points.map(() => "25").join(";");
+  const url = `${OSRM_MATCH_URL}/${coordsStr}?geometries=geojson&overview=full&radiuses=${radios}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("OSRM no disponible");
+  const json = await res.json();
+  if (json.code !== "Ok" || !Array.isArray(json.matchings) || json.matchings.length === 0) {
+    throw new Error("Sin coincidencia de calles");
+  }
+  const coords = [];
+  json.matchings.forEach((m) => {
+    (m.geometry?.coordinates || []).forEach(([lng, lat]) => coords.push({ lat, lng }));
+  });
+  return coords.length > 1 ? coords : points;
+}
+
+async function snapToRoads(points) {
+  if (!Array.isArray(points) || points.length < 2) return points;
+  const chunks = [];
+  for (let i = 0; i < points.length; i += OSRM_MAX_POINTS_PER_REQUEST - 1) {
+    chunks.push(points.slice(i, i + OSRM_MAX_POINTS_PER_REQUEST));
+  }
+  const snappedChunks = [];
+  for (const chunk of chunks) {
+    try {
+      snappedChunks.push(await snapChunkToRoads(chunk));
+    } catch {
+      snappedChunks.push(chunk);
+    }
+  }
+  return snappedChunks.flat();
+}
 
 const tableMissing = (err, tableName) => {
   const code = String(err?.code || "").trim();
@@ -212,6 +252,7 @@ const loadGoogleMapsSdk = () => {
 
 export default function SeguimientoVolanteadoresPanel() {
   const mapCanvasRef = useRef(null);
+  const lastSnapKeyRef = useRef({});
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
@@ -230,6 +271,7 @@ export default function SeguimientoVolanteadoresPanel() {
   const [statsDate, setStatsDate] = useState(() => startOfDay(new Date()));
   const [statsByVolanteador, setStatsByVolanteador] = useState({});
   const [trailById, setTrailById] = useState({});
+  const [snappedTrailById, setSnappedTrailById] = useState({});
   const [grupoFiltro, setGrupoFiltro] = useState("TODOS");
   const [selectedId, setSelectedId] = useState("");
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
@@ -423,6 +465,36 @@ export default function SeguimientoVolanteadoresPanel() {
     if (volanteadores.length > 0) void cargarEstadisticasYRutas(statsDate);
   }, [volanteadores, statsDate, cargarEstadisticasYRutas]);
 
+  // Ajusta cada recorrido a la red vial real (OSRM) para dibujarlo -- uno por
+  // uno, no en paralelo, para no saturar el servidor publico de OSRM. Si
+  // falla para alguien, esa ruta se sigue mostrando cruda (sin bloquear el
+  // mapa). El calculo de cobertura de zona sigue usando siempre las
+  // coordenadas crudas (trailById), nunca las ajustadas a calle.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const [id, pts] of Object.entries(trailById)) {
+        if (cancelled) return;
+        if (pts.length < 2) continue;
+        const ultimo = pts[pts.length - 1];
+        const key = `${pts.length}|${ultimo.lat.toFixed(5)},${ultimo.lng.toFixed(5)}`;
+        if (lastSnapKeyRef.current[id] === key) continue;
+        try {
+          const snapped = await snapToRoads(pts);
+          if (!cancelled) {
+            lastSnapKeyRef.current[id] = key;
+            setSnappedTrailById((prev) => ({ ...prev, [id]: snapped }));
+          }
+        } catch {
+          // se deja el trazo crudo para esta persona
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [trailById]);
+
   // Realtime: apenas alguien manda un ping, se refresca su posicion actual.
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
@@ -502,7 +574,21 @@ export default function SeguimientoVolanteadoresPanel() {
     });
     return map;
   }, [filas]);
-  const colorDe = useCallback((id) => colorMap[parseId(id)] || TRAIL_COLORS[0], [colorMap]);
+  const avatarById = useMemo(() => {
+    const map = {};
+    filas.forEach((f) => { map[f.id] = f.avatar; });
+    return map;
+  }, [filas]);
+  // Un solo color por persona para TODO (flecha, linea de ruta, punto de la
+  // lista) -- si eligio un color propio se usa ese, si no el del grupo.
+  const colorDe = useCallback(
+    (id) => {
+      const pid = parseId(id);
+      const av = avatarById[pid];
+      return esColorValido(av) ? av : colorMap[pid] || TRAIL_COLORS[0];
+    },
+    [colorMap, avatarById]
+  );
 
   // Todos los puntos de ruta de las personas visibles (el grupo cubre la
   // zona en equipo, no una sola persona) -- usado para calcular % cubierto.
@@ -605,7 +691,8 @@ export default function SeguimientoVolanteadoresPanel() {
     const visibleIds = new Set(filas.map((f) => f.id));
     Object.entries(trailById).forEach(([id, pts]) => {
       if (!visibleIds.has(id) || pts.length < 2) return;
-      const line = new maps.Polyline({ map, path: pts, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
+      const path = snappedTrailById[id]?.length > 1 ? snappedTrailById[id] : pts;
+      const line = new maps.Polyline({ map, path, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
       polylinesRef.current.push(line);
     });
 
@@ -644,7 +731,7 @@ export default function SeguimientoVolanteadoresPanel() {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, marcadores, selectedId, fitMap]);
+  }, [filas, trailById, snappedTrailById, marcadores, selectedId, fitMap]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -678,7 +765,8 @@ export default function SeguimientoVolanteadoresPanel() {
     const placemarks = conRuta
       .map(([id, pts]) => {
         const nombre = filas.find((f) => f.id === id)?.nombre || id;
-        const coords = pts.map((p) => `${p.lng},${p.lat},0`).join(" ");
+        const path = snappedTrailById[id]?.length > 1 ? snappedTrailById[id] : pts;
+        const coords = path.map((p) => `${p.lng},${p.lat},0`).join(" ");
         return `<Placemark><name>${nombre}</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
       })
       .join("\n");
@@ -692,7 +780,7 @@ export default function SeguimientoVolanteadoresPanel() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [trailById, filas, statsDate, grupoFiltro]);
+  }, [trailById, snappedTrailById, filas, statsDate, grupoFiltro]);
 
   const compartirResumenWhatsapp = useCallback(() => {
     const texto = [
