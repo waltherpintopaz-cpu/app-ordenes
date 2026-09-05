@@ -178,6 +178,7 @@ export default function SeguimientoVolanteadoresPanel() {
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
   const polylinesRef = useRef([]);
+  const zonaPolygonsRef = useRef([]);
   const autoFitDoneRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
@@ -194,6 +195,11 @@ export default function SeguimientoVolanteadoresPanel() {
   const [grupoFiltro, setGrupoFiltro] = useState("TODOS");
   const [selectedId, setSelectedId] = useState("");
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
+
+  const [zonasDisponibles, setZonasDisponibles] = useState([]); // todas las de zonas_cobertura
+  const [zonasAsignadas, setZonasAsignadas] = useState([]); // asignadas al grupo+fecha actual (con datos de zonas_cobertura)
+  const [zonaParaAsignar, setZonaParaAsignar] = useState("");
+  const [asignandoZona, setAsignandoZona] = useState(false);
 
   const cargarVolanteadores = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -213,6 +219,63 @@ export default function SeguimientoVolanteadoresPanel() {
       }))
     );
   }, []);
+
+  // Zonas de cobertura ya importadas (ver "+ Agregar mapa de cobertura") --
+  // se reutilizan como zonas asignables de volanteo, sin duplicar nada.
+  const cargarZonasDisponibles = useCallback(async () => {
+    const { data, error: err } = await supabase
+      .from("zonas_cobertura")
+      .select("id,grupo,nombre,stroke_color,fill_color,fill_opacity,coordinates")
+      .order("grupo").order("nombre");
+    if (err) {
+      if (tableMissing(err, "zonas_cobertura")) return;
+      throw err;
+    }
+    setZonasDisponibles(Array.isArray(data) ? data : []);
+  }, []);
+
+  const cargarZonasAsignadas = useCallback(async (grupo, fecha) => {
+    if (!grupo || grupo === "TODOS") { setZonasAsignadas([]); return; }
+    const dia = formatDateInput(fecha);
+    const { data, error: err } = await supabase
+      .from("volanteo_zonas_asignadas")
+      .select("id,zona_id,zonas_cobertura(id,grupo,nombre,stroke_color,fill_color,fill_opacity,coordinates)")
+      .eq("grupo_volanteo", grupo)
+      .eq("fecha", dia);
+    if (err) {
+      if (tableMissing(err, "volanteo_zonas_asignadas")) return;
+      throw err;
+    }
+    setZonasAsignadas(
+      (Array.isArray(data) ? data : [])
+        .filter((row) => row.zonas_cobertura)
+        .map((row) => ({ asignacionId: row.id, ...row.zonas_cobertura }))
+    );
+  }, []);
+
+  const asignarZona = useCallback(async () => {
+    if (!zonaParaAsignar || grupoFiltro === "TODOS") return;
+    setAsignandoZona(true);
+    try {
+      const { error: err } = await supabase.from("volanteo_zonas_asignadas").insert({
+        grupo_volanteo: grupoFiltro,
+        fecha: formatDateInput(statsDate),
+        zona_id: Number(zonaParaAsignar),
+      });
+      if (err) throw err;
+      setZonaParaAsignar("");
+      await cargarZonasAsignadas(grupoFiltro, statsDate);
+    } catch (e) {
+      setError(String(e?.message || "No se pudo asignar la zona."));
+    } finally {
+      setAsignandoZona(false);
+    }
+  }, [zonaParaAsignar, grupoFiltro, statsDate, cargarZonasAsignadas]);
+
+  const quitarZonaAsignada = useCallback(async (asignacionId) => {
+    const { error: err } = await supabase.from("volanteo_zonas_asignadas").delete().eq("id", asignacionId);
+    if (!err) await cargarZonasAsignadas(grupoFiltro, statsDate);
+  }, [grupoFiltro, statsDate, cargarZonasAsignadas]);
 
   const cargarPosicionesActuales = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -282,17 +345,22 @@ export default function SeguimientoVolanteadoresPanel() {
     try {
       await cargarVolanteadores();
       await cargarPosicionesActuales();
+      await cargarZonasDisponibles();
       setLastSyncAt(new Date());
     } catch (e) {
       setError(String(e?.message || "No se pudo cargar el seguimiento de volanteadores."));
     } finally {
       setLoading(false);
     }
-  }, [cargarVolanteadores, cargarPosicionesActuales]);
+  }, [cargarVolanteadores, cargarPosicionesActuales, cargarZonasDisponibles]);
 
   useEffect(() => {
     void cargarTodo();
   }, [cargarTodo]);
+
+  useEffect(() => {
+    void cargarZonasAsignadas(grupoFiltro, statsDate);
+  }, [grupoFiltro, statsDate, cargarZonasAsignadas]);
 
   useEffect(() => {
     if (volanteadores.length > 0) void cargarEstadisticasYRutas(statsDate);
@@ -503,6 +571,32 @@ export default function SeguimientoVolanteadoresPanel() {
     }
   }, [filas, trailById, marcadores, selectedId, fitMap]);
 
+  // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
+  // el contorno/relleno que ya traen desde zonas_cobertura.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const maps = mapsRef.current;
+    zonaPolygonsRef.current.forEach((p) => p.setMap(null));
+    zonaPolygonsRef.current = [];
+    zonasAsignadas.forEach((z) => {
+      const path = (Array.isArray(z.coordinates) ? z.coordinates : [])
+        .map((c) => ({ lat: Number(c.lat), lng: Number(c.lng) }))
+        .filter((c) => isValidCoord(c.lat, c.lng));
+      if (path.length < 3) return;
+      const polygon = new maps.Polygon({
+        map: mapRef.current,
+        paths: path,
+        strokeColor: z.stroke_color || "#2563eb",
+        strokeOpacity: 0.9,
+        strokeWeight: 2.5,
+        fillColor: z.fill_color || "#2563eb",
+        fillOpacity: Number(z.fill_opacity ?? 0.2),
+        zIndex: 0,
+      });
+      zonaPolygonsRef.current.push(polygon);
+    });
+  }, [zonasAsignadas]);
+
   const exportarKml = useCallback(() => {
     const conRuta = Object.entries(trailById).filter(([id, pts]) => filas.some((f) => f.id === id) && pts.length > 1);
     if (conRuta.length === 0) return;
@@ -606,11 +700,64 @@ export default function SeguimientoVolanteadoresPanel() {
           <button type="button" className="secondary-btn small" onClick={() => setStatsDate((prev) => startOfDay(addDays(prev, -1)))}>
             Ayer
           </button>
+          <button type="button" className="secondary-btn small" onClick={() => setStatsDate((prev) => startOfDay(addDays(prev, 1)))}>
+            Mañana
+          </button>
           <button type="button" className="secondary-btn small" onClick={fitMap}>
             Ajustar mapa
           </button>
         </div>
       </div>
+
+      {grupoFiltro !== "TODOS" && (
+        <div
+          style={{
+            display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+            background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "10px 14px",
+          }}
+        >
+          <strong style={{ fontSize: 13, color: "#1E40AF" }}>
+            Zona a cubrir por "{grupoFiltro}" el {formatDateInput(statsDate)}:
+          </strong>
+          {zonasAsignadas.length === 0 ? (
+            <span style={{ fontSize: 12, color: "#64748B" }}>Sin zona asignada.</span>
+          ) : (
+            zonasAsignadas.map((z) => (
+              <span
+                key={z.asignacionId}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+                  color: "#fff", background: z.stroke_color || "#2563eb", borderRadius: 999, padding: "4px 10px",
+                }}
+              >
+                {z.grupo} · {z.nombre}
+                <button
+                  type="button"
+                  onClick={() => quitarZonaAsignada(z.asignacionId)}
+                  style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontWeight: 700, padding: 0 }}
+                  title="Quitar zona"
+                >
+                  ✕
+                </button>
+              </span>
+            ))
+          )}
+          <select value={zonaParaAsignar} onChange={(e) => setZonaParaAsignar(e.target.value)} style={{ marginLeft: "auto" }}>
+            <option value="">Elegir zona importada...</option>
+            {zonasDisponibles.map((z) => (
+              <option key={z.id} value={z.id}>{z.grupo} · {z.nombre}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="secondary-btn small"
+            onClick={asignarZona}
+            disabled={!zonaParaAsignar || asignandoZona}
+          >
+            {asignandoZona ? "Asignando..." : "+ Asignar"}
+          </button>
+        </div>
+      )}
 
       <div
         style={{
