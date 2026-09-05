@@ -294,6 +294,9 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const polylinesRef = useRef([]);
   const zonaPolygonsRef = useRef([]);
   const autoFitDoneRef = useRef(false);
+  const tramosManualesRef = useRef([]);
+  const tramoPreviewRef = useRef(null);
+  const mapClickListenerRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -325,6 +328,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [compartirVistaGenerando, setCompartirVistaGenerando] = useState(false);
   const [compartirVistaError, setCompartirVistaError] = useState("");
   const [compartirVistaCopiado, setCompartirVistaCopiado] = useState(false);
+
+  // Modo "rellenar hueco a mano": el admin dibuja un tramo punteado (no es
+  // GPS real) haciendo clic en el mapa, para cuando sabe por otro medio
+  // (le avisaron, lo vio) que camino que perdio el GPS.
+  const [tramosManuales, setTramosManuales] = useState([]);
+  const [dibujandoTramo, setDibujandoTramo] = useState(false);
+  const [tramoPuntos, setTramoPuntos] = useState([]);
+  const [tramoTecnicoId, setTramoTecnicoId] = useState("");
+  const [guardandoTramo, setGuardandoTramo] = useState(false);
 
   const [supervisores, setSupervisores] = useState([]);
   const [compartiendoUbicacion, setCompartiendoUbicacion] = useState(false);
@@ -567,6 +579,62 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     };
   }, []);
 
+  const cargarTramosManuales = useCallback(async (targetDate = statsDate) => {
+    const { data, error: err } = await supabase
+      .from("volanteo_tramos_manuales")
+      .select("id,tecnico_id,coordinates")
+      .eq("fecha", formatDateInput(targetDate));
+    if (err) {
+      if (tableMissing(err, "volanteo_tramos_manuales")) return;
+      return;
+    }
+    setTramosManuales(Array.isArray(data) ? data : []);
+  }, [statsDate]);
+
+  const iniciarDibujoTramo = useCallback(() => {
+    setTramoPuntos([]);
+    setTramoTecnicoId(selectedId || filas[0]?.id || "");
+    setDibujandoTramo(true);
+  }, [selectedId, filas]);
+
+  const cancelarDibujoTramo = useCallback(() => {
+    setDibujandoTramo(false);
+    setTramoPuntos([]);
+  }, []);
+
+  const deshacerUltimoPuntoTramo = useCallback(() => {
+    setTramoPuntos((prev) => prev.slice(0, -1));
+  }, []);
+
+  const guardarTramoManual = useCallback(async () => {
+    if (!tramoTecnicoId || tramoPuntos.length < 2) return;
+    setGuardandoTramo(true);
+    try {
+      const { error: err } = await supabase.from("volanteo_tramos_manuales").insert({
+        tecnico_id: tramoTecnicoId,
+        fecha: formatDateInput(statsDate),
+        coordinates: tramoPuntos,
+      });
+      if (err) throw err;
+      setDibujandoTramo(false);
+      setTramoPuntos([]);
+      await cargarTramosManuales(statsDate);
+    } catch (e) {
+      setError(String(e?.message || "No se pudo guardar el tramo manual."));
+    } finally {
+      setGuardandoTramo(false);
+    }
+  }, [tramoTecnicoId, tramoPuntos, statsDate, cargarTramosManuales]);
+
+  const borrarTramoManual = useCallback(
+    async (id) => {
+      if (!window.confirm("¿Borrar este tramo agregado a mano?")) return;
+      await supabase.from("volanteo_tramos_manuales").delete().eq("id", id);
+      await cargarTramosManuales(statsDate);
+    },
+    [statsDate, cargarTramosManuales]
+  );
+
   const cargarEstadisticasYRutas = useCallback(
     async (targetDate = statsDate) => {
       const ids = volanteadores.map((v) => v.id);
@@ -651,6 +719,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   useEffect(() => {
     void cargarZonasAsignadas(grupoFiltro, statsDate);
   }, [grupoFiltro, statsDate, cargarZonasAsignadas]);
+
+  useEffect(() => {
+    void cargarTramosManuales(statsDate);
+  }, [statsDate, cargarTramosManuales]);
 
   useEffect(() => {
     if (volanteadores.length > 0) void cargarEstadisticasYRutas(statsDate);
@@ -843,6 +915,51 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     };
   }, []);
 
+  // Modo dibujo: cada clic en el mapa agrega un punto al tramo manual que se
+  // esta armando (ver iniciarDibujoTramo/guardarTramoManual).
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const maps = mapsRef.current;
+    const map = mapRef.current;
+    if (mapClickListenerRef.current) {
+      maps.event.removeListener(mapClickListenerRef.current);
+      mapClickListenerRef.current = null;
+    }
+    if (dibujandoTramo) {
+      mapClickListenerRef.current = map.addListener("click", (e) => {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        setTramoPuntos((prev) => [...prev, { lat, lng }]);
+      });
+    }
+    return () => {
+      if (mapClickListenerRef.current) {
+        maps.event.removeListener(mapClickListenerRef.current);
+        mapClickListenerRef.current = null;
+      }
+    };
+  }, [dibujandoTramo]);
+
+  // Vista previa punteada del tramo que se esta dibujando.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const maps = mapsRef.current;
+    if (tramoPreviewRef.current) {
+      tramoPreviewRef.current.setMap(null);
+      tramoPreviewRef.current = null;
+    }
+    if (dibujandoTramo && tramoPuntos.length > 0) {
+      tramoPreviewRef.current = new maps.Polyline({
+        map: mapRef.current,
+        path: tramoPuntos,
+        strokeOpacity: 0,
+        icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "12px" }],
+        strokeColor: "#111827",
+        zIndex: 2000,
+      });
+    }
+  }, [dibujandoTramo, tramoPuntos]);
+
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return;
     const map = mapRef.current;
@@ -869,6 +986,27 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
           console.warn("No se pudo dibujar un tramo de la ruta de", id, e);
         }
       });
+    });
+
+    // Tramos agregados a mano (no son GPS real) -- se dibujan punteados y
+    // solo si la persona esta visible con el filtro actual.
+    tramosManuales.forEach((t) => {
+      if (!visibleIds.has(parseId(t.tecnico_id))) return;
+      const path = (Array.isArray(t.coordinates) ? t.coordinates : []).filter((p) => isValidCoord(p.lat, p.lng));
+      if (path.length < 2) return;
+      try {
+        const line = new maps.Polyline({
+          map,
+          path,
+          strokeOpacity: 0,
+          icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "12px" }],
+          strokeColor: colorDe(parseId(t.tecnico_id)),
+          zIndex: 5,
+        });
+        polylinesRef.current.push(line);
+      } catch (e) {
+        console.warn("No se pudo dibujar el tramo manual", t.id, e);
+      }
     });
 
     marcadores.forEach((f) => {
@@ -938,7 +1076,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores]);
+  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -1255,7 +1393,70 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         >
           🔗 Compartir vista (link temporal)
         </button>
+        {!dibujandoTramo ? (
+          <button
+            type="button"
+            onClick={iniciarDibujoTramo}
+            disabled={filas.length === 0}
+            style={{ background: "#6B7280", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+          >
+            ✏️ Rellenar hueco a mano
+          </button>
+        ) : null}
       </div>
+
+      {dibujandoTramo ? (
+        <div
+          style={{
+            display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+            background: "#F3F4F6", border: "1px solid #D1D5DB", borderRadius: 10, padding: "10px 14px",
+          }}
+        >
+          <strong style={{ fontSize: 13, color: "#111827" }}>Dibujando tramo manual —</strong>
+          <select value={tramoTecnicoId} onChange={(e) => setTramoTecnicoId(e.target.value)} style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6 }}>
+            {filas.map((f) => (
+              <option key={f.id} value={f.id}>{f.nombre}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>
+            Haz clic en el mapa para marcar el camino ({tramoPuntos.length} punto{tramoPuntos.length === 1 ? "" : "s"})
+          </span>
+          <button type="button" className="secondary-btn small" onClick={deshacerUltimoPuntoTramo} disabled={tramoPuntos.length === 0}>
+            Deshacer último punto
+          </button>
+          <button type="button" className="secondary-btn small" onClick={cancelarDibujoTramo}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void guardarTramoManual()}
+            disabled={tramoPuntos.length < 2 || guardandoTramo}
+            style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+          >
+            {guardandoTramo ? "Guardando..." : "Guardar tramo"}
+          </button>
+        </div>
+      ) : null}
+
+      {!dibujandoTramo && tramosManuales.length > 0 ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>Tramos manuales de hoy:</span>
+          {tramosManuales.map((t) => {
+            const nombre = filas.find((f) => f.id === parseId(t.tecnico_id))?.nombre || t.tecnico_id;
+            return (
+              <span
+                key={t.id}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, background: "#F3F4F6", border: "1px solid #D1D5DB", borderRadius: 999, padding: "3px 10px" }}
+              >
+                {nombre}
+                <button type="button" onClick={() => void borrarTramoManual(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontWeight: 700, padding: 0 }} title="Borrar tramo">
+                  ✕
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="maptech-map-card">
         <div ref={mapCanvasRef} className="google-map-canvas maptech-map-canvas" />
