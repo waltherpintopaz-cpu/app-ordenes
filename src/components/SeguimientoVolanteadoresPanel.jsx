@@ -354,6 +354,14 @@ export default function SeguimientoVolanteadoresPanel() {
     return () => supabase.removeChannel(channel);
   }, [cargarPosicionesActuales]);
 
+  // Respaldo por si el canal en tiempo real se corta -- sin esto el marcador
+  // se quedaba congelado mientras la ruta trazada si seguia avanzando (esa
+  // se recarga por consulta directa, no por realtime).
+  useEffect(() => {
+    const id = setInterval(() => void cargarPosicionesActuales(), 20000);
+    return () => clearInterval(id);
+  }, [cargarPosicionesActuales]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
