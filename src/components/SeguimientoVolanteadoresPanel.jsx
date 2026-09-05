@@ -182,6 +182,25 @@ export default function SeguimientoVolanteadoresPanel() {
   const [zonasAsignadas, setZonasAsignadas] = useState([]); // asignadas al grupo+fecha actual (con datos de zonas_cobertura)
   const [zonaParaAsignar, setZonaParaAsignar] = useState("");
   const [asignandoZona, setAsignandoZona] = useState(false);
+  const [finalizandoId, setFinalizandoId] = useState("");
+
+  // Permite finalizar remotamente la sesion de un volanteador desde el
+  // navegador (ej. se olvido de presionar "Finalizar", perdio el celular,
+  // o termino la jornada). La app revisa este flag periodicamente y, al
+  // verlo, cierra su sesion local y detiene el rastreo nativo.
+  const finalizarSesionRemota = useCallback(async (f) => {
+    if (!f?.id) return;
+    if (!window.confirm(`¿Finalizar la sesión de volanteo de ${f.nombre}? Dejará de compartir ubicación.`)) return;
+    setFinalizandoId(f.id);
+    try {
+      const { error: err } = await supabase.from("usuarios").update({ volanteo_forzar_fin: true }).eq("id", f.id);
+      if (err) throw err;
+    } catch (e) {
+      window.alert(String(e?.message || "No se pudo finalizar la sesión."));
+    } finally {
+      setFinalizandoId("");
+    }
+  }, []);
 
   const cargarVolanteadores = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -478,7 +497,8 @@ export default function SeguimientoVolanteadoresPanel() {
             center: DEFAULT_CENTER,
             zoom: 13,
             streetViewControl: false,
-            mapTypeControl: false,
+            mapTypeControl: true,
+            mapTypeControlOptions: { position: maps.ControlPosition.TOP_RIGHT },
             fullscreenControl: true,
             gestureHandling: "greedy",
           });
@@ -855,30 +875,46 @@ export default function SeguimientoVolanteadoresPanel() {
                   Recorrido: {Number(f.stats?.distanciaKm || 0).toFixed(2)} km | Caminando: {formatDuration(f.stats?.tiempoCaminandoSec)} | Detenido:{" "}
                   {formatDuration(f.stats?.tiempoDetenidoSec)}
                 </p>
-                {f.celular ? (
-                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {f.celular ? (
+                    <>
+                      <button
+                        type="button"
+                        className="secondary-btn small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`tel:${f.celular}`, "_self");
+                        }}
+                      >
+                        📞 Llamar
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-btn small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`https://wa.me/${telefonoWhatsapp(f.celular)}`, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        💬 WhatsApp
+                      </button>
+                    </>
+                  ) : null}
+                  {f.pos ? (
                     <button
                       type="button"
                       className="secondary-btn small"
+                      style={{ color: "#DC2626", borderColor: "#FCA5A5" }}
+                      disabled={finalizandoId === f.id}
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.open(`tel:${f.celular}`, "_self");
+                        void finalizarSesionRemota(f);
                       }}
                     >
-                      📞 Llamar
+                      ⏹ {finalizandoId === f.id ? "Finalizando..." : "Finalizar sesión"}
                     </button>
-                    <button
-                      type="button"
-                      className="secondary-btn small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(`https://wa.me/${telefonoWhatsapp(f.celular)}`, "_blank", "noopener,noreferrer");
-                      }}
-                    >
-                      💬 WhatsApp
-                    </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             ))
           )}
