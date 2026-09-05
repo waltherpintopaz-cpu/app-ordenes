@@ -520,18 +520,30 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       }
       const start = startOfDay(targetDate);
       const end = addDays(start, 1);
-      const { data, error: err } = await supabase
-        .from("tecnico_ubicaciones")
-        .select("tecnico_id,lat,lng,accuracy_m,created_at")
-        .eq("tecnico_rol", "Volanteador")
-        .in("tecnico_id", ids)
-        .gte("created_at", start.toISOString())
-        .lt("created_at", end.toISOString())
-        .order("created_at", { ascending: true })
-        .limit(50000);
-      if (err) {
-        if (tableMissing(err, "tecnico_ubicaciones")) return;
-        throw err;
+      // Supabase/PostgREST limita cada consulta a 1000 filas por defecto sin
+      // importar el .limit() pedido -- como esta consulta junta a todos los
+      // volanteadores filtrados, se pagina en bloques de 1000 para no cortar
+      // el recorrido del dia cuando el total del equipo supera eso (esto era
+      // lo que dejaba el mapa "sin marcar recorrido" a mitad de jornada).
+      const PAGE = 1000;
+      let data = [];
+      for (let from = 0; from < 50000; from += PAGE) {
+        const { data: pagina, error: err } = await supabase
+          .from("tecnico_ubicaciones")
+          .select("tecnico_id,lat,lng,accuracy_m,created_at")
+          .eq("tecnico_rol", "Volanteador")
+          .in("tecnico_id", ids)
+          .gte("created_at", start.toISOString())
+          .lt("created_at", end.toISOString())
+          .order("created_at", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (err) {
+          if (tableMissing(err, "tecnico_ubicaciones")) return;
+          throw err;
+        }
+        const rows = Array.isArray(pagina) ? pagina : [];
+        data = data.concat(rows);
+        if (rows.length < PAGE) break;
       }
       const grouped = {};
       (Array.isArray(data) ? data : []).forEach((row) => {
