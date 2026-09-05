@@ -193,7 +193,9 @@ async function snapChunkToRoads(points) {
   }
   const coords = [];
   json.matchings.forEach((m) => {
-    (m.geometry?.coordinates || []).forEach(([lng, lat]) => coords.push({ lat, lng }));
+    (m.geometry?.coordinates || []).forEach(([lng, lat]) => {
+      if (isValidCoord(lat, lng)) coords.push({ lat, lng });
+    });
   });
   return coords.length > 1 ? coords : points;
 }
@@ -691,9 +693,19 @@ export default function SeguimientoVolanteadoresPanel() {
     const visibleIds = new Set(filas.map((f) => f.id));
     Object.entries(trailById).forEach(([id, pts]) => {
       if (!visibleIds.has(id) || pts.length < 2) return;
-      const path = snappedTrailById[id]?.length > 1 ? snappedTrailById[id] : pts;
-      const line = new maps.Polyline({ map, path, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
-      polylinesRef.current.push(line);
+      const snapped = snappedTrailById[id];
+      const path = (Array.isArray(snapped) ? snapped : []).filter((p) => isValidCoord(p.lat, p.lng)).length > 1
+        ? snapped
+        : pts;
+      // Aislado en su propio try/catch: si una ruta trae datos raros (ej. de
+      // un ajuste a calle fallido) no debe tumbar el dibujo del resto del
+      // mapa -- eso es lo que dejaba el mapa "congelado" hasta refrescar.
+      try {
+        const line = new maps.Polyline({ map, path, strokeColor: colorDe(id), strokeOpacity: 0.9, strokeWeight: 4 });
+        polylinesRef.current.push(line);
+      } catch (e) {
+        console.warn("No se pudo dibujar la ruta de", id, e);
+      }
     });
 
     marcadores.forEach((f) => {
@@ -714,16 +726,20 @@ export default function SeguimientoVolanteadoresPanel() {
         strokeColor: "#fff",
         strokeWeight: 1.6,
       };
-      const marker = new maps.Marker({
-        map,
-        position: { lat, lng },
-        title: `${f.nombre} — ${f.grupo}`,
-        opacity: f.staleMin > 20 ? 0.55 : 1,
-        icon,
-        zIndex: f.id === selectedId ? 999 : 1,
-      });
-      marker.addListener("click", () => setSelectedId(f.id));
-      markersRef.current.push(marker);
+      try {
+        const marker = new maps.Marker({
+          map,
+          position: { lat, lng },
+          title: `${f.nombre} — ${f.grupo}`,
+          opacity: f.staleMin > 20 ? 0.55 : 1,
+          icon,
+          zIndex: f.id === selectedId ? 999 : 1,
+        });
+        marker.addListener("click", () => setSelectedId(f.id));
+        markersRef.current.push(marker);
+      } catch (e) {
+        console.warn("No se pudo dibujar el marcador de", f.id, e);
+      }
     });
 
     if (!selectedId && filas.length > 0) setSelectedId(filas[0].id);
