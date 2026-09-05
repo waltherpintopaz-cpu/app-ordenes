@@ -107,28 +107,10 @@ const colorForId = (value) => {
   for (let i = 0; i < id.length; i += 1) acc = (acc + id.charCodeAt(i) * (i + 11)) % 997;
   return TRAIL_COLORS[acc % TRAIL_COLORS.length];
 };
-// Mismas claves que el picker de avatar en la app movil (VolanteoScreen.js)
-// — se dibujan como SVG real aca porque el navegador lo soporta nativo.
-const AVATAR_PRESETS = {
-  person: { color: "#2563EB", glyph: '<circle cx="12" cy="8.5" r="3.4"/><rect x="6.5" y="13" width="11" height="8" rx="5"/>' },
-  walk: {
-    color: "#EA580C",
-    glyph:
-      '<ellipse cx="9" cy="8" rx="2.1" ry="3.1" transform="rotate(-20 9 8)"/><ellipse cx="15" cy="16" rx="2.1" ry="3.1" transform="rotate(20 15 16)"/>',
-  },
-  star: { color: "#7C3AED", glyph: '<path d="M12,2 L14,10 L22,12 L14,14 L12,22 L10,14 L2,12 L10,10 Z"/>' },
-  heart: { color: "#DB2777", glyph: '<circle cx="8" cy="9" r="4"/><circle cx="16" cy="9" r="4"/><polygon points="4,11 20,11 12,21"/>' },
-  flash: { color: "#CA8A04", glyph: '<polygon points="13,2 5,14 11,14 9,22 19,10 12,10"/>' },
-  flag: { color: "#16A34A", glyph: '<line x1="6" y1="3" x2="6" y2="21" stroke="#fff" stroke-width="2"/><polygon points="6,4 19,7 6,10"/>' },
-};
-function avatarIconUrl(avatar, fallbackColor, size = 40) {
-  const v = toText(avatar);
-  if (v.startsWith("data:image")) return v;
-  const preset = v.startsWith("preset:") ? AVATAR_PRESETS[v.slice(7)] : null;
-  const bg = preset?.color || fallbackColor || "#6B7280";
-  const glyph = preset?.glyph || '<circle cx="12" cy="8.5" r="3.4"/><rect x="6.5" y="13" width="11" height="8" rx="5"/>';
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11.5" fill="${bg}" stroke="#fff" stroke-width="1.5"/><g fill="#fff">${glyph}</g></svg>`;
-  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+// El campo "avatar" ahora solo guarda un color (elegido en la app movil) --
+// en el mapa siempre se dibuja una flecha de direccion, nunca un icono.
+function esColorValido(value) {
+  return /^#[0-9A-Fa-f]{6}$/.test(toText(value));
 }
 
 // Nota: el recorrido ya llega filtrado/suavizado desde el origen (ver
@@ -531,27 +513,21 @@ export default function SeguimientoVolanteadoresPanel() {
     marcadores.forEach((f) => {
       const lat = Number(f.pos.lat);
       const lng = Number(f.pos.lng);
-      const size = f.id === selectedId ? 44 : 36;
       const heading = Number(f.pos.heading);
-      const tieneRumbo = Number.isFinite(heading) && heading >= 0;
-      const icon = tieneRumbo
-        ? {
-            // Flecha de direccion (como el puntero de navegacion de Google
-            // Maps) rotada segun el rumbo GPS — se ve completa porque es un
-            // simbolo vectorial, no una imagen recortada.
-            path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: f.id === selectedId ? 7.5 : 6,
-            rotation: heading,
-            fillColor: colorDe(f.id),
-            fillOpacity: 1,
-            strokeColor: "#fff",
-            strokeWeight: 1.6,
-          }
-        : {
-            url: avatarIconUrl(f.avatar, colorDe(f.id), size),
-            scaledSize: new maps.Size(size, size),
-            anchor: new maps.Point(size / 2, size / 2),
-          };
+      const rumbo = Number.isFinite(heading) && heading >= 0 ? heading : 0;
+      const color = esColorValido(f.avatar) ? f.avatar : colorDe(f.id);
+      // Flecha de direccion (como el puntero de navegacion de Google Maps)
+      // rotada segun el rumbo GPS — siempre se ve completa porque es un
+      // simbolo vectorial, no una imagen recortada.
+      const icon = {
+        path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: f.id === selectedId ? 7.5 : 6,
+        rotation: rumbo,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 1.6,
+      };
       const marker = new maps.Marker({
         map,
         position: { lat, lng },
@@ -801,10 +777,12 @@ export default function SeguimientoVolanteadoresPanel() {
         {selectedRow ? (
           <article className="maptech-detail">
             <div className="maptech-detail-head">
-              <img
-                src={avatarIconUrl(selectedRow.avatar, colorDe(selectedRow.id), 36)}
-                alt=""
-                style={{ width: 32, height: 32, borderRadius: "50%" }}
+              <span
+                style={{
+                  width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                  background: esColorValido(selectedRow.avatar) ? selectedRow.avatar : colorDe(selectedRow.id),
+                  border: "2px solid #fff", boxShadow: "0 0 0 1px #E5E7EB",
+                }}
               />
               <strong>{selectedRow.nombre}</strong>
               <span className={`orders-status ${selectedRow.pos && selectedRow.staleMin <= 20 ? "ok" : "warn"}`}>
@@ -859,7 +837,13 @@ export default function SeguimientoVolanteadoresPanel() {
                 onClick={() => (f.pos ? centrar(f) : setSelectedId(f.id))}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <img src={avatarIconUrl(f.avatar, colorDe(f.id), 30)} alt="" style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0 }} />
+                  <span
+                    style={{
+                      width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                      background: esColorValido(f.avatar) ? f.avatar : colorDe(f.id),
+                      border: "2px solid #fff", boxShadow: "0 0 0 1px #E5E7EB",
+                    }}
+                  />
                   <p className="maptech-row-title" style={{ margin: 0 }}>
                     {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
                   </p>
