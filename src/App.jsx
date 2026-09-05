@@ -2122,6 +2122,14 @@ export default function App() {
   const [liquidaciones, setLiquidaciones] = useState(() => readLocalJson("liquidaciones", []));
 
   const [usuarios, setUsuarios] = useState([]);
+  const gruposVolanteoExistentes = useMemo(() => {
+    const set = new Set();
+    usuarios.forEach((u) => {
+      const g = String(u?.grupoVolanteo ?? u?.grupo_volanteo ?? "").trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort();
+  }, [usuarios]);
 
   const [clientes, setClientes] = useState(() => {
     // No usar localStorage para clientes — demasiados registros, se carga desde Supabase
@@ -20447,8 +20455,29 @@ export default function App() {
                           </select>
                         </div>
                         <div>
-                          <label style={labelStyle}>Grupo</label>
-                          <input style={inputStyle} value={usuarioForm.grupo || ""} onChange={(e) => handleUsuarioChange("grupo", e.target.value)} placeholder="equipo-norte" />
+                          {normalizarRolSimple(usuarioForm.rol) === "Volanteador" ? (
+                            <>
+                              <label style={labelStyle}>Grupo de volanteo</label>
+                              <input
+                                style={inputStyle}
+                                list="grupos-volanteo-existentes"
+                                value={usuarioForm.grupoVolanteo || ""}
+                                onChange={(e) => setUsuarioForm((prev) => ({ ...prev, grupoVolanteo: e.target.value }))}
+                                placeholder="equipo-centro"
+                              />
+                              <datalist id="grupos-volanteo-existentes">
+                                {gruposVolanteoExistentes.map((g) => <option key={g} value={g} />)}
+                              </datalist>
+                              <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94A3B8" }}>
+                                Elige uno de la lista o escribe uno nuevo — los volanteadores con el mismo grupo se ven entre sí en tiempo real.
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <label style={labelStyle}>Grupo</label>
+                              <input style={inputStyle} value={usuarioForm.grupo || ""} onChange={(e) => handleUsuarioChange("grupo", e.target.value)} placeholder="equipo-norte" />
+                            </>
+                          )}
                         </div>
                         <div>
                           <label style={labelStyle}>Estado</label>
@@ -20559,21 +20588,6 @@ export default function App() {
                               );
                             })}
                           </div>
-                        </div>
-                      )}
-
-                      {normalizarRolSimple(usuarioForm.rol) === "Volanteador" && (
-                        <div style={{ marginTop: 14 }}>
-                          <label style={{ ...labelStyle, margin: 0, marginBottom: 8, display: "block" }}>Grupo de volanteo</label>
-                          <input
-                            style={{ ...inputStyle, maxWidth: 280 }}
-                            value={usuarioForm.grupoVolanteo || ""}
-                            onChange={(e) => setUsuarioForm((prev) => ({ ...prev, grupoVolanteo: e.target.value }))}
-                            placeholder="ej: equipo-centro"
-                          />
-                          <p style={{ margin: "6px 0 0", fontSize: 11, color: "#94A3B8" }}>
-                            Los volanteadores con el mismo grupo se ven entre sí en tiempo real desde la app.
-                          </p>
                         </div>
                       )}
 

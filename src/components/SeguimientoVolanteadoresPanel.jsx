@@ -131,45 +131,11 @@ function avatarIconUrl(avatar, fallbackColor, size = 40) {
   return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
 }
 
-// Ajusta el recorrido crudo del GPS (con ruido/saltos) a las calles reales
-// usando el mismo servicio OSRM (gratuito, sin API key) que ya usa el mapa
-// de cobertura para rutas peatonales. Se parte en tramos de a lo mucho
-// OSRM_CHUNK puntos porque el servicio publico no procesa bien traazados
-// muy largos de una sola vez; si un tramo falla (sin internet, limite de
-// uso), ese tramo se dibuja igual con los puntos crudos en vez de perderse.
-const OSRM_CHUNK = 80;
-async function ajustarTramoACalles(puntos) {
-  const coords = puntos.map((p) => `${p.lng},${p.lat}`).join(";");
-  const radios = puntos.map((p) => Math.min(50, Math.max(10, Number(p.accuracy_m) || 25))).join(";");
-  const url = `https://router.project-osrm.org/match/v1/foot/${coords}?geometries=geojson&overview=full&radiuses=${radios}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`osrm http ${res.status}`);
-  const data = await res.json();
-  if (data.code !== "Ok" || !Array.isArray(data.matchings) || data.matchings.length === 0) {
-    throw new Error(`osrm ${data.code || "sin match"}`);
-  }
-  const pts = [];
-  data.matchings.forEach((m) => {
-    (m.geometry?.coordinates || []).forEach(([lng, lat]) => pts.push({ lat, lng }));
-  });
-  return pts;
-}
-async function ajustarRutaACalles(puntosCrudos) {
-  const puntos = (Array.isArray(puntosCrudos) ? puntosCrudos : []).filter((p) => isValidCoord(p.lat, p.lng));
-  if (puntos.length < 2) return puntos;
-  const resultado = [];
-  for (let i = 0; i < puntos.length; i += OSRM_CHUNK - 1) {
-    const tramo = puntos.slice(i, i + OSRM_CHUNK);
-    if (tramo.length < 2) break;
-    try {
-      resultado.push(...(await ajustarTramoACalles(tramo)));
-    } catch {
-      // Sin ajustar: se dibuja el tramo tal cual vino del GPS.
-      resultado.push(...tramo);
-    }
-  }
-  return resultado.length ? resultado : puntos;
-}
+// Nota: el recorrido ya llega filtrado/suavizado desde el origen (ver
+// VolanteadorTrackingService.kt y VolanteadorTrackingAgent.js) -- se
+// descartan lecturas de mala precision y "saltos" imposibles a pie, sin
+// forzar la posicion a la calle mas cercana (eso es para vehiculos, no para
+// alguien caminando que puede cortar por una vereda/plaza no mapeada).
 
 const tableMissing = (err, tableName) => {
   const code = String(err?.code || "").trim();
@@ -301,15 +267,7 @@ export default function SeguimientoVolanteadoresPanel() {
         trailsCrudos[id] = pts.length > TRAIL_MAX_POINTS ? pts.slice(pts.length - TRAIL_MAX_POINTS) : pts;
       });
       setStatsByVolanteador(stats);
-      // Se muestra primero el trazo crudo (instantaneo) y se reemplaza por el
-      // ajustado a calles apenas OSRM responde, sin bloquear el mapa.
       setTrailById(trailsCrudos);
-      Object.entries(trailsCrudos).forEach(([id, pts]) => {
-        if (pts.length < 2) return;
-        ajustarRutaACalles(pts)
-          .then((ajustado) => setTrailById((prev) => ({ ...prev, [id]: ajustado })))
-          .catch(() => {});
-      });
     },
     [volanteadores, statsDate]
   );
