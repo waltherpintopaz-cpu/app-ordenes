@@ -316,6 +316,16 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [asignandoZona, setAsignandoZona] = useState(false);
   const [finalizandoId, setFinalizandoId] = useState("");
 
+  // Modal "Compartir vista" -- genera un link publico (sin login) de solo
+  // lectura del mapa, valido por un tiempo elegido, para un grupo o todos.
+  const [compartirVistaAbierta, setCompartirVistaAbierta] = useState(false);
+  const [compartirVistaGrupo, setCompartirVistaGrupo] = useState("TODOS");
+  const [compartirVistaHoras, setCompartirVistaHoras] = useState(4);
+  const [compartirVistaLink, setCompartirVistaLink] = useState("");
+  const [compartirVistaGenerando, setCompartirVistaGenerando] = useState(false);
+  const [compartirVistaError, setCompartirVistaError] = useState("");
+  const [compartirVistaCopiado, setCompartirVistaCopiado] = useState(false);
+
   const [supervisores, setSupervisores] = useState([]);
   const [compartiendoUbicacion, setCompartiendoUbicacion] = useState(false);
   const [geoError, setGeoError] = useState("");
@@ -338,6 +348,53 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       setFinalizandoId("");
     }
   }, []);
+
+  const abrirCompartirVista = useCallback(() => {
+    setCompartirVistaGrupo(grupoFiltro);
+    setCompartirVistaHoras(4);
+    setCompartirVistaLink("");
+    setCompartirVistaError("");
+    setCompartirVistaCopiado(false);
+    setCompartirVistaAbierta(true);
+  }, [grupoFiltro]);
+
+  const cerrarCompartirVista = useCallback(() => {
+    setCompartirVistaAbierta(false);
+    setCompartirVistaGenerando(false);
+  }, []);
+
+  const generarEnlaceCompartirVista = useCallback(async () => {
+    const horas = Number(compartirVistaHoras) > 0 ? Number(compartirVistaHoras) : 4;
+    setCompartirVistaGenerando(true);
+    setCompartirVistaError("");
+    try {
+      const expiraEn = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
+      const { data, error: err } = await supabase
+        .from("mapa_supervisor_enlaces")
+        .insert({
+          grupo_volanteo: compartirVistaGrupo === "TODOS" ? null : compartirVistaGrupo,
+          expira_en: expiraEn,
+        })
+        .select("id")
+        .single();
+      if (err) throw err;
+      setCompartirVistaLink(`${window.location.origin}/mapa-volanteo?t=${data.id}`);
+    } catch (e) {
+      setCompartirVistaError(String(e?.message || "No se pudo generar el enlace."));
+    } finally {
+      setCompartirVistaGenerando(false);
+    }
+  }, [compartirVistaGrupo, compartirVistaHoras]);
+
+  const copiarEnlaceCompartirVista = useCallback(async () => {
+    if (!compartirVistaLink) return;
+    try {
+      await navigator.clipboard.writeText(compartirVistaLink);
+      setCompartirVistaCopiado(true);
+    } catch {
+      window.prompt("Copia el enlace:", compartirVistaLink);
+    }
+  }, [compartirVistaLink]);
 
   const cargarVolanteadores = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -1191,6 +1248,13 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         >
           📤 Compartir resumen del equipo por WhatsApp
         </button>
+        <button
+          type="button"
+          onClick={abrirCompartirVista}
+          style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          🔗 Compartir vista (link temporal)
+        </button>
       </div>
 
       <div className="maptech-map-card">
@@ -1418,6 +1482,93 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
           )}
         </div>
       </section>
+
+      {compartirVistaAbierta ? (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
+          }}
+          onClick={cerrarCompartirVista}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4, color: "#1e293b" }}>🔗 Compartir vista del mapa</h3>
+            <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 14 }}>
+              Genera un enlace público (sin necesidad de iniciar sesión) para que cualquier persona vea el mapa en vivo del
+              volanteo — sin teléfonos ni opciones de administración, solo posiciones, rutas y zonas.
+            </p>
+
+            {compartirVistaError ? <p className="warn-text" style={{ marginTop: 0 }}>{compartirVistaError}</p> : null}
+
+            {!compartirVistaLink ? (
+              <>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Grupo a mostrar</label>
+                <select
+                  value={compartirVistaGrupo}
+                  onChange={(e) => setCompartirVistaGrupo(e.target.value)}
+                  style={{ display: "block", width: "100%", marginTop: 6, marginBottom: 14, padding: "7px 8px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13 }}
+                >
+                  {grupos.map((g) => (
+                    <option key={g} value={g}>{g === "TODOS" ? "Todos los grupos" : g}</option>
+                  ))}
+                </select>
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>¿Por cuántas horas estará activo?</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, marginBottom: 14 }}>
+                  {[1, 2, 4, 8, 24].map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => setCompartirVistaHoras(h)}
+                      style={{
+                        padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1.5px solid ${compartirVistaHoras === h ? "#111827" : "#e2e8f0"}`,
+                        background: compartirVistaHoras === h ? "#F3F4F6" : "#fff",
+                        color: compartirVistaHoras === h ? "#111827" : "#64748b",
+                      }}
+                    >
+                      {h}h
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={1}
+                    value={compartirVistaHoras}
+                    onChange={(e) => setCompartirVistaHoras(e.target.value)}
+                    style={{ width: 64, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 12 }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="secondary-btn small" onClick={cerrarCompartirVista} disabled={compartirVistaGenerando}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="secondary-btn small" onClick={() => void generarEnlaceCompartirVista()} disabled={compartirVistaGenerando}>
+                    {compartirVistaGenerando ? "Generando..." : "Generar enlace"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                  <p style={{ margin: 0, fontSize: 12, color: "#166534", fontWeight: 700 }}>
+                    ✓ Enlace generado — activo por {compartirVistaHoras}h ({compartirVistaGrupo === "TODOS" ? "todos los grupos" : compartirVistaGrupo})
+                  </p>
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "#334155", wordBreak: "break-all" }}>{compartirVistaLink}</p>
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="secondary-btn small" onClick={cerrarCompartirVista}>
+                    Cerrar
+                  </button>
+                  <button type="button" className="secondary-btn small" onClick={() => void copiarEnlaceCompartirVista()}>
+                    {compartirVistaCopiado ? "✓ Copiado" : "📋 Copiar enlace"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
