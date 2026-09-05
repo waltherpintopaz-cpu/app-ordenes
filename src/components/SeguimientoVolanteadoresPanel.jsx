@@ -1220,6 +1220,14 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             {selectedRow.pos ? (
               <>
                 <p>Actualizado: {formatDateTime(selectedRow.pos.updated_at)} (hace {formatAgo(selectedRow.pos.updated_at)})</p>
+                {Number.isFinite(Number(selectedRow.pos.battery_pct)) ? (
+                  <p>
+                    Batería:{" "}
+                    <strong style={{ color: Number(selectedRow.pos.battery_pct) <= 15 ? "#DC2626" : Number(selectedRow.pos.battery_pct) <= 30 ? "#D97706" : "#374151" }}>
+                      {Math.round(Number(selectedRow.pos.battery_pct))}%
+                    </strong>
+                  </p>
+                ) : null}
               </>
             ) : null}
             <p>Recorrido hoy: {Number(selectedRow.stats?.distanciaKm || 0).toFixed(2)} km</p>
@@ -1355,6 +1363,11 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                 </div>
                 <p className="maptech-row-meta">
                   {f.pos ? `Ultimo ping: ${formatDateTime(f.pos.updated_at)} (${formatAgo(f.pos.updated_at)})` : "Sin ubicacion hoy."}
+                  {f.pos && Number.isFinite(Number(f.pos.battery_pct)) ? (
+                    <span style={{ marginLeft: 8, fontWeight: 700, color: Number(f.pos.battery_pct) <= 15 ? "#DC2626" : Number(f.pos.battery_pct) <= 30 ? "#D97706" : "#6B7280" }}>
+                      🔋 {Math.round(Number(f.pos.battery_pct))}%
+                    </span>
+                  ) : null}
                 </p>
                 <p className="maptech-row-meta">
                   Recorrido: {Number(f.stats?.distanciaKm || 0).toFixed(2)} km | Caminando: {formatDuration(f.stats?.tiempoCaminandoSec)} | Detenido:{" "}
