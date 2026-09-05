@@ -2389,10 +2389,26 @@ export default function SidebarApp() {
   }, []);
 
   // ── Pre-llenar coordenadas del servicio cuando cambia el cliente ─────────
+  // Prioridad: 1) MikroWisp (dato mas "oficial"), 2) tabla interna clientes
+  // (por DNI) -- asi no queda vacio si MikroWisp nunca tuvo esa coordenada
+  // pero si se capturo en una liquidacion anterior.
   useEffect(() => {
-    const coords = detalle?._servicio?.coordenadas;
-    if (coords) setOrdenForm(p => ({ ...p, coordenadas: coords }));
-  }, [detalle?._servicio?.coordenadas]);
+    const coordsMkw = detalle?._servicio?.coordenadas;
+    if (coordsMkw) {
+      setOrdenForm(p => ({ ...p, coordenadas: coordsMkw }));
+      return;
+    }
+    const dni = cliente?.cedula;
+    if (!dni) return;
+    let cancelado = false;
+    supabase.from("clientes").select("ubicacion").eq("dni", dni).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (cancelado) return;
+        const coordsLocal = data?.ubicacion;
+        if (coordsLocal) setOrdenForm(p => ({ ...p, coordenadas: p.coordenadas || coordsLocal }));
+      });
+    return () => { cancelado = true; };
+  }, [detalle?._servicio?.coordenadas, cliente?.cedula]);
 
   // ── Auto-consultar señal y diagnóstico cuando todo el cliente esté cargado
   useEffect(() => {
