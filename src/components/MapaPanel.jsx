@@ -101,6 +101,19 @@ const napBoxSvg = (portColor = "#0284c7", selected = false) => {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40"><rect x="3" y="0.5" width="22" height="33" rx="3" fill="#cfd8dc" stroke="${borderColor}" stroke-width="${sw}"/><rect x="0" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="0" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="7" width="3" height="6" rx="1" fill="#a8bcc5"/><rect x="25" y="19" width="3" height="6" rx="1" fill="#a8bcc5"/><line x1="6" y1="7" x2="22" y2="7" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="11" x2="22" y2="11" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="15" x2="22" y2="15" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="19" x2="22" y2="19" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="23" x2="22" y2="23" stroke="#a8bcc5" stroke-width="1.5" stroke-linecap="round"/><circle cx="7" cy="30" r="1.5" fill="${portColor}"/><circle cx="10" cy="30" r="1.5" fill="${portColor}"/><circle cx="13" cy="30" r="1.5" fill="${portColor}"/><circle cx="16" cy="30" r="1.5" fill="${portColor}"/><circle cx="19" cy="30" r="1.5" fill="#64748b"/><circle cx="22" cy="30" r="1.5" fill="#64748b"/><polygon points="14,34 9,40 19,40" fill="${triColor}"/></svg>`)}`;
 };
 
+// SVG icono mufa (empalme) -- misma linea visual que napBoxSvg (mismo estilo
+// de "pin con base triangular"), pero forma de capsula/ovalo en ambar en vez
+// de la caja rectangular azul, para diferenciarla de un vistazo en el mapa.
+const napMufaSvg = (selected = false) => {
+  const W = selected ? 26 : 20;
+  const H = selected ? 38 : 30;
+  const borderColor = selected ? "#F97316" : "#92400E";
+  const triColor = selected ? "#F97316" : "#92400E";
+  const sw = selected ? 2 : 0.8;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40"><rect x="5" y="2" width="18" height="26" rx="9" fill="#FDE68A" stroke="${borderColor}" stroke-width="${sw}"/><line x1="9" y1="9" x2="19" y2="9" stroke="#92400E" stroke-width="1.3" stroke-linecap="round"/><line x1="9" y1="14" x2="19" y2="14" stroke="#92400E" stroke-width="1.3" stroke-linecap="round"/><line x1="9" y1="19" x2="19" y2="19" stroke="#92400E" stroke-width="1.3" stroke-linecap="round"/><polygon points="14,32 9,40 19,40" fill="${triColor}"/></svg>`)}`;
+};
+const esMufa = (codigo) => /mufa/i.test(String(codigo || ""));
+
 export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos = [], ordenesFallback = [], theme }) {
   const isDark = theme === "dark";
   const [ordenes, setOrdenes] = useState([]);
@@ -437,12 +450,16 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         const cap = Number(caja?.capacidad || 0);
         const ocp = Number(caja?.puertos_ocupados || 0);
         const llena = cap > 0 && ocp >= cap;
+        const mufa = esMufa(caja.codigo);
         const color = llena ? "#dc2626" : isSelected ? "#F97316" : "#0284c7";
+        const iconUrl = mufa ? napMufaSvg(isSelected) : napBoxSvg(color, isSelected);
+        const w = mufa ? (isSelected ? 26 : 20) : (isSelected ? 28 : 22);
+        const h = mufa ? (isSelected ? 38 : 30) : (isSelected ? 40 : 32);
         const m = new maps.Marker({
           map,
           position: { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) },
-          icon: { url: napBoxSvg(color, isSelected), scaledSize: new maps.Size(isSelected ? 28 : 22, isSelected ? 40 : 32), anchor: new maps.Point(isSelected ? 14 : 11, isSelected ? 40 : 32) },
-          title: `Caja ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
+          icon: { url: iconUrl, scaledSize: new maps.Size(w, h), anchor: new maps.Point(w / 2, h) },
+          title: `${mufa ? "Mufa" : "Caja"} ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
           zIndex: isSelected ? 20 : 2,
         });
         m.addListener("click", () => { setSelectedTipo("caja"); setSelectedId(String(caja.uid || "")); setTab("cajas"); shouldAutoFrameRef.current = false; });
