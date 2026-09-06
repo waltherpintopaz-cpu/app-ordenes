@@ -113,6 +113,16 @@ const napMufaSvg = (selected = false) => {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 28 40"><rect x="5" y="2" width="18" height="26" rx="9" fill="#FDE68A" stroke="${borderColor}" stroke-width="${sw}"/><line x1="9" y1="9" x2="19" y2="9" stroke="#92400E" stroke-width="1.3" stroke-linecap="round"/><line x1="9" y1="14" x2="19" y2="14" stroke="#92400E" stroke-width="1.3" stroke-linecap="round"/><line x1="9" y1="19" x2="19" y2="19" stroke="#92400E" stroke-width="1.3" stroke-linecap="round"/><polygon points="14,32 9,40 19,40" fill="${triColor}"/></svg>`)}`;
 };
 const esMufa = (codigo) => /mufa/i.test(String(codigo || ""));
+const esTroncal = (codigo) => /troncal/i.test(String(codigo || ""));
+
+// Icono troncal -- un rombo gris chico, distinto de la caja y de la mufa;
+// son marcadores de tramo del cable troncal, no un punto de infraestructura
+// puntual, asi que se ven deliberadamente "menos importantes".
+const napTroncalSvg = (selected = false) => {
+  const size = selected ? 20 : 14;
+  const color = selected ? "#F97316" : "#94A3B8";
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 20 20"><polygon points="10,1 19,10 10,19 1,10" fill="${color}" stroke="#475569" stroke-width="1"/></svg>`)}`;
+};
 
 export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGestora, nodosSesionPermitidos = [], ordenesFallback = [], theme }) {
   const isDark = theme === "dark";
@@ -127,6 +137,7 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
   const [filtroNodo, setFiltroNodo] = useState("TODOS");
   const [nodos, setNodos] = useState([]);
   const [showCajas, setShowCajas] = useState(true);
+  const [verInformativos, setVerInformativos] = useState(false);
   const [showZonas, setShowZonas] = useState(true);
   const [zonas, setZonas] = useState([]);
   const [showImportarZonas, setShowImportarZonas] = useState(false);
@@ -340,9 +351,13 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
 
   const cajasFiltradas = useMemo(() => {
     const q = String(busqueda || "").trim().toLowerCase();
-    const base = filtroNodo === "TODOS" ? cajas : cajas.filter((r) => String(r?.nodo || "").trim() === filtroNodo);
+    let base = filtroNodo === "TODOS" ? cajas : cajas.filter((r) => String(r?.nodo || "").trim() === filtroNodo);
+    // Las cajas informativas (mufas/troncales, ver esMufa/esTroncal) se
+    // esconden por defecto de la vista principal -- son pines que se
+    // importaron a modo de referencia, no cajas NAP reales con puertos.
+    if (!verInformativos) base = base.filter((r) => !esMufa(r?.codigo) && !esTroncal(r?.codigo));
     return q ? base.filter((r) => safeIncludes(r?.codigo, q) || safeIncludes(r?.sector, q) || safeIncludes(r?.nodo, q) || safeIncludes(r?.ctoid, q)) : base;
-  }, [cajas, filtroNodo, busqueda]);
+  }, [cajas, filtroNodo, busqueda, verInformativos]);
 
   const cajasNearAll = useMemo(() => {
     if (!miUbicacion) return [];
@@ -451,15 +466,17 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         const ocp = Number(caja?.puertos_ocupados || 0);
         const llena = cap > 0 && ocp >= cap;
         const mufa = esMufa(caja.codigo);
+        const troncal = !mufa && esTroncal(caja.codigo);
         const color = llena ? "#dc2626" : isSelected ? "#F97316" : "#0284c7";
-        const iconUrl = mufa ? napMufaSvg(isSelected) : napBoxSvg(color, isSelected);
-        const w = mufa ? (isSelected ? 26 : 20) : (isSelected ? 28 : 22);
-        const h = mufa ? (isSelected ? 38 : 30) : (isSelected ? 40 : 32);
+        const iconUrl = mufa ? napMufaSvg(isSelected) : troncal ? napTroncalSvg(isSelected) : napBoxSvg(color, isSelected);
+        const w = mufa ? (isSelected ? 26 : 20) : troncal ? (isSelected ? 20 : 14) : (isSelected ? 28 : 22);
+        const h = mufa ? (isSelected ? 38 : 30) : troncal ? (isSelected ? 20 : 14) : (isSelected ? 40 : 32);
+        const etiqueta = mufa ? "Mufa" : troncal ? "Troncal" : "Caja";
         const m = new maps.Marker({
           map,
           position: { lat: Number(caja.coords.lat), lng: Number(caja.coords.lng) },
-          icon: { url: iconUrl, scaledSize: new maps.Size(w, h), anchor: new maps.Point(w / 2, h) },
-          title: `${mufa ? "Mufa" : "Caja"} ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
+          icon: { url: iconUrl, scaledSize: new maps.Size(w, h), anchor: new maps.Point(w / 2, troncal ? h / 2 : h) },
+          title: `${etiqueta} ${caja.codigo || "-"} · ${caja.nodo || "-"}`,
           zIndex: isSelected ? 20 : 2,
         });
         m.addListener("click", () => { setSelectedTipo("caja"); setSelectedId(String(caja.uid || "")); setTab("cajas"); shouldAutoFrameRef.current = false; });
@@ -723,6 +740,9 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         </button>
         <button style={{ ...btnStyle(showCajas, "#0284c7") }} onClick={() => setShowCajas((v) => !v)}>
           {showCajas ? "Ocultar cajas" : "Mostrar cajas"}
+        </button>
+        <button style={{ ...btnStyle(verInformativos, "#92400E"), padding: "5px 10px", fontSize: 11 }} onClick={() => setVerInformativos((v) => !v)}>
+          {verInformativos ? "Ocultar mufas/troncales" : "Ver mufas/troncales"}
         </button>
         <button style={{ ...btnStyle(showZonas, "#7c3aed") }} onClick={() => setShowZonas((v) => !v)}>
           {showZonas ? "Ocultar zonas" : "Mostrar zonas"} ({zonas.length})

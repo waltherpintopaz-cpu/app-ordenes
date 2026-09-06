@@ -93,6 +93,7 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
   const [filtroEstado, setFiltroEstado] = useState("Todos");
   const [filtroEmpresa, setFiltroEmpresa] = useState("Todos");
   const [busqueda, setBusqueda] = useState("");
+  const [verInformativos, setVerInformativos] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -142,6 +143,10 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
 
   // Filtrado
   const cajasFiltradas = cajas.filter(c => {
+    // Las mufas/troncales importadas a modo de referencia (ver
+    // ImportarCajasNapModal.jsx) se esconden por defecto de la lista
+    // principal -- no son cajas NAP reales con puertos.
+    if (!verInformativos && /mufa|troncal/i.test(String(c.codigo || ""))) return false;
     if (filtroNodo !== "Todos" && c.nodo !== filtroNodo) return false;
     if (filtroEstado !== "Todos" && c.estado !== filtroEstado) return false;
     if (filtroEmpresa !== "Todos" && c.empresa !== filtroEmpresa) return false;
@@ -396,6 +401,10 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
           <option>Todos</option>
           {EMPRESAS.map(e => <option key={e}>{e}</option>)}
         </select>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#6b7280", whiteSpace: "nowrap", cursor: "pointer" }}>
+          <input type="checkbox" checked={verInformativos} onChange={(e) => setVerInformativos(e.target.checked)} />
+          Ver mufas/troncales
+        </label>
         <span style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>{cajasFiltradas.length} resultados</span>
       </div>
 

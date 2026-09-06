@@ -12,6 +12,13 @@ function extraerMid(input) {
   return null;
 }
 
+// Pines que no son cajas NAP reales (mufas/empalmes, o etiquetas de tramo de
+// cable troncal) -- se muestran en el mapa con icono distinto y, por
+// defecto, no se importan salvo que el admin marque "incluir".
+function esInformativo(codigo) {
+  return /mufa|troncal/i.test(String(codigo || ""));
+}
+
 function tagText(scope, tag) {
   const el = scope.getElementsByTagName(tag)[0];
   return el ? el.textContent.trim() : "";
@@ -92,6 +99,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const [incluirInformativos, setIncluirInformativos] = useState(false);
 
   const previsualizar = async () => {
     setError(""); setOk(""); setPreview(null);
@@ -139,7 +147,8 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
     setGuardando(true);
     setError("");
     try {
-      const codigos = preview.puntos.map((p) => p.codigo);
+      const puntosAImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo));
+      const codigos = puntosAImportar.map((p) => p.codigo);
       const { data: existentes, error: buscarErr } = await supabase
         .from("nap_cajas")
         .select("id,codigo")
@@ -157,7 +166,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
       let siguienteCtoid = Number(maxRow?.ctoid || 0) + 1;
 
       let creadas = 0, actualizadas = 0;
-      for (const punto of preview.puntos) {
+      for (const punto of puntosAImportar) {
         const idExistente = idPorCodigo.get(punto.codigo.trim().toLowerCase());
         const ubicacion = `${punto.lat}, ${punto.lng}`;
         if (idExistente) {
@@ -247,18 +256,37 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
                   <input value={sectorDefecto} onChange={(e) => setSectorDefecto(e.target.value)} style={s.input} placeholder="Ej: Juan Pablo II" />
                 </div>
               </div>
-              <div style={s.previewCount}>{preview.puntos.length} caja{preview.puntos.length !== 1 ? "s" : ""} encontrada{preview.puntos.length !== 1 ? "s" : ""}:</div>
-              <div style={s.previewList}>
-                {preview.puntos.map((p, i) => (
-                  <span key={i} style={s.previewChip}>{p.codigo}</span>
-                ))}
-              </div>
-              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>
-                Las que ya existan (mismo código) solo actualizan su ubicación — no tocan capacidad, puertos ocupados ni fotos.
-              </div>
-              <button onClick={confirmarImportacion} disabled={guardando} style={{ ...s.btn("#16a34a"), width: "100%", marginTop: 10, opacity: guardando ? 0.6 : 1 }}>
-                {guardando ? "Guardando..." : `Importar ${preview.puntos.length} cajas`}
-              </button>
+              {(() => {
+                const informativos = preview.puntos.filter((p) => esInformativo(p.codigo));
+                const aImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo));
+                return (
+                  <>
+                    <div style={s.previewCount}>
+                      {preview.puntos.length} pin{preview.puntos.length !== 1 ? "es" : ""} encontrado{preview.puntos.length !== 1 ? "s" : ""}
+                      {informativos.length > 0 ? ` (${informativos.length} son mufas/troncales)` : ""}:
+                    </div>
+                    <div style={s.previewList}>
+                      {preview.puntos.map((p, i) => (
+                        <span key={i} style={esInformativo(p.codigo) ? { ...s.previewChip, background: "#FEF3C7", color: "#92400E", borderColor: "#FDE68A" } : s.previewChip}>
+                          {p.codigo}
+                        </span>
+                      ))}
+                    </div>
+                    {informativos.length > 0 ? (
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#92400E", marginTop: 8, cursor: "pointer" }}>
+                        <input type="checkbox" checked={incluirInformativos} onChange={(e) => setIncluirInformativos(e.target.checked)} />
+                        Incluir las {informativos.length} mufas/troncales al importar (informativo — no son cajas NAP reales)
+                      </label>
+                    ) : null}
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>
+                      Las que ya existan (mismo código) solo actualizan su ubicación — no tocan capacidad, puertos ocupados ni fotos.
+                    </div>
+                    <button onClick={confirmarImportacion} disabled={guardando} style={{ ...s.btn("#16a34a"), width: "100%", marginTop: 10, opacity: guardando ? 0.6 : 1 }}>
+                      {guardando ? "Guardando..." : `Importar ${aImportar.length} caja${aImportar.length !== 1 ? "s" : ""}`}
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
