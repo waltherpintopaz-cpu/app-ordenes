@@ -205,60 +205,15 @@ function esColorValido(value) {
 
 // El recorrido ya llega filtrado desde el origen (ver
 // VolanteadorTrackingService.kt y VolanteadorTrackingAgent.js) -- se
-// descartan lecturas de mala precision y "saltos" imposibles a pie. Para
-// dibujarlo limpio NO se ajusta a la red vial (asi lo hacen Strava/Garmin/
-// AllTrails para caminatas -- eso es solo para autos, con un grafo vial
-// denso y cerrado; con datos de OSM peatonal incompletos como los de aca,
-// forzar la linea a "la calle mas cercana" es lo que producia tramos
-// zigzagueados / chuecos). En cambio se aplica, aca al momento de dibujar:
-// (1) un promedio movil para reducir el ruido normal del GPS urbano, y
-// (2) Douglas-Peucker para quitar puntos redundantes sin cambiar la forma.
-function suavizarPromedioMovil(points) {
-  if (!Array.isArray(points) || points.length < 3) return points;
-  return points.map((p, i) => {
-    const prev = points[Math.max(0, i - 1)];
-    const next = points[Math.min(points.length - 1, i + 1)];
-    return { ...p, lat: (prev.lat + p.lat + next.lat) / 3, lng: (prev.lng + p.lng + next.lng) / 3 };
-  });
-}
-
-function distanciaPerpendicularM(pt, a, b) {
-  const lat0 = a.lat;
-  const toXY = (p) => ({
-    x: (p.lng * Math.PI) / 180 * 6371000 * Math.cos((lat0 * Math.PI) / 180),
-    y: (p.lat * Math.PI) / 180 * 6371000,
-  });
-  const P = toXY(pt), A = toXY(a), B = toXY(b);
-  const dx = B.x - A.x, dy = B.y - A.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return Math.hypot(P.x - A.x, P.y - A.y);
-  const t = ((P.x - A.x) * dx + (P.y - A.y) * dy) / len2;
-  const projX = A.x + t * dx, projY = A.y + t * dy;
-  return Math.hypot(P.x - projX, P.y - projY);
-}
-
-function douglasPeucker(points, epsilonM) {
-  if (points.length < 3) return points;
-  let maxDist = 0;
-  let index = 0;
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const d = distanciaPerpendicularM(points[i], points[0], points[points.length - 1]);
-    if (d > maxDist) {
-      maxDist = d;
-      index = i;
-    }
-  }
-  if (maxDist > epsilonM) {
-    const left = douglasPeucker(points.slice(0, index + 1), epsilonM);
-    const right = douglasPeucker(points.slice(index), epsilonM);
-    return left.slice(0, -1).concat(right);
-  }
-  return [points[0], points[points.length - 1]];
-}
-
+// descartan lecturas de mala precision y "saltos" imposibles a pie, se
+// suaviza con un promedio exponencial, y ya no se baja de 10m entre puntos
+// guardados (piso anti-ruido). NO se ajusta a la red vial (asi lo hacen
+// Strava/Garmin/AllTrails para caminatas). Aplicarle ADEMAS un promedio
+// movil y Douglas-Peucker aca al dibujar quitaba demasiado detalle real y
+// dejaba la linea "cuadriculada" en vez de la curva real caminada -- por
+// eso ya no se le hace nada mas al trazo antes de dibujarlo.
 function limpiarTrazoParaDibujar(points) {
-  if (!Array.isArray(points) || points.length < 3) return points;
-  return douglasPeucker(suavizarPromedioMovil(points), 6);
+  return points;
 }
 
 const tableMissing = (err, tableName) => {

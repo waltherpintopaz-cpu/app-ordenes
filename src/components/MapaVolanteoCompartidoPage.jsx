@@ -49,48 +49,10 @@ function splitTrailByGaps(points) {
   }
   return segments.filter((s) => s.length > 1);
 }
-function suavizarPromedioMovil(points) {
-  if (!Array.isArray(points) || points.length < 3) return points;
-  return points.map((p, i) => {
-    const prev = points[Math.max(0, i - 1)];
-    const next = points[Math.min(points.length - 1, i + 1)];
-    return { ...p, lat: (prev.lat + p.lat + next.lat) / 3, lng: (prev.lng + p.lng + next.lng) / 3 };
-  });
-}
-function distanciaPerpendicularM(pt, a, b) {
-  const lat0 = a.lat;
-  const toXY = (p) => ({
-    x: (p.lng * Math.PI) / 180 * 6371000 * Math.cos((lat0 * Math.PI) / 180),
-    y: (p.lat * Math.PI) / 180 * 6371000,
-  });
-  const P = toXY(pt), A = toXY(a), B = toXY(b);
-  const dx = B.x - A.x, dy = B.y - A.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return Math.hypot(P.x - A.x, P.y - A.y);
-  const t = ((P.x - A.x) * dx + (P.y - A.y) * dy) / len2;
-  return Math.hypot(P.x - (A.x + t * dx), P.y - (A.y + t * dy));
-}
-function douglasPeucker(points, epsilonM) {
-  if (points.length < 3) return points;
-  let maxDist = 0;
-  let index = 0;
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const d = distanciaPerpendicularM(points[i], points[0], points[points.length - 1]);
-    if (d > maxDist) {
-      maxDist = d;
-      index = i;
-    }
-  }
-  if (maxDist > epsilonM) {
-    const left = douglasPeucker(points.slice(0, index + 1), epsilonM);
-    const right = douglasPeucker(points.slice(index), epsilonM);
-    return left.slice(0, -1).concat(right);
-  }
-  return [points[0], points[points.length - 1]];
-}
+// El punto ya viene suavizado y filtrado por ruido desde el origen -- ver
+// VolanteadorTrackingService.kt (EMA + piso anti-ruido de 10m).
 function limpiarTrazoParaDibujar(points) {
-  if (!Array.isArray(points) || points.length < 3) return points;
-  return douglasPeucker(suavizarPromedioMovil(points), 6);
+  return points;
 }
 
 const loadGoogleMapsSdk = () => {
