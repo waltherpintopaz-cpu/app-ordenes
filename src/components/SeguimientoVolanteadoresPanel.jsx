@@ -630,6 +630,39 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     };
   }, []);
 
+  const grupos = useMemo(() => {
+    const set = new Set(volanteadores.map((v) => v.grupo));
+    return ["TODOS", ...Array.from(set).sort()];
+  }, [volanteadores]);
+
+  const volanteadoresVisibles = useMemo(() => {
+    if (grupoFiltro === "TODOS") return volanteadores;
+    return volanteadores.filter((v) => v.grupo === grupoFiltro);
+  }, [volanteadores, grupoFiltro]);
+
+  const currentById = useMemo(() => {
+    const map = {};
+    currentRows.forEach((row) => {
+      map[parseId(row.tecnico_id)] = row;
+    });
+    return map;
+  }, [currentRows]);
+
+  const filas = useMemo(() => {
+    return volanteadoresVisibles
+      .map((v) => {
+        const pos = currentById[v.id];
+        const stats = statsByVolanteador[v.id] || null;
+        const staleMin = pos ? Math.floor((Date.now() - new Date(pos.updated_at).getTime()) / 60000) : Infinity;
+        return { ...v, pos, stats, staleMin };
+      })
+      .sort((a, b) => {
+        const ta = a.pos ? new Date(a.pos.updated_at).getTime() : 0;
+        const tb = b.pos ? new Date(b.pos.updated_at).getTime() : 0;
+        return tb - ta;
+      });
+  }, [volanteadoresVisibles, currentById, statsByVolanteador]);
+
   const cargarTramosManuales = useCallback(async (targetDate = statsDate) => {
     const { data, error: err } = await supabase
       .from("volanteo_tramos_manuales")
@@ -816,39 +849,6 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       setRefreshing(false);
     }
   }, [cargarPosicionesActuales, cargarEstadisticasYRutas, statsDate]);
-
-  const grupos = useMemo(() => {
-    const set = new Set(volanteadores.map((v) => v.grupo));
-    return ["TODOS", ...Array.from(set).sort()];
-  }, [volanteadores]);
-
-  const volanteadoresVisibles = useMemo(() => {
-    if (grupoFiltro === "TODOS") return volanteadores;
-    return volanteadores.filter((v) => v.grupo === grupoFiltro);
-  }, [volanteadores, grupoFiltro]);
-
-  const currentById = useMemo(() => {
-    const map = {};
-    currentRows.forEach((row) => {
-      map[parseId(row.tecnico_id)] = row;
-    });
-    return map;
-  }, [currentRows]);
-
-  const filas = useMemo(() => {
-    return volanteadoresVisibles
-      .map((v) => {
-        const pos = currentById[v.id];
-        const stats = statsByVolanteador[v.id] || null;
-        const staleMin = pos ? Math.floor((Date.now() - new Date(pos.updated_at).getTime()) / 60000) : Infinity;
-        return { ...v, pos, stats, staleMin };
-      })
-      .sort((a, b) => {
-        const ta = a.pos ? new Date(a.pos.updated_at).getTime() : 0;
-        const tb = b.pos ? new Date(b.pos.updated_at).getTime() : 0;
-        return tb - ta;
-      });
-  }, [volanteadoresVisibles, currentById, statsByVolanteador]);
 
   // Color unico por persona dentro del grupo filtrado: se asigna por
   // posicion en una lista ordenada por id (estable entre refrescos), no por
