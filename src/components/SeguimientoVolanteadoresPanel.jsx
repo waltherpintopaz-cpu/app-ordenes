@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
+import { PERFILES_REGISTRO, PERFIL_DEFECTO } from "../utils/volanteoPerfiles";
 
 const GOOGLE_MAPS_API_KEY = String(
   import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
@@ -167,14 +168,19 @@ const calcularCobertura = (poly, puntos) => {
 // (pausa, o cualquier corte de GPS) -- para no dibujar una linea recta
 // "fantasma" uniendo el punto de antes de pausar con el de despues de
 // reanudar (esa distancia nunca fue caminada, se desconoce el trayecto).
-const splitTrailByGaps = (points) => {
+// maxDistM: igual que "Distancia maxima" de Geo Tracker -- si dos puntos
+// consecutivos quedan mas lejos que esto, tambien se corta el tramo, aunque
+// no haya pasado mucho tiempo (ej. parado sin moverse un buen rato no corta
+// por distancia, pero un salto grande sin explicacion de tiempo si).
+const splitTrailByGaps = (points, maxDistM = PERFIL_DEFECTO.distancia_maxima_m) => {
   if (!Array.isArray(points) || points.length === 0) return [];
   const segments = [[points[0]]];
   for (let i = 1; i < points.length; i += 1) {
     const prevTime = new Date(points[i - 1].created_at).getTime();
     const currTime = new Date(points[i].created_at).getTime();
     const gapSec = Number.isFinite(prevTime) && Number.isFinite(currTime) ? (currTime - prevTime) / 1000 : 0;
-    if (gapSec > MAX_GAP_FOR_SEGMENT_SEC) segments.push([]);
+    const distM = haversineMeters(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+    if (gapSec > MAX_GAP_FOR_SEGMENT_SEC || distM > maxDistM) segments.push([]);
     segments[segments.length - 1].push(points[i]);
   }
   return segments.filter((s) => s.length > 1);
@@ -337,6 +343,86 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [tramoPuntos, setTramoPuntos] = useState([]);
   const [tramoTecnicoId, setTramoTecnicoId] = useState("");
   const [guardandoTramo, setGuardandoTramo] = useState(false);
+
+  // Ajustes de registro GPS (perfil Geo Tracker-like), compartidos con la
+  // app movil via la misma fila (volanteo_config_registro, id=1).
+  const [ajustesAbiertos, setAjustesAbiertos] = useState(false);
+  const [ajustesCargando, setAjustesCargando] = useState(false);
+  const [ajustesGuardando, setAjustesGuardando] = useState(false);
+  const [ajustesError, setAjustesError] = useState("");
+  const [cfgPerfil, setCfgPerfil] = useState("personalizado");
+  const [cfgFrecuencia, setCfgFrecuencia] = useState(String(PERFIL_DEFECTO.frecuencia_seg));
+  const [cfgPrecision, setCfgPrecision] = useState(String(PERFIL_DEFECTO.precision_m));
+  const [cfgDistMin, setCfgDistMin] = useState(String(PERFIL_DEFECTO.distancia_minima_m));
+  const [cfgDistMax, setCfgDistMax] = useState(String(PERFIL_DEFECTO.distancia_maxima_m));
+  const [cfgFiltrado, setCfgFiltrado] = useState(true);
+  // Solo la distancia maxima de corte se usa fuera del modal (para dibujar
+  // el mapa) -- se mantiene sincronizada por separado, sin esperar a que se
+  // abra el modal de ajustes.
+  const [distMaxCorteM, setDistMaxCorteM] = useState(PERFIL_DEFECTO.distancia_maxima_m);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("volanteo_config_registro").select("distancia_maxima_m").eq("id", 1).maybeSingle();
+      if (data?.distancia_maxima_m) setDistMaxCorteM(Number(data.distancia_maxima_m));
+    })();
+  }, []);
+
+  const abrirAjustesRegistro = useCallback(async () => {
+    setAjustesAbiertos(true);
+    setAjustesCargando(true);
+    setAjustesError("");
+    try {
+      const { data } = await supabase.from("volanteo_config_registro").select("*").eq("id", 1).maybeSingle();
+      const cfg = data || PERFIL_DEFECTO;
+      setCfgPerfil(cfg.perfil || "personalizado");
+      setCfgFrecuencia(String(cfg.frecuencia_seg ?? PERFIL_DEFECTO.frecuencia_seg));
+      setCfgPrecision(String(cfg.precision_m ?? PERFIL_DEFECTO.precision_m));
+      setCfgDistMin(String(cfg.distancia_minima_m ?? PERFIL_DEFECTO.distancia_minima_m));
+      setCfgDistMax(String(cfg.distancia_maxima_m ?? PERFIL_DEFECTO.distancia_maxima_m));
+      setCfgFiltrado(cfg.filtrado_adicional !== false);
+    } catch (e) {
+      setAjustesError(String(e?.message || "No se pudo cargar la configuración."));
+    } finally {
+      setAjustesCargando(false);
+    }
+  }, []);
+
+  const elegirPerfilRegistro = useCallback((key) => {
+    setCfgPerfil(key);
+    if (key === "personalizado") return;
+    const p = PERFILES_REGISTRO[key];
+    if (!p) return;
+    setCfgFrecuencia(String(p.frecuencia_seg));
+    setCfgPrecision(String(p.precision_m));
+    setCfgDistMin(String(p.distancia_minima_m));
+    setCfgDistMax(String(p.distancia_maxima_m));
+    setCfgFiltrado(p.filtrado_adicional);
+  }, []);
+
+  const guardarAjustesRegistro = useCallback(async () => {
+    setAjustesGuardando(true);
+    setAjustesError("");
+    try {
+      const { error: err } = await supabase.from("volanteo_config_registro").upsert({
+        id: 1,
+        perfil: cfgPerfil,
+        frecuencia_seg: Number(cfgFrecuencia) || PERFIL_DEFECTO.frecuencia_seg,
+        precision_m: Number(cfgPrecision) || PERFIL_DEFECTO.precision_m,
+        distancia_minima_m: Number(cfgDistMin) || PERFIL_DEFECTO.distancia_minima_m,
+        distancia_maxima_m: Number(cfgDistMax) || PERFIL_DEFECTO.distancia_maxima_m,
+        filtrado_adicional: cfgFiltrado,
+        actualizado_en: new Date().toISOString(),
+        actualizado_por: sessionUser?.nombre || null,
+      });
+      if (err) throw err;
+      setAjustesAbiertos(false);
+    } catch (e) {
+      setAjustesError(String(e?.message || "No se pudo guardar."));
+    } finally {
+      setAjustesGuardando(false);
+    }
+  }, [cfgPerfil, cfgFrecuencia, cfgPrecision, cfgDistMin, cfgDistMax, cfgFiltrado, sessionUser]);
 
   const [supervisores, setSupervisores] = useState([]);
   const [compartiendoUbicacion, setCompartiendoUbicacion] = useState(false);
@@ -972,9 +1058,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     const visibleIds = new Set(filas.map((f) => f.id));
     Object.entries(trailById).forEach(([id, pts]) => {
       if (!visibleIds.has(id)) return;
-      // Se corta en tramos donde hubo un hueco grande (pausa) para no dibujar
-      // una linea recta "fantasma" entre pausar y reanudar.
-      const segmentosCrudos = splitTrailByGaps(pts);
+      // Se corta en tramos donde hubo un hueco grande de tiempo o de
+      // distancia (pausa, o salto sin explicacion) para no dibujar una linea
+      // recta "fantasma".
+      const segmentosCrudos = splitTrailByGaps(pts, distMaxCorteM);
       segmentosCrudos.forEach((seg) => {
         const path = limpiarTrazoParaDibujar(seg);
         // Aislado en su propio try/catch: un tramo con datos raros no debe
@@ -1076,7 +1163,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales]);
+  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales, distMaxCorteM]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -1110,7 +1197,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     const placemarks = conRuta
       .map(([id, pts]) => {
         const nombre = filas.find((f) => f.id === id)?.nombre || id;
-        const segmentosCrudos = splitTrailByGaps(pts);
+        const segmentosCrudos = splitTrailByGaps(pts, distMaxCorteM);
         const lineStrings = segmentosCrudos
           .map((seg) => {
             const path = limpiarTrazoParaDibujar(seg);
@@ -1131,7 +1218,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, [trailById, filas, statsDate, grupoFiltro]);
+  }, [trailById, filas, statsDate, grupoFiltro, distMaxCorteM]);
 
   const compartirResumenWhatsapp = useCallback(() => {
     const texto = [
@@ -1403,6 +1490,13 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             ✏️ Rellenar hueco a mano
           </button>
         ) : null}
+        <button
+          type="button"
+          onClick={abrirAjustesRegistro}
+          style={{ background: "#374151", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          ⚙️ Ajustes de registro GPS
+        </button>
       </div>
 
       {dibujandoTramo ? (
@@ -1763,6 +1857,98 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   </button>
                   <button type="button" className="secondary-btn small" onClick={() => void copiarEnlaceCompartirVista()}>
                     {compartirVistaCopiado ? "✓ Copiado" : "📋 Copiar enlace"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {ajustesAbiertos ? (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
+          }}
+          onClick={() => setAjustesAbiertos(false)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto" }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4, color: "#1e293b" }}>⚙️ Ajustes de registro GPS</h3>
+            <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 14 }}>
+              Configuración compartida para todo el equipo de volanteo (igual que los perfiles de Geo Tracker). El celular la
+              revisa cada minuto y se aplica sin que el volanteador tenga que reabrir la app.
+            </p>
+
+            {ajustesCargando ? (
+              <p style={{ textAlign: "center", color: "#94a3b8", padding: "20px 0" }}>Cargando...</p>
+            ) : (
+              <>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Perfil</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, marginBottom: 14 }}>
+                  {[
+                    { key: "preciso", label: "Preciso" },
+                    { key: "general", label: "General" },
+                    { key: "ahorro", label: "Ahorro de batería" },
+                    { key: "ahorro_max", label: "Ahorro máximo" },
+                    { key: "personalizado", label: "Personalizado" },
+                  ].map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => elegirPerfilRegistro(p.key)}
+                      style={{
+                        padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1.5px solid ${cfgPerfil === p.key ? "#111827" : "#e2e8f0"}`,
+                        background: cfgPerfil === p.key ? "#F3F4F6" : "#fff",
+                        color: cfgPerfil === p.key ? "#111827" : "#64748b",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {[
+                  { label: "Frecuencia de registro (segundos)", value: cfgFrecuencia, set: setCfgFrecuencia, hint: "Cada cuánto se le pide posición al GPS." },
+                  { label: "Distancia mínima (metros)", value: cfgDistMin, set: setCfgDistMin, hint: "Distancia mínima entre puntos guardados en la ruta." },
+                  { label: "Distancia máxima (metros)", value: cfgDistMax, set: setCfgDistMax, hint: "Si dos puntos quedan más lejos que esto, se corta el tramo." },
+                  { label: "Precisión GPS (metros)", value: cfgPrecision, set: setCfgPrecision, hint: "Si la precisión es peor que esto, se ignora esa lectura." },
+                ].map((f) => (
+                  <div key={f.label} style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{f.label}</label>
+                    <input
+                      type="number"
+                      value={f.value}
+                      onChange={(e) => f.set(e.target.value)}
+                      disabled={cfgPerfil !== "personalizado"}
+                      style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 8px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13 }}
+                    />
+                    <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0" }}>{f.hint}</p>
+                  </div>
+                ))}
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#475569", marginTop: 6, cursor: cfgPerfil === "personalizado" ? "pointer" : "default" }}>
+                  <input type="checkbox" checked={cfgFiltrado} disabled={cfgPerfil !== "personalizado"} onChange={(e) => setCfgFiltrado(e.target.checked)} />
+                  Filtrado adicional (suavizado)
+                </label>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 14px" }}>
+                  Suaviza el ruido normal del GPS. Recomendado solo en el perfil "Preciso".
+                </p>
+
+                {ajustesError ? <p className="warn-text" style={{ marginTop: 0 }}>{ajustesError}</p> : null}
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="secondary-btn small" onClick={() => setAjustesAbiertos(false)} disabled={ajustesGuardando}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void guardarAjustesRegistro()}
+                    disabled={ajustesGuardando}
+                    style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                  >
+                    {ajustesGuardando ? "Guardando..." : "Guardar para todo el equipo"}
                   </button>
                 </div>
               </>
