@@ -13,7 +13,9 @@ const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 // posicion en la lista visible, no por hash — ver colorMap mas abajo).
 const TRAIL_COLORS = [
   "#EA580C", "#0891B2", "#7C3AED", "#16A34A", "#DB2777", "#CA8A04",
-  "#1E4F9C", "#DC2626", "#059669", "#4F46E5", "#0D9488", "#EC4899"
+  "#1E4F9C", "#DC2626", "#059669", "#4F46E5", "#0D9488", "#EC4899",
+  "#65A30D", "#9333EA", "#0EA5E9", "#F97316", "#BE185D", "#15803D",
+  "#6366F1", "#A16207", "#0F766E", "#C026D3", "#B91C1C", "#166534"
 ];
 const TRAIL_MAX_POINTS = 400;
 const MAX_SEGMENT_SECONDS = 300;
@@ -859,6 +861,18 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     });
     return map;
   }, [filas]);
+  // Si el grupo visible tiene mas personas que colores en la paleta, el
+  // color se repite (modulo) -- se marca aca para poder avisarlo (opacidad
+  // reducida) en vez de que se confundan silenciosamente dos personas del
+  // mismo color.
+  const colorRepetidoMap = useMemo(() => {
+    const idsOrdenados = [...filas.map((f) => f.id)].sort();
+    const map = {};
+    idsOrdenados.forEach((id, i) => {
+      map[id] = i >= TRAIL_COLORS.length;
+    });
+    return map;
+  }, [filas]);
   const avatarById = useMemo(() => {
     const map = {};
     filas.forEach((f) => { map[f.id] = f.avatar; });
@@ -873,6 +887,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       return esColorValido(av) ? av : colorMap[pid] || TRAIL_COLORS[0];
     },
     [colorMap, avatarById]
+  );
+  // El color repetido solo aplica al color "de grupo" (no al elegido a
+  // mano, que es responsabilidad de la persona que lo eligio).
+  const colorRepetidoDe = useCallback(
+    (id) => {
+      const pid = parseId(id);
+      return !esColorValido(avatarById[pid]) && !!colorRepetidoMap[pid];
+    },
+    [colorRepetidoMap, avatarById]
   );
 
   // Todos los puntos de ruta de las personas visibles (el grupo cubre la
@@ -1065,24 +1088,27 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       const heading = Number(f.pos.heading);
       const rumbo = Number.isFinite(heading) && heading >= 0 ? heading : 0;
       const color = esColorValido(f.avatar) ? f.avatar : colorDe(f.id);
+      const colorRepetido = colorRepetidoDe(f.id);
       // Flecha de direccion (como el puntero de navegacion de Google Maps)
       // rotada segun el rumbo GPS — siempre se ve completa porque es un
-      // simbolo vectorial, no una imagen recortada.
+      // simbolo vectorial, no una imagen recortada. Contorno grueso (blanco
+      // + un anillo oscuro afuera) para que no se confunda con la linea de
+      // ruta del mismo color por debajo.
       const icon = {
         path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: f.id === selectedId ? 7.5 : 6,
+        scale: f.id === selectedId ? 8 : 6.5,
         rotation: rumbo,
         fillColor: color,
         fillOpacity: 1,
-        strokeColor: "#fff",
-        strokeWeight: 1.6,
+        strokeColor: "#1F2937",
+        strokeWeight: 3.2,
       };
       try {
         const marker = new maps.Marker({
           map,
           position: { lat, lng },
-          title: `${f.nombre} — ${f.grupo}`,
-          opacity: f.staleMin > 20 ? 0.55 : 1,
+          title: `${f.nombre} — ${f.grupo}${colorRepetido ? " (color repetido: hay mas personas que colores en este grupo)" : ""}`,
+          opacity: f.staleMin > 20 ? 0.55 : colorRepetido ? 0.75 : 1,
           icon,
           zIndex: f.id === selectedId ? 999 : 1,
         });
@@ -1126,7 +1152,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales, distMaxCorteM]);
+  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales, distMaxCorteM, colorRepetidoDe]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -1673,14 +1699,17 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span
+                    title={colorRepetidoDe(f.id) ? "Color repetido: hay más personas que colores en este grupo" : ""}
                     style={{
                       width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
                       background: esColorValido(f.avatar) ? f.avatar : colorDe(f.id),
                       border: "2px solid #fff", boxShadow: "0 0 0 1px #E5E7EB",
+                      opacity: colorRepetidoDe(f.id) ? 0.6 : 1,
                     }}
                   />
                   <p className="maptech-row-title" style={{ margin: 0 }}>
                     {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
+                    {colorRepetidoDe(f.id) ? <span style={{ marginLeft: 6, fontSize: 10, color: "#DC2626", fontWeight: 700 }}>color repetido</span> : null}
                   </p>
                 </div>
                 <p className="maptech-row-meta">

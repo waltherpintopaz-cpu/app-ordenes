@@ -8,7 +8,9 @@ const GOOGLE_MAPS_API_KEY = String(
 const REFRESH_MS = 20_000;
 const TRAIL_COLORS = [
   "#EA580C", "#0891B2", "#7C3AED", "#16A34A", "#DB2777", "#CA8A04",
-  "#1E4F9C", "#DC2626", "#059669", "#4F46E5", "#0D9488", "#EC4899"
+  "#1E4F9C", "#DC2626", "#059669", "#4F46E5", "#0D9488", "#EC4899",
+  "#65A30D", "#9333EA", "#0EA5E9", "#F97316", "#BE185D", "#15803D",
+  "#6366F1", "#A16207", "#0F766E", "#C026D3", "#B91C1C", "#166534"
 ];
 const TRAIL_MAX_POINTS = 400;
 const MAX_GAP_FOR_SEGMENT_SEC = 180;
@@ -301,12 +303,12 @@ export default function MapaVolanteoCompartidoPage() {
           title: `${f.nombre} — ${f.grupo}`,
           icon: {
             path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 6,
+            scale: 6.5,
             rotation: rumbo,
             fillColor: color,
             fillOpacity: 1,
-            strokeColor: "#fff",
-            strokeWeight: 1.6,
+            strokeColor: "#1F2937",
+            strokeWeight: 3.2,
           },
         });
         markersRef.current.push(marker);
