@@ -85,7 +85,7 @@ const calcularEstadisticaDia = (rows) => {
     const currTime = new Date(points[i].created_at).getTime();
     if (!Number.isFinite(prevTime) || !Number.isFinite(currTime)) continue;
     const realDtSec = (currTime - prevTime) / 1000;
-    if (realDtSec <= 0 || realDtSec > MAX_GAP_FOR_SEGMENT_SEC) continue;
+    if (points[i].source === "session_start" || realDtSec <= 0 || realDtSec > MAX_GAP_FOR_SEGMENT_SEC) continue;
     const dt = Math.min(Math.floor(realDtSec), MAX_SEGMENT_SECONDS);
     const lat1 = Number(points[i - 1].lat);
     const lng1 = Number(points[i - 1].lng);
@@ -184,7 +184,11 @@ const splitTrailByGaps = (points, maxDistM = PERFIL_DEFECTO.distancia_maxima_m) 
     const currTime = new Date(points[i].created_at).getTime();
     const gapSec = Number.isFinite(prevTime) && Number.isFinite(currTime) ? (currTime - prevTime) / 1000 : 0;
     const distM = haversineMeters(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
-    if (gapSec > MAX_GAP_FOR_SEGMENT_SEC || distM > maxDistM) segments.push([]);
+    // "session_start" = primer punto tras iniciar o reanudar de una pausa
+    // (ver VolanteadorTrackingService.kt) -- se corta SIEMPRE ahi, sin
+    // depender de adivinar por tiempo/distancia (que fallaba con pausas
+    // cortas o saltos chicos de posicion).
+    if (points[i].source === "session_start" || gapSec > MAX_GAP_FOR_SEGMENT_SEC || distM > maxDistM) segments.push([]);
     segments[segments.length - 1].push(points[i]);
   }
   return segments.filter((s) => s.length > 1);
@@ -700,7 +704,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       for (let from = 0; from < 50000; from += PAGE) {
         const { data: pagina, error: err } = await supabase
           .from("tecnico_ubicaciones")
-          .select("tecnico_id,lat,lng,accuracy_m,created_at")
+          .select("tecnico_id,lat,lng,accuracy_m,created_at,source")
           .eq("tecnico_rol", "Volanteador")
           .in("tecnico_id", ids)
           .gte("created_at", start.toISOString())
@@ -727,7 +731,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       Object.entries(grouped).forEach(([id, rows]) => {
         stats[id] = calcularEstadisticaDia(rows);
         const pts = rows
-          .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), accuracy_m: r.accuracy_m, created_at: r.created_at }))
+          .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), accuracy_m: r.accuracy_m, created_at: r.created_at, source: r.source }))
           .filter((p) => isValidCoord(p.lat, p.lng));
         trailsCrudos[id] = pts.length > TRAIL_MAX_POINTS ? pts.slice(pts.length - TRAIL_MAX_POINTS) : pts;
       });

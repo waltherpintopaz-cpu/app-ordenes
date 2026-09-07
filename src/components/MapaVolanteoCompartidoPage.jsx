@@ -44,7 +44,7 @@ function splitTrailByGaps(points) {
     const prevTime = new Date(points[i - 1].created_at).getTime();
     const currTime = new Date(points[i].created_at).getTime();
     const gapSec = Number.isFinite(prevTime) && Number.isFinite(currTime) ? (currTime - prevTime) / 1000 : 0;
-    if (gapSec > MAX_GAP_FOR_SEGMENT_SEC) segments.push([]);
+    if (points[i].source === "session_start" || gapSec > MAX_GAP_FOR_SEGMENT_SEC) segments.push([]);
     segments[segments.length - 1].push(points[i]);
   }
   return segments.filter((s) => s.length > 1);
@@ -140,7 +140,7 @@ export default function MapaVolanteoCompartidoPage() {
     for (let from = 0; from < 50000; from += PAGE) {
       const { data: pagina, error: err } = await supabase
         .from("tecnico_ubicaciones")
-        .select("tecnico_id,lat,lng,created_at")
+        .select("tecnico_id,lat,lng,created_at,source")
         .in("tecnico_id", ids)
         .gte("created_at", start.toISOString())
         .order("created_at", { ascending: true })
@@ -156,7 +156,7 @@ export default function MapaVolanteoCompartidoPage() {
       const lat = Number(row.lat), lng = Number(row.lng);
       if (!id || !isValidCoord(lat, lng)) return;
       if (!grouped[id]) grouped[id] = [];
-      grouped[id].push({ lat, lng, created_at: row.created_at });
+      grouped[id].push({ lat, lng, created_at: row.created_at, source: row.source });
     });
     Object.keys(grouped).forEach((id) => {
       if (grouped[id].length > TRAIL_MAX_POINTS) grouped[id] = grouped[id].slice(grouped[id].length - TRAIL_MAX_POINTS);
