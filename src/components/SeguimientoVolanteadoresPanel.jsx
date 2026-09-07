@@ -332,6 +332,19 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     })();
   }, []);
 
+  // Lista de "recorridos" (tramos) del volanteador seleccionado, estilo
+  // Geo Tracker: cada sesion de rastreo separada (el corte ya lo da
+  // splitTrailByGaps via source==="session_start"/hueco), con su propia
+  // distancia y duracion, para poder ocultar/enfocar cada una por separado.
+  const [tramosPanelAbierto, setTramosPanelAbierto] = useState(false);
+  const [tramosOcultos, setTramosOcultos] = useState(() => new Set());
+  const [tramoEnfocado, setTramoEnfocado] = useState(null);
+
+  useEffect(() => {
+    setTramosOcultos(new Set());
+    setTramoEnfocado(null);
+  }, [selectedId]);
+
   const abrirAjustesRegistro = useCallback(async () => {
     setAjustesAbiertos(true);
     setAjustesCargando(true);
@@ -934,6 +947,48 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
 
   const marcadores = filas.filter((f) => f.pos && isValidCoord(Number(f.pos.lat), Number(f.pos.lng)));
 
+  const tramosSeleccionado = useMemo(() => {
+    if (!selectedId) return [];
+    const pts = trailById[selectedId] || [];
+    return splitTrailByGaps(pts, distMaxCorteM).map((seg, idx) => {
+      let distanciaM = 0;
+      for (let i = 1; i < seg.length; i += 1) {
+        distanciaM += haversineMeters(seg[i - 1].lat, seg[i - 1].lng, seg[i].lat, seg[i].lng);
+      }
+      const inicio = seg[0]?.created_at;
+      const fin = seg[seg.length - 1]?.created_at;
+      return {
+        key: `${selectedId}-${idx}-${inicio || idx}`,
+        seg,
+        distanciaM,
+        inicio,
+        fin,
+        duracionSec: Math.max(0, (new Date(fin).getTime() - new Date(inicio).getTime()) / 1000),
+      };
+    });
+  }, [trailById, selectedId, distMaxCorteM]);
+
+  const toggleTramoOculto = useCallback((key) => {
+    setTramosOcultos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const enfocarTramo = useCallback((t) => {
+    setTramoEnfocado((prev) => (prev === t.key ? null : t.key));
+    if (!mapRef.current || !mapsRef.current || t.seg.length === 0) return;
+    if (t.seg.length === 1) {
+      mapRef.current.panTo({ lat: Number(t.seg[0].lat), lng: Number(t.seg[0].lng) });
+      mapRef.current.setZoom(17);
+      return;
+    }
+    const bounds = new mapsRef.current.LatLngBounds();
+    t.seg.forEach((p) => bounds.extend({ lat: Number(p.lat), lng: Number(p.lng) }));
+    mapRef.current.fitBounds(bounds);
+  }, []);
+
   const fitMap = useCallback(() => {
     if (!mapRef.current || !mapsRef.current) return;
     const coords = marcadores.map((f) => ({ lat: Number(f.pos.lat), lng: Number(f.pos.lng) }));
@@ -1043,6 +1098,50 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     const visibleIds = new Set(filas.map((f) => f.id));
     Object.entries(trailById).forEach(([id, pts]) => {
       if (!visibleIds.has(id)) return;
+      if (id === selectedId) {
+        // El volanteador seleccionado se dibuja tramo por tramo (uno por
+        // sesion de rastreo) para poder ocultar/enfocar cada uno desde el
+        // panel de "Recorridos", igual que la lista de viajes de Geo Tracker.
+        tramosSeleccionado.forEach((t) => {
+          if (tramosOcultos.has(t.key)) return;
+          const atenuado = tramoEnfocado && tramoEnfocado !== t.key;
+          try {
+            const line = new maps.Polyline({
+              map,
+              path: t.seg,
+              strokeColor: colorDe(id),
+              strokeOpacity: atenuado ? 0.25 : 0.9,
+              strokeWeight: 4,
+            });
+            polylinesRef.current.push(line);
+            const inicioMarker = new maps.Marker({
+              map,
+              position: { lat: Number(t.seg[0].lat), lng: Number(t.seg[0].lng) },
+              icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#2563EB", fillOpacity: atenuado ? 0.35 : 1, strokeColor: "#fff", strokeWeight: 2 },
+              title: `Inicio: ${formatDateTime(t.inicio)}`,
+              zIndex: 20,
+            });
+            const finMarker = new maps.Marker({
+              map,
+              position: { lat: Number(t.seg[t.seg.length - 1].lat), lng: Number(t.seg[t.seg.length - 1].lng) },
+              icon: {
+                path: "M -5,-5 5,-5 5,5 -5,5 z",
+                scale: 1,
+                fillColor: "#DC2626",
+                fillOpacity: atenuado ? 0.35 : 1,
+                strokeColor: "#fff",
+                strokeWeight: 2,
+              },
+              title: `Fin: ${formatDateTime(t.fin)}`,
+              zIndex: 20,
+            });
+            markersRef.current.push(inicioMarker, finMarker);
+          } catch (e) {
+            console.warn("No se pudo dibujar un tramo de la ruta de", id, e);
+          }
+        });
+        return;
+      }
       // Se corta en tramos donde hubo un hueco grande de tiempo o de
       // distancia (pausa, o salto sin explicacion) para no dibujar una linea
       // recta "fantasma".
@@ -1151,7 +1250,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales, distMaxCorteM, colorRepetidoDe]);
+  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales, distMaxCorteM, colorRepetidoDe, tramosSeleccionado, tramosOcultos, tramoEnfocado]);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
@@ -1600,7 +1699,54 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   </button>
                 </>
               ) : null}
+              <button type="button" className="secondary-btn small" onClick={() => setTramosPanelAbierto((v) => !v)}>
+                🧭 {tramosPanelAbierto ? "Ocultar recorridos" : `Recorridos (${tramosSeleccionado.length})`}
+              </button>
             </div>
+            {tramosPanelAbierto ? (
+              <div style={{ marginTop: 10, borderTop: "1px solid #E5E7EB", paddingTop: 8, maxHeight: 220, overflowY: "auto" }}>
+                {tramosSeleccionado.length === 0 ? (
+                  <p style={{ fontSize: 12, color: "#9CA3AF", margin: 0 }}>Sin recorridos registrados en la fecha seleccionada.</p>
+                ) : (
+                  tramosSeleccionado.map((t, idx) => {
+                    const oculto = tramosOcultos.has(t.key);
+                    const enfocado = tramoEnfocado === t.key;
+                    return (
+                      <div
+                        key={t.key}
+                        onClick={() => enfocarTramo(t)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                          padding: "6px 4px", cursor: "pointer", borderRadius: 6,
+                          background: enfocado ? "#EFF6FF" : "transparent",
+                        }}
+                      >
+                        <div style={{ opacity: oculto ? 0.4 : 1 }}>
+                          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#374151" }}>
+                            Tramo {idx + 1} · {formatDateTime(t.inicio).split(" ").pop()} - {formatDateTime(t.fin).split(" ").pop()}
+                          </p>
+                          <p style={{ margin: 0, fontSize: 11, color: "#9CA3AF" }}>
+                            {(t.distanciaM / 1000).toFixed(2)} km · {formatDuration(t.duracionSec)}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          style={{ padding: "2px 8px" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTramoOculto(t.key);
+                          }}
+                          title={oculto ? "Mostrar en el mapa" : "Ocultar del mapa"}
+                        >
+                          {oculto ? "🙈" : "👁️"}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
           </article>
         ) : null}
       </div>
