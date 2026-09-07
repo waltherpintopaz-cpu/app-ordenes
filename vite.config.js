@@ -8,16 +8,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       external: ["net","tls","crypto","fs","path","os","events","stream","util","buffer","http","https","zlib","url","querystring","assert","child_process"],
-      output: {
-        manualChunks: {
-          "react-vendor":   ["react","react-dom"],
-          "charts":         ["recharts"],
-          "pdf":            ["jspdf","jspdf-autotable"],
-          "map":            ["leaflet","react-leaflet"],
-          "supabase":       ["@supabase/supabase-js"],
-          "xlsx":           ["xlsx"],
-        },
-      },
     },
   },
   server: {
