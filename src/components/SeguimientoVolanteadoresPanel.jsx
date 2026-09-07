@@ -17,7 +17,6 @@ const TRAIL_COLORS = [
   "#65A30D", "#9333EA", "#0EA5E9", "#F97316", "#BE185D", "#15803D",
   "#6366F1", "#A16207", "#0F766E", "#C026D3", "#B91C1C", "#166534"
 ];
-const TRAIL_MAX_POINTS = 400;
 const MAX_SEGMENT_SECONDS = 300;
 const STOP_SPEED_THRESHOLD_MPS = 0.6;
 
@@ -768,7 +767,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         const pts = rows
           .map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), accuracy_m: r.accuracy_m, created_at: r.created_at, source: r.source }))
           .filter((p) => isValidCoord(p.lat, p.lng));
-        trailsCrudos[id] = pts.length > TRAIL_MAX_POINTS ? pts.slice(pts.length - TRAIL_MAX_POINTS) : pts;
+        trailsCrudos[id] = pts;
       });
       setStatsByVolanteador(stats);
       setTrailById(trailsCrudos);

@@ -12,7 +12,6 @@ const TRAIL_COLORS = [
   "#65A30D", "#9333EA", "#0EA5E9", "#F97316", "#BE185D", "#15803D",
   "#6366F1", "#A16207", "#0F766E", "#C026D3", "#B91C1C", "#166534"
 ];
-const TRAIL_MAX_POINTS = 400;
 const MAX_GAP_FOR_SEGMENT_SEC = 180;
 
 const toText = (value) => String(value ?? "").trim();
@@ -159,9 +158,6 @@ export default function MapaVolanteoCompartidoPage() {
       if (!id || !isValidCoord(lat, lng)) return;
       if (!grouped[id]) grouped[id] = [];
       grouped[id].push({ lat, lng, created_at: row.created_at, source: row.source });
-    });
-    Object.keys(grouped).forEach((id) => {
-      if (grouped[id].length > TRAIL_MAX_POINTS) grouped[id] = grouped[id].slice(grouped[id].length - TRAIL_MAX_POINTS);
     });
     setTrailById(grouped);
   }, []);
