@@ -472,13 +472,23 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   }, [compartirVistaLink]);
 
   const cargarVolanteadores = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from("usuarios")
-      .select("id,nombre,celular,activo,grupo_volanteo,alias_volanteo,avatar_volanteo")
-      .eq("rol", "Volanteador")
-      .eq("activo", true)
-      .limit(2000);
-    if (err) throw err;
+    // Supabase/PostgREST limita cada consulta a 1000 filas por defecto sin
+    // importar el .limit() pedido -- se pagina para no perder volanteadores
+    // en silencio si el equipo llega a superar esa cantidad.
+    const PAGE = 1000;
+    let data = [];
+    for (let from = 0; from < 20000; from += PAGE) {
+      const { data: pagina, error: err } = await supabase
+        .from("usuarios")
+        .select("id,nombre,celular,activo,grupo_volanteo,alias_volanteo,avatar_volanteo")
+        .eq("rol", "Volanteador")
+        .eq("activo", true)
+        .range(from, from + PAGE - 1);
+      if (err) throw err;
+      const rows = Array.isArray(pagina) ? pagina : [];
+      data = data.concat(rows);
+      if (rows.length < PAGE) break;
+    }
     setVolanteadores(
       (Array.isArray(data) ? data : []).map((u) => ({
         id: parseId(u.id),
@@ -548,16 +558,25 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   }, [grupoFiltro, statsDate, cargarZonasAsignadas]);
 
   const cargarPosicionesActuales = useCallback(async () => {
-    const { data, error: err } = await supabase
-      .from("tecnico_ubicacion_actual")
-      .select("*")
-      .eq("tecnico_rol", "Volanteador")
-      .limit(2000);
-    if (err) {
-      if (tableMissing(err, "tecnico_ubicacion_actual")) return;
-      throw err;
+    // Mismo tope de 1000 filas de PostgREST -- se pagina por si el equipo
+    // supera esa cantidad de volanteadores con posicion actual.
+    const PAGE = 1000;
+    let data = [];
+    for (let from = 0; from < 20000; from += PAGE) {
+      const { data: pagina, error: err } = await supabase
+        .from("tecnico_ubicacion_actual")
+        .select("*")
+        .eq("tecnico_rol", "Volanteador")
+        .range(from, from + PAGE - 1);
+      if (err) {
+        if (tableMissing(err, "tecnico_ubicacion_actual")) return;
+        throw err;
+      }
+      const rows = Array.isArray(pagina) ? pagina : [];
+      data = data.concat(rows);
+      if (rows.length < PAGE) break;
     }
-    setCurrentRows(Array.isArray(data) ? data : []);
+    setCurrentRows(data);
   }, []);
 
   // Supervisores compartiendo su ubicacion en vivo (sin ruta -- solo

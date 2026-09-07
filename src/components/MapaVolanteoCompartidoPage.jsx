@@ -108,14 +108,24 @@ export default function MapaVolanteoCompartidoPage() {
   }, [token]);
 
   const cargarVolanteadores = useCallback(async (grupo) => {
-    let query = supabase
-      .from("usuarios")
-      .select("id,nombre,grupo_volanteo,alias_volanteo,avatar_volanteo")
-      .eq("rol", "Volanteador")
-      .eq("activo", true)
-      .limit(2000);
-    if (grupo) query = query.eq("grupo_volanteo", grupo);
-    const { data } = await query;
+    // Supabase/PostgREST limita cada consulta a 1000 filas por defecto sin
+    // importar el .limit() pedido -- se pagina para no perder volanteadores
+    // en silencio si el equipo llega a superar esa cantidad.
+    const PAGE = 1000;
+    let data = [];
+    for (let from = 0; from < 20000; from += PAGE) {
+      let query = supabase
+        .from("usuarios")
+        .select("id,nombre,grupo_volanteo,alias_volanteo,avatar_volanteo")
+        .eq("rol", "Volanteador")
+        .eq("activo", true)
+        .range(from, from + PAGE - 1);
+      if (grupo) query = query.eq("grupo_volanteo", grupo);
+      const { data: pagina } = await query;
+      const rows = Array.isArray(pagina) ? pagina : [];
+      data = data.concat(rows);
+      if (rows.length < PAGE) break;
+    }
     setVolanteadores(
       (Array.isArray(data) ? data : []).map((u) => ({
         id: toText(u.id),
@@ -128,8 +138,19 @@ export default function MapaVolanteoCompartidoPage() {
 
   const cargarPosiciones = useCallback(async (ids) => {
     if (!ids.length) { setCurrentRows([]); return; }
-    const { data } = await supabase.from("tecnico_ubicacion_actual").select("*").in("tecnico_id", ids);
-    setCurrentRows(Array.isArray(data) ? data : []);
+    const PAGE = 1000;
+    let data = [];
+    for (let from = 0; from < 20000; from += PAGE) {
+      const { data: pagina } = await supabase
+        .from("tecnico_ubicacion_actual")
+        .select("*")
+        .in("tecnico_id", ids)
+        .range(from, from + PAGE - 1);
+      const rows = Array.isArray(pagina) ? pagina : [];
+      data = data.concat(rows);
+      if (rows.length < PAGE) break;
+    }
+    setCurrentRows(data);
   }, []);
 
   const cargarRutas = useCallback(async (ids) => {
