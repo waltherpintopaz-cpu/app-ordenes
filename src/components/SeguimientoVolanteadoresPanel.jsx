@@ -18,7 +18,6 @@ const TRAIL_COLORS = [
 const TRAIL_MAX_POINTS = 400;
 const MAX_SEGMENT_SECONDS = 300;
 const STOP_SPEED_THRESHOLD_MPS = 0.6;
-const STOP_DISTANCE_THRESHOLD_M = 12;
 
 const toText = (value) => String(value ?? "").trim();
 const parseId = (value) => toText(value);
@@ -95,7 +94,12 @@ const calcularEstadisticaDia = (rows) => {
     if (!isValidCoord(lat1, lng1) || !isValidCoord(lat2, lng2)) continue;
     const dMeters = haversineMeters(lat1, lng1, lat2, lng2);
     const speed = dMeters / Math.max(1, dt);
-    const isStop = speed <= STOP_SPEED_THRESHOLD_MPS || dMeters <= STOP_DISTANCE_THRESHOLD_M;
+    // Solo la velocidad decide si esta "detenido" -- los puntos ya vienen
+    // filtrados por distancia minima desde el origen (perfil de registro),
+    // asi que exigir tambien una distancia minima aca rechazaba de mas
+    // tramos realmente caminados cuando ese minimo es chico (perfil
+    // "Preciso").
+    const isStop = speed <= STOP_SPEED_THRESHOLD_MPS;
     if (isStop) detenido += dt;
     else {
       caminando += dt;
@@ -835,7 +839,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     const id = setInterval(() => {
       void cargarPosicionesActuales();
       void cargarSupervisores();
-    }, 20000);
+    }, 5000);
     return () => clearInterval(id);
   }, [cargarPosicionesActuales, cargarSupervisores]);
 
