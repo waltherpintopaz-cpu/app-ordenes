@@ -320,6 +320,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [cfgDistMin, setCfgDistMin] = useState(String(PERFIL_DEFECTO.distancia_minima_m));
   const [cfgDistMax, setCfgDistMax] = useState(String(PERFIL_DEFECTO.distancia_maxima_m));
   const [cfgFiltrado, setCfgFiltrado] = useState(true);
+  const [cfgAutoAhorro, setCfgAutoAhorro] = useState(false);
   // Solo la distancia maxima de corte se usa fuera del modal (para dibujar
   // el mapa) -- se mantiene sincronizada por separado, sin esperar a que se
   // abra el modal de ajustes.
@@ -358,6 +359,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       setCfgDistMin(String(cfg.distancia_minima_m ?? PERFIL_DEFECTO.distancia_minima_m));
       setCfgDistMax(String(cfg.distancia_maxima_m ?? PERFIL_DEFECTO.distancia_maxima_m));
       setCfgFiltrado(cfg.filtrado_adicional !== false);
+      setCfgAutoAhorro(cfg.auto_ahorro_bateria_habilitado === true);
     } catch (e) {
       setAjustesError(String(e?.message || "No se pudo cargar la configuración."));
     } finally {
@@ -389,6 +391,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         distancia_minima_m: Number(cfgDistMin) || PERFIL_DEFECTO.distancia_minima_m,
         distancia_maxima_m: Number(cfgDistMax) || PERFIL_DEFECTO.distancia_maxima_m,
         filtrado_adicional: cfgFiltrado,
+        auto_ahorro_bateria_habilitado: cfgAutoAhorro,
         actualizado_en: new Date().toISOString(),
         actualizado_por: sessionUser?.nombre || null,
       });
@@ -399,9 +402,29 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     } finally {
       setAjustesGuardando(false);
     }
-  }, [cfgPerfil, cfgFrecuencia, cfgPrecision, cfgDistMin, cfgDistMax, cfgFiltrado, sessionUser]);
+  }, [cfgPerfil, cfgFrecuencia, cfgPrecision, cfgDistMin, cfgDistMax, cfgFiltrado, cfgAutoAhorro, sessionUser]);
 
   const [supervisores, setSupervisores] = useState([]);
+  // Power banks compartidos del equipo (2 de 25k + 1 de 10k) -- para ver
+  // quien lo tiene ahora y, si alguien se olvido de liberarlo, poder
+  // liberarlo desde el navegador.
+  const [powerBanks, setPowerBanks] = useState([]);
+  const cargarPowerBanks = useCallback(async () => {
+    const { data } = await supabase.from("volanteo_power_banks").select("*").order("capacidad_mah", { ascending: false });
+    setPowerBanks(Array.isArray(data) ? data : []);
+  }, []);
+  const liberarPowerBank = useCallback(async (id) => {
+    await supabase.from("volanteo_power_banks").update({ tecnico_id: null, tecnico_nombre: null, actualizado_en: new Date().toISOString() }).eq("id", id);
+    await cargarPowerBanks();
+  }, [cargarPowerBanks]);
+  useEffect(() => {
+    void cargarPowerBanks();
+    const channel = supabase
+      .channel("volanteo_power_banks_admin")
+      .on("postgres_changes", { event: "*", schema: "public", table: "volanteo_power_banks" }, () => void cargarPowerBanks())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [cargarPowerBanks]);
   const [compartiendoUbicacion, setCompartiendoUbicacion] = useState(false);
   const [geoError, setGeoError] = useState("");
   const geoWatchIdRef = useRef(null);
@@ -1848,6 +1871,29 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         )}
       </section>
 
+      {powerBanks.length > 0 ? (
+        <section className="maptech-list-card">
+          <h3>🔋 Power banks del equipo</h3>
+          <div className="maptech-list">
+            {powerBanks.map((pb) => (
+              <div key={pb.id} className="maptech-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13 }}>{pb.nombre}</p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#6B7280" }}>
+                    {pb.tecnico_id ? `Lo tiene ${pb.tecnico_nombre || "alguien"}` : "Libre — nadie lo tiene ahora"}
+                  </p>
+                </div>
+                {pb.tecnico_id ? (
+                  <button type="button" className="secondary-btn small" onClick={() => void liberarPowerBank(pb.id)}>
+                    Liberar
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="maptech-list-card">
         <h3>Volanteadores ({filas.length})</h3>
         <div className="maptech-list">
@@ -2090,6 +2136,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                 </label>
                 <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 14px" }}>
                   Suaviza el ruido normal del GPS. Recomendado solo en el perfil "Preciso".
+                </p>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#475569", marginTop: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfgAutoAhorro} onChange={(e) => setCfgAutoAhorro(e.target.checked)} />
+                  Ahorro automático con batería baja
+                </label>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 14px" }}>
+                  Si el celular de un volanteador baja de 20% de batería, ese teléfono cambia solo a "Ahorro de
+                  batería" hasta conseguir un power bank o recuperar carga (no afecta al resto del equipo).
                 </p>
 
                 {ajustesError ? <p className="warn-text" style={{ marginTop: 0 }}>{ajustesError}</p> : null}
