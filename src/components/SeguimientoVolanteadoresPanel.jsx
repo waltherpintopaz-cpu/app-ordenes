@@ -1714,6 +1714,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                     <strong style={{ color: Number(selectedRow.pos.battery_pct) <= 15 ? "#DC2626" : Number(selectedRow.pos.battery_pct) <= 30 ? "#D97706" : "#374151" }}>
                       {Math.round(Number(selectedRow.pos.battery_pct))}%
                     </strong>
+                    {selectedRow.pos.is_charging ? <span style={{ marginLeft: 4 }} title="Cargando ahora (probablemente tiene un power bank)">⚡</span> : null}
                   </p>
                 ) : null}
               </>
@@ -1926,7 +1927,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   {f.pos ? `Ultimo ping: ${formatDateTime(f.pos.updated_at)} (${formatAgo(f.pos.updated_at)})` : "Sin ubicacion hoy."}
                   {f.pos && Number.isFinite(Number(f.pos.battery_pct)) ? (
                     <span style={{ marginLeft: 8, fontWeight: 700, color: Number(f.pos.battery_pct) <= 15 ? "#DC2626" : Number(f.pos.battery_pct) <= 30 ? "#D97706" : "#6B7280" }}>
-                      🔋 {Math.round(Number(f.pos.battery_pct))}%
+                      🔋 {Math.round(Number(f.pos.battery_pct))}%{f.pos.is_charging ? " ⚡" : ""}
                     </span>
                   ) : null}
                 </p>
