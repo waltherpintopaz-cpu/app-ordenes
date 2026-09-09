@@ -61,6 +61,42 @@ const formatDuration = (totalSeconds) => {
   return `${m}m`;
 };
 const isValidCoord = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+// Duracion del deslizamiento del marcador en vivo entre una posicion y la
+// siguiente -- da la sensacion de movimiento continuo (como Uber/Geo
+// Tracker) aunque el dato real llegue de golpe cada varios segundos. Es
+// puramente visual: nunca se guarda ni se usa para calcular ruta/distancia.
+const ANIM_MARCADOR_MS = 900;
+function animarMarcadorLiveA(entry, destino) {
+  if (entry.rafId) {
+    cancelAnimationFrame(entry.rafId);
+    entry.rafId = null;
+  }
+  const marker = entry.marker;
+  const origen = marker.getPosition();
+  if (!origen) {
+    marker.setPosition(destino);
+    return;
+  }
+  const desdeLat = origen.lat();
+  const desdeLng = origen.lng();
+  // Si el punto no se movio (o el salto es enorme -- un tramo nuevo tras un
+  // hueco largo) no tiene sentido animar: se aplica directo.
+  const distM = haversineMeters(desdeLat, desdeLng, destino.lat, destino.lng);
+  if (distM < 0.5 || distM > 300) {
+    marker.setPosition(destino);
+    return;
+  }
+  const inicio = performance.now();
+  const paso = (ahora) => {
+    const t = Math.min(1, (ahora - inicio) / ANIM_MARCADOR_MS);
+    marker.setPosition({
+      lat: desdeLat + (destino.lat - desdeLat) * t,
+      lng: desdeLng + (destino.lng - desdeLng) * t,
+    });
+    entry.rafId = t < 1 ? requestAnimationFrame(paso) : null;
+  };
+  entry.rafId = requestAnimationFrame(paso);
+}
 const haversineMeters = (lat1, lng1, lat2, lng2) => {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const R = 6371000;
@@ -261,6 +297,12 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
+  // Marcadores en vivo (volanteadores y supervisores) -- a diferencia de
+  // markersRef (rutas/tramos, que se destruyen y redibujan enteros en cada
+  // cambio), estos se reutilizan y se deslizan de una posicion a otra con
+  // animacion en vez de saltar de golpe. Mapa id -> { marker, rafId }.
+  const liveMarkersRef = useRef(new Map());
+  const supervisorMarkersRef = useRef(new Map());
   const polylinesRef = useRef([]);
   const zonaPolygonsRef = useRef([]);
   const autoFitDoneRef = useRef(false);
@@ -1222,9 +1264,32 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       }
     });
 
+    if (!selectedId && filas.length > 0) setSelectedId(filas[0].id);
+  }, [filas, trailById, selectedId, tramosManuales, distMaxCorteM, tramosSeleccionado, tramosOcultos, tramoEnfocado]);
+
+  // Marcadores en vivo (volanteadores + supervisores): efecto aparte del de
+  // arriba porque estos NO se destruyen y redibujan de cero en cada cambio
+  // -- se reutiliza el mismo marker y se desliza a su nueva posicion con
+  // animarMarcadorLiveA (ver definicion al inicio del archivo), en vez de
+  // saltar de golpe cada vez que llega una posicion nueva por realtime/poll.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+
+    const vivos = liveMarkersRef.current;
+    const idsActuales = new Set(marcadores.map((f) => f.id));
+    vivos.forEach((entry, id) => {
+      if (idsActuales.has(id)) return;
+      if (entry.rafId) cancelAnimationFrame(entry.rafId);
+      entry.marker.setMap(null);
+      vivos.delete(id);
+    });
+
     marcadores.forEach((f) => {
       const lat = Number(f.pos.lat);
       const lng = Number(f.pos.lng);
+      if (!isValidCoord(lat, lng)) return;
       const heading = Number(f.pos.heading);
       const rumbo = Number.isFinite(heading) && heading >= 0 ? heading : 0;
       const color = esColorValido(f.avatar) ? f.avatar : colorDe(f.id);
@@ -1243,56 +1308,107 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         strokeColor: "#1F2937",
         strokeWeight: 3.2,
       };
-      try {
-        const marker = new maps.Marker({
-          map,
-          position: { lat, lng },
-          title: `${f.nombre} — ${f.grupo}${colorRepetido ? " (color repetido: hay mas personas que colores en este grupo)" : ""}`,
-          opacity: f.staleMin > 20 ? 0.55 : colorRepetido ? 0.75 : 1,
-          icon,
-          zIndex: f.id === selectedId ? 999 : 1,
-        });
-        marker.addListener("click", () => setSelectedId(f.id));
-        markersRef.current.push(marker);
-      } catch (e) {
-        console.warn("No se pudo dibujar el marcador de", f.id, e);
+      const titulo = `${f.nombre} — ${f.grupo}${colorRepetido ? " (color repetido: hay mas personas que colores en este grupo)" : ""}`;
+      const opacidad = f.staleMin > 20 ? 0.55 : colorRepetido ? 0.75 : 1;
+      let entry = vivos.get(f.id);
+      if (!entry) {
+        try {
+          const marker = new maps.Marker({
+            map,
+            position: { lat, lng },
+            title: titulo,
+            opacity: opacidad,
+            icon,
+            zIndex: f.id === selectedId ? 999 : 1,
+          });
+          marker.addListener("click", () => setSelectedId(f.id));
+          vivos.set(f.id, { marker, rafId: null });
+        } catch (e) {
+          console.warn("No se pudo dibujar el marcador de", f.id, e);
+        }
+        return;
       }
+      // Icono/titulo/opacidad se aplican directo (no necesitan animarse);
+      // solo la posicion se desliza para que el movimiento se vea continuo.
+      entry.marker.setIcon(icon);
+      entry.marker.setTitle(titulo);
+      entry.marker.setOpacity(opacidad);
+      entry.marker.setZIndex(f.id === selectedId ? 999 : 1);
+      animarMarcadorLiveA(entry, { lat, lng });
     });
 
-    // Supervisores compartiendo ubicacion en vivo -- nunca tienen ruta (no se
-    // les guarda historial), solo un marcador distinto (circulo con "S").
-    supervisores.forEach((s) => {
-      const lat = Number(s.lat);
-      const lng = Number(s.lng);
-      if (!isValidCoord(lat, lng)) return;
-      try {
-        const marker = new maps.Marker({
-          map,
-          position: { lat, lng },
-          title: `Supervisor: ${s.tecnico_nombre || s.tecnico_id}`,
-          icon: {
-            path: maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: "#111827",
-            fillOpacity: 1,
-            strokeColor: "#fff",
-            strokeWeight: 2,
-          },
-          label: { text: "S", color: "#fff", fontSize: "11px", fontWeight: "700" },
-          zIndex: 1000,
-        });
-        markersRef.current.push(marker);
-      } catch (e) {
-        console.warn("No se pudo dibujar el marcador del supervisor", s.tecnico_id, e);
-      }
-    });
-
-    if (!selectedId && filas.length > 0) setSelectedId(filas[0].id);
     if (marcadores.length > 0 && !autoFitDoneRef.current) {
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [filas, trailById, marcadores, selectedId, fitMap, supervisores, tramosManuales, distMaxCorteM, colorRepetidoDe, tramosSeleccionado, tramosOcultos, tramoEnfocado]);
+  }, [marcadores, selectedId, colorRepetidoDe, colorDe, fitMap]);
+
+  // Supervisores compartiendo ubicacion en vivo -- nunca tienen ruta (no se
+  // les guarda historial), solo un marcador distinto (circulo con "S"), pero
+  // se anima igual que los volanteadores para evitar el mismo salto visual.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+
+    const vivos = supervisorMarkersRef.current;
+    const idsActuales = new Set(supervisores.map((s) => s.tecnico_id));
+    vivos.forEach((entry, id) => {
+      if (idsActuales.has(id)) return;
+      if (entry.rafId) cancelAnimationFrame(entry.rafId);
+      entry.marker.setMap(null);
+      vivos.delete(id);
+    });
+
+    supervisores.forEach((s) => {
+      const lat = Number(s.lat);
+      const lng = Number(s.lng);
+      if (!isValidCoord(lat, lng)) return;
+      let entry = vivos.get(s.tecnico_id);
+      if (!entry) {
+        try {
+          const marker = new maps.Marker({
+            map,
+            position: { lat, lng },
+            title: `Supervisor: ${s.tecnico_nombre || s.tecnico_id}`,
+            icon: {
+              path: maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: "#111827",
+              fillOpacity: 1,
+              strokeColor: "#fff",
+              strokeWeight: 2,
+            },
+            label: { text: "S", color: "#fff", fontSize: "11px", fontWeight: "700" },
+            zIndex: 1000,
+          });
+          vivos.set(s.tecnico_id, { marker, rafId: null });
+        } catch (e) {
+          console.warn("No se pudo dibujar el marcador del supervisor", s.tecnico_id, e);
+        }
+        return;
+      }
+      animarMarcadorLiveA(entry, { lat, lng });
+    });
+  }, [supervisores]);
+
+  // Limpieza al desmontar el panel -- cancela animaciones en curso y saca
+  // del mapa los marcadores en vivo (los de rutas/tramos ya se limpian solos
+  // en el efecto de arriba en cada re-ejecucion).
+  useEffect(() => {
+    return () => {
+      liveMarkersRef.current.forEach((entry) => {
+        if (entry.rafId) cancelAnimationFrame(entry.rafId);
+        entry.marker.setMap(null);
+      });
+      liveMarkersRef.current.clear();
+      supervisorMarkersRef.current.forEach((entry) => {
+        if (entry.rafId) cancelAnimationFrame(entry.rafId);
+        entry.marker.setMap(null);
+      });
+      supervisorMarkersRef.current.clear();
+    };
+  }, []);
 
   // Zona(s) de volanteo asignadas al grupo/fecha filtrado -- se dibujan como
   // el contorno/relleno que ya traen desde zonas_cobertura.
