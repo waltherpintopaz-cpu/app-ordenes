@@ -969,6 +969,9 @@ function deserializeOrderFromSupabase(row = {}) {
     fechaCancelacion: String(row.fecha_cancelacion || "").trim(),
     fechaCreacion: formatFechaFlexible(row.fecha_creacion || row.created_at || ""),
     fecha_creacion: String(row.fecha_creacion || row.created_at || "").trim(),
+    // Marca informativa desde la app movil: tecnico ya hizo el trabajo pero
+    // aun no liquida (no reemplaza el flujo de liquidacion obligatorio).
+    atendidaSinLiquidarEn: row.atendida_sin_liquidar_en || null,
   };
 }
 
@@ -16901,10 +16904,16 @@ export default function App() {
                           )}
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: tipoBadge.bg, color: tipoBadge.color, border: `1px solid ${tipoBadge.border}` }}>{tipoBadge.label}</span>
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad || "Normal"}</span>
-                          <span style={getEstadoOperativoBadgeStyle(item.estado)}>
-                            {String(item.estado || "").toLowerCase().includes("proceso") && <span style={{ fontSize: 12 }}>⚙️</span>}
-                            {item.estado || "Pendiente"}
-                          </span>
+                          {enProceso && item.atendidaSinLiquidarEn ? (
+                            <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac" }} title="El tecnico marco el trabajo como atendido desde la app, pero aun no liquida la orden.">
+                              ✅ Atendida · falta liquidar
+                            </span>
+                          ) : (
+                            <span style={getEstadoOperativoBadgeStyle(item.estado)}>
+                              {enProceso && <span style={{ fontSize: 12 }}>⚙️</span>}
+                              {item.estado || "Pendiente"}
+                            </span>
+                          )}
                           {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>Vencida</span>}
                           {bloqueadoPorNodo && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#6b7280", border: "1px solid #d1d5db" }}>🔒 Sin acceso</span>}
                         </div>
