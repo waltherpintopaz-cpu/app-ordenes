@@ -16916,8 +16916,12 @@ export default function App() {
                   const listaTec = gruposPorTecnico[tecNombre];
                   const abierto = !!tecnicoGruposAbiertos[tecNombre];
                   const vencidasTec = listaTec.filter(esVencidaAhora).length;
-                  const enProcesoTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso")).length;
+                  // "En proceso" y "Atendida" no deben solaparse: una orden atendida
+                  // sigue con estado "En Proceso" en la base, pero para el gestor son
+                  // dos cosas distintas -- "en proceso" es lo que todavia se esta
+                  // trabajando, "atendida" ya se hizo y solo falta el papeleo.
                   const atendidasTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !!o.atendidaSinLiquidarEn).length;
+                  const enProcesoTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !o.atendidaSinLiquidarEn).length;
                   return (
                     <div key={tecNombre} style={{ border: "1px solid #e8edf5", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff" }}>
                       <button
