@@ -12368,6 +12368,50 @@ export default function App() {
     return `https://maps.google.com/maps?q=${encodeURIComponent(coords)}&z=16&output=embed`;
   }, [orden.ubicacion]);
 
+  // Misma cadena de filtros que ordenesPendientesFiltradas pero SIN aplicar
+  // filtroTipoOrden -- se usa como base para los contadores de las pestañas
+  // de tipo, para que "Incidencias (N)" siga mostrando el total real de
+  // incidencias aunque la pestaña activa sea otra (si se usara la lista ya
+  // filtrada por tipo, los conteos de las demas pestañas saldrian mal).
+  const ordenesPendientesFiltradasSinTipo = useMemo(() => {
+    const q = busquedaPendientes.trim().toLowerCase();
+
+    let lista = ordenes.filter((item) => esEstadoOperativoOrden(item?.estado));
+
+    if (nombresGrupoTecnicoLower) {
+      lista = lista.filter((o) => nombresGrupoTecnicoLower.has(String(o.tecnico || "").trim().toLowerCase()));
+    }
+
+    if (filtroTecnico === "SIN") {
+      lista = lista.filter((o) => !o.tecnico);
+    }
+
+    if (filtroTecnico !== "TODOS" && filtroTecnico !== "SIN") {
+      lista = lista.filter((o) => o.tecnico === filtroTecnico);
+    }
+
+    if (filtroNodoPendientes !== "TODOS") {
+      lista = lista.filter((o) => String(o.nodo || "").trim() === filtroNodoPendientes);
+    }
+
+    if (!q) return lista;
+
+    return lista.filter((item) => {
+      return (
+        safeIncludes(item.codigo, q) ||
+        safeIncludes(item.dni, q) ||
+        safeIncludes(item.nombre, q) ||
+        safeIncludes(item.celular, q) ||
+        safeIncludes(item.direccion, q) ||
+        safeIncludes(item.usuarioNodo, q) ||
+        safeIncludes(item.nodo, q) ||
+        safeIncludes(item.tecnico, q) ||
+        safeIncludes(item.autorOrden, q) ||
+        safeIncludes(item.orden, q)
+      );
+    });
+  }, [ordenes, nombresGrupoTecnicoLower, filtroTecnico, filtroNodoPendientes, busquedaPendientes]);
+
   const ordenesPendientesFiltradas = useMemo(() => {
     const q = busquedaPendientes.trim().toLowerCase();
 
@@ -16765,6 +16809,11 @@ export default function App() {
             if (va !== vb) return vb - va;
             return gruposPorTecnico[b].length - gruposPorTecnico[a].length;
           });
+          // Resumen global -- para no tener que sumar mentalmente cada grupo
+          // de tecnico para saber el panorama completo del dia.
+          const vencidasGlobal = ordenesDiaSeleccionado.filter(esVencidaAhora).length;
+          const atendidasGlobal = ordenesDiaSeleccionado.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !!o.atendidaSinLiquidarEn).length;
+          const tecnicosConVencidas = nombresTecnicosOrdenados.filter((t) => gruposPorTecnico[t].some(esVencidaAhora)).length;
 
           const [mesYear, mesMes] = calendarioMes.split("-").map(Number);
           const primerDia = new Date(mesYear, mesMes - 1, 1);
@@ -16790,12 +16839,12 @@ export default function App() {
                 {" "}<span style={{ fontWeight: "400", color: "#6b7280", fontSize: "14px" }}>({ordenesDiaSeleccionado.length})</span>
               </h2>
 
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "stretch" }}>
                 {/* Botón calendario con badge vencidas */}
-                <div style={{ position: "relative" }}>
+                <div style={{ position: "relative", display: "flex" }}>
                   <button
                     onClick={() => setCalendarioAbierto((v) => !v)}
-                    style={{ ...secondaryButton, display: "flex", alignItems: "center", gap: "6px", background: calendarioAbierto ? "#e8eef8" : "#fff" }}
+                    style={{ ...secondaryButton, display: "flex", alignItems: "center", gap: "6px", background: calendarioAbierto ? "#e8eef8" : "#fff", height: "42px", padding: "0 16px", boxSizing: "border-box" }}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     {labelFecha}
@@ -16859,24 +16908,29 @@ export default function App() {
                   )}
                 </div>
 
-                <select style={{ ...inputStyle, maxWidth: "200px" }} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)}>
+                <select style={{ ...inputStyle, maxWidth: "200px", height: "42px", padding: "0 12px" }} value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)}>
                   <option value="TODOS">Todos los técnicos</option>
                   <option value="SIN">Sin técnico</option>
                   {tecnicosActivos.map((tec) => <option key={tec.id} value={tec.nombre}>{tec.nombre}</option>)}
                 </select>
-                <select style={{ ...inputStyle, maxWidth: "160px" }} value={filtroNodoPendientes} onChange={(e) => setFiltroNodoPendientes(e.target.value)}>
+                <select style={{ ...inputStyle, maxWidth: "160px", height: "42px", padding: "0 12px" }} value={filtroNodoPendientes} onChange={(e) => setFiltroNodoPendientes(e.target.value)}>
                   <option value="TODOS">Todos los nodos</option>
                   {[...new Set(ordenes.filter(o => esEstadoOperativoOrden(o?.estado) && o.nodo).map(o => String(o.nodo).trim()).filter(Boolean))].sort().map(nodo => (
                     <option key={nodo} value={nodo}>{nodo}</option>
                   ))}
                 </select>
-                <input style={{ ...inputStyle, maxWidth: "400px" }} value={busquedaPendientes} onChange={(e) => setBusquedaPendientes(e.target.value)} placeholder="Buscar por código, DNI, cliente..." />
+                <input style={{ ...inputStyle, maxWidth: "400px", minWidth: "220px", flex: 1, height: "42px", padding: "0 14px" }} value={busquedaPendientes} onChange={(e) => setBusquedaPendientes(e.target.value)} placeholder="Buscar por código, DNI, cliente..." />
               </div>
             </div>
 
-            {/* Filtros por tipo */}
+            {/* Filtros por tipo -- el conteo usa la lista SIN filtrar por tipo
+                (para que las demas pestañas no salgan en 0 cuando hay una
+                activa) y SI respeta la fecha elegida en el calendario, para
+                que estos numeros cuadren con la lista de abajo. */}
             {(() => {
-              const base = ordenesPendientesFiltradas;
+              const base = calendarioFecha
+                ? ordenesPendientesFiltradasSinTipo.filter((o) => String(o.fechaActuacion || "").slice(0, 10) === calendarioFecha)
+                : ordenesPendientesFiltradasSinTipo;
               const counts = {
                 TODOS:         base.length,
                 PENDIENTE:     base.filter(o => String(o.estado||"").toLowerCase() === "pendiente").length,
@@ -16908,6 +16962,23 @@ export default function App() {
               );
             })()}
 
+            {/* Resumen global del dia seleccionado */}
+            {(vencidasGlobal > 0 || atendidasGlobal > 0) && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 14px", marginBottom: 14, background: "#fafbff", border: "1px solid #e8edf5", borderRadius: 12 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>Resumen:</span>
+                {vencidasGlobal > 0 && (
+                  <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>
+                    ⚠️ {vencidasGlobal} vencida{vencidasGlobal === 1 ? "" : "s"} en {tecnicosConVencidas} técnico{tecnicosConVencidas === 1 ? "" : "s"}
+                  </span>
+                )}
+                {atendidasGlobal > 0 && (
+                  <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}>
+                    ✅ {atendidasGlobal} atendida{atendidasGlobal === 1 ? "" : "s"} sin liquidar
+                  </span>
+                )}
+              </div>
+            )}
+
             {ordenesDiaSeleccionado.length === 0 ? (
               <div style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
@@ -16917,7 +16988,10 @@ export default function App() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {nombresTecnicosOrdenados.map((tecNombre) => {
                   const listaTec = gruposPorTecnico[tecNombre];
-                  const abierto = !!tecnicoGruposAbiertos[tecNombre];
+                  // Con busqueda activa se despliegan todos los grupos automaticamente --
+                  // si no, el resultado queda "escondido" dentro de un grupo colapsado y
+                  // hay que abrirlo a mano para encontrarlo.
+                  const abierto = !!tecnicoGruposAbiertos[tecNombre] || !!busquedaPendientes.trim();
                   const vencidasTec = listaTec.filter(esVencidaAhora).length;
                   // "En proceso" y "Atendida" no deben solaparse: una orden atendida
                   // sigue con estado "En Proceso" en la base, pero para el gestor son
@@ -16991,6 +17065,14 @@ export default function App() {
                           {item.empresa === "DIM" && (
                             <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 6, overflow: "hidden", height: 22 }}>
                               <img src={logoDim} alt="DIM" style={{ height: 22, objectFit: "contain" }} />
+                            </span>
+                          )}
+                          {/* Fecha -- solo hace falta mostrarla cuando se ven ordenes de varios
+                              dias mezcladas (sin filtro de fecha activo); si ya se eligio un
+                              dia en el calendario, todas son del mismo dia y sobra. */}
+                          {!calendarioFecha && fechaTexto && (
+                            <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" }}>
+                              📅 {new Date(fechaTexto + "T00:00:00").toLocaleDateString("es-PE", { day: "numeric", month: "short" })}
                             </span>
                           )}
                           {/* HORA/prioridad ya no importan una vez atendida -- el tecnico no va a
