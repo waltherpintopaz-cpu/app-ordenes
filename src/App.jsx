@@ -2387,6 +2387,9 @@ export default function App() {
   // gestor vea la carga de cada uno de un vistazo (nombre + cantidad +
   // vencidas) sin tener que hacer scroll por las 100+ ordenes del dia.
   const [tecnicoGruposAbiertos, setTecnicoGruposAbiertos] = useState({});
+  // Menu "..." (Editar/Cancelar/Eliminar) por orden en Pendientes -- guarda
+  // el id de la orden cuyo menu esta abierto, null si ninguno.
+  const [accionesMenuAbiertoId, setAccionesMenuAbiertoId] = useState(null);
   const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
@@ -16953,8 +16956,25 @@ export default function App() {
                   const bloqueadoPorNodo = esGestorSesion && nodosAccesoGestoraSet.size > 0 && !!item.nodo && !tieneAccesoNodoSesion(item.nodo);
                   const enProceso = String(item.estado || "").toLowerCase().includes("proceso");
                   const atendida = enProceso && !!item.atendidaSinLiquidarEn;
+                  // Clic en cualquier parte de la tarjeta abre el detalle (Ver) --
+                  // es la accion mas usada, asi no hace falta un boton aparte para
+                  // eso. Las demas acciones (Editar/Cancelar/Eliminar) cortan la
+                  // propagacion para no disparar esto tambien.
+                  const abrirVer = async () => {
+                    if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; }
+                    setOrdenDetalle(item); setFotosOrdenDetalle([]);
+                    if (item.dni) {
+                      try {
+                        const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle();
+                        const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
+                        const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
+                        setFotosOrdenDetalle(todas);
+                      } catch (_) {}
+                    }
+                  };
                   return (
-                    <div key={item.id} style={{
+                    <div key={item.id} onClick={() => void abrirVer()} style={{
+                      cursor: "pointer",
                       background: atendida ? (isDark ? "#0f2e1f" : "#f0fdf4") : enProceso ? (isDark ? "#132b4d" : "#eff6ff") : (isDark ? "#1a2740" : "#fff"),
                       border: atendida ? "1px solid #86efac" : enProceso ? "1px solid #93c5fd" : (isDark ? "1px solid #2c3c58" : "1px solid #e8edf5"),
                       borderLeft: `4px solid ${atendida ? "#16a34a" : enProceso ? "#2563eb" : accentColor}`, borderRadius: 14, overflow: "hidden",
@@ -17007,18 +17027,32 @@ export default function App() {
                           {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>Vencida</span>}
                           {bloqueadoPorNodo && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#6b7280", border: "1px solid #d1d5db" }}>🔒 Sin acceso</span>}
                         </div>
-                        {/* Acciones principales */}
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                          <button onClick={async () => { if (bloqueadoPorNodo) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; } setOrdenDetalle(item); setFotosOrdenDetalle([]); if (item.dni) { try { const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle(); const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] }); const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))]; setFotosOrdenDetalle(todas); } catch (_) {} } }} style={{ padding: "5px 11px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", cursor: "pointer" }}>Ver</button>
-                          {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 11px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
+                        {/* Acciones principales -- clic en la tarjeta ya abre "Ver", asi que
+                            aca solo quedan las acciones que no son "revisar el detalle".
+                            stopPropagation para que clicks aca no disparen abrirVer(). */}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                           {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
                           {item?.snOnu && (HUAWEI_NODOS.includes(String(item?.nodo || "")) || OLT_SSH_NODOS.includes(String(item?.nodo || "")) || SMART_OLT_NODOS.includes(String(item?.nodo || ""))) && (
                             <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} title="Actualizar señal" style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                               📡 {pendSenalLoading[item.id] ? "..." : "Actualizar"}
                             </button>
                           )}
-                          {puedeCancelarOrden && !bloqueadoPorNodo && <button onClick={() => cancelarOrden(item.id)} style={{ padding: "5px 10px", background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", cursor: "pointer" }}>Cancelar</button>}
-                          {puedeEliminarOrden && !bloqueadoPorNodo && <button onClick={() => eliminarOrden(item.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>Eliminar</button>}
+                          {!bloqueadoPorNodo && (
+                            <div style={{ position: "relative" }}>
+                              <button
+                                onClick={() => setAccionesMenuAbiertoId((prev) => (prev === item.id ? null : item.id))}
+                                title="Mas acciones"
+                                style={{ width: 30, height: 30, borderRadius: 8, background: isDark ? "#16213a" : "#f8fafc", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", color: isDark ? "#c3d3ee" : "#374151", fontSize: 16, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                              >⋯</button>
+                              {accionesMenuAbiertoId === item.id && (
+                                <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 4px 16px rgba(15,23,42,0.15)", overflow: "hidden", minWidth: 130 }}>
+                                  <button onClick={() => { setAccionesMenuAbiertoId(null); editarOrden(item); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>✏️ Editar</button>
+                                  {puedeCancelarOrden && <button onClick={() => { setAccionesMenuAbiertoId(null); cancelarOrden(item.id); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", fontSize: 12, fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", cursor: "pointer" }}>🚫 Cancelar</button>}
+                                  {puedeEliminarOrden && <button onClick={() => { setAccionesMenuAbiertoId(null); eliminarOrden(item.id); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>🗑️ Eliminar</button>}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -17063,7 +17097,7 @@ export default function App() {
                             <div style={{ fontSize: 11, color: "#94a3b8" }}>Autor: {item.autorOrden}</div>
                           )}
                         </div>
-                        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                        <div style={{ display: "flex", gap: 5, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                           {!bloqueadoPorNodo && <button onClick={() => llamarCliente(item.celular)} title="Llamar" style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>📞</button>}
                           {!bloqueadoPorNodo && <button onClick={() => abrirWhatsApp(item.celular)} title="WhatsApp" style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#16a34a", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>💬</button>}
                           {!bloqueadoPorNodo && <button onClick={() => navegarRuta(item.ubicacion, item.direccion)} title="Navegar" style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗺️</button>}
