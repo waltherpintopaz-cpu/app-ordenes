@@ -17031,13 +17031,15 @@ export default function App() {
                             aca solo quedan las acciones que no son "revisar el detalle".
                             stopPropagation para que clicks aca no disparen abrirVer(). */}
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
-                          {puedeLiquidarOrden && !bloqueadoPorNodo && <button onClick={() => abrirLiquidacion(item)} style={{ padding: "5px 12px", background: "#16a34a", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#fff", cursor: "pointer" }}>Liquidar</button>}
+                          {/* Liquidar es tarea del tecnico, no del gestor -- se quita de esta
+                              vista para gestores/admin y se deja Editar como accion visible. */}
+                          {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 12px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
                           {item?.snOnu && (HUAWEI_NODOS.includes(String(item?.nodo || "")) || OLT_SSH_NODOS.includes(String(item?.nodo || "")) || SMART_OLT_NODOS.includes(String(item?.nodo || ""))) && (
                             <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} title="Actualizar señal" style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                               📡 {pendSenalLoading[item.id] ? "..." : "Actualizar"}
                             </button>
                           )}
-                          {!bloqueadoPorNodo && (
+                          {!bloqueadoPorNodo && (puedeCancelarOrden || puedeEliminarOrden) && (
                             <div style={{ position: "relative" }}>
                               <button
                                 onClick={() => setAccionesMenuAbiertoId((prev) => (prev === item.id ? null : item.id))}
@@ -17046,7 +17048,6 @@ export default function App() {
                               >⋯</button>
                               {accionesMenuAbiertoId === item.id && (
                                 <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20, background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 4px 16px rgba(15,23,42,0.15)", overflow: "hidden", minWidth: 130 }}>
-                                  <button onClick={() => { setAccionesMenuAbiertoId(null); editarOrden(item); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", fontSize: 12, fontWeight: 600, color: "#854d0e", cursor: "pointer" }}>✏️ Editar</button>
                                   {puedeCancelarOrden && <button onClick={() => { setAccionesMenuAbiertoId(null); cancelarOrden(item.id); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", fontSize: 12, fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", cursor: "pointer" }}>🚫 Cancelar</button>}
                                   {puedeEliminarOrden && <button onClick={() => { setAccionesMenuAbiertoId(null); eliminarOrden(item.id); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", fontSize: 12, fontWeight: 600, color: "#dc2626", cursor: "pointer" }}>🗑️ Eliminar</button>}
                                 </div>
