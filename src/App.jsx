@@ -16741,6 +16741,10 @@ export default function App() {
           // despliega el detalle de quien necesite revisar.
           const ahoraTs = Date.now();
           const esVencidaAhora = (o) => {
+            // Una orden ya "Atendida" no deberia seguir contando como vencida
+            // -- el trabajo ya se hizo, solo falta liquidar, asi que la hora
+            // que paso ya no es una alerta real.
+            if (String(o.estado || "").toLowerCase().includes("proceso") && o.atendidaSinLiquidarEn) return false;
             const fecha = String(o.fechaActuacion || "").slice(0, 10);
             const hora = String(o.hora || "").trim();
             if (!fecha || !hora) return false;
