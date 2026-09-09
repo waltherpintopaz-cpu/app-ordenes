@@ -2390,6 +2390,12 @@ export default function App() {
   // Menu "..." (Editar/Cancelar/Eliminar) por orden en Pendientes -- guarda
   // el id de la orden cuyo menu esta abierto, null si ninguno.
   const [accionesMenuAbiertoId, setAccionesMenuAbiertoId] = useState(null);
+  // Densidad de las tarjetas de Pendientes (comoda por defecto para el
+  // gestor, que suele necesitar leer mas datos por orden que un tecnico).
+  const [pendDensidadWeb, setPendDensidadWeb] = useState("comoda");
+  // Vista de Pendientes: lista agrupada por tecnico (por defecto) o tablero
+  // tipo kanban por estado, para ver el flujo completo del dia de un vistazo.
+  const [pendVistaModo, setPendVistaModo] = useState("lista");
   const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
@@ -16756,6 +16762,18 @@ export default function App() {
         )}
 
         {vistaActiva === "pendientes" && (() => {
+          // Paleta unificada para esta vista -- antes cada elemento nuevo
+          // traia su propio hex suelto (rojos/azules/verdes distintos entre
+          // si); ahora comparten roles fijos para que la pantalla se sienta
+          // como un solo diseño.
+          const PC = {
+            pendiente: "#d97706", pendienteBg: "#fff7ed", pendienteBorder: "#fed7aa",
+            proceso: "#2563eb", procesoBg: "#eff6ff", procesoBorder: "#93c5fd",
+            atendida: "#16a34a", atendidaBg: "#f0fdf4", atendidaBorder: "#86efac",
+            vencida: "#dc2626", vencidaBg: "#fef2f2", vencidaBorder: "#fca5a5",
+            neutro: "#64748b", neutroBg: "#f1f5f9", neutroBorder: "#e2e8f0",
+          };
+          const pendDensidadCompacta = pendDensidadWeb === "compacta";
           const today = todayIsoLocal();
           const ordenesPorDia = {};
           ordenesPendientesFiltradas.forEach((o) => {
@@ -16941,23 +16959,37 @@ export default function App() {
               };
               const tabs = [
                 { key: "TODOS",          label: "Total",          color: "#374151", bg: "#f3f4f6", activeBg: "#1e40af", activeColor: "#fff" },
-                { key: "PENDIENTE",      label: "Pendientes",     color: "#374151", bg: "#f3f4f6", activeBg: "#f59e0b", activeColor: "#fff" },
-                { key: "PROCESO",        label: "En proceso",     color: "#374151", bg: "#f3f4f6", activeBg: "#7c3aed", activeColor: "#fff" },
+                { key: "PENDIENTE",      label: "Pendientes",     color: "#374151", bg: "#f3f4f6", activeBg: PC.pendiente, activeColor: "#fff" },
+                { key: "PROCESO",        label: "En proceso",     color: "#374151", bg: "#f3f4f6", activeBg: PC.proceso, activeColor: "#fff" },
                 { key: "INCIDENCIA",     label: "Incidencias",    color: "#374151", bg: "#f3f4f6", activeBg: "#dc2626", activeColor: "#fff" },
                 { key: "ORDEN_SERVICIO", label: "Orden Servicio", color: "#374151", bg: "#f3f4f6", activeBg: "#1d4ed8", activeColor: "#fff" },
                 { key: "RECUPERACION",   label: "Recuperación",   color: "#374151", bg: "#f3f4f6", activeBg: "#16a34a", activeColor: "#fff" },
               ];
               return (
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-                  {tabs.map(({ key, label, activeBg, activeColor, bg, color }) => (
-                    <button
-                      key={key}
-                      onClick={() => setFiltroTipoOrden(key)}
-                      style={{ padding: "7px 14px", borderRadius: "999px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: "600", background: filtroTipoOrden === key ? activeBg : bg, color: filtroTipoOrden === key ? activeColor : color, transition: "all 0.15s" }}
-                    >
-                      {label} <span style={{ opacity: 0.8, fontWeight: "400" }}>({counts[key]})</span>
-                    </button>
-                  ))}
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {tabs.map(({ key, label, activeBg, activeColor, bg, color }) => (
+                      <button
+                        key={key}
+                        onClick={() => setFiltroTipoOrden(key)}
+                        style={{ padding: "7px 14px", borderRadius: "999px", border: "none", cursor: "pointer", fontSize: "13px", fontWeight: "600", background: filtroTipoOrden === key ? activeBg : bg, color: filtroTipoOrden === key ? activeColor : color, transition: "all 0.15s" }}
+                      >
+                        {label} <span style={{ opacity: 0.8, fontWeight: "400" }}>({counts[key]})</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+                      {[{ k: "lista", l: "☰ Lista" }, { k: "tablero", l: "▦ Tablero" }].map((v) => (
+                        <button key={v.k} onClick={() => setPendVistaModo(v.k)} style={{ padding: "6px 12px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, background: pendVistaModo === v.k ? "#1e40af" : "#fff", color: pendVistaModo === v.k ? "#fff" : "#374151" }}>{v.l}</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: 999, overflow: "hidden" }}>
+                      {[{ k: "comoda", l: "Cómoda" }, { k: "compacta", l: "Compacta" }].map((v) => (
+                        <button key={v.k} onClick={() => setPendDensidadWeb(v.k)} style={{ padding: "6px 12px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, background: pendDensidadWeb === v.k ? "#1e40af" : "#fff", color: pendDensidadWeb === v.k ? "#fff" : "#374151" }}>{v.l}</button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               );
             })()}
@@ -16967,19 +16999,76 @@ export default function App() {
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 14px", marginBottom: 14, background: "#fafbff", border: "1px solid #e8edf5", borderRadius: 12 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>Resumen:</span>
                 {vencidasGlobal > 0 && (
-                  <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>
+                  <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: PC.vencidaBg, color: PC.vencida, border: `1px solid ${PC.vencidaBorder}` }}>
                     ⚠️ {vencidasGlobal} vencida{vencidasGlobal === 1 ? "" : "s"} en {tecnicosConVencidas} técnico{tecnicosConVencidas === 1 ? "" : "s"}
                   </span>
                 )}
                 {atendidasGlobal > 0 && (
-                  <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}>
+                  <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: PC.atendidaBg, color: "#15803d", border: `1px solid ${PC.atendidaBorder}` }}>
                     ✅ {atendidasGlobal} atendida{atendidasGlobal === 1 ? "" : "s"} sin liquidar
                   </span>
                 )}
               </div>
             )}
 
-            {ordenesDiaSeleccionado.length === 0 ? (
+            {pendVistaModo === "tablero" ? (
+              (() => {
+                const abrirVerTablero = async (item) => {
+                  const bloqueado = esGestorSesion && nodosAccesoGestoraSet.size > 0 && !!item.nodo && !tieneAccesoNodoSesion(item.nodo);
+                  if (bloqueado) { alert(`No tienes permiso para ver el detalle de órdenes del nodo ${item.nodo}.`); return; }
+                  setOrdenDetalle(item); setFotosOrdenDetalle([]);
+                  if (item.dni) {
+                    try {
+                      const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle();
+                      const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
+                      const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
+                      setFotosOrdenDetalle(todas);
+                    } catch (_) {}
+                  }
+                };
+                const columnas = [
+                  { key: "pendiente", titulo: "Pendiente", color: PC.pendiente, bg: PC.pendienteBg, items: ordenesDiaSeleccionado.filter((o) => String(o.estado || "").toLowerCase() === "pendiente") },
+                  { key: "proceso", titulo: "En proceso", color: PC.proceso, bg: PC.procesoBg, items: ordenesDiaSeleccionado.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !o.atendidaSinLiquidarEn) },
+                  { key: "atendida", titulo: "Atendida · falta liquidar", color: PC.atendida, bg: PC.atendidaBg, items: ordenesDiaSeleccionado.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !!o.atendidaSinLiquidarEn) },
+                ];
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                    {columnas.map((col) => (
+                      <div key={col.key} style={{ background: "#f8fafc", border: "1px solid #e8edf5", borderRadius: 14, display: "flex", flexDirection: "column", maxHeight: 640 }}>
+                        <div style={{ padding: "10px 12px", borderBottom: `2px solid ${col.color}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontWeight: 800, fontSize: 13, color: col.color }}>{col.titulo}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 999, padding: "1px 8px" }}>{col.items.length}</span>
+                        </div>
+                        <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
+                          {col.items.length === 0 ? (
+                            <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, padding: "16px 0" }}>Sin órdenes</div>
+                          ) : col.items.map((item) => {
+                            const vencidaKanban = esVencidaAhora(item);
+                            return (
+                              <div
+                                key={item.id}
+                                onClick={() => void abrirVerTablero(item)}
+                                style={{ background: "#fff", border: `1px solid ${vencidaKanban ? PC.vencidaBorder : "#e8edf5"}`, borderLeft: `3px solid ${vencidaKanban ? PC.vencida : col.color}`, borderRadius: 10, padding: "8px 10px", cursor: "pointer" }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{item.codigo}</span>
+                                  {vencidaKanban && <span style={{ fontSize: 10, fontWeight: 800, color: PC.vencida }}>⚠️ Vencida</span>}
+                                </div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginTop: 2 }}>{item.nombre || "-"}</div>
+                                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, display: "flex", justifyContent: "space-between" }}>
+                                  <span>👷 {item.tecnico || "Sin técnico"}</span>
+                                  {item.hora && <span>🕐 {formatHora12(item.hora)}</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()
+            ) : ordenesDiaSeleccionado.length === 0 ? (
               <div style={{ textAlign: "center", padding: "40px 20px", color: "#94a3b8" }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
                 <div style={{ fontWeight: 600 }}>No hay órdenes {calendarioFecha ? "para este día" : "pendientes"}</div>
@@ -16999,6 +17088,8 @@ export default function App() {
                   // trabajando, "atendida" ya se hizo y solo falta el papeleo.
                   const atendidasTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !!o.atendidaSinLiquidarEn).length;
                   const enProcesoTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !o.atendidaSinLiquidarEn).length;
+                  const pendienteTec = listaTec.length - enProcesoTec - atendidasTec;
+                  const inicialTec = tecNombre.trim().charAt(0).toUpperCase() || "?";
                   return (
                     <div key={tecNombre} style={{ border: "1px solid #e8edf5", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff" }}>
                       <button
@@ -17008,15 +17099,28 @@ export default function App() {
                           padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left"
                         }}
                       >
-                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <span style={{ fontSize: 15, transform: abierto ? "rotate(90deg)" : "none", transition: "transform 0.15s", color: "#94a3b8" }}>▶</span>
-                          <span style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{tecNombre}</span>
+                          <span style={{
+                            width: 32, height: 32, borderRadius: 16, flexShrink: 0,
+                            background: PC.neutroBg, border: `1px solid ${PC.neutroBorder}`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontWeight: 800, fontSize: 13, color: PC.neutro
+                          }}>{inicialTec}</span>
+                          <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <span style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{tecNombre}</span>
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ width: 90, height: 6, borderRadius: 3, overflow: "hidden", display: "flex", background: "#e5e7eb" }}>
+                                {pendienteTec > 0 && <span title={`${pendienteTec} pendiente${pendienteTec === 1 ? "" : "s"}`} style={{ width: `${(pendienteTec / listaTec.length) * 100}%`, background: PC.pendiente }} />}
+                                {enProcesoTec > 0 && <span title={`${enProcesoTec} en proceso`} style={{ width: `${(enProcesoTec / listaTec.length) * 100}%`, background: PC.proceso }} />}
+                                {atendidasTec > 0 && <span title={`${atendidasTec} atendida${atendidasTec === 1 ? "" : "s"} sin liquidar`} style={{ width: `${(atendidasTec / listaTec.length) * 100}%`, background: PC.atendida }} />}
+                              </span>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b" }}>{listaTec.length} orden{listaTec.length === 1 ? "" : "es"}</span>
+                            </span>
+                          </span>
                         </span>
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" }}>{listaTec.length} orden{listaTec.length === 1 ? "" : "es"}</span>
-                          {enProcesoTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#eff6ff", color: "#2563eb", border: "1px solid #93c5fd" }}>{enProcesoTec} en proceso</span>}
-                          {atendidasTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}>✅ {atendidasTec} atendida{atendidasTec === 1 ? "" : "s"} sin liquidar</span>}
-                          {vencidasTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>⚠️ {vencidasTec} vencida{vencidasTec === 1 ? "" : "s"}</span>}
+                          {vencidasTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: PC.vencidaBg, color: PC.vencida, border: `1px solid ${PC.vencidaBorder}` }}>⚠️ {vencidasTec} vencida{vencidasTec === 1 ? "" : "s"}</span>}
                         </span>
                       </button>
                       {abierto && (
@@ -17049,14 +17153,14 @@ export default function App() {
                   return (
                     <div key={item.id} onClick={() => void abrirVer()} style={{
                       cursor: "pointer",
-                      background: atendida ? (isDark ? "#0f2e1f" : "#f0fdf4") : enProceso ? (isDark ? "#132b4d" : "#eff6ff") : (isDark ? "#1a2740" : "#fff"),
-                      border: atendida ? "1px solid #86efac" : enProceso ? "1px solid #93c5fd" : (isDark ? "1px solid #2c3c58" : "1px solid #e8edf5"),
-                      borderLeft: `4px solid ${atendida ? "#16a34a" : enProceso ? "#2563eb" : accentColor}`, borderRadius: 14, overflow: "hidden",
+                      background: atendida ? (isDark ? "#0f2e1f" : PC.atendidaBg) : enProceso ? (isDark ? "#132b4d" : PC.procesoBg) : (isDark ? "#1a2740" : "#fff"),
+                      border: atendida ? `1px solid ${PC.atendidaBorder}` : enProceso ? `1px solid ${PC.procesoBorder}` : (isDark ? "1px solid #2c3c58" : "1px solid #e8edf5"),
+                      borderLeft: `4px solid ${atendida ? PC.atendida : enProceso ? PC.proceso : accentColor}`, borderRadius: 14, overflow: "hidden",
                       boxShadow: atendida ? "0 1px 10px rgba(22,163,74,0.15)" : enProceso ? "0 1px 10px rgba(37,99,235,0.15)" : "0 1px 6px rgba(15,23,42,0.04)",
                     }}>
 
                       {/* ── Fila superior: código + hora + badges + acciones ── */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: pendDensidadCompacta ? "6px 12px" : "10px 14px", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f1f5f9", flexWrap: "wrap", justifyContent: "space-between" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a", letterSpacing: "-0.2px" }}>{item.codigo}</span>
                           {item.empresa === "Americanet" && (
@@ -17078,7 +17182,7 @@ export default function App() {
                           {/* HORA/prioridad ya no importan una vez atendida -- el tecnico no va a
                               volver corriendo, solo falta el papeleo. Se simplifica la fila. */}
                           {!atendida && (horaTexto ? (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: esPasada ? "#fef2f2" : "#fff7ed", color: esPasada ? "#dc2626" : "#c2410c", border: `1px solid ${esPasada ? "#fca5a5" : "#fed7aa"}` }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: esPasada ? PC.vencidaBg : PC.pendienteBg, color: esPasada ? PC.vencida : PC.pendiente, border: `1px solid ${esPasada ? PC.vencidaBorder : PC.pendienteBorder}` }}>
                               🕐 {formatHora12(horaTexto)}
                             </span>
                           ) : (
@@ -17093,7 +17197,7 @@ export default function App() {
                               style={{
                                 display: "inline-flex", alignItems: "center", gap: 5,
                                 padding: "5px 12px", borderRadius: 999, fontSize: 13, fontWeight: 800,
-                                background: "#16a34a", color: "#fff", border: "1.5px solid #15803d",
+                                background: PC.atendida, color: "#fff", border: "1.5px solid #15803d",
                                 boxShadow: "0 1px 6px rgba(22,163,74,0.35)"
                               }}
                               title="El tecnico marco el trabajo como atendido desde la app, pero aun no liquida la orden."
@@ -17106,7 +17210,7 @@ export default function App() {
                               {item.estado || "Pendiente"}
                             </span>
                           )}
-                          {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>Vencida</span>}
+                          {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: PC.vencidaBg, color: PC.vencida, border: `1px solid ${PC.vencidaBorder}` }}>Vencida</span>}
                           {bloqueadoPorNodo && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#6b7280", border: "1px solid #d1d5db" }}>🔒 Sin acceso</span>}
                         </div>
                         {/* Acciones principales -- clic en la tarjeta ya abre "Ver", asi que
@@ -17157,7 +17261,7 @@ export default function App() {
                       )}
 
                       {/* ── Fila inferior: info + contacto ── */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "10px 14px", alignItems: "center" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: pendDensidadCompacta ? "6px 12px" : "10px 14px", alignItems: "center" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 20px", alignItems: "flex-start" }}>
                           <div>
                             <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? "#e6ecf7" : "#0f172a" }}>{item.nombre || "-"}</div>
