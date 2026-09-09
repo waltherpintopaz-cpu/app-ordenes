@@ -2383,6 +2383,10 @@ export default function App() {
   const [filtroTipoOrden, setFiltroTipoOrden] = useState("TODOS");
   const [filtroNodoPendientes, setFiltroNodoPendientes] = useState("TODOS");
   const [calendarioFecha, setCalendarioFecha] = useState(() => todayIsoLocal());
+  // Grupos por tecnico en Pendientes: colapsados por defecto para que el
+  // gestor vea la carga de cada uno de un vistazo (nombre + cantidad +
+  // vencidas) sin tener que hacer scroll por las 100+ ordenes del dia.
+  const [tecnicoGruposAbiertos, setTecnicoGruposAbiertos] = useState({});
   const [calendarioMes, setCalendarioMes] = useState(() => todayIsoLocal().slice(0, 7));
   const [calendarioAbierto, setCalendarioAbierto] = useState(false);
   const [busquedaHistorial, setBusquedaHistorial] = useState("");
@@ -16732,6 +16736,29 @@ export default function App() {
             return horaA.localeCompare(horaB);
           });
 
+          // Agrupadas por tecnico, colapsadas por defecto -- el gestor ve la
+          // carga de cada uno (cantidad + vencidas) sin abrir nada, y solo
+          // despliega el detalle de quien necesite revisar.
+          const ahoraTs = Date.now();
+          const esVencidaAhora = (o) => {
+            const fecha = String(o.fechaActuacion || "").slice(0, 10);
+            const hora = String(o.hora || "").trim();
+            if (!fecha || !hora) return false;
+            const dt = new Date(`${fecha}T${hora}:00`);
+            return !Number.isNaN(dt.getTime()) && dt.getTime() < ahoraTs;
+          };
+          const gruposPorTecnico = {};
+          ordenesDiaSeleccionado.forEach((o) => {
+            const tec = String(o.tecnico || "").trim() || "Sin asignar";
+            (gruposPorTecnico[tec] = gruposPorTecnico[tec] || []).push(o);
+          });
+          const nombresTecnicosOrdenados = Object.keys(gruposPorTecnico).sort((a, b) => {
+            const va = gruposPorTecnico[a].filter(esVencidaAhora).length;
+            const vb = gruposPorTecnico[b].filter(esVencidaAhora).length;
+            if (va !== vb) return vb - va;
+            return gruposPorTecnico[b].length - gruposPorTecnico[a].length;
+          });
+
           const [mesYear, mesMes] = calendarioMes.split("-").map(Number);
           const primerDia = new Date(mesYear, mesMes - 1, 1);
           const diasEnMes = new Date(mesYear, mesMes, 0).getDate();
@@ -16880,8 +16907,34 @@ export default function App() {
                 <div style={{ fontWeight: 600 }}>No hay órdenes {calendarioFecha ? "para este día" : "pendientes"}</div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {ordenesDiaSeleccionado.map((item) => {
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {nombresTecnicosOrdenados.map((tecNombre) => {
+                  const listaTec = gruposPorTecnico[tecNombre];
+                  const abierto = !!tecnicoGruposAbiertos[tecNombre];
+                  const vencidasTec = listaTec.filter(esVencidaAhora).length;
+                  const enProcesoTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso")).length;
+                  return (
+                    <div key={tecNombre} style={{ border: "1px solid #e8edf5", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff" }}>
+                      <button
+                        onClick={() => setTecnicoGruposAbiertos((prev) => ({ ...prev, [tecNombre]: !prev[tecNombre] }))}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                          padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left"
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 15, transform: abierto ? "rotate(90deg)" : "none", transition: "transform 0.15s", color: "#94a3b8" }}>▶</span>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{tecNombre}</span>
+                        </span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" }}>{listaTec.length} orden{listaTec.length === 1 ? "" : "es"}</span>
+                          {enProcesoTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#eff6ff", color: "#2563eb", border: "1px solid #93c5fd" }}>{enProcesoTec} en proceso</span>}
+                          {vencidasTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>⚠️ {vencidasTec} vencida{vencidasTec === 1 ? "" : "s"}</span>}
+                        </span>
+                      </button>
+                      {abierto && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 10px 10px" }}>
+                {listaTec.map((item) => {
                   const tipoBadge = getOrdenTipoBadge(item.orden);
                   const accentColor = getOrdenTipoBorderColor(item.orden);
                   const horaTexto = String(item.hora || "").trim();
@@ -17008,6 +17061,11 @@ export default function App() {
                         </div>
                       </div>
 
+                    </div>
+                  );
+                })}
+                      </div>
+                      )}
                     </div>
                   );
                 })}
