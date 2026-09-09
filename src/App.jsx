@@ -16889,12 +16889,13 @@ export default function App() {
                   const esPasada = fechaTexto && fechaTexto < today;
                   const bloqueadoPorNodo = esGestorSesion && nodosAccesoGestoraSet.size > 0 && !!item.nodo && !tieneAccesoNodoSesion(item.nodo);
                   const enProceso = String(item.estado || "").toLowerCase().includes("proceso");
+                  const atendida = enProceso && !!item.atendidaSinLiquidarEn;
                   return (
                     <div key={item.id} style={{
-                      background: enProceso ? (isDark ? "#132b4d" : "#eff6ff") : (isDark ? "#1a2740" : "#fff"),
-                      border: enProceso ? "1px solid #93c5fd" : (isDark ? "1px solid #2c3c58" : "1px solid #e8edf5"),
-                      borderLeft: `4px solid ${enProceso ? "#2563eb" : accentColor}`, borderRadius: 14, overflow: "hidden",
-                      boxShadow: enProceso ? "0 1px 10px rgba(37,99,235,0.15)" : "0 1px 6px rgba(15,23,42,0.04)",
+                      background: atendida ? (isDark ? "#0f2e1f" : "#f0fdf4") : enProceso ? (isDark ? "#132b4d" : "#eff6ff") : (isDark ? "#1a2740" : "#fff"),
+                      border: atendida ? "1px solid #86efac" : enProceso ? "1px solid #93c5fd" : (isDark ? "1px solid #2c3c58" : "1px solid #e8edf5"),
+                      borderLeft: `4px solid ${atendida ? "#16a34a" : enProceso ? "#2563eb" : accentColor}`, borderRadius: 14, overflow: "hidden",
+                      boxShadow: atendida ? "0 1px 10px rgba(22,163,74,0.15)" : enProceso ? "0 1px 10px rgba(37,99,235,0.15)" : "0 1px 6px rgba(15,23,42,0.04)",
                     }}>
 
                       {/* ── Fila superior: código + hora + badges + acciones ── */}
@@ -16909,16 +16910,19 @@ export default function App() {
                               <img src={logoDim} alt="DIM" style={{ height: 22, objectFit: "contain" }} />
                             </span>
                           )}
-                          {/* HORA — destacada */}
-                          {horaTexto ? (
+                          {/* HORA/prioridad ya no importan una vez atendida -- el tecnico no va a
+                              volver corriendo, solo falta el papeleo. Se simplifica la fila. */}
+                          {!atendida && (horaTexto ? (
                             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 800, background: esPasada ? "#fef2f2" : "#fff7ed", color: esPasada ? "#dc2626" : "#c2410c", border: `1px solid ${esPasada ? "#fca5a5" : "#fed7aa"}` }}>
                               🕐 {formatHora12(horaTexto)}
                             </span>
                           ) : (
                             <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: "#f1f5f9", color: "#94a3b8", border: "1px solid #e2e8f0" }}>Sin hora</span>
-                          )}
+                          ))}
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: tipoBadge.bg, color: tipoBadge.color, border: `1px solid ${tipoBadge.border}` }}>{tipoBadge.label}</span>
-                          <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad || "Normal"}</span>
+                          {!atendida && (item.prioridad && item.prioridad !== "Normal") && (
+                            <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad}</span>
+                          )}
                           {enProceso && item.atendidaSinLiquidarEn ? (
                             <span
                               style={{
