@@ -17160,25 +17160,34 @@ export default function App() {
                         key={item.id}
                         onClick={() => void abrirVer()}
                         style={{
-                          display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", cursor: "pointer",
+                          padding: "8px 12px", cursor: "pointer",
                           background: atendida ? PC.atendidaBg : enProceso ? PC.procesoBg : "#fff",
                           border: `1px solid ${vencidaMin ? PC.vencidaBorder : "#e8edf5"}`,
                           borderLeft: `3px solid ${vencidaMin ? PC.vencida : atendida ? PC.atendida : enProceso ? PC.proceso : accentColor}`,
                           borderRadius: 8,
                         }}
                       >
-                        <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a", minWidth: 100 }}>{item.codigo}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#374151", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.nombre || "-"}</span>
-                        <span style={{ fontSize: 11, color: "#64748b", minWidth: 60 }}>📡 {item.nodo || "-"}</span>
-                        <span style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 4, minWidth: 110 }}>👷 {item.tecnico || "Sin técnico"}</span>
-                        {horaTexto && <span style={{ fontSize: 11, fontWeight: 700, color: vencidaMin ? PC.vencida : "#c2410c" }}>🕐 {formatHora12(horaTexto)}</span>}
-                        <span style={{
-                          fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999,
-                          background: atendida ? PC.atendidaBg : vencidaMin ? PC.vencidaBg : enProceso ? PC.procesoBg : PC.pendienteBg,
-                          color: atendida ? PC.atendida : vencidaMin ? PC.vencida : enProceso ? PC.proceso : PC.pendiente,
-                        }}>
-                          {atendida ? "✅ Atendida" : vencidaMin ? "⚠️ Vencida" : enProceso ? "En proceso" : (item.estado || "Pendiente")}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a", minWidth: 100 }}>{item.codigo}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#374151", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.nombre || "-"}</span>
+                          <span style={{ fontSize: 11, color: "#64748b", minWidth: 60 }}>📡 {item.nodo || "-"}</span>
+                          <span style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 4, minWidth: 110 }}>👷 {item.tecnico || "Sin técnico"}</span>
+                          {horaTexto && <span style={{ fontSize: 11, fontWeight: 700, color: vencidaMin ? PC.vencida : "#c2410c" }}>🕐 {formatHora12(horaTexto)}</span>}
+                          <span style={{
+                            fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 999,
+                            background: atendida ? PC.atendidaBg : vencidaMin ? PC.vencidaBg : enProceso ? PC.procesoBg : PC.pendienteBg,
+                            color: atendida ? PC.atendida : vencidaMin ? PC.vencida : enProceso ? PC.proceso : PC.pendiente,
+                          }}>
+                            {atendida ? "✅ Atendida" : vencidaMin ? "⚠️ Vencida" : enProceso ? "En proceso" : (item.estado || "Pendiente")}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4, paddingLeft: 2 }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {item.direccion || "-"}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: tipoBadge.color, background: tipoBadge.bg, border: `1px solid ${tipoBadge.border}`, padding: "1px 7px", borderRadius: 999 }}>{tipoBadge.label}</span>
+                          {item.prioridad && item.prioridad !== "Normal" && (
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999, ...prioridadColor(item.prioridad) }}>{item.prioridad}</span>
+                          )}
+                        </div>
                       </div>
                     );
                   }
