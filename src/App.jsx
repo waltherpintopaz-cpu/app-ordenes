@@ -16713,9 +16713,24 @@ export default function App() {
           });
           const vencidasCount = Object.entries(ordenesPorDia).filter(([d]) => d < today).reduce((s, [, n]) => s + n, 0);
 
-          const ordenesDiaSeleccionado = calendarioFecha
+          // Ordenado por hora (las sin hora al final) y con las ya "Atendidas
+          // sin liquidar" siempre al fondo -- el tecnico ya no tiene que ir
+          // ahi, solo le falta el papeleo, no deberian competir por
+          // prioridad con lo que si necesita atencion ahora.
+          const ordenesDiaSeleccionado = (calendarioFecha
             ? ordenesPendientesFiltradas.filter((o) => String(o.fechaActuacion || "").slice(0, 10) === calendarioFecha)
-            : ordenesPendientesFiltradas;
+            : ordenesPendientesFiltradas
+          ).slice().sort((a, b) => {
+            const atendidaA = String(a.estado || "").toLowerCase().includes("proceso") && !!a.atendidaSinLiquidarEn;
+            const atendidaB = String(b.estado || "").toLowerCase().includes("proceso") && !!b.atendidaSinLiquidarEn;
+            if (atendidaA !== atendidaB) return atendidaA ? 1 : -1;
+            const horaA = String(a.hora || "").trim();
+            const horaB = String(b.hora || "").trim();
+            if (!horaA && !horaB) return 0;
+            if (!horaA) return 1;
+            if (!horaB) return -1;
+            return horaA.localeCompare(horaB);
+          });
 
           const [mesYear, mesMes] = calendarioMes.split("-").map(Number);
           const primerDia = new Date(mesYear, mesMes - 1, 1);
@@ -16905,7 +16920,15 @@ export default function App() {
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: tipoBadge.bg, color: tipoBadge.color, border: `1px solid ${tipoBadge.border}` }}>{tipoBadge.label}</span>
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, ...prioridadColor(item.prioridad) }}>{item.prioridad || "Normal"}</span>
                           {enProceso && item.atendidaSinLiquidarEn ? (
-                            <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#dcfce7", color: "#15803d", border: "1px solid #86efac" }} title="El tecnico marco el trabajo como atendido desde la app, pero aun no liquida la orden.">
+                            <span
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 5,
+                                padding: "5px 12px", borderRadius: 999, fontSize: 13, fontWeight: 800,
+                                background: "#16a34a", color: "#fff", border: "1.5px solid #15803d",
+                                boxShadow: "0 1px 6px rgba(22,163,74,0.35)"
+                              }}
+                              title="El tecnico marco el trabajo como atendido desde la app, pero aun no liquida la orden."
+                            >
                               ✅ Atendida · falta liquidar
                             </span>
                           ) : (
