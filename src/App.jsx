@@ -16985,7 +16985,7 @@ export default function App() {
                       ))}
                     </div>
                     <div style={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: 999, overflow: "hidden" }}>
-                      {[{ k: "comoda", l: "Cómoda" }, { k: "compacta", l: "Compacta" }].map((v) => (
+                      {[{ k: "comoda", l: "Cómoda" }, { k: "compacta", l: "Compacta" }, { k: "minima", l: "Mínima" }].map((v) => (
                         <button key={v.k} onClick={() => setPendDensidadWeb(v.k)} style={{ padding: "6px 12px", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, background: pendDensidadWeb === v.k ? "#1e40af" : "#fff", color: pendDensidadWeb === v.k ? "#fff" : "#374151" }}>{v.l}</button>
                       ))}
                     </div>
@@ -17150,6 +17150,32 @@ export default function App() {
                       } catch (_) {}
                     }
                   };
+                  // Modo "Minima": solo lo justo para identificar la orden -- el
+                  // detalle completo (direccion, contacto, señal, etc.) sigue a un
+                  // clic de distancia, asi que no hace falta repetirlo aca.
+                  if (pendDensidadWeb === "minima") {
+                    const vencidaMin = esVencidaAhora(item);
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => void abrirVer()}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", cursor: "pointer",
+                          background: atendida ? PC.atendidaBg : enProceso ? PC.procesoBg : "#fff",
+                          border: `1px solid ${vencidaMin ? PC.vencidaBorder : "#e8edf5"}`,
+                          borderLeft: `3px solid ${vencidaMin ? PC.vencida : atendida ? PC.atendida : enProceso ? PC.proceso : accentColor}`,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a", minWidth: 100 }}>{item.codigo}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#374151", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.nombre || "-"}</span>
+                        <span style={{ fontSize: 11, color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>👷 {item.tecnico || "Sin técnico"}</span>
+                        {horaTexto && <span style={{ fontSize: 11, fontWeight: 700, color: vencidaMin ? PC.vencida : "#c2410c" }}>🕐 {formatHora12(horaTexto)}</span>}
+                        {vencidaMin && <span style={{ fontSize: 10, fontWeight: 800, color: PC.vencida }}>⚠️</span>}
+                        {atendida && <span style={{ fontSize: 10, fontWeight: 800, color: PC.atendida }}>✅</span>}
+                      </div>
+                    );
+                  }
                   return (
                     <div key={item.id} onClick={() => void abrirVer()} style={{
                       cursor: "pointer",
