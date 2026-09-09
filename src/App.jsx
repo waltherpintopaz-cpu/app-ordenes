@@ -16913,6 +16913,7 @@ export default function App() {
                   const abierto = !!tecnicoGruposAbiertos[tecNombre];
                   const vencidasTec = listaTec.filter(esVencidaAhora).length;
                   const enProcesoTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso")).length;
+                  const atendidasTec = listaTec.filter((o) => String(o.estado || "").toLowerCase().includes("proceso") && !!o.atendidaSinLiquidarEn).length;
                   return (
                     <div key={tecNombre} style={{ border: "1px solid #e8edf5", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff" }}>
                       <button
@@ -16929,6 +16930,7 @@ export default function App() {
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" }}>{listaTec.length} orden{listaTec.length === 1 ? "" : "es"}</span>
                           {enProcesoTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#eff6ff", color: "#2563eb", border: "1px solid #93c5fd" }}>{enProcesoTec} en proceso</span>}
+                          {atendidasTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f0fdf4", color: "#15803d", border: "1px solid #86efac" }}>✅ {atendidasTec} atendida{atendidasTec === 1 ? "" : "s"} sin liquidar</span>}
                           {vencidasTec > 0 && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5" }}>⚠️ {vencidasTec} vencida{vencidasTec === 1 ? "" : "s"}</span>}
                         </span>
                       </button>
