@@ -8,7 +8,9 @@ const CATEGORIAS = ["Compras", "Alimentación", "Transporte", "Otros"];
 const ENTIDADES = ["DIM", "Americanet", "Personal"];
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-const emptyForm = { fecha: new Date().toISOString().slice(0, 10), descripcion: "", monto: "", categoria: CATEGORIAS[0], entidad: ENTIDADES[0], fotos: [] };
+const NODOS_SUGERIDOS = ["Nodo_01", "Nodo_02", "Nodo_03", "Nodo_04"];
+
+const emptyForm = { fecha: new Date().toISOString().slice(0, 10), descripcion: "", monto: "", categoria: CATEGORIAS[0], entidad: ENTIDADES[0], nodo: "", fotos: [] };
 
 export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const isDark = theme === "dark";
@@ -23,6 +25,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const [filtroEntidad, setFiltroEntidad] = useState("Todas");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
   const [filtroTexto, setFiltroTexto] = useState("");
+  const [filtroNodo, setFiltroNodo] = useState("Todos");
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -59,11 +62,12 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       if (filtroMes && m !== filtroMes) return false;
       if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return false;
       if (filtroCategoria !== "Todas" && (g.categoria || "Otros") !== filtroCategoria) return false;
+      if (filtroNodo !== "Todos" && (g.nodo || "") !== filtroNodo) return false;
       const q = filtroTexto.trim().toLowerCase();
       if (q && !String(g.descripcion || "").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria, filtroTexto]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria, filtroNodo, filtroTexto]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
 
@@ -73,10 +77,18 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     return Array.from(set).sort((a, b) => b - a);
   }, [gastos]);
 
+  // Se arma solo con lo que ya se uso (mas los sugeridos) -- asi crece con
+  // los nodos nuevos sin tener que tocar codigo cada vez.
+  const nodosDisponibles = useMemo(() => {
+    const set = new Set(NODOS_SUGERIDOS);
+    gastos.forEach((g) => { if (g.nodo) set.add(g.nodo); });
+    return Array.from(set).sort();
+  }, [gastos]);
+
   const abrirModal = (g = null) => {
     if (g) {
       const fotos = Array.isArray(g.fotos) && g.fotos.length ? g.fotos : (g.foto_url ? [g.foto_url] : []);
-      setForm({ fecha: g.fecha, descripcion: g.descripcion || "", monto: String(g.monto ?? ""), categoria: g.categoria || CATEGORIAS[0], entidad: g.entidad || ENTIDADES[0], fotos });
+      setForm({ fecha: g.fecha, descripcion: g.descripcion || "", monto: String(g.monto ?? ""), categoria: g.categoria || CATEGORIAS[0], entidad: g.entidad || ENTIDADES[0], nodo: g.nodo || "", fotos });
       setEditId(g.id);
     } else {
       setForm(emptyForm);
@@ -119,6 +131,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         monto,
         categoria: form.categoria,
         entidad: form.entidad,
+        nodo: form.nodo.trim() || null,
         fotos: form.fotos,
         foto_url: form.fotos[0] || null,
         creado_por: sessionUser?.nombre || sessionUser?.email || null,
@@ -155,15 +168,15 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
 
   const exportarCsv = () => {
     if (filtrados.length === 0) return showToast("❌ No hay gastos para exportar.");
-    const filas = [["Fecha", "Descripción", "Categoría", "Entidad", "Monto"]];
-    filtrados.forEach((g) => filas.push([g.fecha, g.descripcion, g.categoria || "", g.entidad || "Personal", Number(g.monto).toFixed(2)]));
-    filas.push(["", "", "", "TOTAL", total.toFixed(2)]);
+    const filas = [["Fecha", "Descripción", "Categoría", "Nodo", "Entidad", "Monto"]];
+    filtrados.forEach((g) => filas.push([g.fecha, g.descripcion, g.categoria || "", g.nodo || "", g.entidad || "Personal", Number(g.monto).toFixed(2)]));
+    filas.push(["", "", "", "", "TOTAL", total.toFixed(2)]);
     const csv = filas.map((f) => f.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}.csv`;
+    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -173,16 +186,16 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const doc = new jsPDF();
     const periodoTxt = filtroMes ? `${MESES[filtroMes - 1]} ${filtroAnio}` : `Año ${filtroAnio}`;
     doc.setFontSize(16); doc.text("Mis Gastos", 14, 18);
-    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategoria !== "Todas" ? ` · Categoría: ${filtroCategoria}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
+    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategoria !== "Todas" ? ` · Categoría: ${filtroCategoria}` : ""}${filtroNodo !== "Todos" ? ` · Nodo: ${filtroNodo}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
     autoTable(doc, {
       startY: 32,
-      head: [["Fecha", "Descripción", "Categoría", "Entidad", "Monto (S/)"]],
-      body: filtrados.map((g) => [g.fecha, g.descripcion, g.categoria || "-", g.entidad || "Personal", Number(g.monto).toFixed(2)]),
-      foot: [["", "", "", "TOTAL", total.toFixed(2)]],
+      head: [["Fecha", "Descripción", "Categoría", "Nodo", "Entidad", "Monto (S/)"]],
+      body: filtrados.map((g) => [g.fecha, g.descripcion, g.categoria || "-", g.nodo || "-", g.entidad || "Personal", Number(g.monto).toFixed(2)]),
+      foot: [["", "", "", "", "TOTAL", total.toFixed(2)]],
       styles: { fontSize: 9 },
       footStyles: { fontStyle: "bold" },
     });
-    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}.pdf`);
+    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.pdf`);
   };
 
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
@@ -233,6 +246,10 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
           <option value="Todas">Todas las categorías</option>
           {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select value={filtroNodo} onChange={(e) => setFiltroNodo(e.target.value)} style={inputSt}>
+          <option value="Todos">Todos los nodos</option>
+          {nodosDisponibles.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
         <input
           type="text"
           value={filtroTexto}
@@ -261,6 +278,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                 <th style={thSt}>Fecha</th>
                 <th style={thSt}>Descripción</th>
                 <th style={thSt}>Categoría</th>
+                <th style={thSt}>Nodo</th>
                 <th style={thSt}>Entidad</th>
                 <th style={thSt}>Monto</th>
                 <th style={thSt}>Foto</th>
@@ -269,13 +287,14 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
             </thead>
             <tbody>
               {filtrados.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin gastos en este período.</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin gastos en este período.</td></tr>
               )}
               {filtrados.map((g) => (
                 <tr key={g.id} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" }}>
                   <td style={{ ...tdSt, whiteSpace: "nowrap" }}>{g.fecha}</td>
                   <td style={{ ...tdSt, color: isDark ? "#c3d3ee" : "#374151" }}>{g.descripcion}</td>
                   <td style={tdSt}>{g.categoria || "—"}</td>
+                  <td style={tdSt}>{g.nodo || "—"}</td>
                   <td style={tdSt}>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 20,
@@ -348,6 +367,18 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                 </select>
               </div>
             </div>
+
+            <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Nodo (opcional)</label>
+            <input
+              list="nodos-sugeridos"
+              style={{ ...inputSt, width: "100%", boxSizing: "border-box", marginBottom: 10 }}
+              value={form.nodo}
+              onChange={(e) => setForm((p) => ({ ...p, nodo: e.target.value }))}
+              placeholder="Ej. Nodo_04"
+            />
+            <datalist id="nodos-sugeridos">
+              {nodosDisponibles.map((n) => <option key={n} value={n} />)}
+            </datalist>
 
             <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Entidad</label>
             <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
