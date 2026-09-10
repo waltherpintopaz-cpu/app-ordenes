@@ -1643,7 +1643,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       {grupoFiltro !== "TODOS" && (
         <div
           style={{
-            display: "flex", flexDirection: "column", gap: 10,
+            display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
             background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 14px",
           }}
         >
@@ -1701,59 +1701,33 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         <AsignarRutasVolanteoPanel grupo={grupoFiltro} fecha={statsDate} onClose={() => setAsignarRutasAbierto(false)} />
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-          background: "#FFF7ED",
-          border: "1px solid #FED7AA",
-          borderRadius: 10,
-          padding: "10px 14px",
-        }}
-      >
-        <strong style={{ fontSize: 13, color: "#9A3412" }}>
-          Recorrido de {grupoFiltro === "TODOS" ? "todos los grupos" : `"${grupoFiltro}"`} — {formatDateInput(statsDate)}:
+      <div className="maptech-toolbar-card">
+        <strong className="maptech-toolbar-title">
+          Recorrido de {grupoFiltro === "TODOS" ? "todos los grupos" : `"${grupoFiltro}"`} — {formatDateInput(statsDate)}
         </strong>
-        <button
-          type="button"
-          onClick={exportarKml}
-          style={{ background: "#1E4F9C", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-        >
-          ⬇ Descargar rutas del equipo (KML)
-        </button>
-        <button
-          type="button"
-          onClick={compartirResumenWhatsapp}
-          style={{ background: "#16A34A", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-        >
-          📤 Compartir resumen del equipo por WhatsApp
-        </button>
-        <button
-          type="button"
-          onClick={abrirCompartirVista}
-          style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-        >
-          🔗 Compartir vista (link temporal)
-        </button>
-        {!dibujandoTramo ? (
-          <button
-            type="button"
-            onClick={iniciarDibujoTramo}
-            disabled={filas.length === 0}
-            style={{ background: "#6B7280", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-          >
-            ✏️ Rellenar hueco a mano
+        <div className="maptech-toolbar-row">
+          <span className="maptech-toolbar-label">Exportar y compartir:</span>
+          <button type="button" className="secondary-btn small" onClick={exportarKml}>
+            ⬇ Descargar KML
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={abrirAjustesRegistro}
-          style={{ background: "#374151", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
-        >
-          ⚙️ Ajustes de registro GPS
-        </button>
+          <button type="button" className="secondary-btn small" onClick={compartirResumenWhatsapp}>
+            📤 Resumen por WhatsApp
+          </button>
+          <button type="button" className="secondary-btn small" onClick={abrirCompartirVista}>
+            🔗 Link temporal
+          </button>
+        </div>
+        <div className="maptech-toolbar-row">
+          <span className="maptech-toolbar-label">Herramientas:</span>
+          {!dibujandoTramo ? (
+            <button type="button" className="secondary-btn small" onClick={iniciarDibujoTramo} disabled={filas.length === 0}>
+              ✏️ Rellenar hueco a mano
+            </button>
+          ) : null}
+          <button type="button" className="secondary-btn small" onClick={abrirAjustesRegistro}>
+            ⚙️ Ajustes de registro GPS
+          </button>
+        </div>
       </div>
 
       {dibujandoTramo ? (
@@ -1780,9 +1754,9 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
           </button>
           <button
             type="button"
+            className="primary-btn small"
             onClick={() => void guardarTramoManual()}
             disabled={tramoPuntos.length < 2 || guardandoTramo}
-            style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
           >
             {guardandoTramo ? "Guardando..." : "Guardar tramo"}
           </button>
