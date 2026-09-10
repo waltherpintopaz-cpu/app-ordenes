@@ -328,7 +328,21 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
 
   const [zonasDisponibles, setZonasDisponibles] = useState([]); // todas las de zonas_cobertura
   const [zonasAsignadas, setZonasAsignadas] = useState([]); // asignadas al grupo+fecha actual (con datos de zonas_cobertura)
-  const [zonaParaAsignar, setZonaParaAsignar] = useState("");
+  const [selectorZonasAbierto, setSelectorZonasAbierto] = useState(false);
+  const [zonasSeleccionadas, setZonasSeleccionadas] = useState(() => new Set());
+  const [busquedaZona, setBusquedaZona] = useState("");
+  const zonaPickerWrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectorZonasAbierto) return undefined;
+    const onClickFuera = (e) => {
+      if (zonaPickerWrapRef.current && !zonaPickerWrapRef.current.contains(e.target)) {
+        setSelectorZonasAbierto(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickFuera);
+    return () => document.removeEventListener("mousedown", onClickFuera);
+  }, [selectorZonasAbierto]);
   const [asignarRutasAbierto, setAsignarRutasAbierto] = useState(false);
   const [asignandoZona, setAsignandoZona] = useState(false);
   const [finalizandoId, setFinalizandoId] = useState("");
@@ -600,24 +614,43 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     );
   }, []);
 
-  const asignarZona = useCallback(async () => {
-    if (!zonaParaAsignar || grupoFiltro === "TODOS") return;
+  const zonasYaAsignadasIds = useMemo(() => new Set(zonasAsignadas.map((z) => z.id)), [zonasAsignadas]);
+  const zonasParaElegir = useMemo(() => {
+    const q = busquedaZona.trim().toLowerCase();
+    return zonasDisponibles
+      .filter((z) => !zonasYaAsignadasIds.has(z.id))
+      .filter((z) => !q || `${z.grupo} ${z.nombre}`.toLowerCase().includes(q));
+  }, [zonasDisponibles, zonasYaAsignadasIds, busquedaZona]);
+
+  const toggleZonaSeleccionada = useCallback((zonaId) => {
+    setZonasSeleccionadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(zonaId)) next.delete(zonaId); else next.add(zonaId);
+      return next;
+    });
+  }, []);
+
+  const agregarZonasSeleccionadas = useCallback(async () => {
+    if (zonasSeleccionadas.size === 0 || grupoFiltro === "TODOS") return;
     setAsignandoZona(true);
     try {
-      const { error: err } = await supabase.from("volanteo_zonas_asignadas").insert({
+      const filas = Array.from(zonasSeleccionadas).map((zonaId) => ({
         grupo_volanteo: grupoFiltro,
         fecha: formatDateInput(statsDate),
-        zona_id: Number(zonaParaAsignar),
-      });
+        zona_id: Number(zonaId),
+      }));
+      const { error: err } = await supabase.from("volanteo_zonas_asignadas").insert(filas);
       if (err) throw err;
-      setZonaParaAsignar("");
+      setZonasSeleccionadas(new Set());
+      setBusquedaZona("");
+      setSelectorZonasAbierto(false);
       await cargarZonasAsignadas(grupoFiltro, statsDate);
     } catch (e) {
-      setError(String(e?.message || "No se pudo asignar la zona."));
+      setError(String(e?.message || "No se pudieron asignar las zonas."));
     } finally {
       setAsignandoZona(false);
     }
-  }, [zonaParaAsignar, grupoFiltro, statsDate, cargarZonasAsignadas]);
+  }, [zonasSeleccionadas, grupoFiltro, statsDate, cargarZonasAsignadas]);
 
   const quitarZonaAsignada = useCallback(async (asignacionId) => {
     const { error: err } = await supabase.from("volanteo_zonas_asignadas").delete().eq("id", asignacionId);
@@ -1676,24 +1709,69 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
               ))
             )}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, borderTop: "1px solid #BFDBFE", paddingTop: 10 }}>
-            <select value={zonaParaAsignar} onChange={(e) => setZonaParaAsignar(e.target.value)} style={{ minWidth: 220 }}>
-              <option value="">+ Agregar zona importada...</option>
-              {zonasDisponibles.map((z) => (
-                <option key={z.id} value={z.id}>{z.grupo} · {z.nombre}</option>
-              ))}
-            </select>
+          <div ref={zonaPickerWrapRef} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, borderTop: "1px solid #BFDBFE", paddingTop: 10, position: "relative" }}>
             <button
               type="button"
               className="secondary-btn small"
-              onClick={asignarZona}
-              disabled={!zonaParaAsignar || asignandoZona}
+              onClick={() => setSelectorZonasAbierto((v) => !v)}
             >
-              {asignandoZona ? "Agregando..." : "Agregar zona"}
+              + Agregar zonas{zonasSeleccionadas.size > 0 ? ` (${zonasSeleccionadas.size})` : ""}
             </button>
             <button type="button" className="primary-btn small" onClick={() => setAsignarRutasAbierto(true)} style={{ marginLeft: "auto" }}>
               🗺️ Asignar rutas del equipo
             </button>
+
+            {selectorZonasAbierto ? (
+              <div className="zona-picker">
+                <input
+                  type="text"
+                  className="zona-picker-search"
+                  placeholder="Buscar zona..."
+                  value={busquedaZona}
+                  onChange={(e) => setBusquedaZona(e.target.value)}
+                  autoFocus
+                />
+                <div className="zona-picker-list">
+                  {zonasParaElegir.length === 0 ? (
+                    <p style={{ fontSize: 12, color: "#9CA3AF", margin: "8px 4px" }}>
+                      {busquedaZona ? "Sin resultados." : "No hay más zonas disponibles para agregar."}
+                    </p>
+                  ) : (
+                    zonasParaElegir.map((z) => (
+                      <label key={z.id} className="zona-picker-item">
+                        <input
+                          type="checkbox"
+                          checked={zonasSeleccionadas.has(z.id)}
+                          onChange={() => toggleZonaSeleccionada(z.id)}
+                        />
+                        <span
+                          className="zona-picker-dot"
+                          style={{ background: z.stroke_color || "#2563eb" }}
+                        />
+                        <span>{z.grupo} · {z.nombre}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                <div className="zona-picker-footer">
+                  <button
+                    type="button"
+                    className="secondary-btn small"
+                    onClick={() => { setSelectorZonasAbierto(false); setZonasSeleccionadas(new Set()); setBusquedaZona(""); }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-btn small"
+                    onClick={agregarZonasSeleccionadas}
+                    disabled={zonasSeleccionadas.size === 0 || asignandoZona}
+                  >
+                    {asignandoZona ? "Agregando..." : `Agregar ${zonasSeleccionadas.size || ""} zona${zonasSeleccionadas.size === 1 ? "" : "s"}`}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

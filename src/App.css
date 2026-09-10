@@ -3042,6 +3042,67 @@ th {
   color: #fff;
 }
 
+.zona-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: min(320px, 90vw);
+  background: #fff;
+  border: 1px solid #cfddf3;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(20, 41, 77, 0.18);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zona-picker-search {
+  border: 1px solid #d5e1f4;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.zona-picker-list {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.zona-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.zona-picker-item:hover {
+  background: #f3f6fc;
+}
+
+.zona-picker-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.zona-picker-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid #eef2f7;
+  padding-top: 8px;
+}
+
 .maptech-toolbar-card {
   display: flex;
   flex-direction: column;
@@ -4402,6 +4463,7 @@ body[data-theme="dark"] .hist-kpi-card,
 body[data-theme="dark"] .maptech-map-card,
 body[data-theme="dark"] .maptech-list-card,
 body[data-theme="dark"] .maptech-detail,
+body[data-theme="dark"] .zona-picker,
 body[data-theme="dark"] .apiq-card,
 body[data-theme="dark"] .apiq-history-item,
 body[data-theme="dark"] .apiq-photo-card,
