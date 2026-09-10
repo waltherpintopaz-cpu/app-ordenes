@@ -1650,6 +1650,24 @@ ${filasNodos}
       return true;
     });
   }, [kardex, kardexFechaDesde, kardexFechaHasta, kardexMovFiltro, kardexTecnicoFiltro]);
+  // Resumen de cantidad total por item (sobre el mismo filtro de arriba) --
+  // separa entradas de salidas para no mezclar "cuanto entro" con "cuanto
+  // salio" en un solo numero que no diga nada.
+  const kardexResumenItems = useMemo(() => {
+    const porItem = new Map();
+    kardexFiltrado.forEach((m) => {
+      const item = String(m?.item || "Sin item").trim() || "Sin item";
+      const unidad = m?.unidad || "unidad";
+      const cant = num(m?.cant || 0);
+      const esEntrada = norm(m?.mov || "").includes("entrada") || norm(m?.mov || "").includes("ingreso");
+      if (!porItem.has(item)) porItem.set(item, { item, unidad, entradas: 0, salidas: 0 });
+      const fila = porItem.get(item);
+      if (esEntrada) fila.entradas += cant; else fila.salidas += cant;
+    });
+    return Array.from(porItem.values())
+      .map((f) => ({ ...f, neto: f.entradas - f.salidas }))
+      .sort((a, b) => (b.entradas + b.salidas) - (a.entradas + a.salidas));
+  }, [kardexFiltrado]);
   const exportKardexPdf = useCallback(() => {
     if (!kardexFiltrado.length) return window.alert("No hay movimientos en el filtro actual para generar PDF.");
     const rows = kardexFiltrado
@@ -1662,9 +1680,18 @@ ${filasNodos}
           )}</td><td>${escHtml(m?.ref || "-")}</td><td>${escHtml(m?.tecnico || "-")}</td><td>${escHtml(m?.actor || "-")}</td><td>${escHtml(m?.almacenNombre || "-")}</td></tr>`
       )
       .join("");
-    const html = `<!doctype html><html><head><meta charset='utf-8'/><title>Kardex</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #d7e2f3;padding:6px;text-align:left}th{background:#eef4ff}</style></head><body><h1>Reporte Kardex</h1><p>Generado: ${escHtml(
+    const resumenRows = kardexResumenItems
+      .map(
+        (f) =>
+          `<tr><td>${escHtml(f.item)}</td><td>${f.entradas.toFixed(2)} ${escHtml(f.unidad)}</td><td>${f.salidas.toFixed(2)} ${escHtml(
+            f.unidad
+          )}</td><td>${f.neto.toFixed(2)} ${escHtml(f.unidad)}</td></tr>`
+      )
+      .join("");
+    const resumenHtml = `<h2>Resumen por ítem</h2><table><thead><tr><th>Item</th><th>Entradas</th><th>Salidas</th><th>Neto</th></tr></thead><tbody>${resumenRows}</tbody></table>`;
+    const html = `<!doctype html><html><head><meta charset='utf-8'/><title>Kardex</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:18px}table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px}th,td{border:1px solid #d7e2f3;padding:6px;text-align:left}th{background:#eef4ff}h2{font-size:15px}</style></head><body><h1>Reporte Kardex</h1><p>Generado: ${escHtml(
       new Date().toLocaleString()
-    )}</p><p>Registros: ${kardexFiltrado.length}</p><table><thead><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>Mov</th><th>Motivo</th><th>Item</th><th>Cantidad</th><th>Referencia</th><th>Tecnico</th><th>Actor</th><th>Almacén</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+    )}</p><p>Registros: ${kardexFiltrado.length}</p>${resumenHtml}<h2>Detalle de movimientos</h2><table><thead><tr><th>#</th><th>Fecha</th><th>Tipo</th><th>Mov</th><th>Motivo</th><th>Item</th><th>Cantidad</th><th>Referencia</th><th>Tecnico</th><th>Actor</th><th>Almacén</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
     const popup = window.open("", "_blank");
     if (popup && popup.document) {
       popup.document.open();
@@ -1688,7 +1715,7 @@ ${filasNodos}
     const opened = window.open(blobUrl, "_blank");
     if (!opened) window.location.href = blobUrl;
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-  }, [kardexFiltrado]);
+  }, [kardexFiltrado, kardexResumenItems]);
   const fotoEquipoByRef = useMemo(() => {
     const map = new Map();
     (equipos || []).forEach((eq) => {
@@ -4626,6 +4653,30 @@ ${filasNodos}
                 Limpiar
               </button>
             </div>
+            {kardexResumenItems.length > 0 ? (
+              <div style={{ overflowX: "auto", margin: "10px 0" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", borderBottom: "2px solid #E5E7EB" }}>
+                      <th style={{ padding: "6px 8px" }}>Item</th>
+                      <th style={{ padding: "6px 8px" }}>Entradas</th>
+                      <th style={{ padding: "6px 8px" }}>Salidas</th>
+                      <th style={{ padding: "6px 8px" }}>Neto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kardexResumenItems.map((f) => (
+                      <tr key={`resumen-${f.item}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                        <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.item}</td>
+                        <td style={{ padding: "6px 8px", color: "#16A34A" }}>{f.entradas > 0 ? `${f.entradas.toFixed(2)} ${f.unidad}` : "—"}</td>
+                        <td style={{ padding: "6px 8px", color: "#DC2626" }}>{f.salidas > 0 ? `${f.salidas.toFixed(2)} ${f.unidad}` : "—"}</td>
+                        <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.neto.toFixed(2)} {f.unidad}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
             <div className="inv-list">
               {kardexFiltrado.length === 0 ? <p className="empty">No hay movimientos.</p> : null}
               {kardexFiltrado.map((m) => {
