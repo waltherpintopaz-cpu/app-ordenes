@@ -305,6 +305,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const liveMarkersRef = useRef(new Map());
   const supervisorMarkersRef = useRef(new Map());
   const polylinesRef = useRef([]);
+  const rutasAsignadasPolylinesRef = useRef([]);
   const zonaPolygonsRef = useRef([]);
   const autoFitDoneRef = useRef(false);
   const tramosManualesRef = useRef([]);
@@ -328,6 +329,8 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
 
   const [zonasDisponibles, setZonasDisponibles] = useState([]); // todas las de zonas_cobertura
   const [zonasAsignadas, setZonasAsignadas] = useState([]); // asignadas al grupo+fecha actual (con datos de zonas_cobertura)
+  const [rutasAsignadasHoy, setRutasAsignadasHoy] = useState([]); // rutas generadas por "Asignar rutas del equipo"
+  const [verRutasAsignadas, setVerRutasAsignadas] = useState(true);
   const [selectorZonasAbierto, setSelectorZonasAbierto] = useState(false);
   const [zonasSeleccionadas, setZonasSeleccionadas] = useState(() => new Set());
   const [busquedaZona, setBusquedaZona] = useState("");
@@ -612,6 +615,25 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         .filter((row) => row.zonas_cobertura)
         .map((row) => ({ asignacionId: row.id, ...row.zonas_cobertura }))
     );
+  }, []);
+
+  // Rutas que el supervisor genero y confirmo para cada volanteador (ver
+  // "Asignar rutas del equipo") -- antes solo se veian dentro de ese modal
+  // mientras estaba abierto; ahora se dibujan tambien en el mapa principal.
+  const cargarRutasAsignadasHoy = useCallback(async (grupo, fecha) => {
+    if (!grupo || grupo === "TODOS") { setRutasAsignadasHoy([]); return; }
+    const dia = formatDateInput(fecha);
+    const { data, error: err } = await supabase
+      .from("volanteo_rutas_asignadas")
+      .select("tecnico_id,tecnico_nombre,coords,segmentos,distancia_m,calles_cubiertas")
+      .eq("grupo", grupo)
+      .eq("fecha", dia)
+      .eq("confirmada", true);
+    if (err) {
+      if (tableMissing(err, "volanteo_rutas_asignadas")) return;
+      throw err;
+    }
+    setRutasAsignadasHoy(Array.isArray(data) ? data : []);
   }, []);
 
   const zonasYaAsignadasIds = useMemo(() => new Set(zonasAsignadas.map((z) => z.id)), [zonasAsignadas]);
@@ -934,6 +956,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   useEffect(() => {
     void cargarZonasAsignadas(grupoFiltro, statsDate);
   }, [grupoFiltro, statsDate, cargarZonasAsignadas]);
+
+  useEffect(() => {
+    void cargarRutasAsignadasHoy(grupoFiltro, statsDate);
+  }, [grupoFiltro, statsDate, cargarRutasAsignadasHoy]);
 
   useEffect(() => {
     void cargarTramosManuales(statsDate);
@@ -1301,6 +1327,44 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
 
     if (!selectedId && filas.length > 0) setSelectedId(filas[0].id);
   }, [filas, trailById, selectedId, tramosManuales, distMaxCorteM, tramosSeleccionado, tramosOcultos, tramoEnfocado]);
+
+  // Rutas asignadas por "Asignar rutas del equipo" -- efecto aparte del de
+  // arriba (no se mezcla con el recorrido GPS real) para poder togglear su
+  // visibilidad sin tener que redibujar todo lo demas. Puede venir partida
+  // en islas de calles sin conexion real entre si (ver rutaVolanteo.js) --
+  // cada una es su propia Polyline, nunca conectadas con una linea recta
+  // fantasma.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    rutasAsignadasPolylinesRef.current.forEach((l) => l.setMap(null));
+    rutasAsignadasPolylinesRef.current = [];
+    if (!verRutasAsignadas) return;
+    rutasAsignadasHoy.forEach((r) => {
+      const segmentos = Array.isArray(r.segmentos) && r.segmentos.length > 0 ? r.segmentos : [r.coords];
+      const color = colorDe(parseId(r.tecnico_id));
+      segmentos.forEach((seg) => {
+        const path = (Array.isArray(seg) ? seg : [])
+          .map((c) => ({ lat: Number(c.lat), lng: Number(c.lng) }))
+          .filter((c) => isValidCoord(c.lat, c.lng));
+        if (path.length < 2) return;
+        try {
+          const line = new maps.Polyline({
+            map,
+            path,
+            strokeOpacity: 0,
+            icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "12px" }],
+            strokeColor: color,
+            zIndex: 3,
+          });
+          rutasAsignadasPolylinesRef.current.push(line);
+        } catch (e) {
+          console.warn("No se pudo dibujar la ruta asignada de", r.tecnico_id, e);
+        }
+      });
+    });
+  }, [rutasAsignadasHoy, verRutasAsignadas, colorDe]);
 
   // Marcadores en vivo (volanteadores + supervisores): efecto aparte del de
   // arriba porque estos NO se destruyen y redibujan de cero en cada cambio
@@ -1717,7 +1781,12 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             >
               + Agregar zonas{zonasSeleccionadas.size > 0 ? ` (${zonasSeleccionadas.size})` : ""}
             </button>
-            <button type="button" className="primary-btn small" onClick={() => setAsignarRutasAbierto(true)} style={{ marginLeft: "auto" }}>
+            {rutasAsignadasHoy.length > 0 ? (
+              <button type="button" className="secondary-btn small" onClick={() => setVerRutasAsignadas((v) => !v)} style={{ marginLeft: "auto" }}>
+                {verRutasAsignadas ? "👁️ Ocultar rutas asignadas" : "🙈 Ver rutas asignadas"} ({rutasAsignadasHoy.length})
+              </button>
+            ) : null}
+            <button type="button" className="primary-btn small" onClick={() => setAsignarRutasAbierto(true)} style={rutasAsignadasHoy.length > 0 ? undefined : { marginLeft: "auto" }}>
               🗺️ Asignar rutas del equipo
             </button>
 
@@ -1776,7 +1845,14 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         </div>
       )}
       {asignarRutasAbierto ? (
-        <AsignarRutasVolanteoPanel grupo={grupoFiltro} fecha={statsDate} onClose={() => setAsignarRutasAbierto(false)} />
+        <AsignarRutasVolanteoPanel
+          grupo={grupoFiltro}
+          fecha={statsDate}
+          onClose={() => {
+            setAsignarRutasAbierto(false);
+            void cargarRutasAsignadasHoy(grupoFiltro, statsDate);
+          }}
+        />
       ) : null}
 
       <div className="maptech-toolbar-card">
