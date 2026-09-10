@@ -4,6 +4,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { PERFILES_REGISTRO, PERFIL_DEFECTO } from "../utils/volanteoPerfiles";
+import AsignarRutasVolanteoPanel from "./AsignarRutasVolanteoPanel";
 
 const GOOGLE_MAPS_API_KEY = String(
   import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
@@ -268,7 +269,7 @@ const telefonoWhatsapp = (celular) => {
   if (!digits) return "";
   return digits.length === 9 ? `51${digits}` : digits;
 };
-const loadGoogleMapsSdk = () => {
+export const loadGoogleMapsSdk = () => {
   if (typeof window === "undefined") return Promise.reject(new Error("Sin navegador."));
   if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error("Sin token Google Maps."));
   if (window.google?.maps) return Promise.resolve(window.google.maps);
@@ -328,6 +329,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [zonasDisponibles, setZonasDisponibles] = useState([]); // todas las de zonas_cobertura
   const [zonasAsignadas, setZonasAsignadas] = useState([]); // asignadas al grupo+fecha actual (con datos de zonas_cobertura)
   const [zonaParaAsignar, setZonaParaAsignar] = useState("");
+  const [asignarRutasAbierto, setAsignarRutasAbierto] = useState(false);
   const [asignandoZona, setAsignandoZona] = useState(false);
   const [finalizandoId, setFinalizandoId] = useState("");
 
@@ -1686,8 +1688,16 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
           >
             {asignandoZona ? "Asignando..." : "+ Asignar"}
           </button>
+          {grupoFiltro !== "TODOS" ? (
+            <button type="button" className="secondary-btn small" onClick={() => setAsignarRutasAbierto(true)}>
+              🗺️ Asignar rutas
+            </button>
+          ) : null}
         </div>
       )}
+      {asignarRutasAbierto ? (
+        <AsignarRutasVolanteoPanel grupo={grupoFiltro} fecha={statsDate} onClose={() => setAsignarRutasAbierto(false)} />
+      ) : null}
 
       <div
         style={{
