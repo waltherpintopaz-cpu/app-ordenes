@@ -1643,56 +1643,58 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       {grupoFiltro !== "TODOS" && (
         <div
           style={{
-            display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
-            background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "10px 14px",
+            display: "flex", flexDirection: "column", gap: 10,
+            background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 14px",
           }}
         >
-          <strong style={{ fontSize: 13, color: "#1E40AF" }}>
-            Zona a cubrir por "{grupoFiltro}" el {formatDateInput(statsDate)}:
-          </strong>
-          {coberturaPorZona.length === 0 ? (
-            <span style={{ fontSize: 12, color: "#64748B" }}>Sin zona asignada.</span>
-          ) : (
-            coberturaPorZona.map((z) => (
-              <span
-                key={z.asignacionId}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
-                  color: "#fff", background: z.stroke_color || "#2563eb", borderRadius: 999, padding: "4px 10px",
-                }}
-                title={`${z.cobertura.cubiertas}/${z.cobertura.totalCeldas} celdas de la zona con recorrido cerca`}
-              >
-                {z.grupo} · {z.nombre} · {z.cobertura.pct}% cubierto
-                <button
-                  type="button"
-                  onClick={() => quitarZonaAsignada(z.asignacionId)}
-                  style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontWeight: 700, padding: 0 }}
-                  title="Quitar zona"
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <strong style={{ fontSize: 13, color: "#1E40AF" }}>
+              Zona de "{grupoFiltro}" el {formatDateInput(statsDate)}:
+            </strong>
+            {coberturaPorZona.length === 0 ? (
+              <span style={{ fontSize: 12, color: "#64748B" }}>Sin zona asignada todavía.</span>
+            ) : (
+              coberturaPorZona.map((z) => (
+                <span
+                  key={z.asignacionId}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+                    color: "#fff", background: z.stroke_color || "#2563eb", borderRadius: 999, padding: "4px 10px",
+                  }}
+                  title={`${z.cobertura.cubiertas}/${z.cobertura.totalCeldas} celdas de la zona con recorrido cerca`}
                 >
-                  ✕
-                </button>
-              </span>
-            ))
-          )}
-          <select value={zonaParaAsignar} onChange={(e) => setZonaParaAsignar(e.target.value)} style={{ marginLeft: "auto" }}>
-            <option value="">Elegir zona importada...</option>
-            {zonasDisponibles.map((z) => (
-              <option key={z.id} value={z.id}>{z.grupo} · {z.nombre}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="secondary-btn small"
-            onClick={asignarZona}
-            disabled={!zonaParaAsignar || asignandoZona}
-          >
-            {asignandoZona ? "Asignando..." : "+ Asignar"}
-          </button>
-          {grupoFiltro !== "TODOS" ? (
-            <button type="button" className="secondary-btn small" onClick={() => setAsignarRutasAbierto(true)}>
-              🗺️ Asignar rutas
+                  {z.nombre} · {z.cobertura.pct}% cubierto
+                  <button
+                    type="button"
+                    onClick={() => quitarZonaAsignada(z.asignacionId)}
+                    style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontWeight: 700, padding: 0, lineHeight: 1 }}
+                    title="Quitar zona"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, borderTop: "1px solid #BFDBFE", paddingTop: 10 }}>
+            <select value={zonaParaAsignar} onChange={(e) => setZonaParaAsignar(e.target.value)} style={{ minWidth: 220 }}>
+              <option value="">+ Agregar zona importada...</option>
+              {zonasDisponibles.map((z) => (
+                <option key={z.id} value={z.id}>{z.grupo} · {z.nombre}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="secondary-btn small"
+              onClick={asignarZona}
+              disabled={!zonaParaAsignar || asignandoZona}
+            >
+              {asignandoZona ? "Agregando..." : "Agregar zona"}
             </button>
-          ) : null}
+            <button type="button" className="primary-btn small" onClick={() => setAsignarRutasAbierto(true)} style={{ marginLeft: "auto" }}>
+              🗺️ Asignar rutas del equipo
+            </button>
+          </div>
         </div>
       )}
       {asignarRutasAbierto ? (

@@ -3048,6 +3048,9 @@ th {
 
 .maptech-map-card {
   position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
   border: 1px solid #cfddf3;
   border-radius: 14px;
   overflow: hidden;
@@ -3059,21 +3062,19 @@ th {
 }
 
 .maptech-map-canvas {
+  flex: 1;
+  min-width: 0;
   min-height: 420px;
 }
 
 .maptech-detail {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 5;
-  width: min(420px, calc(100% - 24px));
-  border: 1px solid #cfddf3;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(2px);
-  padding: 10px;
-  box-shadow: 0 8px 24px rgba(20, 41, 77, 0.18);
+  flex-shrink: 0;
+  width: 300px;
+  max-height: 420px;
+  overflow-y: auto;
+  border-left: 1px solid #cfddf3;
+  background: #fff;
+  padding: 12px;
 }
 
 .maptech-detail p {
@@ -4222,11 +4223,15 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .maptech-map-card {
+    flex-direction: column;
+  }
+
   .maptech-detail {
-    left: 8px;
-    right: 8px;
     width: auto;
-    bottom: 8px;
+    max-height: none;
+    border-left: none;
+    border-top: 1px solid #cfddf3;
   }
 
   .inv-grid-2,
