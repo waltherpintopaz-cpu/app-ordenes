@@ -22,6 +22,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const [filtroMes, setFiltroMes] = useState(hoy.getMonth() + 1); // 1-12, 0 = todos
   const [filtroEntidad, setFiltroEntidad] = useState("Todas");
   const [filtroCategoria, setFiltroCategoria] = useState("Todas");
+  const [filtroTexto, setFiltroTexto] = useState("");
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -58,9 +59,11 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       if (filtroMes && m !== filtroMes) return false;
       if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return false;
       if (filtroCategoria !== "Todas" && (g.categoria || "Otros") !== filtroCategoria) return false;
+      const q = filtroTexto.trim().toLowerCase();
+      if (q && !String(g.descripcion || "").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria, filtroTexto]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
 
@@ -170,7 +173,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const doc = new jsPDF();
     const periodoTxt = filtroMes ? `${MESES[filtroMes - 1]} ${filtroAnio}` : `Año ${filtroAnio}`;
     doc.setFontSize(16); doc.text("Mis Gastos", 14, 18);
-    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategoria !== "Todas" ? ` · Categoría: ${filtroCategoria}` : ""}`, 14, 26);
+    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategoria !== "Todas" ? ` · Categoría: ${filtroCategoria}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
     autoTable(doc, {
       startY: 32,
       head: [["Fecha", "Descripción", "Categoría", "Entidad", "Monto (S/)"]],
@@ -230,6 +233,13 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
           <option value="Todas">Todas las categorías</option>
           {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <input
+          type="text"
+          value={filtroTexto}
+          onChange={(e) => setFiltroTexto(e.target.value)}
+          placeholder="Buscar por descripción..."
+          style={{ ...inputSt, minWidth: 180 }}
+        />
         <button onClick={exportarCsv} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
           <Download size={13} /> CSV / Sheets
         </button>
