@@ -21,6 +21,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const [filtroAnio, setFiltroAnio] = useState(hoy.getFullYear());
   const [filtroMes, setFiltroMes] = useState(hoy.getMonth() + 1); // 1-12, 0 = todos
   const [filtroEntidad, setFiltroEntidad] = useState("Todas");
+  const [filtroCategoria, setFiltroCategoria] = useState("Todas");
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -56,9 +57,10 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       if (filtroAnio && y !== filtroAnio) return false;
       if (filtroMes && m !== filtroMes) return false;
       if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return false;
+      if (filtroCategoria !== "Todas" && (g.categoria || "Otros") !== filtroCategoria) return false;
       return true;
     });
-  }, [gastos, filtroAnio, filtroMes, filtroEntidad]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
 
@@ -158,7 +160,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}.csv`;
+    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -168,7 +170,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const doc = new jsPDF();
     const periodoTxt = filtroMes ? `${MESES[filtroMes - 1]} ${filtroAnio}` : `Año ${filtroAnio}`;
     doc.setFontSize(16); doc.text("Mis Gastos", 14, 18);
-    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}`, 14, 26);
+    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategoria !== "Todas" ? ` · Categoría: ${filtroCategoria}` : ""}`, 14, 26);
     autoTable(doc, {
       startY: 32,
       head: [["Fecha", "Descripción", "Categoría", "Entidad", "Monto (S/)"]],
@@ -177,7 +179,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       styles: { fontSize: 9 },
       footStyles: { fontStyle: "bold" },
     });
-    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}.pdf`);
+    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}.pdf`);
   };
 
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
@@ -223,6 +225,10 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         <select value={filtroEntidad} onChange={(e) => setFiltroEntidad(e.target.value)} style={inputSt}>
           <option value="Todas">Todas las entidades</option>
           {ENTIDADES.map((e) => <option key={e} value={e}>{e}</option>)}
+        </select>
+        <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} style={inputSt}>
+          <option value="Todas">Todas las categorías</option>
+          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <button onClick={exportarCsv} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
           <Download size={13} /> CSV / Sheets
