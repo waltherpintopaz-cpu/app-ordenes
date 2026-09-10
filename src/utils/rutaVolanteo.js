@@ -279,7 +279,15 @@ function caminoMasCorto(grafo, origen, destino) {
 // es una aproximacion razonable y rapida de calcular) duplicando el camino
 // mas corto entre cada par para que el grafo quede recorrible sin
 // levantar el lapiz, y despues recorre todo con el algoritmo de Hierholzer.
-export function calcularRutaCobertura(subgrafo) {
+// `nodoInicioForzado`: si se pasa (recalculo en vivo "la mejor ruta desde
+// donde estoy"), se emparejan TODOS los nodos de grado impar sin dejar
+// ninguno suelto -- eso deja un circuito CERRADO, que matematicamente se
+// puede empezar a recorrer desde cualquier nodo, incluido el mas cercano a
+// la posicion actual. Sin el parametro (uso original: generar la ruta
+// completa de una sub-zona desde cero), se deja un nodo impar sin
+// emparejar para un camino ABIERTO (no hace falta volver al punto de
+// partida, que es lo normal al planear el dia completo).
+export function calcularRutaCobertura(subgrafo, nodoInicioForzado) {
   const { nodos, aristas } = subgrafo;
   if (aristas.length === 0) return { coords: [], distanciaM: 0 };
 
@@ -297,7 +305,10 @@ export function calcularRutaCobertura(subgrafo) {
   // para el tamaño tipico de una sub-zona de volanteo).
   const restantes = [...impares];
   const paresParaConectar = [];
-  while (restantes.length > 1) {
+  // impares.length siempre es par (lema del apreton de manos), asi que en
+  // modo "inicio forzado" (umbral 0) siempre termina emparejando todos sin
+  // dejar ninguno suelto -- nunca entra al bucle con exactamente 1 restante.
+  while (restantes.length > (nodoInicioForzado ? 0 : 1)) {
     const base = restantes.shift();
     let mejorIdx = 0, mejorDist = Infinity;
     restantes.forEach((id, idx) => {
@@ -309,8 +320,9 @@ export function calcularRutaCobertura(subgrafo) {
     const par = restantes.splice(mejorIdx, 1)[0];
     paresParaConectar.push([base, par]);
   }
-  // Si queda 1 nodo impar sin par, la ruta simplemente empieza o termina
-  // ahi -- es valido (camino euleriano abierto, no circuito cerrado).
+  // Si queda 1 nodo impar sin par (solo quando no hay inicio forzado), la
+  // ruta simplemente empieza o termina ahi -- valido (camino euleriano
+  // abierto, no circuito cerrado).
 
   paresParaConectar.forEach(([a, b]) => {
     const { aristas: camino } = caminoMasCorto(subgrafo, a, b);
@@ -328,7 +340,7 @@ export function calcularRutaCobertura(subgrafo) {
   });
   const usadas = new Set();
 
-  const inicio = impares[0] ?? aristasTrabajo[0].from;
+  const inicio = nodoInicioForzado ?? impares[0] ?? aristasTrabajo[0].from;
   const pila = [inicio];
   const circuito = [];
   while (pila.length > 0) {

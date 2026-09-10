@@ -189,6 +189,11 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
           distanciaM: ruta.distanciaM,
           callesUnicas: ruta.callesUnicas || 0,
           color: TRAIL_COLORS[idx % TRAIL_COLORS.length],
+          // Se guarda el grafo (no solo la linea final) para que el celular
+          // pueda recalcular "la mejor ruta desde aqui" si el volanteador
+          // se desvia -- ver VolanteoMapaScreen.js en la app movil.
+          grafoNodos: Object.fromEntries(g.nodos),
+          grafoAristas: g.aristas,
         };
       });
       setRutas(resultado);
@@ -217,6 +222,8 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         coords: r.coords,
         distancia_m: Math.round(r.distanciaM),
         calles_cubiertas: r.callesUnicas,
+        grafo_nodos: r.grafoNodos,
+        grafo_aristas: r.grafoAristas,
         confirmada: true,
       }));
       const { error: err } = await supabase.from("volanteo_rutas_asignadas").insert(filas);
