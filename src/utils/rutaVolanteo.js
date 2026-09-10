@@ -273,26 +273,55 @@ function caminoMasCorto(grafo, origen, destino) {
   return { distancia: dist.get(destino) ?? Infinity, aristas: path };
 }
 
-// Calcula una ruta a pie que cubre todas las calles del sub-grafo dado,
-// aproximando el "Route Inspection Problem" (Chinese Postman): empareja los
-// cruces de grado impar (por cercania, no es el emparejamiento optimo pero
-// es una aproximacion razonable y rapida de calcular) duplicando el camino
-// mas corto entre cada par para que el grafo quede recorrible sin
-// levantar el lapiz, y despues recorre todo con el algoritmo de Hierholzer.
-// `nodoInicioForzado`: si se pasa (recalculo en vivo "la mejor ruta desde
-// donde estoy"), se emparejan TODOS los nodos de grado impar sin dejar
-// ninguno suelto -- eso deja un circuito CERRADO, que matematicamente se
-// puede empezar a recorrer desde cualquier nodo, incluido el mas cercano a
-// la posicion actual. Sin el parametro (uso original: generar la ruta
-// completa de una sub-zona desde cero), se deja un nodo impar sin
-// emparejar para un camino ABIERTO (no hace falta volver al punto de
-// partida, que es lo normal al planear el dia completo).
-export function calcularRutaCobertura(subgrafo, nodoInicioForzado) {
+// Encuentra los componentes conectados del (sub)grafo -- BFS por las
+// aristas. Repartir calles por cercania/carga (particionarGrafo) puede
+// dejarle a una persona un par de calles sueltas, sin conexion real por
+// las DEMAS calles de su propia porcion (aunque en la realidad si se
+// puede llegar caminando por calles que le tocaron a otra persona). Nunca
+// hay que fingir que esas islas estan conectadas -- eso es lo que causaba
+// el bug de "lineas rectas atravesando manzanas" (ver conversacion: el
+// emparejamiento de cruces de grado impar fallaba en silencio entre
+// componentes distintos, y el resultado terminaba con dos puntos lejanos
+// consecutivos en la ruta).
+function componentesConectados(nodos, aristas) {
+  const adj = new Map();
+  aristas.forEach((a) => {
+    if (!adj.has(a.from)) adj.set(a.from, []);
+    if (!adj.has(a.to)) adj.set(a.to, []);
+    adj.get(a.from).push(a);
+    adj.get(a.to).push(a);
+  });
+  const visitados = new Set();
+  const componentes = [];
+  adj.forEach((_, nodoId) => {
+    if (visitados.has(nodoId)) return;
+    const nodosComp = new Set([nodoId]);
+    const aristasComp = new Set();
+    const cola = [nodoId];
+    visitados.add(nodoId);
+    while (cola.length > 0) {
+      const v = cola.shift();
+      (adj.get(v) || []).forEach((a) => {
+        aristasComp.add(a);
+        const vecino = a.from === v ? a.to : a.from;
+        if (!visitados.has(vecino)) { visitados.add(vecino); nodosComp.add(vecino); cola.push(vecino); }
+      });
+    }
+    const subNodos = new Map();
+    nodosComp.forEach((id) => subNodos.set(id, nodos.get(id)));
+    componentes.push({ nodos: subNodos, aristas: [...aristasComp] });
+  });
+  // De mas a menos calles primero -- el componente principal (donde
+  // probablemente cae nodoInicioForzado) se resuelve primero.
+  return componentes.sort((a, b) => b.aristas.length - a.aristas.length);
+}
+
+// Resuelve UN componente ya garantizado conectado (ver calcularRutaCobertura
+// para el caso general con posibles islas separadas).
+function resolverComponenteConectado(subgrafo, nodoInicioForzado) {
   const { nodos, aristas } = subgrafo;
   if (aristas.length === 0) return { coords: [], distanciaM: 0 };
 
-  // Multigrafo de trabajo: se van a duplicar aristas para emparejar nodos
-  // de grado impar, asi que se trabaja sobre una copia editable.
   const grado = new Map();
   aristas.forEach((a) => {
     grado.set(a.from, (grado.get(a.from) || 0) + 1);
@@ -301,13 +330,8 @@ export function calcularRutaCobertura(subgrafo, nodoInicioForzado) {
   const impares = [...grado.entries()].filter(([, g]) => g % 2 !== 0).map(([id]) => id);
 
   const aristasTrabajo = [...aristas];
-  // Emparejamiento voraz por cercania (no optimo, pero O(k^2) y suficiente
-  // para el tamaño tipico de una sub-zona de volanteo).
   const restantes = [...impares];
   const paresParaConectar = [];
-  // impares.length siempre es par (lema del apreton de manos), asi que en
-  // modo "inicio forzado" (umbral 0) siempre termina emparejando todos sin
-  // dejar ninguno suelto -- nunca entra al bucle con exactamente 1 restante.
   while (restantes.length > (nodoInicioForzado ? 0 : 1)) {
     const base = restantes.shift();
     let mejorIdx = 0, mejorDist = Infinity;
@@ -320,17 +344,16 @@ export function calcularRutaCobertura(subgrafo, nodoInicioForzado) {
     const par = restantes.splice(mejorIdx, 1)[0];
     paresParaConectar.push([base, par]);
   }
-  // Si queda 1 nodo impar sin par (solo quando no hay inicio forzado), la
-  // ruta simplemente empieza o termina ahi -- valido (camino euleriano
-  // abierto, no circuito cerrado).
 
+  // Dentro de UN mismo componente conectado, caminoMasCorto SIEMPRE
+  // encuentra un camino real (por definicion de "conectado") -- no hace
+  // falta el manejo de fallo que si hacia falta cuando esto operaba sobre
+  // grafos con islas separadas.
   paresParaConectar.forEach(([a, b]) => {
     const { aristas: camino } = caminoMasCorto(subgrafo, a, b);
     camino.forEach((ar) => aristasTrabajo.push({ ...ar, id: `${ar.id}-dup${aristasTrabajo.length}` }));
   });
 
-  // Hierholzer: recorre el multigrafo (ya balanceado) sin repetir ninguna
-  // arista de aristasTrabajo, produciendo el circuito/camino euleriano.
   const adj = new Map();
   aristasTrabajo.forEach((a) => {
     if (!adj.has(a.from)) adj.set(a.from, []);
@@ -358,9 +381,47 @@ export function calcularRutaCobertura(subgrafo, nodoInicioForzado) {
   circuito.reverse();
 
   const coords = circuito.map((id) => nodos.get(id)).filter(Boolean);
-  let distanciaM = 0;
+  let distM = 0;
   for (let i = 1; i < coords.length; i += 1) {
-    distanciaM += haversineM(coords[i - 1].lat, coords[i - 1].lng, coords[i].lat, coords[i].lng);
+    distM += haversineM(coords[i - 1].lat, coords[i - 1].lng, coords[i].lat, coords[i].lng);
   }
-  return { coords, distanciaM, callesUnicas: new Set(aristas.map((a) => a.wayId)).size };
+  return { coords, distanciaM: distM };
+}
+
+// Calcula la(s) ruta(s) a pie que cubren todas las calles del sub-grafo
+// dado, aproximando el "Route Inspection Problem" (Chinese Postman) POR
+// CADA COMPONENTE CONECTADO por separado -- nunca se traza una linea recta
+// entre dos calles que no tienen conexion real dentro de lo asignado (eso
+// es lo que producia el bug de "lineas rectas cruzando manzanas": el
+// emparejamiento de cruces de grado impar fallaba en silencio entre islas
+// separadas). Si hay mas de un componente, `segmentos` tiene una entrada
+// por cada uno -- el que llega a dibujar debe pintarlos como polylines
+// independientes, NUNCA conectados entre si.
+// `nodoInicioForzado`: si se pasa (recalculo en vivo "la mejor ruta desde
+// donde estoy"), el componente que lo contiene arranca exactamente ahi y
+// se resuelve como circuito CERRADO (se puede empezar en cualquier nodo).
+// Los demas componentes (islas que solo se pueden alcanzar caminando por
+// calles que no son tuyas) se resuelven como caminos abiertos normales.
+export function calcularRutaCobertura(subgrafo, nodoInicioForzado) {
+  const { nodos, aristas } = subgrafo;
+  if (aristas.length === 0) return { coords: [], segmentos: [], distanciaM: 0, callesUnicas: 0 };
+
+  let componentes = componentesConectados(nodos, aristas);
+  // El componente que contiene nodoInicioForzado (la posicion actual) va
+  // siempre primero -- es "por donde hay que empezar", el resto son islas
+  // que se cubren despues (caminando por calles ajenas para llegar a ellas).
+  if (nodoInicioForzado) {
+    const idx = componentes.findIndex((c) => c.nodos.has(nodoInicioForzado));
+    if (idx > 0) componentes = [componentes[idx], ...componentes.slice(0, idx), ...componentes.slice(idx + 1)];
+  }
+  const segmentos = componentes.map((comp) => {
+    const contieneInicio = nodoInicioForzado && comp.nodos.has(nodoInicioForzado);
+    return resolverComponenteConectado(comp, contieneInicio ? nodoInicioForzado : undefined);
+  });
+  // `coords` = el segmento principal, se mantiene por compatibilidad con
+  // quien todavia no distingue segmentos; `segmentos` trae todos, para
+  // dibujarlos como polylines independientes (nunca conectados entre si).
+  const coords = segmentos[0]?.coords || [];
+  const distanciaM = segmentos.reduce((acc, s) => acc + s.distanciaM, 0);
+  return { coords, segmentos: segmentos.map((s) => s.coords), distanciaM, callesUnicas: new Set(aristas.map((a) => a.wayId)).size };
 }

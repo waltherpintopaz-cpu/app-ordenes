@@ -137,18 +137,26 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
     });
     const bounds = new maps.LatLngBounds();
     listaRutas.forEach((r) => {
-      if (r.coords.length === 0) return;
-      const path = r.coords.map((c) => ({ lat: c.lat, lng: c.lng }));
-      const linea = new maps.Polyline({
-        map, path, strokeColor: r.color, strokeOpacity: 0.9, strokeWeight: 4,
+      // Puede venir partida en varias islas de calles sin conexion real
+      // entre si (ver rutaVolanteo.js) -- cada una se dibuja como su
+      // propia linea, NUNCA conectadas entre si con una sola Polyline
+      // (eso producia lineas rectas fantasma cruzando manzanas).
+      const segmentos = Array.isArray(r.segmentos) && r.segmentos.length > 0 ? r.segmentos : [r.coords];
+      segmentos.forEach((seg, si) => {
+        if (!seg || seg.length === 0) return;
+        const path = seg.map((c) => ({ lat: c.lat, lng: c.lng }));
+        const linea = new maps.Polyline({
+          map, path, strokeColor: r.color, strokeOpacity: si === 0 ? 0.9 : 0.5, strokeWeight: si === 0 ? 4 : 3,
+        });
+        overlaysRef.current.push(linea);
+        const inicio = new maps.Marker({
+          map, position: path[0],
+          title: si === 0 ? `Inicio: ${r.nombre}` : `${r.nombre} (isla ${si + 1} -- sin conexion directa con el resto)`,
+          icon: { path: maps.SymbolPath.CIRCLE, scale: si === 0 ? 7 : 5, fillColor: r.color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+        });
+        overlaysRef.current.push(inicio);
+        path.forEach((p) => bounds.extend(p));
       });
-      overlaysRef.current.push(linea);
-      const inicio = new maps.Marker({
-        map, position: path[0], title: `Inicio: ${r.nombre}`,
-        icon: { path: maps.SymbolPath.CIRCLE, scale: 7, fillColor: r.color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
-      });
-      overlaysRef.current.push(inicio);
-      path.forEach((p) => bounds.extend(p));
     });
     if (!bounds.isEmpty()) map.fitBounds(bounds);
   }, [zonas]);
@@ -186,6 +194,7 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
           tecnicoId: persona.id,
           nombre: persona.nombre,
           coords: ruta.coords,
+          segmentos: ruta.segmentos,
           distanciaM: ruta.distanciaM,
           callesUnicas: ruta.callesUnicas || 0,
           color: TRAIL_COLORS[idx % TRAIL_COLORS.length],
@@ -220,6 +229,7 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         tecnico_id: r.tecnicoId,
         tecnico_nombre: r.nombre,
         coords: r.coords,
+        segmentos: r.segmentos,
         distancia_m: Math.round(r.distanciaM),
         calles_cubiertas: r.callesUnicas,
         grafo_nodos: r.grafoNodos,
