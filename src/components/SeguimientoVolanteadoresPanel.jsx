@@ -98,6 +98,33 @@ function animarMarcadorLiveA(entry, destino) {
   };
   entry.rafId = requestAnimationFrame(paso);
 }
+// Marcador "personita caminando" (reemplaza la flecha solida) -- es un icono
+// SVG estatico (asi funciona un google.maps.Marker: no admite animacion CSS
+// en vivo), pero se alterna entre dos poses de piernas/brazos con setIcon()
+// en un intervalo para dar sensacion de caminar. La persona en si NUNCA
+// rota (se veria "acostada" a 180 grados) -- solo la flechita de rumbo gira
+// libre a los 360 grados, igual que el cono de navegacion de Google Maps.
+function buildWalkerIconSvg({ color, heading, pose }) {
+  const legAngle = pose === "a" ? 16 : -16;
+  const armAngle = pose === "a" ? -11 : 11;
+  const rumbo = Number.isFinite(heading) ? heading : 0;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="50" viewBox="0 0 46 50">
+    <g transform="translate(23 6) rotate(${rumbo})">
+      <polygon points="0,-4 -5,5 5,5" fill="${color}"/>
+    </g>
+    <circle cx="23" cy="27" r="17" fill="${color}" stroke="#ffffff" stroke-width="2.4"/>
+    <g transform="translate(11.5 12)">
+      <circle cx="11.5" cy="5.2" r="3.6" fill="#fff"/>
+      <path d="M7.9 10.8c0-1.6 1.6-2.4 3.6-2.4s3.6.8 3.6 2.4v7.4c0 1-.8 1.8-1.8 1.8h-3.6c-1 0-1.8-.8-1.8-1.8v-7.4z" fill="#fff"/>
+      <g transform="rotate(${armAngle} 8.5 11)"><path d="M8.5 11c-1.7 1-2.8 2.9-3.1 5" stroke="#fff" stroke-width="1.7" stroke-linecap="round" fill="none"/></g>
+      <g transform="rotate(${-armAngle} 14.5 11)"><path d="M14.5 11c1.7 1 2.8 2.9 3.1 5" stroke="#fff" stroke-width="1.7" stroke-linecap="round" fill="none"/></g>
+      <g transform="rotate(${legAngle} 10.1 19)"><path d="M10.1 19 8.4 27.3" stroke="#fff" stroke-width="2.3" stroke-linecap="round" fill="none"/></g>
+      <g transform="rotate(${-legAngle} 12.9 19)"><path d="M12.9 19 14.6 27.3" stroke="#fff" stroke-width="2.3" stroke-linecap="round" fill="none"/></g>
+    </g>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 const haversineMeters = (lat1, lng1, lat2, lng2) => {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const R = 6371000;
@@ -1381,9 +1408,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     vivos.forEach((entry, id) => {
       if (idsActuales.has(id)) return;
       if (entry.rafId) cancelAnimationFrame(entry.rafId);
+      if (entry.poseIntervalId) clearInterval(entry.poseIntervalId);
       entry.marker.setMap(null);
       vivos.delete(id);
     });
+
+    const anchor = new maps.Point(23, 27);
+    const scaledSize = new maps.Size(46, 50);
+    const scaledSizeSel = new maps.Size(54, 58);
+    const anchorSel = new maps.Point(27, 32);
 
     marcadores.forEach((f) => {
       const lat = Number(f.pos.lat);
@@ -1393,22 +1426,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       const rumbo = Number.isFinite(heading) && heading >= 0 ? heading : 0;
       const color = esColorValido(f.avatar) ? f.avatar : colorDe(f.id);
       const colorRepetido = colorRepetidoDe(f.id);
-      // Flecha de direccion (como el puntero de navegacion de Google Maps)
-      // rotada segun el rumbo GPS — siempre se ve completa porque es un
-      // simbolo vectorial, no una imagen recortada. Contorno grueso (blanco
-      // + un anillo oscuro afuera) para que no se confunda con la linea de
-      // ruta del mismo color por debajo.
-      const icon = {
-        path: maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: f.id === selectedId ? 8 : 6.5,
-        rotation: rumbo,
-        fillColor: color,
-        fillOpacity: 1,
-        strokeColor: "#1F2937",
-        strokeWeight: 3.2,
-      };
       const titulo = `${f.nombre} — ${f.grupo}${colorRepetido ? " (color repetido: hay mas personas que colores en este grupo)" : ""}`;
       const opacidad = f.staleMin > 20 ? 0.55 : colorRepetido ? 0.75 : 1;
+      const esSeleccionado = f.id === selectedId;
+
       let entry = vivos.get(f.id);
       if (!entry) {
         try {
@@ -1417,22 +1438,46 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             position: { lat, lng },
             title: titulo,
             opacity: opacidad,
-            icon,
-            zIndex: f.id === selectedId ? 999 : 1,
+            icon: {
+              url: buildWalkerIconSvg({ color, heading: rumbo, pose: "a" }),
+              scaledSize: esSeleccionado ? scaledSizeSel : scaledSize,
+              anchor: esSeleccionado ? anchorSel : anchor,
+            },
+            zIndex: esSeleccionado ? 999 : 1,
           });
           marker.addListener("click", () => setSelectedId(f.id));
-          vivos.set(f.id, { marker, rafId: null });
+          entry = { marker, rafId: null, pose: "a", color, rumbo, esSeleccionado };
+          // Alterna la pose de piernas/brazos cada ~380ms -- da sensacion de
+          // caminar sin depender de CSS (un icono de Marker es una imagen
+          // estatica, asi que la animacion se hace re-generando el SVG).
+          entry.poseIntervalId = setInterval(() => {
+            entry.pose = entry.pose === "a" ? "b" : "a";
+            entry.marker.setIcon({
+              url: buildWalkerIconSvg({ color: entry.color, heading: entry.rumbo, pose: entry.pose }),
+              scaledSize: entry.esSeleccionado ? scaledSizeSel : scaledSize,
+              anchor: entry.esSeleccionado ? anchorSel : anchor,
+            });
+          }, 380);
+          vivos.set(f.id, entry);
         } catch (e) {
           console.warn("No se pudo dibujar el marcador de", f.id, e);
         }
         return;
       }
-      // Icono/titulo/opacidad se aplican directo (no necesitan animarse);
-      // solo la posicion se desliza para que el movimiento se vea continuo.
-      entry.marker.setIcon(icon);
+      // Color/rumbo/seleccion se guardan en el entry para que el intervalo de
+      // arriba siempre dibuje con el dato mas reciente; solo la posicion se
+      // desliza para que el movimiento se vea continuo.
+      entry.color = color;
+      entry.rumbo = rumbo;
+      entry.esSeleccionado = esSeleccionado;
+      entry.marker.setIcon({
+        url: buildWalkerIconSvg({ color, heading: rumbo, pose: entry.pose }),
+        scaledSize: esSeleccionado ? scaledSizeSel : scaledSize,
+        anchor: esSeleccionado ? anchorSel : anchor,
+      });
       entry.marker.setTitle(titulo);
       entry.marker.setOpacity(opacidad);
-      entry.marker.setZIndex(f.id === selectedId ? 999 : 1);
+      entry.marker.setZIndex(esSeleccionado ? 999 : 1);
       animarMarcadorLiveA(entry, { lat, lng });
     });
 
@@ -1498,6 +1543,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     return () => {
       liveMarkersRef.current.forEach((entry) => {
         if (entry.rafId) cancelAnimationFrame(entry.rafId);
+        if (entry.poseIntervalId) clearInterval(entry.poseIntervalId);
         entry.marker.setMap(null);
       });
       liveMarkersRef.current.clear();
