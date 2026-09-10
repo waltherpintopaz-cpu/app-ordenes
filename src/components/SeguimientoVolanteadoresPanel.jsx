@@ -663,6 +663,82 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     setRutasAsignadasHoy(Array.isArray(data) ? data : []);
   }, []);
 
+  // Quien cubrio cada calle hoy (tabla compartida) -- de aca sale el
+  // desglose de "cubrio en su zona / recibio ayuda / dio ayuda" por
+  // persona, y la bitacora de apoyos entre companeros.
+  const [coberturaCompartida, setCoberturaCompartida] = useState([]);
+  const cargarCoberturaCompartida = useCallback(async (grupo, fecha) => {
+    if (!grupo || grupo === "TODOS") { setCoberturaCompartida([]); return; }
+    const dia = formatDateInput(fecha);
+    const { data, error: err } = await supabase
+      .from("volanteo_calles_cubiertas")
+      .select("arista_id,way_id,dueno_tecnico_id,dueno_tecnico_nombre,cubierto_por_id,cubierto_por_nombre,cubierto_en")
+      .eq("grupo", grupo)
+      .eq("fecha", dia);
+    if (err) {
+      if (tableMissing(err, "volanteo_calles_cubiertas")) return;
+      throw err;
+    }
+    setCoberturaCompartida(Array.isArray(data) ? data : []);
+  }, []);
+  useEffect(() => {
+    void cargarCoberturaCompartida(grupoFiltro, statsDate);
+  }, [grupoFiltro, statsDate, cargarCoberturaCompartida]);
+
+  // Desglose por persona: cuantas calles cubrio en SU propia zona, cuantas
+  // le cubrieron de ayuda (y quien), y cuantas cubrio ella en zona ajena (y
+  // a quien) -- separa "cobertura propia" de "colaboracion" para no
+  // mezclar quien trabajo su ruta de quien ademas ayudo a otro.
+  const desglosePorPersona = useMemo(() => {
+    const porId = {};
+    const asegurar = (id, nombre) => {
+      if (!porId[id]) porId[id] = { propias: 0, recibidasDe: {}, dadasA: {} };
+      return porId[id];
+    };
+    coberturaCompartida.forEach((r) => {
+      const dueno = toText(r.dueno_tecnico_id);
+      const cubridor = toText(r.cubierto_por_id);
+      if (!dueno || !cubridor) return;
+      if (dueno === cubridor) {
+        asegurar(dueno).propias += 1;
+      } else {
+        const infoDueno = asegurar(dueno);
+        infoDueno.recibidasDe[cubridor] = (infoDueno.recibidasDe[cubridor] || 0) + 1;
+        const infoCubridor = asegurar(cubridor);
+        infoCubridor.dadasA[dueno] = (infoCubridor.dadasA[dueno] || 0) + 1;
+      }
+    });
+    return porId;
+  }, [coberturaCompartida]);
+
+  // Bitacora: cada par (quien ayudo -> a quien) con su cantidad y el rango
+  // de horas en que paso, para quien quiera revisar el detalle.
+  const bitacoraApoyos = useMemo(() => {
+    const grupos = {};
+    coberturaCompartida.forEach((r) => {
+      const dueno = toText(r.dueno_tecnico_id);
+      const cubridor = toText(r.cubierto_por_id);
+      if (!dueno || !cubridor || dueno === cubridor) return;
+      const key = `${cubridor}->${dueno}`;
+      if (!grupos[key]) {
+        grupos[key] = {
+          cubridorNombre: r.cubierto_por_nombre || cubridor,
+          duenoNombre: r.dueno_tecnico_nombre || dueno,
+          calles: new Set(),
+          desde: r.cubierto_en,
+          hasta: r.cubierto_en,
+        };
+      }
+      const g = grupos[key];
+      g.calles.add(r.way_id || r.arista_id);
+      if (r.cubierto_en < g.desde) g.desde = r.cubierto_en;
+      if (r.cubierto_en > g.hasta) g.hasta = r.cubierto_en;
+    });
+    return Object.values(grupos)
+      .map((g) => ({ ...g, calles: g.calles.size }))
+      .sort((a, b) => new Date(b.hasta) - new Date(a.hasta));
+  }, [coberturaCompartida]);
+
   const zonasYaAsignadasIds = useMemo(() => new Set(zonasAsignadas.map((z) => z.id)), [zonasAsignadas]);
   const zonasParaElegir = useMemo(() => {
     const q = busquedaZona.trim().toLowerCase();
@@ -2134,20 +2210,50 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   <th style={{ padding: "6px 8px" }}>Caminando</th>
                   <th style={{ padding: "6px 8px" }}>Detenido</th>
                   <th style={{ padding: "6px 8px" }}>Km</th>
+                  <th style={{ padding: "6px 8px" }}>Recibió ayuda</th>
+                  <th style={{ padding: "6px 8px" }}>Dio ayuda</th>
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => (
-                  <tr key={`rep-${f.id}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.nombre}</td>
-                    <td style={{ padding: "6px 8px" }}>{f.grupo}</td>
-                    <td style={{ padding: "6px 8px" }}>{f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-"}</td>
-                    <td style={{ padding: "6px 8px" }}>{f.stats?.fin ? formatDateTime(f.stats.fin) : "-"}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatDuration(f.stats?.tiempoCaminandoSec)}</td>
-                    <td style={{ padding: "6px 8px" }}>{formatDuration(f.stats?.tiempoDetenidoSec)}</td>
-                    <td style={{ padding: "6px 8px" }}>{Number(f.stats?.distanciaKm || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
+                {filas.map((f) => {
+                  const desglose = desglosePorPersona[f.id];
+                  const nombreDe = (id) => filas.find((x) => x.id === id)?.nombre || id;
+                  const recibida = desglose ? Object.entries(desglose.recibidasDe) : [];
+                  const dada = desglose ? Object.entries(desglose.dadasA) : [];
+                  const totalRecibida = recibida.reduce((acc, [, n]) => acc + n, 0);
+                  const totalDada = dada.reduce((acc, [, n]) => acc + n, 0);
+                  return (
+                    <tr key={`rep-${f.id}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                      <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.nombre}</td>
+                      <td style={{ padding: "6px 8px" }}>{f.grupo}</td>
+                      <td style={{ padding: "6px 8px" }}>{f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-"}</td>
+                      <td style={{ padding: "6px 8px" }}>{f.stats?.fin ? formatDateTime(f.stats.fin) : "-"}</td>
+                      <td style={{ padding: "6px 8px" }}>{formatDuration(f.stats?.tiempoCaminandoSec)}</td>
+                      <td style={{ padding: "6px 8px" }}>{formatDuration(f.stats?.tiempoDetenidoSec)}</td>
+                      <td style={{ padding: "6px 8px" }}>{Number(f.stats?.distanciaKm || 0).toFixed(2)}</td>
+                      <td style={{ padding: "6px 8px", color: totalRecibida > 0 ? "#16A34A" : "#9CA3AF" }}>
+                        {totalRecibida > 0 ? (
+                          <>
+                            {totalRecibida} calles
+                            <div style={{ fontSize: 11, color: "#6B7280" }}>
+                              {recibida.map(([id, n]) => `${nombreDe(id)} (${n})`).join(" · ")}
+                            </div>
+                          </>
+                        ) : "—"}
+                      </td>
+                      <td style={{ padding: "6px 8px", color: totalDada > 0 ? "#7C3AED" : "#9CA3AF" }}>
+                        {totalDada > 0 ? (
+                          <>
+                            {totalDada} calles
+                            <div style={{ fontSize: 11, color: "#6B7280" }}>
+                              {dada.map(([id, n]) => `${nombreDe(id)} (${n})`).join(" · ")}
+                            </div>
+                          </>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: "2px solid #E5E7EB", fontWeight: 700 }}>
@@ -2155,9 +2261,26 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                     Total equipo
                   </td>
                   <td style={{ padding: "6px 8px" }}>{kpi.kmTotal.toFixed(2)}</td>
+                  <td colSpan={2}></td>
                 </tr>
               </tfoot>
             </table>
+            {bitacoraApoyos.length > 0 ? (
+              <div style={{ marginTop: 14 }}>
+                <h4 style={{ margin: "0 0 6px", fontSize: 13, color: "#374151" }}>Bitácora de apoyos entre compañeros</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {bitacoraApoyos.map((b, idx) => (
+                    <div key={`bit-${idx}`} style={{ fontSize: 12.5, color: "#374151", padding: "4px 0", borderBottom: "1px solid #F1F5F9" }}>
+                      <strong>{b.cubridorNombre}</strong> ayudó a <strong>{b.duenoNombre}</strong> con {b.calles} calle{b.calles === 1 ? "" : "s"}
+                      {" · "}
+                      <span style={{ color: "#9CA3AF" }}>
+                        {formatDateTime(b.desde).split(" ").pop()}–{formatDateTime(b.hasta).split(" ").pop()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {coberturaPorZona.length > 0 ? (
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {coberturaPorZona.map((z) => (
