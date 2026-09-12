@@ -109,6 +109,15 @@ export async function obtenerCallesDeZona(poligono) {
 // grupo mas cercano cuya longitud acumulada aun no supere el promedio --
 // asi el reparto sigue la forma real de las calles en vez de cortar por
 // mitad de un area cruda.
+// Penalizacion fija (en metros-equivalentes) por cada calle asignada,
+// ademas de su longitud real, al momento de balancear grupos. En volanteo el
+// esfuerzo de una calle no es solo caminarla: cruzar la esquina, girar y
+// repartir en cada tramo cuesta tiempo aparte de los metros. Sin esto, un
+// grupo con muchas calles cortas queda "liviano" en metros pero termina
+// siendo el mas pesado en la practica (ver caso real: Joss 62 calles/8.9km
+// vs Josue 30 calles/11.4km).
+const PENALIZACION_POR_CALLE_M = 60;
+
 export function particionarGrafo(grafo, n) {
   const { nodos, aristas } = grafo;
   if (n <= 1 || aristas.length === 0) return [grafo];
@@ -117,6 +126,7 @@ export function particionarGrafo(grafo, n) {
     const na = nodos.get(a.from), nb = nodos.get(a.to);
     return { lat: (na.lat + nb.lat) / 2, lng: (na.lng + nb.lng) / 2 };
   };
+  const costoArista = (a) => a.length + PENALIZACION_POR_CALLE_M;
 
   // Semillas: la primera arista, y luego siempre la mas lejana a todas las
   // semillas ya elegidas (maximiza separacion, tipo k-means++).
@@ -133,11 +143,11 @@ export function particionarGrafo(grafo, n) {
     semillas.push(mejorIdx);
   }
 
-  const totalLength = aristas.reduce((acc, a) => acc + a.length, 0);
-  const objetivoPorGrupo = totalLength / n;
+  const totalCosto = aristas.reduce((acc, a) => acc + costoArista(a), 0);
+  const objetivoPorGrupo = totalCosto / n;
   let gruposCentro = semillas.map((i) => centros[i]);
   let gruposAristas = Array.from({ length: n }, () => []);
-  let gruposLongitud = new Array(n).fill(0);
+  let gruposCosto = new Array(n).fill(0);
 
   // Refinamiento iterativo (estilo Lloyd/k-means): en cada vuelta se
   // reasignan TODAS las aristas contra los centros actuales (penalizando
@@ -149,7 +159,7 @@ export function particionarGrafo(grafo, n) {
   for (let iter = 0; iter < ITERACIONES; iter += 1) {
     const esUltima = iter === ITERACIONES - 1;
     const nuevasAristas = Array.from({ length: n }, () => []);
-    const nuevasLongitudes = new Array(n).fill(0);
+    const nuevosCostos = new Array(n).fill(0);
 
     const orden = aristas.map((_, i) => i).sort((i, j) => {
       const di = Math.min(...gruposCentro.map((c) => haversineM(centros[i].lat, centros[i].lng, c.lat, c.lng)));
@@ -163,7 +173,7 @@ export function particionarGrafo(grafo, n) {
       let mejorGrupo = -1, mejorPuntaje = Infinity;
       for (let g = 0; g < n; g += 1) {
         const dist = haversineM(c.lat, c.lng, gruposCentro[g].lat, gruposCentro[g].lng);
-        const proporcion = nuevasLongitudes[g] / objetivoPorGrupo;
+        const proporcion = nuevosCostos[g] / objetivoPorGrupo;
         // En la ultima vuelta se aprieta mas la penalizacion por carga para
         // terminar de parejar los grupos, ya con los centros asentados.
         const factorCarga = 1 + Math.max(0, proporcion - 0.6) * (esUltima ? 4 : 2.2);
@@ -171,11 +181,11 @@ export function particionarGrafo(grafo, n) {
         if (puntaje < mejorPuntaje) { mejorPuntaje = puntaje; mejorGrupo = g; }
       }
       nuevasAristas[mejorGrupo].push(a);
-      nuevasLongitudes[mejorGrupo] += a.length;
+      nuevosCostos[mejorGrupo] += costoArista(a);
     });
 
     gruposAristas = nuevasAristas;
-    gruposLongitud = nuevasLongitudes;
+    gruposCosto = nuevosCostos;
     // Recalcula cada centro como el promedio (ponderado por largo) de sus
     // propias aristas -- si un grupo quedo vacio (raro, solo con n grande
     // y pocas aristas) conserva su centro anterior.
@@ -199,9 +209,9 @@ export function particionarGrafo(grafo, n) {
   let intentos = 0;
   while (intentos < n * 6) {
     intentos += 1;
-    const idxCorto = gruposLongitud.reduce((mejor, l, idx) => (l < gruposLongitud[mejor] ? idx : mejor), 0);
-    const idxLargo = gruposLongitud.reduce((mejor, l, idx) => (l > gruposLongitud[mejor] ? idx : mejor), 0);
-    const diferencia = gruposLongitud[idxLargo] - gruposLongitud[idxCorto];
+    const idxCorto = gruposCosto.reduce((mejor, l, idx) => (l < gruposCosto[mejor] ? idx : mejor), 0);
+    const idxLargo = gruposCosto.reduce((mejor, l, idx) => (l > gruposCosto[mejor] ? idx : mejor), 0);
+    const diferencia = gruposCosto[idxLargo] - gruposCosto[idxCorto];
     if (idxLargo === idxCorto || diferencia < objetivoPorGrupo * 0.2) break;
     const candidatos = gruposAristas[idxLargo]
       .map((a, idx) => ({ idx, a, dist: haversineM(centroDeArista(a).lat, centroDeArista(a).lng, gruposCentro[idxCorto].lat, gruposCentro[idxCorto].lng) }))
@@ -210,11 +220,11 @@ export function particionarGrafo(grafo, n) {
     const mover = candidatos[0];
     // No mover si dejaria al grupo corto pasado del objetivo (evita
     // oscilar de un lado a otro sin converger).
-    if (gruposLongitud[idxCorto] + mover.a.length > objetivoPorGrupo * 1.1) break;
+    if (gruposCosto[idxCorto] + costoArista(mover.a) > objetivoPorGrupo * 1.1) break;
     gruposAristas[idxLargo].splice(mover.idx, 1);
     gruposAristas[idxCorto].push(mover.a);
-    gruposLongitud[idxLargo] -= mover.a.length;
-    gruposLongitud[idxCorto] += mover.a.length;
+    gruposCosto[idxLargo] -= costoArista(mover.a);
+    gruposCosto[idxCorto] += costoArista(mover.a);
   }
 
   return gruposAristas.map((arr) => {
