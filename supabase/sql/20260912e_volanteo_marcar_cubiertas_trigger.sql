@@ -36,16 +36,16 @@ declare
   px double precision := (p_lng - lng1) * m_lng;
   py double precision := (p_lat - lat1) * m_lat;
   bx double precision := (lng2 - lng1) * m_lng;
-  by double precision := (lat2 - lat1) * m_lat;
-  largo2 double precision := bx*bx + by*by;
+  by_m double precision := (lat2 - lat1) * m_lat;
+  largo2 double precision := bx*bx + by_m*by_m;
   t double precision;
 begin
   if largo2 > 0 then
-    t := greatest(0.0, least(1.0, ((px * bx) + (py * by)) / largo2));
+    t := greatest(0.0, least(1.0, ((px * bx) + (py * by_m)) / largo2));
   else
     t := 0.0;
   end if;
-  return sqrt(power(px - t*bx, 2) + power(py - t*by, 2));
+  return sqrt(power(px - t*bx, 2) + power(py - t*by_m, 2));
 end;
 $$;
 
