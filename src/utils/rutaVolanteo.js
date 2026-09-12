@@ -207,20 +207,27 @@ export function particionarGrafo(grafo, n) {
   // priorizando las que esten geograficamente mas cerca del grupo corto
   // (para no dejar "islas" separadas del resto de su nuevo grupo).
   let intentos = 0;
-  while (intentos < n * 6) {
+  while (intentos < n * 25) {
     intentos += 1;
     const idxCorto = gruposCosto.reduce((mejor, l, idx) => (l < gruposCosto[mejor] ? idx : mejor), 0);
     const idxLargo = gruposCosto.reduce((mejor, l, idx) => (l > gruposCosto[mejor] ? idx : mejor), 0);
     const diferencia = gruposCosto[idxLargo] - gruposCosto[idxCorto];
-    if (idxLargo === idxCorto || diferencia < objetivoPorGrupo * 0.2) break;
+    // Umbral de tolerancia: antes 20% del objetivo dejaba pasar diferencias
+    // grandes sin corregir (ej: un grupo 16-17% por debajo del objetivo ya
+    // no se tocaba, aunque en km eso se notara mucho -- ver caso real con
+    // spread de 8.7km a 13.5km). Se aprieta a 8% para forzar mas correccion.
+    if (idxLargo === idxCorto || diferencia < objetivoPorGrupo * 0.08) break;
     const candidatos = gruposAristas[idxLargo]
       .map((a, idx) => ({ idx, a, dist: haversineM(centroDeArista(a).lat, centroDeArista(a).lng, gruposCentro[idxCorto].lat, gruposCentro[idxCorto].lng) }))
       .sort((x, y) => x.dist - y.dist);
-    if (candidatos.length === 0) break;
-    const mover = candidatos[0];
-    // No mover si dejaria al grupo corto pasado del objetivo (evita
-    // oscilar de un lado a otro sin converger).
-    if (gruposCosto[idxCorto] + costoArista(mover.a) > objetivoPorGrupo * 1.1) break;
+    // Antes solo se probaba el candidato mas cercano: si esa arista sola ya
+    // pasaba el objetivo del grupo corto, el bucle se rendia entero aunque
+    // hubiera otras aristas mas chicas que si cabian. Ahora se recorre la
+    // lista (ya ordenada por cercania) hasta encontrar una que quepa.
+    const mover = candidatos.find(
+      (c) => gruposCosto[idxCorto] + costoArista(c.a) <= objetivoPorGrupo * 1.05
+    );
+    if (!mover) break;
     gruposAristas[idxLargo].splice(mover.idx, 1);
     gruposAristas[idxCorto].push(mover.a);
     gruposCosto[idxLargo] -= costoArista(mover.a);
