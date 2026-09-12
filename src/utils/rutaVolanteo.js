@@ -42,6 +42,32 @@ export function puntoEnPoligono(lat, lng, coordinates) {
 // del rectangulo que contiene al poligono, y arma un grafo con solo los
 // segmentos cuyo punto medio cae DENTRO del poligono real (no solo del
 // rectangulo). Devuelve { nodos: Map<id, {lat,lng}>, aristas: [...] }.
+// El servidor publico y gratuito de Overpass a veces responde 429 (limite
+// de solicitudes) o 503/504 (sobrecargado) bajo uso normal -- son fallas
+// temporales del servicio, no del poligono ni de la app. Se reintenta solo,
+// con esperas crecientes, antes de rendirse.
+const OVERPASS_ESPERAS_MS = [5000, 15000, 30000];
+async function fetchOverpass(query) {
+  let ultimoStatus = null;
+  for (let intento = 0; intento <= OVERPASS_ESPERAS_MS.length; intento += 1) {
+    const res = await fetch(OVERPASS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "*/*",
+        "User-Agent": "AmnetVolanteo/1.0",
+      },
+      body: "data=" + encodeURIComponent(query),
+    });
+    if (res.ok) return res.json();
+    ultimoStatus = res.status;
+    const esReintentable = res.status === 429 || res.status === 503 || res.status === 504;
+    if (!esReintentable || intento === OVERPASS_ESPERAS_MS.length) break;
+    await new Promise((resolve) => setTimeout(resolve, OVERPASS_ESPERAS_MS[intento]));
+  }
+  throw new Error(`Overpass respondio ${ultimoStatus} (reintentado sin exito, el servicio gratuito esta saturado -- probar de nuevo en un rato)`);
+}
+
 export async function obtenerCallesDeZona(poligono) {
   if (!Array.isArray(poligono) || poligono.length < 3) {
     throw new Error("Poligono de zona invalido.");
@@ -53,17 +79,7 @@ export async function obtenerCallesDeZona(poligono) {
 
   const query = `[out:json][timeout:30];(way["highway"]["highway"!~"^(motorway|trunk|motorway_link|trunk_link)$"](${minLat},${minLng},${maxLat},${maxLng}););out body;>;out skel qt;`;
 
-  const res = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "*/*",
-      "User-Agent": "AmnetVolanteo/1.0",
-    },
-    body: "data=" + encodeURIComponent(query),
-  });
-  if (!res.ok) throw new Error(`Overpass respondio ${res.status}`);
-  const data = await res.json();
+  const data = await fetchOverpass(query);
 
   const nodosCrudos = new Map();
   data.elements.forEach((el) => {
