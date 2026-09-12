@@ -333,6 +333,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const supervisorMarkersRef = useRef(new Map());
   const polylinesRef = useRef([]);
   const rutasAsignadasPolylinesRef = useRef([]);
+  const marcasReferenciaMarkersRef = useRef([]);
   const zonaPolygonsRef = useRef([]);
   const autoFitDoneRef = useRef(false);
   const tramosManualesRef = useRef([]);
@@ -395,6 +396,13 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [tramoPuntos, setTramoPuntos] = useState([]);
   const [tramoTecnicoId, setTramoTecnicoId] = useState("");
   const [guardandoTramo, setGuardandoTramo] = useState(false);
+
+  // Puntos de referencia con etiqueta libre (ej. "Punto de almuerzo") que el
+  // supervisor deja en el mapa para que los voluntarios los vean en su
+  // celular -- ver volanteo_marcas_referencia y VolanteoMapaScreen.js.
+  const [marcasReferencia, setMarcasReferencia] = useState([]);
+  const [agregandoMarca, setAgregandoMarca] = useState(false);
+  const marcaClickListenerRef = useRef(null);
 
   // Ajustes de registro GPS (perfil Geo Tracker-like), compartidos con la
   // app movil via la misma fila (volanteo_config_registro, id=1).
@@ -652,7 +660,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     const dia = formatDateInput(fecha);
     const { data, error: err } = await supabase
       .from("volanteo_rutas_asignadas")
-      .select("tecnico_id,tecnico_nombre,coords,segmentos,distancia_m,calles_cubiertas")
+      .select("tecnico_id,tecnico_nombre,coords,segmentos,distancia_m,calles_cubiertas,porcentaje_avance,orden_entrega")
       .eq("grupo", grupo)
       .eq("fecha", dia)
       .eq("confirmada", true);
@@ -710,6 +718,34 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     });
     return porId;
   }, [coberturaCompartida]);
+
+  // % de avance de cada persona (ya calculado y guardado en vivo desde su
+  // propio celular -- ver VolanteoMapaScreen.js, columna porcentaje_avance,
+  // que ya suma la ayuda recibida de companeros) mas una proyeccion simple
+  // de a que hora terminaria si sigue a este ritmo: tiempo transcurrido
+  // dividido el % de avance da el tiempo total estimado de la jornada.
+  const progresoPorPersona = useMemo(() => {
+    const out = {};
+    rutasAsignadasHoy.forEach((r) => {
+      const id = toText(r.tecnico_id);
+      if (!id) return;
+      const pct = Math.max(0, Math.min(100, Number(r.porcentaje_avance) || 0));
+      const inicio = statsByVolanteador[id]?.inicio;
+      let horaEstimadaFin = null;
+      // Con muy poco avance la proyeccion es puro ruido (ej. 1% a los 5
+      // minutos "predice" que termina en 8 horas) -- se pide un minimo.
+      if (inicio && pct >= 5) {
+        const inicioMs = new Date(inicio).getTime();
+        if (Number.isFinite(inicioMs)) {
+          const transcurridoMs = Date.now() - inicioMs;
+          const totalEstimadoMs = transcurridoMs / (pct / 100);
+          horaEstimadaFin = new Date(inicioMs + totalEstimadoMs);
+        }
+      }
+      out[id] = { pct, ordenEntrega: r.orden_entrega || null, horaEstimadaFin };
+    });
+    return out;
+  }, [rutasAsignadasHoy, statsByVolanteador]);
 
   // Bitacora: cada par (quien ayudo -> a quien) con su cantidad y el rango
   // de horas en que paso, para quien quiera revisar el detalle.
@@ -966,6 +1002,29 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     }
   }, [tramoTecnicoId, tramoPuntos, statsDate, cargarTramosManuales]);
 
+  const cargarMarcasReferencia = useCallback(async (grupo, targetDate = statsDate) => {
+    if (!grupo || grupo === "TODOS") { setMarcasReferencia([]); return; }
+    const { data, error: err } = await supabase
+      .from("volanteo_marcas_referencia")
+      .select("id,lat,lng,etiqueta,tecnico_id")
+      .eq("grupo", grupo)
+      .eq("fecha", formatDateInput(targetDate));
+    if (err) {
+      if (tableMissing(err, "volanteo_marcas_referencia")) return;
+      return;
+    }
+    setMarcasReferencia(Array.isArray(data) ? data : []);
+  }, [statsDate]);
+
+  const iniciarAgregarMarca = useCallback(() => setAgregandoMarca(true), []);
+  const cancelarAgregarMarca = useCallback(() => setAgregandoMarca(false), []);
+
+  const borrarMarcaReferencia = useCallback(async (id) => {
+    if (!window.confirm("¿Borrar este punto de referencia?")) return;
+    await supabase.from("volanteo_marcas_referencia").delete().eq("id", id);
+    await cargarMarcasReferencia(grupoFiltro, statsDate);
+  }, [grupoFiltro, statsDate, cargarMarcasReferencia]);
+
   const borrarTramoManual = useCallback(
     async (id) => {
       if (!window.confirm("¿Borrar este tramo agregado a mano?")) return;
@@ -1069,6 +1128,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   }, [statsDate, cargarTramosManuales]);
 
   useEffect(() => {
+    void cargarMarcasReferencia(grupoFiltro, statsDate);
+  }, [grupoFiltro, statsDate, cargarMarcasReferencia]);
+
+  useEffect(() => {
     if (volanteadores.length > 0) void cargarEstadisticasYRutas(statsDate);
   }, [volanteadores, statsDate, cargarEstadisticasYRutas]);
 
@@ -1086,6 +1149,19 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     return () => supabase.removeChannel(channel);
   }, [cargarPosicionesActuales]);
 
+  // Realtime: el celular del volanteador actualiza su propio
+  // porcentaje_avance a medida que camina (ver VolanteoMapaScreen.js) -- sin
+  // esto el % y la hora estimada de termino quedaban pegados a como estaban
+  // cuando se abrio el panel.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+    const channel = supabase
+      .channel("volanteo_rutas_asignadas_admin_live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "volanteo_rutas_asignadas" }, () => void cargarRutasAsignadasHoy(grupoFiltro, statsDate))
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [grupoFiltro, statsDate, cargarRutasAsignadasHoy]);
+
   // Respaldo por si el canal en tiempo real se corta -- sin esto el marcador
   // se quedaba congelado mientras la ruta trazada si seguia avanzando (esa
   // se recarga por consulta directa, no por realtime).
@@ -1093,9 +1169,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     const id = setInterval(() => {
       void cargarPosicionesActuales();
       void cargarSupervisores();
+      void cargarRutasAsignadasHoy(grupoFiltro, statsDate);
     }, 5000);
     return () => clearInterval(id);
-  }, [cargarPosicionesActuales, cargarSupervisores]);
+  }, [cargarPosicionesActuales, cargarSupervisores, cargarRutasAsignadasHoy, grupoFiltro, statsDate]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1314,6 +1391,45 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     };
   }, [dibujandoTramo]);
 
+  // Modo "agregar punto de referencia": el proximo clic en el mapa pide una
+  // etiqueta y guarda el punto -- a diferencia del tramo manual, se resuelve
+  // en un solo clic en vez de acumular varios.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const maps = mapsRef.current;
+    const map = mapRef.current;
+    if (marcaClickListenerRef.current) {
+      maps.event.removeListener(marcaClickListenerRef.current);
+      marcaClickListenerRef.current = null;
+    }
+    if (agregandoMarca) {
+      marcaClickListenerRef.current = map.addListener("click", (e) => {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        setAgregandoMarca(false);
+        const etiqueta = window.prompt("Etiqueta para este punto (ej. Punto de almuerzo):", "");
+        if (!etiqueta || !etiqueta.trim()) return;
+        void (async () => {
+          const { error: err } = await supabase.from("volanteo_marcas_referencia").insert({
+            grupo: grupoFiltro,
+            fecha: formatDateInput(statsDate),
+            lat,
+            lng,
+            etiqueta: etiqueta.trim(),
+            creado_por: sessionUser?.nombre || null,
+          });
+          if (!err) await cargarMarcasReferencia(grupoFiltro, statsDate);
+        })();
+      });
+    }
+    return () => {
+      if (marcaClickListenerRef.current) {
+        maps.event.removeListener(marcaClickListenerRef.current);
+        marcaClickListenerRef.current = null;
+      }
+    };
+  }, [agregandoMarca, grupoFiltro, statsDate, cargarMarcasReferencia, sessionUser]);
+
   // Vista previa punteada del tramo que se esta dibujando.
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return;
@@ -1468,6 +1584,30 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       });
     });
   }, [rutasAsignadasHoy, verRutasAsignadas, colorDe]);
+
+  // Puntos de referencia con etiqueta (ver cargarMarcasReferencia): pin
+  // clasico de Google (sin icono custom, para diferenciarlo de las personas)
+  // con la etiqueta como tooltip -- ningun marcador de este archivo usa
+  // InfoWindow, se mantiene esa misma consistencia aca.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    marcasReferenciaMarkersRef.current.forEach((m) => m.setMap(null));
+    marcasReferenciaMarkersRef.current = [];
+    marcasReferencia.forEach((m) => {
+      const lat = Number(m.lat), lng = Number(m.lng);
+      if (!isValidCoord(lat, lng)) return;
+      const marker = new maps.Marker({
+        map,
+        position: { lat, lng },
+        title: m.etiqueta,
+        label: { text: "📍", fontSize: "16px" },
+        zIndex: 15,
+      });
+      marcasReferenciaMarkersRef.current.push(marker);
+    });
+  }, [marcasReferencia]);
 
   // Marcadores en vivo (volanteadores + supervisores): efecto aparte del de
   // arriba porque estos NO se destruyen y redibujan de cero en cada cambio
@@ -2000,11 +2140,37 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
               ✏️ Rellenar hueco a mano
             </button>
           ) : null}
+          {!agregandoMarca ? (
+            <button type="button" className="secondary-btn small" onClick={iniciarAgregarMarca} disabled={grupoFiltro === "TODOS"}>
+              📍 Agregar punto de referencia
+            </button>
+          ) : (
+            <button type="button" className="secondary-btn small" onClick={cancelarAgregarMarca}>
+              Cancelar (haz clic en el mapa)
+            </button>
+          )}
           <button type="button" className="secondary-btn small" onClick={abrirAjustesRegistro}>
             ⚙️ Ajustes de registro GPS
           </button>
         </div>
       </div>
+
+      {marcasReferencia.length > 0 ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "#6B7280" }}>Puntos de referencia de hoy:</span>
+          {marcasReferencia.map((m) => (
+            <span
+              key={m.id}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, background: "#F3F4F6", border: "1px solid #D1D5DB", borderRadius: 999, padding: "3px 10px" }}
+            >
+              📍 {m.etiqueta}
+              <button type="button" onClick={() => void borrarMarcaReferencia(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontWeight: 700, padding: 0 }} title="Borrar punto">
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {dibujandoTramo ? (
         <div
@@ -2100,6 +2266,14 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             <p>Recorrido hoy: {Number(selectedRow.stats?.distanciaKm || 0).toFixed(2)} km</p>
             <p>Tiempo caminando: {formatDuration(selectedRow.stats?.tiempoCaminandoSec)}</p>
             <p>Tiempo detenido: {formatDuration(selectedRow.stats?.tiempoDetenidoSec)}</p>
+            {progresoPorPersona[selectedRow.id] ? (
+              <p>
+                Avance de su ruta: <strong>{progresoPorPersona[selectedRow.id].pct}%</strong>
+                {progresoPorPersona[selectedRow.id].horaEstimadaFin
+                  ? ` · Termina ~${progresoPorPersona[selectedRow.id].horaEstimadaFin.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`
+                  : " · calculando hora estimada..."}
+              </p>
+            ) : null}
             <div className="maptech-detail-actions">
               {selectedRow.pos ? (
                 <button type="button" className="primary-btn small" onClick={() => centrar(selectedRow)}>
@@ -2359,6 +2533,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                 <p className="maptech-row-meta">
                   Recorrido: {Number(f.stats?.distanciaKm || 0).toFixed(2)} km | Caminando: {formatDuration(f.stats?.tiempoCaminandoSec)} | Detenido:{" "}
                   {formatDuration(f.stats?.tiempoDetenidoSec)}
+                  {progresoPorPersona[f.id] ? (
+                    <>
+                      {" "}
+                      | Avance: <strong>{progresoPorPersona[f.id].pct}%</strong>
+                      {progresoPorPersona[f.id].horaEstimadaFin
+                        ? ` · Termina ~${progresoPorPersona[f.id].horaEstimadaFin.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`
+                        : ""}
+                    </>
+                  ) : null}
                 </p>
                 <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                   {f.celular ? (

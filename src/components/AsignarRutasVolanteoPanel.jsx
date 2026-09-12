@@ -156,8 +156,11 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         overlaysRef.current.push(linea);
         const inicio = new maps.Marker({
           map, position: path[0],
-          title: si === 0 ? `Inicio: ${r.nombre}` : `${r.nombre} (isla ${si + 1} -- sin conexion directa con el resto)`,
+          title: si === 0
+            ? `Punto de partida sugerido #${r.orden} (referencial): ${r.nombre}`
+            : `${r.nombre} (isla ${si + 1} -- sin conexion directa con el resto)`,
           icon: { path: maps.SymbolPath.CIRCLE, scale: si === 0 ? 7 : 5, fillColor: r.color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+          label: si === 0 ? { text: String(r.orden), color: "#fff", fontSize: "10px", fontWeight: "bold" } : undefined,
         });
         overlaysRef.current.push(inicio);
         path.forEach((p) => bounds.extend(p));
@@ -190,14 +193,20 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         return;
       }
       const grafoTotal = { nodos: nodosCombinados, aristas: aristasCombinadas };
-      const grupos = particionarGrafo(grafoTotal, idsSeleccionados.length);
+      const { grupos, puntosPartida } = particionarGrafo(grafoTotal, idsSeleccionados.length);
 
       const resultado = grupos.map((g, idx) => {
         const persona = idsSeleccionados[idx];
-        const ruta = calcularRutaCobertura(g);
+        // El punto de partida sugerido (ver particionarGrafo) hace arrancar
+        // el circuito ahi mismo -- asi el marcador de "Inicio" que ya se
+        // dibuja en coords[0] queda en el lugar estrategico, sin tocar nada
+        // del dibujo. Es solo referencial: no bloquea al supervisor de
+        // dejar a la persona en otro lado.
+        const ruta = calcularRutaCobertura(g, puntosPartida[idx]?.nodoId);
         return {
           tecnicoId: persona.id,
           nombre: persona.nombre,
+          orden: puntosPartida[idx]?.orden || idx + 1,
           coords: ruta.coords,
           segmentos: ruta.segmentos,
           distanciaM: ruta.distanciaM,
@@ -237,6 +246,7 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         segmentos: r.segmentos,
         distancia_m: Math.round(r.distanciaM),
         calles_cubiertas: r.callesUnicas,
+        orden_entrega: r.orden,
         grafo_nodos: r.grafoNodos,
         grafo_aristas: r.grafoAristas,
         confirmada: true,
@@ -299,7 +309,7 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
                     {rutas.map((r) => (
                       <div key={r.tecnicoId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 6 }}>
                         <span style={{ width: 10, height: 10, borderRadius: 5, background: r.color, flexShrink: 0 }} />
-                        <span style={{ flex: 1 }}>{r.nombre}</span>
+                        <span style={{ flex: 1 }}>#{r.orden} · {r.nombre}</span>
                         <span style={{ color: "#64748B" }}>{(r.distanciaM / 1000).toFixed(1)}km · {r.callesUnicas} calles</span>
                       </div>
                     ))}

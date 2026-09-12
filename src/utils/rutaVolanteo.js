@@ -120,12 +120,41 @@ const PENALIZACION_POR_CALLE_M = 60;
 
 export function particionarGrafo(grafo, n) {
   const { nodos, aristas } = grafo;
-  if (n <= 1 || aristas.length === 0) return [grafo];
 
   const centroDeArista = (a) => {
     const na = nodos.get(a.from), nb = nodos.get(a.to);
     return { lat: (na.lat + nb.lat) / 2, lng: (na.lng + nb.lng) / 2 };
   };
+  // Nodo de un conjunto de aristas mas cercano a un punto dado -- se usa para
+  // elegir el "punto de partida" sugerido de cada grupo (ver mas abajo).
+  const nodoMasCercanoA = (arr, punto) => {
+    let mejorId = null, mejorDist = Infinity;
+    const vistos = new Set();
+    arr.forEach((a) => {
+      [a.from, a.to].forEach((id) => {
+        if (vistos.has(id)) return;
+        vistos.add(id);
+        const nodo = nodos.get(id);
+        if (!nodo) return;
+        const d = haversineM(nodo.lat, nodo.lng, punto.lat, punto.lng);
+        if (d < mejorDist) { mejorDist = d; mejorId = id; }
+      });
+    });
+    return mejorId;
+  };
+
+  if (n <= 1 || aristas.length === 0) {
+    if (aristas.length === 0) return { grupos: [grafo], puntosPartida: [{ nodoId: null, orden: 1 }] };
+    let sumaLat = 0, sumaLng = 0, sumaPeso = 0;
+    aristas.forEach((a) => {
+      const c = centroDeArista(a);
+      sumaLat += c.lat * a.length;
+      sumaLng += c.lng * a.length;
+      sumaPeso += a.length;
+    });
+    const centro = { lat: sumaLat / sumaPeso, lng: sumaLng / sumaPeso };
+    return { grupos: [grafo], puntosPartida: [{ nodoId: nodoMasCercanoA(aristas, centro), orden: 1 }] };
+  }
   const costoArista = (a) => a.length + PENALIZACION_POR_CALLE_M;
 
   // Semillas: la primera arista, y luego siempre la mas lejana a todas las
@@ -234,13 +263,48 @@ export function particionarGrafo(grafo, n) {
     gruposCosto[idxCorto] += costoArista(mover.a);
   }
 
-  return gruposAristas.map((arr) => {
-    const idsUsados = new Set();
-    arr.forEach((a) => { idsUsados.add(a.from); idsUsados.add(a.to); });
-    const subNodos = new Map();
-    idsUsados.forEach((id) => subNodos.set(id, nodos.get(id)));
-    return { nodos: subNodos, aristas: arr };
+  // Orden de dejada sugerido: cadena de vecino mas cercano sobre los centros
+  // finales de cada grupo -- el supervisor puede ir dejando a cada voluntario
+  // en este orden sin ir y volver por el mapa. Es puramente informativo, no
+  // afecta el reparto de calles ya calculado arriba.
+  const visitado = new Array(n).fill(false);
+  const ordenVisita = [0];
+  visitado[0] = true;
+  while (ordenVisita.length < n) {
+    const actual = ordenVisita[ordenVisita.length - 1];
+    let mejorIdx = -1, mejorDist = Infinity;
+    for (let g = 0; g < n; g += 1) {
+      if (visitado[g]) continue;
+      const d = haversineM(gruposCentro[actual].lat, gruposCentro[actual].lng, gruposCentro[g].lat, gruposCentro[g].lng);
+      if (d < mejorDist) { mejorDist = d; mejorIdx = g; }
+    }
+    if (mejorIdx === -1) break;
+    visitado[mejorIdx] = true;
+    ordenVisita.push(mejorIdx);
+  }
+
+  // Punto de partida sugerido por grupo: el primero de la cadena arranca en
+  // el nodo mas "propio" (el mas cercano a su propio centro); cada siguiente
+  // arranca en el nodo de sus calles mas cercano al centro del grupo anterior
+  // en la cadena, para que el punto de entrada quede del lado por donde
+  // viene el supervisor -- referencial, no obliga a nada.
+  const puntosPartida = new Array(n);
+  ordenVisita.forEach((g, posicion) => {
+    const puntoReferencia = posicion === 0 ? gruposCentro[g] : gruposCentro[ordenVisita[posicion - 1]];
+    const nodoId = nodoMasCercanoA(gruposAristas[g], puntoReferencia) ?? nodoMasCercanoA(gruposAristas[g], gruposCentro[g]);
+    puntosPartida[g] = { nodoId, orden: posicion + 1 };
   });
+
+  return {
+    grupos: gruposAristas.map((arr) => {
+      const idsUsados = new Set();
+      arr.forEach((a) => { idsUsados.add(a.from); idsUsados.add(a.to); });
+      const subNodos = new Map();
+      idsUsados.forEach((id) => subNodos.set(id, nodos.get(id)));
+      return { nodos: subNodos, aristas: arr };
+    }),
+    puntosPartida,
+  };
 }
 
 // Dijkstra simple entre dos nodos de un grafo (usado para conectar nodos de
