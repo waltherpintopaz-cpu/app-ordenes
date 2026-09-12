@@ -12,7 +12,14 @@
 // modulo. La IA (si se agrega mas adelante) decide QUIEN recibe cada
 // sub-zona ya calculada aqui, no calcula la geometria.
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+// Varios espejos publicos de Overpass -- si el principal esta saturado
+// (429/503/504) se prueba el siguiente en vez de solo esperar al mismo
+// servidor, que puede seguir bloqueado por minutos.
+const OVERPASS_URLS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+];
 
 function haversineM(lat1, lng1, lat2, lng2) {
   const toRad = (d) => (d * Math.PI) / 180;
@@ -44,28 +51,35 @@ export function puntoEnPoligono(lat, lng, coordinates) {
 // rectangulo). Devuelve { nodos: Map<id, {lat,lng}>, aristas: [...] }.
 // El servidor publico y gratuito de Overpass a veces responde 429 (limite
 // de solicitudes) o 503/504 (sobrecargado) bajo uso normal -- son fallas
-// temporales del servicio, no del poligono ni de la app. Se reintenta solo,
-// con esperas crecientes, antes de rendirse.
-const OVERPASS_ESPERAS_MS = [5000, 15000, 30000];
+// temporales del servicio, no del poligono ni de la app. Ante una falla
+// reintentable se prueba el SIGUIENTE espejo de inmediato (un servidor
+// saturado puede seguir asi por minutos, esperarlo no ayuda); solo si
+// ninguno de los espejos responde se espera un poco y se repite la ronda.
+const OVERPASS_RONDAS = 2;
+const OVERPASS_ESPERA_ENTRE_RONDAS_MS = 15000;
 async function fetchOverpass(query) {
   let ultimoStatus = null;
-  for (let intento = 0; intento <= OVERPASS_ESPERAS_MS.length; intento += 1) {
-    const res = await fetch(OVERPASS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "*/*",
-        "User-Agent": "AmnetVolanteo/1.0",
-      },
-      body: "data=" + encodeURIComponent(query),
-    });
-    if (res.ok) return res.json();
-    ultimoStatus = res.status;
-    const esReintentable = res.status === 429 || res.status === 503 || res.status === 504;
-    if (!esReintentable || intento === OVERPASS_ESPERAS_MS.length) break;
-    await new Promise((resolve) => setTimeout(resolve, OVERPASS_ESPERAS_MS[intento]));
+  for (let ronda = 0; ronda < OVERPASS_RONDAS; ronda += 1) {
+    for (const url of OVERPASS_URLS) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "*/*",
+          "User-Agent": "AmnetVolanteo/1.0",
+        },
+        body: "data=" + encodeURIComponent(query),
+      });
+      if (res.ok) return res.json();
+      ultimoStatus = res.status;
+      const esReintentable = res.status === 429 || res.status === 503 || res.status === 504;
+      if (!esReintentable) throw new Error(`Overpass respondio ${res.status}`);
+    }
+    if (ronda < OVERPASS_RONDAS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, OVERPASS_ESPERA_ENTRE_RONDAS_MS));
+    }
   }
-  throw new Error(`Overpass respondio ${ultimoStatus} (reintentado sin exito, el servicio gratuito esta saturado -- probar de nuevo en un rato)`);
+  throw new Error(`Overpass respondio ${ultimoStatus} en los ${OVERPASS_URLS.length} espejos disponibles -- el servicio publico esta saturado, probar de nuevo en unos minutos`);
 }
 
 export async function obtenerCallesDeZona(poligono) {
