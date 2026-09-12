@@ -86,7 +86,12 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         mapRef.current = new maps.Map(mapCanvasRef.current, {
           center: { lat: -16.43849, lng: -71.598208 },
           zoom: 15,
-          mapTypeControl: false,
+          mapTypeControl: true,
+          mapTypeControlOptions: {
+            style: maps.MapTypeControlStyle.HORIZONTAL_BAR,
+            position: maps.ControlPosition.TOP_RIGHT,
+            mapTypeIds: ["roadmap", "satellite", "hybrid"],
+          },
           streetViewControl: false,
         });
         setMapReady(true);
