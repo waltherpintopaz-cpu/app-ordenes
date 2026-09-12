@@ -400,8 +400,12 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   // Puntos de referencia con etiqueta libre (ej. "Punto de almuerzo") que el
   // supervisor deja en el mapa para que los voluntarios los vean en su
   // celular -- ver volanteo_marcas_referencia y VolanteoMapaScreen.js.
+  // Destinatarios flexible: ningun voluntario marcado = para todo el grupo;
+  // uno o varios marcados = solo para esas personas.
   const [marcasReferencia, setMarcasReferencia] = useState([]);
   const [agregandoMarca, setAgregandoMarca] = useState(false);
+  const [marcaEtiqueta, setMarcaEtiqueta] = useState("");
+  const [marcaDestinatarios, setMarcaDestinatarios] = useState(() => new Set());
   const marcaClickListenerRef = useRef(null);
 
   // Ajustes de registro GPS (perfil Geo Tracker-like), compartidos con la
@@ -1006,7 +1010,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     if (!grupo || grupo === "TODOS") { setMarcasReferencia([]); return; }
     const { data, error: err } = await supabase
       .from("volanteo_marcas_referencia")
-      .select("id,lat,lng,etiqueta,tecnico_id")
+      .select("id,lat,lng,etiqueta,tecnico_ids")
       .eq("grupo", grupo)
       .eq("fecha", formatDateInput(targetDate));
     if (err) {
@@ -1016,8 +1020,28 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     setMarcasReferencia(Array.isArray(data) ? data : []);
   }, [statsDate]);
 
-  const iniciarAgregarMarca = useCallback(() => setAgregandoMarca(true), []);
+  const iniciarAgregarMarca = useCallback(() => {
+    setMarcaEtiqueta("");
+    setMarcaDestinatarios(new Set());
+    setAgregandoMarca(true);
+  }, []);
   const cancelarAgregarMarca = useCallback(() => setAgregandoMarca(false), []);
+  const toggleMarcaDestinatario = useCallback((id) => {
+    setMarcaDestinatarios((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  // Nombres para mostrar en la lista de puntos ya guardados (ver JSX mas
+  // abajo) -- "Todos" cuando tecnico_ids viene nulo/vacio.
+  const nombreDestinatarios = useCallback(
+    (tecnicoIds) => {
+      if (!Array.isArray(tecnicoIds) || tecnicoIds.length === 0) return "Todos";
+      return tecnicoIds.map((id) => filas.find((f) => f.id === parseId(id))?.nombre || id).join(", ");
+    },
+    [filas]
+  );
 
   const borrarMarcaReferencia = useCallback(async (id) => {
     if (!window.confirm("¿Borrar este punto de referencia?")) return;
@@ -1391,9 +1415,19 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     };
   }, [dibujandoTramo]);
 
-  // Modo "agregar punto de referencia": el proximo clic en el mapa pide una
-  // etiqueta y guarda el punto -- a diferencia del tramo manual, se resuelve
-  // en un solo clic en vez de acumular varios.
+  // La etiqueta y los destinatarios se eligen ANTES de hacer clic (ver JSX
+  // mas abajo), pero el listener de clic no se puede recrear en cada tecla
+  // que el supervisor escribe -- se leen desde un ref sincronizado, no de
+  // las dependencias del efecto, para que el listener quede estable
+  // mientras escribe.
+  const marcaFormRef = useRef({ etiqueta: "", destinatarios: new Set() });
+  useEffect(() => {
+    marcaFormRef.current = { etiqueta: marcaEtiqueta, destinatarios: marcaDestinatarios };
+  }, [marcaEtiqueta, marcaDestinatarios]);
+
+  // Modo "agregar punto de referencia": el proximo clic en el mapa coloca el
+  // punto con la etiqueta/destinatarios ya elegidos en el formulario -- a
+  // diferencia del tramo manual, se resuelve en un solo clic.
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return undefined;
     const maps = mapsRef.current;
@@ -1404,11 +1438,14 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     }
     if (agregandoMarca) {
       marcaClickListenerRef.current = map.addListener("click", (e) => {
+        const { etiqueta, destinatarios } = marcaFormRef.current;
+        if (!etiqueta.trim()) {
+          window.alert("Escribe una etiqueta antes de hacer clic en el mapa.");
+          return;
+        }
         const lat = e.latLng.lat();
         const lng = e.latLng.lng();
         setAgregandoMarca(false);
-        const etiqueta = window.prompt("Etiqueta para este punto (ej. Punto de almuerzo):", "");
-        if (!etiqueta || !etiqueta.trim()) return;
         void (async () => {
           const { error: err } = await supabase.from("volanteo_marcas_referencia").insert({
             grupo: grupoFiltro,
@@ -1416,6 +1453,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             lat,
             lng,
             etiqueta: etiqueta.trim(),
+            tecnico_ids: destinatarios.size > 0 ? Array.from(destinatarios) : null,
             creado_por: sessionUser?.nombre || null,
           });
           if (!err) await cargarMarcasReferencia(grupoFiltro, statsDate);
@@ -1598,10 +1636,13 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     marcasReferencia.forEach((m) => {
       const lat = Number(m.lat), lng = Number(m.lng);
       if (!isValidCoord(lat, lng)) return;
+      const dirigidoA = Array.isArray(m.tecnico_ids) && m.tecnico_ids.length > 0
+        ? ` (solo para ${m.tecnico_ids.length} persona${m.tecnico_ids.length > 1 ? "s" : ""} -- ver lista abajo)`
+        : " (todo el grupo)";
       const marker = new maps.Marker({
         map,
         position: { lat, lng },
-        title: m.etiqueta,
+        title: `${m.etiqueta}${dirigidoA}`,
         label: { text: "📍", fontSize: "16px" },
         zIndex: 15,
       });
@@ -2144,16 +2185,47 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             <button type="button" className="secondary-btn small" onClick={iniciarAgregarMarca} disabled={grupoFiltro === "TODOS"}>
               📍 Agregar punto de referencia
             </button>
-          ) : (
-            <button type="button" className="secondary-btn small" onClick={cancelarAgregarMarca}>
-              Cancelar (haz clic en el mapa)
-            </button>
-          )}
+          ) : null}
           <button type="button" className="secondary-btn small" onClick={abrirAjustesRegistro}>
             ⚙️ Ajustes de registro GPS
           </button>
         </div>
       </div>
+
+      {agregandoMarca ? (
+        <div
+          style={{
+            display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+            background: "#F3F4F6", border: "1px solid #D1D5DB", borderRadius: 10, padding: "10px 14px",
+          }}
+        >
+          <strong style={{ fontSize: 13, color: "#111827" }}>Nuevo punto de referencia —</strong>
+          <input
+            type="text"
+            placeholder="Etiqueta (ej. Punto de almuerzo)"
+            value={marcaEtiqueta}
+            onChange={(e) => setMarcaEtiqueta(e.target.value)}
+            style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid #D1D5DB", minWidth: 200 }}
+          />
+          <span style={{ fontSize: 12, color: "#6B7280" }}>Para:</span>
+          <label style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <input type="checkbox" checked={marcaDestinatarios.size === 0} onChange={() => setMarcaDestinatarios(new Set())} />
+            Todos
+          </label>
+          {filas.map((f) => (
+            <label key={f.id} style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <input type="checkbox" checked={marcaDestinatarios.has(f.id)} onChange={() => toggleMarcaDestinatario(f.id)} />
+              {f.nombre}
+            </label>
+          ))}
+          <span style={{ fontSize: 12, color: "#6B7280", fontStyle: "italic" }}>
+            {marcaEtiqueta.trim() ? "Ahora haz clic en el mapa para colocar el punto" : "Escribe una etiqueta y luego haz clic en el mapa"}
+          </span>
+          <button type="button" className="secondary-btn small" onClick={cancelarAgregarMarca}>
+            Cancelar
+          </button>
+        </div>
+      ) : null}
 
       {marcasReferencia.length > 0 ? (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -2162,8 +2234,9 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
             <span
               key={m.id}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, background: "#F3F4F6", border: "1px solid #D1D5DB", borderRadius: 999, padding: "3px 10px" }}
+              title={`Para: ${nombreDestinatarios(m.tecnico_ids)}`}
             >
-              📍 {m.etiqueta}
+              📍 {m.etiqueta} <span style={{ color: "#9CA3AF" }}>({nombreDestinatarios(m.tecnico_ids)})</span>
               <button type="button" onClick={() => void borrarMarcaReferencia(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontWeight: 700, padding: 0 }} title="Borrar punto">
                 ✕
               </button>
