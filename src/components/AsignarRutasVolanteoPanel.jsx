@@ -234,9 +234,6 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
     setError("");
     try {
       const idsTecnicos = rutas.map((r) => r.tecnicoId);
-      // Reemplaza cualquier ruta previa de estas personas para esta fecha
-      // (ej. si el supervisor genero, ajusto el equipo, y volvio a generar).
-      await supabase.from("volanteo_rutas_asignadas").delete().eq("fecha", dia).eq("grupo", grupo).in("tecnico_id", idsTecnicos);
       const filas = rutas.map((r) => ({
         fecha: dia,
         grupo,
@@ -251,8 +248,23 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
         grafo_aristas: r.grafoAristas,
         confirmada: true,
       }));
-      const { error: err } = await supabase.from("volanteo_rutas_asignadas").insert(filas);
+      // Inserta primero, borra despues (y solo lo previo, nunca lo recien
+      // insertado): si el insert fallara -- ej. una columna nueva que
+      // todavia no se migro en Supabase -- las rutas previas de estas
+      // personas quedan intactas en vez de perderse. Antes se borraba ANTES
+      // de insertar, y un insert fallido dejaba a todo el equipo sin ruta.
+      const { data: insertadas, error: err } = await supabase.from("volanteo_rutas_asignadas").insert(filas).select("id");
       if (err) throw err;
+      const nuevosIds = (insertadas || []).map((f) => f.id);
+      if (nuevosIds.length > 0) {
+        await supabase
+          .from("volanteo_rutas_asignadas")
+          .delete()
+          .eq("fecha", dia)
+          .eq("grupo", grupo)
+          .in("tecnico_id", idsTecnicos)
+          .not("id", "in", `(${nuevosIds.join(",")})`);
+      }
       setGuardadoOk(true);
     } catch (e) {
       setError(String(e?.message || "No se pudo guardar. Verifica que la tabla volanteo_rutas_asignadas ya exista en Supabase."));
