@@ -517,6 +517,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     await supabase.from("volanteo_power_banks").update({ tecnico_id: null, tecnico_nombre: null, actualizado_en: new Date().toISOString() }).eq("id", id);
     await cargarPowerBanks();
   }, [cargarPowerBanks]);
+  // El supervisor puede asignarselo a cualquier voluntario desde aca, no
+  // solo liberarlo -- para cuando alguien no declaro que lo tiene y hay
+  // que corregirlo a mano. El nombre se pasa desde donde se llama (ahi si
+  // hay a mano la lista de voluntarios) en vez de buscarlo aca adentro.
+  const asignarPowerBankA = useCallback(async (id, tecnicoId, tecnicoNombre) => {
+    if (!tecnicoId) return;
+    await supabase.from("volanteo_power_banks").update({ tecnico_id: tecnicoId, tecnico_nombre: tecnicoNombre || tecnicoId, actualizado_en: new Date().toISOString() }).eq("id", id);
+    await cargarPowerBanks();
+  }, [cargarPowerBanks]);
   useEffect(() => {
     void cargarPowerBanks();
     const channel = supabase
@@ -2556,11 +2565,26 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                     {pb.tecnico_id ? `Lo tiene ${pb.tecnico_nombre || "alguien"}` : "Libre — nadie lo tiene ahora"}
                   </p>
                 </div>
-                {pb.tecnico_id ? (
-                  <button type="button" className="secondary-btn small" onClick={() => void liberarPowerBank(pb.id)}>
-                    Liberar
-                  </button>
-                ) : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const f = filas.find((x) => x.id === e.target.value);
+                      if (f) void asignarPowerBankA(pb.id, f.id, f.nombre);
+                    }}
+                    style={{ fontSize: 12, padding: "4px 6px", borderRadius: 6 }}
+                  >
+                    <option value="">Asignar a...</option>
+                    {filas.map((f) => (
+                      <option key={f.id} value={f.id}>{f.nombre}</option>
+                    ))}
+                  </select>
+                  {pb.tecnico_id ? (
+                    <button type="button" className="secondary-btn small" onClick={() => void liberarPowerBank(pb.id)}>
+                      Liberar
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
