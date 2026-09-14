@@ -1041,30 +1041,25 @@ export default function SidebarApp() {
         return;
       }
 
-      const buscar = async (t) => {
-        const { data } = await supabase
-          .from("mikrowisp_clientes")
-          .select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado")
-          .ilike("telefonos", `%${t}%`);
-        return data || [];
-      };
+      const variantes = Array.from(new Set([
+        "51" + local, local, ...(raw.length >= 11 ? [raw] : []),
+      ]));
+      const orTelefonos = variantes.map(v => `telefonos.ilike.%${v}%`).join(",");
 
-      let rows = await buscar("51" + local);
-      if (!rows.length) rows = await buscar(local);
-      if (!rows.length && raw.length >= 11) rows = await buscar(raw);
+      const { data } = await supabase
+        .from("mikrowisp_clientes")
+        .select("mikrowisp_id,cedula,nombre,telefonos,nodo,estado")
+        .or(orTelefonos);
+      let rows = data || [];
 
       if (!rows.length) {
         // Fallback: cliente sin cuenta en MikroWisp, buscar en tabla interna
-        const buscarLocal = async (t) => {
-          const { data } = await supabase
-            .from("clientes")
-            .select("id,dni,nombre,direccion,celular,nodo,vlan,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa,ubicacion")
-            .ilike("celular", `%${t}%`);
-          return data || [];
-        };
-        let localRows = await buscarLocal("51" + local);
-        if (!localRows.length) localRows = await buscarLocal(local);
-        if (!localRows.length && raw.length >= 11) localRows = await buscarLocal(raw);
+        const orCelular = variantes.map(v => `celular.ilike.%${v}%`).join(",");
+        const { data: localData } = await supabase
+          .from("clientes")
+          .select("id,dni,nombre,direccion,celular,nodo,vlan,velocidad,precio_plan,usuario_nodo,password_usuario,sn_onu,caja_nap,estado_servicio,empresa,ubicacion")
+          .or(orCelular);
+        const localRows = localData || [];
 
         if (!localRows.length) { setError("Cliente no encontrado para este número"); setLoading(false); return; }
 
@@ -1221,7 +1216,7 @@ export default function SidebarApp() {
 
         const pdfLinea = urlPdf ? `\n\n📄 *Boleta:* ${urlPdf}` : "";
         const texto = `*PAGO VALIDADO* ✅\n\nHola ${nombreFmt}, tu pago de *S/ ${montoStr}* (${banco}) del ${fecha} ha sido verificado con éxito.${ref}${pdfLinea}\n\nGracias por tu confianza. 💙\nTu servicio continúa activo.`;
-        await fetch(PROXY_URL, {
+        fetch(PROXY_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1231,8 +1226,8 @@ export default function SidebarApp() {
         }).catch(() => {});
       }
 
-      // Recargar facturas
-      await buscarCliente(contact?.phone_number || "");
+      // Recargar facturas en segundo plano, sin bloquear el botón
+      buscarCliente(contact?.phone_number || "");
       setTab("info");
     } catch(e) {
       notify("Error: " + e.message, false);
