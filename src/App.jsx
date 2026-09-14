@@ -3881,7 +3881,7 @@ export default function App() {
       });
       const svcJson = await svcRes.json().catch(() => ({}));
       const svcData = svcJson?.data ?? svcJson;
-      const ok = svcData?.estado === "exito" || String(svcData?.code) === "200" || svcRes.ok;
+      const ok = svcRes.ok && (svcData?.estado === "exito" || String(svcData?.code) === "200");
       if (!ok) throw new Error(svcData?.mensaje || svcData?.message || `HTTP ${svcRes.status}`);
 
       // Si hay coordenadas, actualizarlas via EditService (NewService no las guarda)
