@@ -1391,7 +1391,27 @@ export default function SidebarApp() {
       try {
         let codigo = "";
         const { data: codigoData } = await supabase.rpc("generar_codigo_orden");
-        codigo = codigoData ? String(codigoData) : `ORD-${String(Date.now()).slice(-4)}-${new Date().getFullYear()}`;
+        if (codigoData) {
+          codigo = String(codigoData);
+        } else {
+          // Ver comentario en crearOrden(): evitar el fallback pseudo-aleatorio
+          // de Date.now(), que puede duplicar codigo y pisar otra liquidacion.
+          const year = new Date().getFullYear();
+          const prefix = "ORD-", suffix = `-${year}`;
+          const { data: ultimos } = await supabase
+            .from("ordenes").select("codigo")
+            .ilike("codigo", `${prefix}%${suffix}`)
+            .order("id", { ascending: false }).limit(50);
+          let max = 0;
+          (ultimos || []).forEach((o) => {
+            const code = String(o.codigo || "");
+            if (code.startsWith(prefix) && code.endsWith(suffix)) {
+              const n = parseInt(code.slice(prefix.length, code.length - suffix.length), 10);
+              if (Number.isFinite(n) && n > max) max = n;
+            }
+          });
+          codigo = `${prefix}${String(max + 1).padStart(4, "0")}${suffix}`;
+        }
         const nodoEtiqueta = normalizarEtiquetaNodo(cliente.nodo);
         const ordenPayload = {
           empresa: cliente.empresa === "dimfiber" ? "DIM" : "Americanet",
@@ -2713,7 +2733,25 @@ export default function SidebarApp() {
       if (codigoData) {
         codigo = String(codigoData);
       } else {
-        codigo = `ORD-${String(Date.now()).slice(-4)}-${new Date().getFullYear()}`;
+        // Fallback: correlativo basado en el maximo existente del año, no un
+        // numero pseudo-aleatorio (Date.now() se repite cada 10s y, como
+        // "codigo" no tiene restriccion unica en la BD, un choque puede pisar
+        // la liquidacion de otra orden con el mismo codigo).
+        const year = new Date().getFullYear();
+        const prefix = "ORD-", suffix = `-${year}`;
+        const { data: ultimos } = await supabase
+          .from("ordenes").select("codigo")
+          .ilike("codigo", `${prefix}%${suffix}`)
+          .order("id", { ascending: false }).limit(50);
+        let max = 0;
+        (ultimos || []).forEach((o) => {
+          const code = String(o.codigo || "");
+          if (code.startsWith(prefix) && code.endsWith(suffix)) {
+            const n = parseInt(code.slice(prefix.length, code.length - suffix.length), 10);
+            if (Number.isFinite(n) && n > max) max = n;
+          }
+        });
+        codigo = `${prefix}${String(max + 1).padStart(4, "0")}${suffix}`;
       }
 
       const esInstalacion = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);

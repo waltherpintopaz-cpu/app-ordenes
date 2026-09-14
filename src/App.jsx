@@ -10680,7 +10680,14 @@ export default function App() {
   };
   const _upsertLiquidacion = async (payload, codigoOrden) => {
     let existenteId = null;
-    for (const key of ["codigo", "codigo_orden"]) {
+    // El codigo de orden no es unico garantizado (puede duplicarse por fallas
+    // del generador). Si tenemos el ID real de la orden, buscar por ese ID
+    // primero para no pisar la liquidacion de OTRA orden que comparta codigo.
+    if (payload.orden_original_id != null) {
+      const { data } = await supabase.from("liquidaciones").select("id").eq("orden_original_id", payload.orden_original_id).order("id", { ascending: false }).limit(1).maybeSingle();
+      if (data?.id) existenteId = data.id;
+    }
+    if (!existenteId) for (const key of ["codigo", "codigo_orden"]) {
       const { data, error } = await supabase.from("liquidaciones").select("id").eq(key, codigoOrden).order("id", { ascending: false }).limit(1).maybeSingle();
       if (!error) { if (data?.id) { existenteId = data.id; break; } continue; }
       if (!String(error.message || "").toLowerCase().includes(key)) throw error;
