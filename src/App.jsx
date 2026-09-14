@@ -3732,6 +3732,14 @@ export default function App() {
     setMkwWizardFactDone(false);
     setMkwWizardLiq([]);
     setMkwWizardStep(1);
+    // Limpiar estado de pasos Servicio/Facturas del cliente anterior: sin esto,
+    // los guards "!svcNuevoCliId" / "!factPanelCliId" de las pestañas del wizard
+    // impiden refrescar y quedan arrastrando el usuario PPPoE / datos del
+    // cliente previamente abierto.
+    setSvcNuevoOpen(null);
+    setSvcNuevoCliId(null);
+    setFactPanelOpen(null);
+    setFactPanelCliId(null);
     // Asegurar que el wizard se renderiza: navegar al detalle del cliente
     setClienteSeleccionado(cli);
     setVistaActiva("detalleCliente");
