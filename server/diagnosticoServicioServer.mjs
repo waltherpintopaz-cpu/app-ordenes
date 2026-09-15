@@ -998,12 +998,15 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // Camino rapido: si ya hay un sync reciente de este router en cache,
-      // responder al instante sin conectar al Mikrotik. Si no hay nada en
-      // cache (router nunca sincronizado, o usuario recien creado), cae al
-      // camino en vivo de siempre.
+      // Camino rapido (solo cuando el caller pide soloIp:true, ej. al crear
+      // una orden y solo se necesita una IP fija estable): si ya hay un sync
+      // reciente de este router en cache, responder al instante sin conectar
+      // al Mikrotik. El widget de diagnostico en vivo (conectado/desconectado
+      // + uptime, del panel de cliente) NO debe usar este camino -- la cache
+      // solo tiene la foto del ultimo sync (hasta 30 min de antiguedad) y no
+      // sirve para saber el estado real de conexion ahora mismo.
       let mikrotik = null;
-      try {
+      if (body?.soloIp === true) try {
         const router = await resolveRouterByNodo(nodo, userPppoe);
         const cached = await lookupIpCache(router.id, userPppoe);
         if (cached?.ip) {

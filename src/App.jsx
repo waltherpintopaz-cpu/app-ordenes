@@ -3754,7 +3754,7 @@ export default function App() {
       try {
         const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nodo, userPppoe: pppuser, dni: "", cliente: "" }),
+          body: JSON.stringify({ nodo, userPppoe: pppuser, dni: "", cliente: "", soloIp: true }),
         });
         if (!res.ok && i < intentos - 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
         return await res.json().catch(() => ({}));
