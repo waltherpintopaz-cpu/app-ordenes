@@ -2211,6 +2211,12 @@ export default function App() {
   const [mikrotikConfigError, setMikrotikConfigError] = useState("");
   const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
   const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
+  const [loteForm, setLoteForm] = useState({ routerKey: "", nodo: "", ipInicio: "", ipFin: "", numeroInicio: "", profile: "", password: "" });
+  const [lotePreview, setLotePreview] = useState(null); // array de {usuario,ip,password,profile}
+  const [loteResultados, setLoteResultados] = useState(null); // array tras crear de verdad
+  const [loteRouterInfo, setLoteRouterInfo] = useState(null);
+  const [loteEstado, setLoteEstado] = useState(""); // "" | "previsualizando" | "creando"
+  const [loteError, setLoteError] = useState("");
   const [clientesSyncLoading, setClientesSyncLoading] = useState(false);
   const [clientesSyncInfo, setClientesSyncInfo] = useState("");
   const [clientesSyncError, setClientesSyncError] = useState("");
@@ -11955,6 +11961,53 @@ export default function App() {
     setIpCacheSyncLoading("");
   };
 
+  // Creacion masiva y correlativa de PPP secrets. Siempre pide vista previa
+  // primero (dryRun en el backend) -- solo se escribe de verdad en el
+  // Mikrotik cuando el admin confirma explicitamente esa lista.
+  const generarVistaPreviaLote = async () => {
+    setLoteError(""); setLotePreview(null); setLoteResultados(null); setLoteRouterInfo(null);
+    const { routerKey, nodo, ipInicio, ipFin, numeroInicio, profile, password } = loteForm;
+    if (!routerKey || !nodo || !ipInicio.trim() || !ipFin.trim() || !String(numeroInicio).trim() || !profile.trim()) {
+      setLoteError("Completa router, nodo, rango de IP, numero inicial y perfil.");
+      return;
+    }
+    setLoteEstado("previsualizando");
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/crear-secrets-lote`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, dryRun: true }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+      setLotePreview(json.lote || []);
+    } catch (e) {
+      setLoteError(e.message);
+    }
+    setLoteEstado("");
+  };
+
+  const confirmarCrearLote = async () => {
+    if (!lotePreview?.length) return;
+    const ok = window.confirm(`Vas a crear ${lotePreview.length} usuarios PPPoE reales en el router "${loteForm.routerKey}". Esta accion escribe directo en el Mikrotik en producción. ¿Confirmas?`);
+    if (!ok) return;
+    const { routerKey, nodo, ipInicio, ipFin, numeroInicio, profile, password } = loteForm;
+    setLoteEstado("creando"); setLoteError("");
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/crear-secrets-lote`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, dryRun: false }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+      setLoteResultados(json.resultados || []);
+      setLoteRouterInfo({ router: json.router, creados: json.creados, omitidos: json.omitidos });
+      setLotePreview(null);
+    } catch (e) {
+      setLoteError(e.message);
+    }
+    setLoteEstado("");
+  };
+
   const agregarMikrotikRouter = () => {
     setMikrotikRoutersConfig((prev) => {
       const existente = new Set(prev.map((item) => item.routerKey));
@@ -21521,6 +21574,130 @@ export default function App() {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  <div
+                    style={{
+                      border: "1px solid #fbbf24",
+                      borderRadius: "16px",
+                      padding: "16px",
+                      background: "#fffbeb",
+                    }}
+                  >
+                    <div style={{ marginBottom: "14px" }}>
+                      <div style={{ fontSize: "12px", color: "#92400e" }}>⚠ Zona sensible — escribe directo en el Mikrotik</div>
+                      <div style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a" }}>Creación masiva de usuarios PPPoE</div>
+                      <div style={{ fontSize: "12px", color: "#78716c", marginTop: "4px" }}>
+                        El pool de IP (rango/subred) debe estar ya creado a mano en el Mikrotik. Esto solo genera los secrets PPPoE
+                        correlativos (usuario + IP + clave) dentro de ese rango, uno por uno, con vista previa obligatoria antes de crear.
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+                      <div>
+                        <label style={labelStyle}>Router</label>
+                        <select style={inputStyle} value={loteForm.routerKey} onChange={(e) => setLoteForm((p) => ({ ...p, routerKey: e.target.value }))}>
+                          <option value="">— Seleccionar —</option>
+                          {mikrotikRoutersConfig.map((r) => <option key={r.routerKey} value={r.routerKey}>{r.nombre || r.routerKey}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Nodo (patrón de usuario)</label>
+                        <select style={inputStyle} value={loteForm.nodo} onChange={(e) => setLoteForm((p) => ({ ...p, nodo: e.target.value }))}>
+                          <option value="">— Seleccionar —</option>
+                          {NODOS_BASE_WEB.map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>IP inicio</label>
+                        <input style={inputStyle} value={loteForm.ipInicio} onChange={(e) => setLoteForm((p) => ({ ...p, ipInicio: e.target.value }))} placeholder="192.168.186.104" />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>IP fin</label>
+                        <input style={inputStyle} value={loteForm.ipFin} onChange={(e) => setLoteForm((p) => ({ ...p, ipFin: e.target.value }))} placeholder="192.168.186.254" />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Número inicial</label>
+                        <input style={inputStyle} value={loteForm.numeroInicio} onChange={(e) => setLoteForm((p) => ({ ...p, numeroInicio: e.target.value.replace(/\D/g, "") }))} placeholder="104" />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Perfil PPP (Mikrotik)</label>
+                        <input style={inputStyle} value={loteForm.profile} onChange={(e) => setLoteForm((p) => ({ ...p, profile: e.target.value }))} placeholder="Plan_13_1000Mbps" />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Contraseña (opcional)</label>
+                        <input style={inputStyle} value={loteForm.password} onChange={(e) => setLoteForm((p) => ({ ...p, password: e.target.value }))} placeholder="Vacío = clave fija del nodo" />
+                      </div>
+                    </div>
+
+                    {loteError && <div style={{ fontSize: "12px", color: "#dc2626", marginBottom: "10px", fontWeight: 600 }}>❌ {loteError}</div>}
+
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button type="button" style={secondaryButton} disabled={loteEstado === "previsualizando"} onClick={generarVistaPreviaLote}>
+                        {loteEstado === "previsualizando" ? "Generando..." : "👁 Vista previa"}
+                      </button>
+                      {!!lotePreview?.length && (
+                        <button type="button" style={{ ...secondaryButton, background: "#dc2626", color: "#fff", border: "1px solid #dc2626" }}
+                          disabled={loteEstado === "creando"} onClick={confirmarCrearLote}>
+                          {loteEstado === "creando" ? "Creando en Mikrotik..." : `✅ Confirmar y crear ${lotePreview.length} usuarios en Mikrotik`}
+                        </button>
+                      )}
+                    </div>
+
+                    {!!lotePreview?.length && (
+                      <div style={{ marginTop: "14px", maxHeight: "260px", overflowY: "auto", border: "1px solid #fde68a", borderRadius: "10px" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                          <thead style={{ position: "sticky", top: 0, background: "#fef3c7" }}>
+                            <tr>
+                              <th style={{ textAlign: "left", padding: "6px 10px" }}>Usuario</th>
+                              <th style={{ textAlign: "left", padding: "6px 10px" }}>IP</th>
+                              <th style={{ textAlign: "left", padding: "6px 10px" }}>Clave</th>
+                              <th style={{ textAlign: "left", padding: "6px 10px" }}>Perfil</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lotePreview.map((row, i) => (
+                              <tr key={i} style={{ borderTop: "1px solid #fde68a" }}>
+                                <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.usuario}</td>
+                                <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.ip}</td>
+                                <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.password}</td>
+                                <td style={{ padding: "5px 10px" }}>{row.profile}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {!!loteResultados?.length && (
+                      <div style={{ marginTop: "14px" }}>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#15803d", marginBottom: "8px" }}>
+                          ✅ Creados: {loteRouterInfo?.creados ?? 0} · Omitidos: {loteRouterInfo?.omitidos ?? 0}
+                        </div>
+                        <div style={{ maxHeight: "260px", overflowY: "auto", border: "1px solid #d1fae5", borderRadius: "10px" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                            <thead style={{ position: "sticky", top: 0, background: "#ecfdf5" }}>
+                              <tr>
+                                <th style={{ textAlign: "left", padding: "6px 10px" }}>Usuario</th>
+                                <th style={{ textAlign: "left", padding: "6px 10px" }}>IP</th>
+                                <th style={{ textAlign: "left", padding: "6px 10px" }}>Resultado</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {loteResultados.map((row, i) => (
+                                <tr key={i} style={{ borderTop: "1px solid #d1fae5" }}>
+                                  <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.usuario}</td>
+                                  <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.ip}</td>
+                                  <td style={{ padding: "5px 10px", color: row.ok ? "#15803d" : "#dc2626", fontWeight: 600 }}>
+                                    {row.ok ? "✅ Creado" : `⚠ ${row.motivo || "omitido"}`}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div
