@@ -2785,6 +2785,28 @@ export default function SidebarApp() {
         if (!id) throw new Error(add?.mensaje || add?.message || "Sin ID de respuesta");
         await mkwDirect(true, "UpdateUser", { idcliente: id, datos: { codigo: dni } });
       }
+      // Sincronizar a la tabla local mikrowisp_clientes (igual que hace el
+      // boton manual "Sincronizar con Mikrowisp") para que el sidebar ya
+      // pueda encontrar a este cliente por telefono sin un paso aparte.
+      try {
+        const estadoExistente = check?.datos?.[0]?.estado || check?.data?.[0]?.estado || "";
+        const movilRaw = String(datos.celular || "").trim();
+        const movil = movilRaw.split(",").map(t => {
+          const s = t.trim();
+          return s && !s.startsWith("51") ? "51" + s : s;
+        }).filter(Boolean).join(",");
+        await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", 5);
+        await supabase.from("mikrowisp_clientes").insert({
+          mikrowisp_id: id,
+          cedula: dni,
+          nombre: String(datos.nombre || "").trim(),
+          telefonos: movil,
+          estado: estadoExistente || "ACTIVO",
+          nodo: 5,
+          updated_at: new Date().toISOString(),
+          agregado_por: "Automatico (orden)",
+        });
+      } catch (_) { /* no critico: solo afecta la busqueda por telefono en el sidebar */ }
       return { ok: true, id };
     } catch (e) {
       return { ok: false, error: e?.message || String(e) };
