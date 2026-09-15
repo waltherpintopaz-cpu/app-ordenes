@@ -95,6 +95,25 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     return Array.from(set).sort();
   }, [gastos]);
 
+  // Cuenta por categoria segun los demas filtros activos (fecha, entidad,
+  // nodo, texto), ignorando el propio filtro de categoria -- asi el numero
+  // que se ve en el desplegable siempre refleja el resto de filtros.
+  const conteoPorCategoria = useMemo(() => {
+    const map = new Map();
+    gastos.forEach((g) => {
+      const [y, m] = String(g.fecha || "").split("-").map(Number);
+      if (filtroAnio && y !== filtroAnio) return;
+      if (filtroMes && m !== filtroMes) return;
+      if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return;
+      if (filtroNodo !== "Todos" && (g.nodo || "") !== filtroNodo) return;
+      const q = filtroTexto.trim().toLowerCase();
+      if (q && !String(g.descripcion || "").toLowerCase().includes(q)) return;
+      const cat = g.categoria || "Otros";
+      map.set(cat, (map.get(cat) || 0) + 1);
+    });
+    return map;
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroNodo, filtroTexto]);
+
   const abrirModal = (g = null) => {
     if (g) {
       const fotos = Array.isArray(g.fotos) && g.fotos.length ? g.fotos : (g.foto_url ? [g.foto_url] : []);
@@ -291,13 +310,16 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                   Todas
                 </label>
                 {categoriasDisponibles.map((c) => (
-                  <label key={c} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 13, cursor: "pointer", color: isDark ? "#c3d3ee" : "#374151" }}>
-                    <input
-                      type="checkbox"
-                      checked={filtroCategorias.includes(c)}
-                      onChange={() => setFiltroCategorias((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c])}
-                    />
-                    {c}
+                  <label key={c} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px", fontSize: 13, cursor: "pointer", color: isDark ? "#c3d3ee" : "#374151" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={filtroCategorias.includes(c)}
+                        onChange={() => setFiltroCategorias((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c])}
+                      />
+                      {c}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af" }}>{conteoPorCategoria.get(c) || 0}</span>
                   </label>
                 ))}
               </div>
