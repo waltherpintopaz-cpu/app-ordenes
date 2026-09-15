@@ -3737,16 +3737,33 @@ export default function App() {
     setCargandoCatalogoOrdenApp(false);
   }
 
+  // El backend de diagnostico a veces tarda o responde 500 de forma
+  // intermitente (timeout puntual al conectar con el Mikrotik) -- un solo
+  // reintento automatico evita que el tecnico tenga que darse cuenta y
+  // volver a enfocar el campo a mano.
+  async function fetchDiagnosticoServicioConReintentoApp(nodo, pppuser, intentos = 2) {
+    for (let i = 0; i < intentos; i++) {
+      try {
+        const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nodo, userPppoe: pppuser, dni: "", cliente: "" }),
+        });
+        if (!res.ok && i < intentos - 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
+        return await res.json().catch(() => ({}));
+      } catch (e) {
+        if (i === intentos - 1) throw e;
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    }
+    return {};
+  }
+
   async function buscarIpOrdenNod04App(pppuserParam, redesParam, nodoParam) {
     const pppuser = String(pppuserParam || orden.usuarioNodo || "").trim();
     if (!pppuser) return;
     setBuscandoIpOrdenApp(true);
     try {
-      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: nodoParam || orden.nodo || "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
-      });
-      const json = await res.json().catch(() => ({}));
+      const json = await fetchDiagnosticoServicioConReintentoApp(nodoParam || orden.nodo || "Nod_04", pppuser).catch(() => ({}));
       const ip = json?.mikrotik?.ip || "";
       if (!ip) { setBuscandoIpOrdenApp(false); return; }
       const redes = redesParam || mkwRedesOrdenApp;
@@ -16613,6 +16630,13 @@ export default function App() {
                             title="IP detectada automaticamente en el Mikrotik — no editable">
                             {buscandoIpOrdenApp ? "Buscando IP..." : ordenIpMikrotik || "Sin IP"}
                           </span>
+                        )}
+                        {NODOS_MKW_AUTO_WEB.includes(orden.nodo) && !buscandoIpOrdenApp && !ordenIpMikrotik && (
+                          <button type="button" title="Reintentar busqueda de IP"
+                            onClick={(e) => { e.preventDefault(); buscarIpOrdenNod04App(); }}
+                            style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#1d4ed8", cursor: "pointer" }}>
+                            ↻ Reintentar
+                          </button>
                         )}</label>
                         <input
                           style={inputStyle}

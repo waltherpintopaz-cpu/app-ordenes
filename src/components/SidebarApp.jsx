@@ -2735,18 +2735,35 @@ export default function SidebarApp() {
     try { return (toInt(ip) & mask) === (toInt(base) & mask); } catch { return false; }
   }
 
+  // El backend de diagnostico a veces tarda o responde 500 de forma
+  // intermitente (timeout puntual al conectar con el Mikrotik) -- un solo
+  // reintento automatico evita que el tecnico tenga que darse cuenta y
+  // volver a enfocar el campo a mano.
+  async function fetchDiagnosticoServicioConReintento(nodo, pppuser, intentos = 2) {
+    for (let i = 0; i < intentos; i++) {
+      try {
+        const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nodo, userPppoe: pppuser, dni: "", cliente: "" }),
+        });
+        if (!res.ok && i < intentos - 1) { await new Promise(r => setTimeout(r, 1200)); continue; }
+        return await res.json().catch(() => ({}));
+      } catch (e) {
+        if (i === intentos - 1) throw e;
+        await new Promise(r => setTimeout(r, 1200));
+      }
+    }
+    return {};
+  }
+
   async function buscarIpOrdenNod04(pppuserParam) {
     const pppuser = (pppuserParam || ordenForm.usuarioNodo).trim();
     if (!pppuser) return notify("Ingresa el usuario PPPoE primero", false);
     setBuscandoIpOrden(true);
     try {
-      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: ordenForm.nodo || "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
-      });
-      const json = await res.json().catch(() => ({}));
+      const json = await fetchDiagnosticoServicioConReintento(ordenForm.nodo || "Nod_04", pppuser);
       const ip = json?.mikrotik?.ip || "";
-      if (!ip) { notify("No se encontró IP en el Mikrotik para ese usuario (¿ya existe el secret?)", false); setBuscandoIpOrden(false); return; }
+      if (!ip) { notify("No se encontró IP (el servidor puede estar lento — toca 'Reintentar' o vuelve a salir del campo Usuario)", false); setBuscandoIpOrden(false); return; }
       let idRed = "";
       for (const red of mkwRedesOrden) {
         const cidr = red.red || red.cidr || red.network || "";
@@ -4481,6 +4498,12 @@ export default function SidebarApp() {
                             {buscandoIpOrden?"Buscando IP...":ordenForm.ipMikrotik||"Sin IP"}
                           </span>
                         )}
+                        {esInst && NODOS_MKW_AUTO.includes(ordenForm.nodo) && !buscandoIpOrden && !ordenForm.ipMikrotik && (
+                          <button type="button" title="Reintentar busqueda de IP" onClick={()=>buscarIpOrdenNod04()}
+                            style={{fontSize:10,fontWeight:700,padding:"5px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"#fff",color:T.blue,cursor:"pointer",flexShrink:0}}>
+                            ↻ Reintentar
+                          </button>
+                        )}
                       </div>
                     )}
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
@@ -6117,6 +6140,12 @@ export default function SidebarApp() {
                           border:`1px solid ${buscandoIpOrden?"#bfdbfe":ordenForm.ipMikrotik?"#86efac":"#e5e7eb"}` }}>
                           {buscandoIpOrden?"Buscando IP...":ordenForm.ipMikrotik||"Sin IP"}
                         </span>
+                      )}
+                      {NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) && !buscandoIpOrden && !ordenForm.ipMikrotik && (
+                        <button type="button" title="Reintentar busqueda de IP" onClick={()=>buscarIpOrdenNod04()}
+                          style={{fontSize:10,fontWeight:700,padding:"5px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"#fff",color:T.blue,cursor:"pointer",flexShrink:0}}>
+                          ↻ Reintentar
+                        </button>
                       )}
                     </div>
                   </div>
