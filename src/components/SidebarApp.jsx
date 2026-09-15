@@ -594,7 +594,12 @@ export default function SidebarApp() {
   const [showMensajesRapidos, setShowMensajesRapidos] = useState(false);
   const [mensajesRapidosDisponibles, setMensajesRapidosDisponibles] = useState([]);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"" });
+  // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto) ─────────────
+  const [mkwPerfilesOrden, setMkwPerfilesOrden] = useState([]);
+  const [mkwRedesOrden,    setMkwRedesOrden]    = useState([]);
+  const [cargandoCatalogoOrden, setCargandoCatalogoOrden] = useState(false);
+  const [buscandoIpOrden,  setBuscandoIpOrden]  = useState(false);
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
@@ -2684,6 +2689,100 @@ export default function SidebarApp() {
   }
 
   // ── Crear orden desde sidebar ─────────────────────────────────────────────
+  // ── Automatizacion Mikrowisp Nod_04 (piloto) ────────────────────────────
+  // Reutiliza la misma logica que el wizard manual "mw*" (mkwProxy/mkwDirect),
+  // pero disparada automaticamente al crear la orden en vez de requerir que
+  // alguien abra el wizard.
+  async function cargarCatalogoMikrowispOrdenNod04() {
+    setCargandoCatalogoOrden(true);
+    try {
+      const [pR, rR] = await Promise.all([
+        mkwProxy(5, "GetPerfiles", {}),
+        mkwProxy(5, "GetRedesIpv4", {}),
+      ]);
+      const perfsRaw = pR?.datos || pR?.perfiles || (Array.isArray(pR) ? pR : []);
+      // Solo perfiles activos con nombre 100% en MAYUSCULAS (excluye planes
+      // viejos en formato mixto como "Plan 100 Mb."), ordenados de menor a
+      // mayor velocidad.
+      const perfs = perfsRaw
+        .filter(p => p.estado === "ACTIVADO" && /^[^a-z]*$/.test(String(p.plan || "")))
+        .sort((a, b) => (parseInt(String(a.velocidad||"0"),10)||0) - (parseInt(String(b.velocidad||"0"),10)||0));
+      const redes = rR?.datos || (Array.isArray(rR) ? rR : []);
+      setMkwPerfilesOrden(perfs);
+      setMkwRedesOrden(redes);
+    } catch (_) { /* si falla, el selector queda vacio y no bloquea la orden */ }
+    setCargandoCatalogoOrden(false);
+  }
+
+  function ipEnRedCidr(ip, cidr) {
+    const [base, bitsStr] = String(cidr || "").split("/");
+    const bits = Number(bitsStr);
+    if (!base || !Number.isFinite(bits)) return false;
+    const toInt = (s) => String(s).split(".").reduce((acc, o) => (acc << 8) + (Number(o) || 0), 0) >>> 0;
+    const mask = bits <= 0 ? 0 : (0xFFFFFFFF << (32 - bits)) >>> 0;
+    try { return (toInt(ip) & mask) === (toInt(base) & mask); } catch { return false; }
+  }
+
+  async function buscarIpOrdenNod04() {
+    const pppuser = ordenForm.usuarioNodo.trim();
+    if (!pppuser) return notify("Ingresa el usuario PPPoE primero", false);
+    setBuscandoIpOrden(true);
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo: "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const ip = json?.mikrotik?.ip || "";
+      if (!ip) { notify("No se encontró IP en el Mikrotik para ese usuario (¿ya existe el secret?)", false); setBuscandoIpOrden(false); return; }
+      let idRed = "";
+      for (const red of mkwRedesOrden) {
+        const cidr = red.red || red.cidr || red.network || "";
+        if (cidr && ipEnRedCidr(ip, cidr)) { idRed = String(red.id); break; }
+      }
+      setOrdenForm(p => ({ ...p, ipMikrotik: ip, idRedIpv4: idRed || p.idRedIpv4 }));
+      notify(idRed ? `✅ IP encontrada: ${ip}` : `⚠ IP encontrada (${ip}) pero no coincide con ningún rango cargado — asigna el rango a mano`, !!idRed);
+    } catch (e) {
+      notify("Error al buscar IP: " + e.message, false);
+    }
+    setBuscandoIpOrden(false);
+  }
+
+  async function crearClienteMikrowispNod04(datos) {
+    const dni = String(datos.dni || "").replace(/\D/g, "");
+    if (!dni) return { ok: false, error: "Sin DNI" };
+    const extraerId = (r) =>
+      r?.datos?.[0]?.id || r?.data?.[0]?.id ||
+      r?.idcliente || r?.id_cliente || r?.id ||
+      r?.datos?.id || r?.data?.id;
+    try {
+      const check = await mkwDirect(true, "GetClientsDetails", { cedula: dni });
+      let id = extraerId(check);
+      if (!id) {
+        const add = await mkwDirect(true, "NewUser", {
+          nombre: String(datos.nombre || "").trim(),
+          cedula: dni,
+          correo: String(datos.email || "").trim(),
+          telefono: "",
+          movil: String(datos.celular || "").trim(),
+          direccion_principal: String(datos.direccion || "").trim(),
+          codigo: dni,
+        });
+        if (add?.estado === "error") throw new Error(add?.mensaje || "Error Mikrowisp");
+        id = extraerId(add);
+        if (!id) {
+          const retry = await mkwDirect(true, "GetClientsDetails", { cedula: dni });
+          id = extraerId(retry);
+        }
+        if (!id) throw new Error(add?.mensaje || add?.message || "Sin ID de respuesta");
+        await mkwDirect(true, "UpdateUser", { idcliente: id, datos: { codigo: dni } });
+      }
+      return { ok: true, id };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
   async function crearOrden() {
     if (!ordenForm.tipoActuacion || !ordenForm.tecnico.trim() || !ordenForm.autorOrden.trim()) return notify("Selecciona tipo, autor y técnico", false);
     if (!cliente && (!ordenForm.nombre.trim() || !ordenForm.dni.trim())) return notify("Ingresa nombre y DNI del cliente nuevo", false);
@@ -2836,6 +2935,29 @@ export default function SidebarApp() {
       setOrdenIptvPantallas("1");
       setOrdenForm(p => ({ ...p, ubicacionReferencial: false }));
       notify(`✅ Orden ${codigoFinal} creada`);
+
+      // Automatizacion Mikrowisp Nod_04 (piloto): crear el cliente en
+      // Mikrowisp en segundo plano, sin bloquear la creacion de la orden.
+      // Si falla, la orden queda creada igual y se puede reintentar a mano
+      // con el wizard "🚀 Mikrowisp".
+      if (nodoFinal === "Nod_04" && ordenForm.tipoActuacion === "Instalacion Internet" && res.data?.id) {
+        const ordenId = res.data.id;
+        const idPerfilNum = ordenForm.idPerfil ? Number(ordenForm.idPerfil) : null;
+        const idRedNum = ordenForm.idRedIpv4 ? Number(ordenForm.idRedIpv4) : null;
+        const ipSugerida = ordenForm.ipMikrotik || null;
+        crearClienteMikrowispNod04({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion })
+          .then((r) => {
+            const update = {
+              mikrowisp_cliente_creado: !!r.ok,
+              mikrowisp_id_perfil: idPerfilNum,
+              mikrowisp_id_red_ipv4: idRedNum,
+              mikrowisp_ip_sugerida: ipSugerida,
+            };
+            if (r.ok) update.mikrowisp_id_cliente = r.id;
+            return supabase.from("ordenes").update(update).eq("id", ordenId);
+          })
+          .catch(() => {});
+      }
 
       // WhatsApp al cliente
       void sendWhatsAppOrden({ ...payload, codigo: codigoFinal });
@@ -4222,10 +4344,11 @@ export default function SidebarApp() {
                       <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.nodo}
                         onChange={e=>{
                           const n=e.target.value;
-                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:"",vlan:VLAN_POR_NODO[n]||""}));
+                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:"",vlan:VLAN_POR_NODO[n]||"",idPerfil:"",idRedIpv4:"",ipMikrotik:""}));
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
+                          if(n==="Nod_04") cargarCatalogoMikrowispOrdenNod04();
                         }}>
                         <option value="">— Seleccionar —</option>
                         {NODOS_BASE.map(n=><option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
@@ -4237,8 +4360,22 @@ export default function SidebarApp() {
                         placeholder="VLAN" />
                     )}
                     {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?T.blue:T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
-                    {esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))}
-                    {esInst && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
+                    {esInst && ordenForm.nodo==="Nod_04" ? (
+                      fila("Plan (Mikrowisp)",
+                        <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.idPerfil}
+                          onChange={e=>{
+                            const idPerfil=e.target.value;
+                            const perfil=mkwPerfilesOrden.find(p=>String(p.id)===idPerfil);
+                            setOrdenForm(p=>({...p,idPerfil,velocidad:perfil?String(perfil.plan||"").trim():p.velocidad,precioPlan:perfil?String(perfil.costo||""):p.precioPlan}));
+                          }}>
+                          <option value="">{cargandoCatalogoOrden?"Cargando planes...":"— Seleccionar —"}</option>
+                          {mkwPerfilesOrden.map(pf=><option key={pf.id} value={pf.id}>{String(pf.plan||"").trim()} — S/{pf.costo}</option>)}
+                        </select>
+                      )
+                    ) : (
+                      esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))
+                    )}
+                    {esInst && ordenForm.nodo!=="Nod_04" && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
                     {fila("Usuario nodo",
                       <div style={{position:"relative"}}>
                         <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} placeholder={NODO_USUARIO_RULES[normalizeNodoKey(ordenForm.nodo)]?`Ej: ${listarUsuariosParaNodo(ordenForm.nodo,[],1)[0]?.usuario||""}` : "user730@americanet"}
@@ -4259,6 +4396,16 @@ export default function SidebarApp() {
                             ))}
                           </div>
                         )}
+                      </div>
+                    )}
+                    {esInst && ordenForm.nodo==="Nod_04" && fila("IP (Mikrotik)",
+                      <div style={{display:"flex",alignItems:"center"}}>
+                        <input style={{...S.input,border:"none",borderRadius:0,fontSize:12,flex:1,fontFamily:"monospace"}} type="text" placeholder="Se busca por el usuario PPPoE"
+                          value={ordenForm.ipMikrotik} onChange={e=>setOrdenForm(p=>({...p,ipMikrotik:e.target.value}))} />
+                        <button onClick={buscarIpOrdenNod04} disabled={buscandoIpOrden||!ordenForm.usuarioNodo.trim()}
+                          style={{...S.btnSm(buscandoIpOrden?"#9ca3af":"#16a34a"),borderRadius:0,padding:"0 10px",height:"100%",fontSize:11,whiteSpace:"nowrap",flexShrink:0,opacity:!ordenForm.usuarioNodo.trim()?0.5:1}}>
+                          {buscandoIpOrden?"...":"🔍 Buscar IP"}
+                        </button>
                       </div>
                     )}
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
@@ -5795,10 +5942,11 @@ export default function SidebarApp() {
                         value={ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`}
                         onChange={e => {
                           const n = e.target.value;
-                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:"", vlan:VLAN_POR_NODO[n]||""}));
+                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:"", vlan:VLAN_POR_NODO[n]||"", idPerfil:"", idRedIpv4:"", ipMikrotik:""}));
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
+                          if(n==="Nod_04") cargarCatalogoMikrowispOrdenNod04();
                         }}>
                         {NODOS_BASE.map(n => <option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
                       </select>
@@ -5815,23 +5963,43 @@ export default function SidebarApp() {
                       </div>
                     </div>
                   )}
-                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Velocidad</div>
-                    <div>
-                      <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
-                        value={ordenForm.velocidad} onChange={e => setOrdenForm(p=>({...p, velocidad:e.target.value}))}>
-                        <option value="">— Seleccionar —</option>
-                        {["100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"].map(v=><option key={v}>{v}</option>)}
-                      </select>
+                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" ? (
+                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Plan (Mikrowisp)</div>
+                      <div>
+                        <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                          value={ordenForm.idPerfil}
+                          onChange={e => {
+                            const idPerfil = e.target.value;
+                            const perfil = mkwPerfilesOrden.find(p=>String(p.id)===idPerfil);
+                            setOrdenForm(p=>({...p, idPerfil, velocidad: perfil?String(perfil.plan||"").trim():p.velocidad, precioPlan: perfil?String(perfil.costo||""):p.precioPlan}));
+                          }}>
+                          <option value="">{cargandoCatalogoOrden?"Cargando planes...":"— Seleccionar —"}</option>
+                          {mkwPerfilesOrden.map(pf => <option key={pf.id} value={pf.id}>{String(pf.plan||"").trim()} — S/{pf.costo}</option>)}
+                        </select>
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                    <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Precio plan</div>
-                    <div>
-                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="number" placeholder="S/ 0.00"
-                        value={ordenForm.precioPlan} onChange={e => setOrdenForm(p=>({...p, precioPlan:e.target.value}))} />
+                  ) : (
+                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Velocidad</div>
+                      <div>
+                        <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                          value={ordenForm.velocidad} onChange={e => setOrdenForm(p=>({...p, velocidad:e.target.value}))}>
+                          <option value="">— Seleccionar —</option>
+                          {["100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"].map(v=><option key={v}>{v}</option>)}
+                        </select>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) !== "Nod_04" && (
+                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Precio plan</div>
+                      <div>
+                        <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }} type="number" placeholder="S/ 0.00"
+                          value={ordenForm.precioPlan} onChange={e => setOrdenForm(p=>({...p, precioPlan:e.target.value}))} />
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Usuario nodo</div>
                     <div style={{ position:"relative" }}>
@@ -5856,6 +6024,19 @@ export default function SidebarApp() {
                       )}
                     </div>
                   </div>
+                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" && (
+                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>IP (Mikrotik)</div>
+                      <div style={{ display:"flex", alignItems:"center" }}>
+                        <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12, flex:1, fontFamily:"monospace" }} type="text" placeholder="Se busca por el usuario PPPoE"
+                          value={ordenForm.ipMikrotik} onChange={e => setOrdenForm(p=>({...p, ipMikrotik:e.target.value}))} />
+                        <button onClick={buscarIpOrdenNod04} disabled={buscandoIpOrden || !ordenForm.usuarioNodo.trim()}
+                          style={{...S.btnSm(buscandoIpOrden?"#9ca3af":"#16a34a"), borderRadius:0, padding:"0 10px", height:"100%", fontSize:11, whiteSpace:"nowrap", flexShrink:0, opacity:!ordenForm.usuarioNodo.trim()?0.5:1}}>
+                          {buscandoIpOrden?"...":"🔍 Buscar IP"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Contraseña PPP</div>
                     <div>
