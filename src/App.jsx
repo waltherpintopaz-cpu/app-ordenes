@@ -2240,6 +2240,8 @@ export default function App() {
   const [mikrotikConfigSaving, setMikrotikConfigSaving] = useState(false);
   const [mikrotikConfigInfo, setMikrotikConfigInfo] = useState("");
   const [mikrotikConfigError, setMikrotikConfigError] = useState("");
+  const [routerCardAbierto, setRouterCardAbierto] = useState({}); // { [routerKey]: true } -- colapsado por defecto
+  const [nodoConfigCardAbierto, setNodoConfigCardAbierto] = useState({}); // { [idx]: true } -- colapsado por defecto
   const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
   const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
   const [nodosConfigFilas, setNodosConfigFilas] = useState([]);
@@ -12066,15 +12068,18 @@ export default function App() {
   };
 
   const agregarNodoConfigNuevo = () => {
-    setNodosConfigFilas((prev) => [
-      ...prev,
-      {
-        nodo: "", empresa: "Americanet", mikrowisp_router_id: null,
-        usuario_prefix: "", usuario_suffix: "", usuario_pad: 0, usuario_start: 1,
-        password_fija: "", vlan: "", es_dim: false, mkw_auto: false, activo: true,
-        orden: prev.length + 1, notas: "", _nuevo: true,
-      },
-    ]);
+    setNodosConfigFilas((prev) => {
+      setNodoConfigCardAbierto((abiertos) => ({ ...abiertos, [prev.length]: true }));
+      return [
+        ...prev,
+        {
+          nodo: "", empresa: "Americanet", mikrowisp_router_id: null,
+          usuario_prefix: "", usuario_suffix: "", usuario_pad: 0, usuario_start: 1,
+          password_fija: "", vlan: "", es_dim: false, mkw_auto: false, activo: true,
+          orden: prev.length + 1, notas: "", _nuevo: true,
+        },
+      ];
+    });
   };
 
   const eliminarNodoConfigFila = async (idx, nodo, esNuevo) => {
@@ -21617,20 +21622,25 @@ export default function App() {
                             overflow: "hidden",
                           }}
                         >
-                          <div style={{
-                            display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px",
-                            padding: "10px 16px", background: router.activo ? "#eff6ff" : "#f1f5f9", borderBottom: "1px solid #dbe6f5",
-                          }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                              <span style={{ fontSize: "15px", fontWeight: 800, color: "#0f172a" }}>{router.nombre || router.routerKey}</span>
-                              <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 9px", borderRadius: "999px", background: router.activo ? "#dcfce7" : "#fee2e2", color: router.activo ? "#15803d" : "#dc2626" }}>
+                          <div
+                            onClick={() => setRouterCardAbierto((prev) => ({ ...prev, [router.routerKey]: !prev[router.routerKey] }))}
+                            style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px",
+                              padding: "8px 14px", background: router.activo ? "#eff6ff" : "#f1f5f9", cursor: "pointer",
+                              borderBottom: routerCardAbierto[router.routerKey] ? "1px solid #dbe6f5" : "none",
+                            }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ fontSize: "11px", color: "#94a3b8" }}>{routerCardAbierto[router.routerKey] ? "▼" : "▶"}</span>
+                              <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>{router.nombre || router.routerKey}</span>
+                              <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 8px", borderRadius: "999px", background: router.activo ? "#dcfce7" : "#fee2e2", color: router.activo ? "#15803d" : "#dc2626" }}>
                                 {router.activo ? "Activo" : "Inactivo"}
                               </span>
                             </div>
-                            <span style={{ fontSize: "12px", fontFamily: "monospace", color: "#475569" }}>{router.host || "sin host"}:{router.port || "?"}</span>
+                            <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#475569" }}>{router.host || "sin host"}:{router.port || "?"}</span>
                           </div>
-                          <div style={{ padding: "16px" }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                          {routerCardAbierto[router.routerKey] && (
+                          <div style={{ padding: "12px 14px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "8px" }}>
                             <div>
                               <label style={labelStyle}>Clave router</label>
                               <input
@@ -21715,6 +21725,7 @@ export default function App() {
                             </button>
                           </div>
                           </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -21931,25 +21942,27 @@ export default function App() {
                 {nodosConfigError && <div style={{ fontSize: "12px", color: "#dc2626", fontWeight: 600, marginBottom: "10px" }}>❌ {nodosConfigError}</div>}
                 {nodosConfigInfo && <div style={{ fontSize: "12px", color: "#15803d", fontWeight: 600, marginBottom: "10px" }}>{nodosConfigInfo}</div>}
 
-                <div style={{ display: "grid", gap: "12px" }}>
+                <div style={{ display: "grid", gap: "10px" }}>
                   {nodosConfigFilas.map((f, idx) => (
-                    <div key={idx} style={{ border: "1px solid #d8e2f0", borderRadius: "14px", padding: "14px", background: "#ffffff" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          <span style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{f.nodo || "(nodo nuevo)"}</span>
-                          <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", background: f.empresa === "DIM" ? "#ede9fe" : "#e0f2fe", color: f.empresa === "DIM" ? "#6d28d9" : "#0369a1" }}>
+                    <div key={idx} style={{ border: "1px solid #c7d5e8", borderRadius: "14px", background: "#ffffff", boxShadow: "0 1px 4px rgba(15,23,42,0.07)", overflow: "hidden" }}>
+                      <div
+                        onClick={() => setNodoConfigCardAbierto((prev) => ({ ...prev, [idx]: !prev[idx] }))}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "8px 14px", cursor: "pointer", background: f.activo === false ? "#f1f5f9" : "#faf5ff" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>{nodoConfigCardAbierto[idx] ? "▼" : "▶"}</span>
+                          <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>{f.nodo || "(nodo nuevo)"}</span>
+                          <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 8px", borderRadius: "999px", background: f.empresa === "DIM" ? "#ede9fe" : "#e0f2fe", color: f.empresa === "DIM" ? "#6d28d9" : "#0369a1" }}>
                             {f.empresa || "Americanet"}
                           </span>
+                          {f.mkw_auto && <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 8px", borderRadius: "999px", background: "#fef3c7", color: "#92400e" }}>Auto Mikrowisp</span>}
                           {f.activo === false && (
-                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", background: "#fee2e2", color: "#dc2626" }}>Inactivo</span>
+                            <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 8px", borderRadius: "999px", background: "#fee2e2", color: "#dc2626" }}>Inactivo</span>
                           )}
                         </div>
-                        <button type="button" style={{ ...secondaryButton, color: "#dc2626", borderColor: "#fecaca", padding: "6px 12px", fontSize: "12px" }}
-                          onClick={() => eliminarNodoConfigFila(idx, f.nodo, f._nuevo)}>
-                          Eliminar nodo
-                        </button>
+                        <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#475569" }}>ID Mikrowisp: {f.mikrowisp_router_id ?? "—"}</span>
                       </div>
-
+                      {nodoConfigCardAbierto[idx] && (
+                      <div style={{ padding: "12px 14px" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
                         <div>
                           <label style={labelStyle}>Nombre del nodo</label>
@@ -22026,6 +22039,14 @@ export default function App() {
                           </label>
                         </div>
                       </div>
+                      <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end" }}>
+                        <button type="button" style={{ ...secondaryButton, color: "#dc2626", borderColor: "#fecaca", padding: "6px 12px", fontSize: "12px" }}
+                          onClick={() => eliminarNodoConfigFila(idx, f.nodo, f._nuevo)}>
+                          Eliminar nodo
+                        </button>
+                      </div>
+                      </div>
+                      )}
                     </div>
                   ))}
                   {!nodosConfigFilas.length && !nodosConfigLoading && (
