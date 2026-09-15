@@ -264,7 +264,11 @@ const empresaPorNodo = (nodo) => DIM_NODOS_WEB.has(String(normalizarEtiquetaNodo
 const VLAN_POR_NODO_WEB = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
 // ID de router MikroWisp por nodo. Nod_03 esta en migracion: clientes que ya
 // pasaron a VLAN 102 usan el router nuevo (12); el resto sigue en el viejo (10).
-const MW_NODO_MAP_BASE_WEB = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 10, "Nod_04": 5, "Nod_06": 11 };
+// IDs confirmados en Mikrowisp (Configuracion > Routers, instancia DimFiber):
+// NODO_04=5, NODO_05=11, NODO_06=12.
+const MW_NODO_MAP_BASE_WEB = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 10, "Nod_04": 5, "Nod_05": 11, "Nod_06": 12 };
+// Nodos con automatizacion Mikrowisp al crear orden / liquidar (piloto Nod_04, extendido a 05/06).
+const NODOS_MKW_AUTO_WEB = ["Nod_04", "Nod_05", "Nod_06"];
 const MW_ROUTER_ID_NOD03_NUEVO = 12;
 function mikrowispRouterIdParaCliente(nodo, vlan) {
   const n = String(nodo || "").trim();
@@ -3576,7 +3580,7 @@ export default function App() {
     window.alert("Clientes locales eliminados.");
   };
 
-  const MIKROWISP_NODOS = ["Nod_01", "Nod_03", "Nod_04"];
+  const MIKROWISP_NODOS = ["Nod_01", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
   const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
   const MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
   const MIKROWISP_NOD04_URL = "https://app.dimfiber.com/api/v1/GetClientsDetails";
@@ -3634,7 +3638,10 @@ export default function App() {
     if (!dni) return window.alert("El cliente no tiene DNI registrado.");
     if (cliente.en_mikrowisp || mikrowisp_ok[id]) return window.alert("Este cliente ya está registrado en Mikrowisp.");
 
-    const esNod04 = String(cliente.nodo || "").trim() === "Nod_04";
+    // esDimNodo() cubre Nod_04/05/06/07 (una sola instancia DimFiber) — antes esto
+    // solo detectaba "Nod_04" y enrutaba clientes de Nod_05/06 al Mikrowisp
+    // equivocado (el principal, con credenciales distintas).
+    const esNod04 = esDimNodo(cliente.nodo);
 
     setMikrowispLoading((p) => ({ ...p, [id]: true }));
     try {
@@ -3737,7 +3744,7 @@ export default function App() {
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
+        body: JSON.stringify({ nodo: orden.nodo || "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
       });
       const json = await res.json().catch(() => ({}));
       const ip = json?.mikrotik?.ip || "";
@@ -3792,14 +3799,15 @@ export default function App() {
           const s = t.trim();
           return s && !s.startsWith("51") ? "51" + s : s;
         }).filter(Boolean).join(",");
-        await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", 5);
+        const routerIdCliente = MW_NODO_MAP_BASE_WEB[String(datos.nodo || "").trim()] ?? 5;
+        await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", routerIdCliente);
         await supabase.from("mikrowisp_clientes").insert({
           mikrowisp_id: id,
           cedula: dni,
           nombre: String(datos.nombre || "").trim(),
           telefonos: movil,
           estado: estadoExistente || "ACTIVO",
-          nodo: 5,
+          nodo: routerIdCliente,
           updated_at: new Date().toISOString(),
           agregado_por: "Automatico (orden)",
         });
@@ -4106,9 +4114,9 @@ export default function App() {
     // datos puede ser un objeto o array — tomamos el primero con movil
     const d = Array.isArray(datos) ? datos[0] : datos;
     if (!d?.id) return { ok: false, msg: "Sin id en respuesta" };
-    const esNod04 = String(d._nodo || "").trim() === "Nod_04";
+    const esNod04 = esDimNodo(d._nodo);
     const movilRaw = String(d.movil || "").trim();
-    // Nod_04: agregar prefijo 51 a todos los números que no lo tengan
+    // DimFiber (Nod_04/05/06/07): agregar prefijo 51 a todos los números que no lo tengan
     const movil = esNod04 ? normalizarTelefonos51(movilRaw) : movilRaw;
     const nodoServicio = d.servicios?.[0]?.nodo ?? null;
     // Fallback numérico por etiqueta de nodo — evita que nodo quede null cuando Mikrowisp
@@ -4158,7 +4166,7 @@ export default function App() {
   };
 
   const mkwConsultarCedula = async (cedula, nodo = "") => {
-    const esNod04 = String(nodo || "").trim() === "Nod_04";
+    const esNod04 = esDimNodo(nodo);
     const { ok, status, json } = esNod04
       ? await mkFetchNod04("GetClientsDetails", { cedula: String(cedula).trim() })
       : await mkFetch("GetClientsDetails", { cedula: String(cedula).trim() });
@@ -4466,9 +4474,8 @@ export default function App() {
       setMkwMasivoInfo(`Consultando ${i + 1}/${base.length} — ${c.nombre || c.dni}...`);
       try {
         const datos = await mkwConsultarCedula(String(c.dni || "").replace(/\D/g, ""), String(c.nodo || ""));
-        const _esNod04Prev = String(c.nodo || "").trim() === "Nod_04";
         const _nodoServicioPrev = datos[0]?.servicios?.[0]?.nodo ?? null;
-        const _nodoNumPrev = (_nodoServicioPrev ?? (_esNod04Prev ? 5 : null));
+        const _nodoNumPrev = (_nodoServicioPrev ?? (MW_NODO_MAP_BASE_WEB[String(c.nodo || "").trim()] ?? null));
         const _nodoNumPrevN = _nodoNumPrev !== null ? Number(_nodoNumPrev) : null;
         let _prevQ = supabase.from("mikrowisp_clientes").select("telefonos").eq("mikrowisp_id", datos[0]?.id);
         if (_nodoNumPrevN !== null) _prevQ = _prevQ.eq("nodo", _nodoNumPrevN); else _prevQ = _prevQ.is("nodo", null);
@@ -6580,7 +6587,7 @@ export default function App() {
         passwordUsuario: passwordSugerido || prev.passwordUsuario,
       };
     });
-    if (nextNodo === "Nod_04") {
+    if (NODOS_MKW_AUTO_WEB.includes(nextNodo)) {
       // Encadenado: espera a que cargue el catalogo (redes) antes de buscar la IP.
       cargarCatalogoMikrowispOrdenApp().then(() => { if (sugeridoParaIp) buscarIpOrdenNod04App(sugeridoParaIp); });
     }
@@ -9896,7 +9903,7 @@ export default function App() {
       alert("El usuario de nodo está deshabilitado por administración. Habilítalo o usa otro.");
       return;
     }
-    if (mostrarCamposPlan && orden.nodo === "Nod_04" && (!ordenIdPerfil || !ordenIdPlantilla)) {
+    if (mostrarCamposPlan && NODOS_MKW_AUTO_WEB.includes(orden.nodo) && (!ordenIdPerfil || !ordenIdPlantilla)) {
       alert("Selecciona el Plan (Mikrowisp) y la Facturación antes de guardar.");
       return;
     }
@@ -10074,13 +10081,13 @@ export default function App() {
           // Automatizacion Mikrowisp Nod_04 (piloto): crear el cliente en
           // segundo plano, sin bloquear la creacion de la orden. Si falla,
           // la orden queda creada igual y se completa a mano con el wizard.
-          if (orden.nodo === "Nod_04" && orden.tipoActuacion === "Instalacion Internet" && merged?.id) {
+          if (NODOS_MKW_AUTO_WEB.includes(orden.nodo) && orden.tipoActuacion === "Instalacion Internet" && merged?.id) {
             const ordenId = merged.id;
             const idPerfilNum = ordenIdPerfil ? Number(ordenIdPerfil) : null;
             const idRedNum = ordenIdRedIpv4 ? Number(ordenIdRedIpv4) : null;
             const idPlantillaNum = ordenIdPlantilla ? Number(ordenIdPlantilla) : null;
             const ipSugerida = ordenIpMikrotik || null;
-            crearClienteMikrowispNod04App({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion })
+            crearClienteMikrowispNod04App({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion, nodo: orden.nodo })
               .then((r) => {
                 const update = {
                   mikrowisp_cliente_creado: !!r.ok,
@@ -10168,7 +10175,7 @@ export default function App() {
     setOrdenIdRedIpv4(ordenItem.mikrowispIdRedIpv4 != null ? String(ordenItem.mikrowispIdRedIpv4) : "");
     setOrdenIdPlantilla(ordenItem.mikrowispIdPlantilla != null ? String(ordenItem.mikrowispIdPlantilla) : "");
     setOrdenIpMikrotik(ordenItem.mikrowispIpSugerida || "");
-    if (String(baseOrden.nodo || "").trim() === "Nod_04") void cargarCatalogoMikrowispOrdenApp();
+    if (NODOS_MKW_AUTO_WEB.includes(String(baseOrden.nodo || "").trim())) void cargarCatalogoMikrowispOrdenApp();
     setVistaActiva("crear");
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -16517,7 +16524,7 @@ export default function App() {
               <div style={{ ...cardStyle, borderRadius: "14px" }}>
                 <h2 style={{ ...sectionTitleStyle, marginBottom: "12px" }}>Paso 3. Servicio</h2>
                 <div style={formGridStyle}>
-                  {mostrarCamposPlan && orden.nodo === "Nod_04" ? (
+                  {mostrarCamposPlan && NODOS_MKW_AUTO_WEB.includes(orden.nodo) ? (
                     <>
                       <div>
                         <label style={labelStyle}>Plan (Mikrowisp)</label>
@@ -16593,7 +16600,7 @@ export default function App() {
                       )}
 
                       <div style={{ position: "relative" }}>
-                        <label style={labelStyle}>Usuario{orden.nodo === "Nod_04" && (
+                        <label style={labelStyle}>Usuario{NODOS_MKW_AUTO_WEB.includes(orden.nodo) && (
                           <span style={{ marginLeft: 8, fontSize: 10, fontFamily: "monospace", fontWeight: 700, padding: "3px 7px", borderRadius: 6,
                             background: buscandoIpOrdenApp ? "#eff6ff" : ordenIpMikrotik ? "#f0fdf4" : "#f9fafb",
                             color: buscandoIpOrdenApp ? "#1d4ed8" : ordenIpMikrotik ? "#15803d" : "#9ca3af",
@@ -16608,7 +16615,7 @@ export default function App() {
                           onChange={(e) => handleChange("usuarioNodo", e.target.value)}
                           placeholder="user730@americanet"
                           onFocus={() => setShowUsuarioDropdown(true)}
-                          onBlur={() => { setTimeout(() => setShowUsuarioDropdown(false), 150); if (orden.nodo === "Nod_04") buscarIpOrdenNod04App(); }}
+                          onBlur={() => { setTimeout(() => setShowUsuarioDropdown(false), 150); if (NODOS_MKW_AUTO_WEB.includes(orden.nodo)) buscarIpOrdenNod04App(); }}
                         />
                         {showUsuarioDropdown && usuariosDisponiblesNodo.length > 0 && (
                           <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #d1d5db", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", zIndex: 999, maxHeight: "220px", overflowY: "auto" }}>
@@ -16622,7 +16629,7 @@ export default function App() {
                               return (
                                 <div
                                   key={u}
-                                  onMouseDown={() => { handleChange("usuarioNodo", u); setShowUsuarioDropdown(false); if (orden.nodo === "Nod_04") buscarIpOrdenNod04App(u); }}
+                                  onMouseDown={() => { handleChange("usuarioNodo", u); setShowUsuarioDropdown(false); if (NODOS_MKW_AUTO_WEB.includes(orden.nodo)) buscarIpOrdenNod04App(u); }}
                                   style={{ padding: "9px 14px", cursor: "pointer", fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", color: ocup ? "#dc2626" : i === 0 ? "#1e40af" : "#374151", fontWeight: i === 0 ? 700 : 400, background: i === 0 ? "#eff6ff" : "transparent", borderBottom: i < usuariosDisponiblesNodo.length - 1 ? "1px solid #f3f4f6" : "none" }}
                                 >
                                   <span>{u}{i === 0 ? " ✓" : ""}</span>
@@ -22681,7 +22688,7 @@ export default function App() {
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Nodo / Router</label>
                                   <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,routerId:String(mikrowispRouterIdParaCliente(n,p.vlan)),id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
-                                    {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n=><option key={n} value={n}>{n}</option>)}
+                                    {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n=><option key={n} value={n}>{n}</option>)}
                                   </select>
                                 </div>
                                 <div>
@@ -23424,7 +23431,7 @@ export default function App() {
                           <select value={svcNuevoForm.nodo}
                             onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, routerId:String(mikrowispRouterIdParaCliente(n,p.vlan)), id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
-                            {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
+                            {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
                         </div>
                         {/* Plan */}

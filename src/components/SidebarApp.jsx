@@ -1594,15 +1594,19 @@ export default function SidebarApp() {
 
   // ── Búsqueda flexible por DNI o nombre ──────────────────────────────────
   // ── MW wizard helpers ─────────────────────────────────────────────────────
-  const MW_NODO_MAP  = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_06":11 };
+  // IDs de router confirmados en Mikrowisp (Configuracion > Routers, instancia DimFiber):
+  // NODO_04=5, NODO_05=11, NODO_06=12.
+  const MW_NODO_MAP  = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_05":11, "Nod_06":12 };
   // Nod_03 en migracion: clientes ya pasados a VLAN 102 usan el router MikroWisp nuevo (12).
   const mikrowispRouterIdParaCliente = (nodo, vlan) => {
     const n = String(nodo || "").trim();
     if (n === "Nod_03" && Number(vlan) === 102) return 12;
     return MW_NODO_MAP[n] ?? 1;
   };
-  const MW_NODOS_OK  = ["Nod_01","Nod_03","Nod_04"];
+  const MW_NODOS_OK  = ["Nod_01","Nod_03","Nod_04","Nod_05","Nod_06"];
   const mwEsDim = (nodo) => ["Nod_04","Nod_05","Nod_06","Nod_07"].includes(String(nodo||""));
+  // Nodos con automatizacion Mikrowisp al crear orden / liquidar (piloto Nod_04, extendido a 05/06).
+  const NODOS_MKW_AUTO = ["Nod_04","Nod_05","Nod_06"];
 
   async function mwBuscarEnClientes() {
     const q = mwBusqVal.trim();
@@ -2738,7 +2742,7 @@ export default function SidebarApp() {
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
+        body: JSON.stringify({ nodo: ordenForm.nodo || "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
       });
       const json = await res.json().catch(() => ({}));
       const ip = json?.mikrotik?.ip || "";
@@ -2795,14 +2799,15 @@ export default function SidebarApp() {
           const s = t.trim();
           return s && !s.startsWith("51") ? "51" + s : s;
         }).filter(Boolean).join(",");
-        await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", 5);
+        const routerIdCliente = MW_NODO_MAP[String(datos.nodo || "").trim()] ?? 5;
+        await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", routerIdCliente);
         await supabase.from("mikrowisp_clientes").insert({
           mikrowisp_id: id,
           cedula: dni,
           nombre: String(datos.nombre || "").trim(),
           telefonos: movil,
           estado: estadoExistente || "ACTIVO",
-          nodo: 5,
+          nodo: routerIdCliente,
           updated_at: new Date().toISOString(),
           agregado_por: "Automatico (orden)",
         });
@@ -2966,17 +2971,17 @@ export default function SidebarApp() {
       setOrdenForm(p => ({ ...p, ubicacionReferencial: false }));
       notify(`✅ Orden ${codigoFinal} creada`);
 
-      // Automatizacion Mikrowisp Nod_04 (piloto): crear el cliente en
+      // Automatizacion Mikrowisp Nod_04/05/06: crear el cliente en
       // Mikrowisp en segundo plano, sin bloquear la creacion de la orden.
       // Si falla, la orden queda creada igual y se puede reintentar a mano
       // con el wizard "🚀 Mikrowisp".
-      if (nodoFinal === "Nod_04" && ordenForm.tipoActuacion === "Instalacion Internet" && res.data?.id) {
+      if (NODOS_MKW_AUTO.includes(nodoFinal) && ordenForm.tipoActuacion === "Instalacion Internet" && res.data?.id) {
         const ordenId = res.data.id;
         const idPerfilNum = ordenForm.idPerfil ? Number(ordenForm.idPerfil) : null;
         const idRedNum = ordenForm.idRedIpv4 ? Number(ordenForm.idRedIpv4) : null;
         const idPlantillaNum = ordenForm.idPlantilla ? Number(ordenForm.idPlantilla) : null;
         const ipSugerida = ordenForm.ipMikrotik || null;
-        crearClienteMikrowispNod04({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion })
+        crearClienteMikrowispNod04({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion, nodo: nodoFinal })
           .then((r) => {
             const update = {
               mikrowisp_cliente_creado: !!r.ok,
@@ -3092,7 +3097,7 @@ export default function SidebarApp() {
     if (!nodo) { setUsuariosNodo([]); return; }
     // Cargar primero el catalogo de planes/redes para que la busqueda de IP
     // que sigue mas abajo ya pueda detectar el rango correcto.
-    if (nodo === "Nod_04") await cargarCatalogoMikrowispOrdenNod04();
+    if (NODOS_MKW_AUTO.includes(nodo)) await cargarCatalogoMikrowispOrdenNod04();
     try {
       const { data } = await supabase.from("ordenes")
         .select("usuario_nodo,estado")
@@ -3116,7 +3121,7 @@ export default function SidebarApp() {
         const pwd = esNod07 ? String(p.dni||"").replace(/\D/g,"") : NODO_PASSWORD_RULES[normalizeNodoKey(nodo)];
         return { ...p, empresa: empresaPorNodo(nodo), passwordUsuario: pwd || p.passwordUsuario, usuarioNodo: recomendado ? recomendado.usuario : p.usuarioNodo };
       });
-      if (recomendado && nodo === "Nod_04") {
+      if (recomendado && NODOS_MKW_AUTO.includes(nodo)) {
         void buscarIpOrdenNod04(recomendado.usuario);
       }
     } catch(e) {}
@@ -4423,7 +4428,7 @@ export default function SidebarApp() {
                         placeholder="VLAN" />
                     )}
                     {fila("Empresa", <div style={{padding:"8px 10px",fontSize:12,fontWeight:700,color:empAutoNodo==="DIM"?T.blue:T.blue}}>{empAutoNodo || "— selecciona nodo —"}</div>)}
-                    {esInst && ordenForm.nodo==="Nod_04" ? (
+                    {esInst && NODOS_MKW_AUTO.includes(ordenForm.nodo) ? (
                       fila("Plan (Mikrowisp)",
                         <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.idPerfil}
                           onChange={e=>{
@@ -4438,14 +4443,14 @@ export default function SidebarApp() {
                     ) : (
                       esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))
                     )}
-                    {esInst && ordenForm.nodo==="Nod_04" && fila("Facturación",
+                    {esInst && NODOS_MKW_AUTO.includes(ordenForm.nodo) && fila("Facturación",
                       <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.idPlantilla}
                         onChange={e=>setOrdenForm(p=>({...p,idPlantilla:e.target.value}))}>
                         <option value="">{cargandoCatalogoOrden?"Cargando...":"— Seleccionar —"}</option>
                         {mkwPlantillasOrden.map(pl=><option key={pl.id} value={pl.id}>{pl.nombre}</option>)}
                       </select>
                     )}
-                    {esInst && ordenForm.nodo!=="Nod_04" && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
+                    {esInst && !NODOS_MKW_AUTO.includes(ordenForm.nodo) && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
                     {fila("Usuario nodo",
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <div style={{position:"relative",flex:1}}>
@@ -4453,11 +4458,11 @@ export default function SidebarApp() {
                             value={ordenForm.usuarioNodo}
                             onChange={e=>setOrdenForm(p=>({...p,usuarioNodo:e.target.value}))}
                             onFocus={()=>setShowUsuarioDrop(true)}
-                            onBlur={()=>{ setTimeout(()=>setShowUsuarioDrop(false),150); if(ordenForm.nodo==="Nod_04") buscarIpOrdenNod04(); }} />
+                            onBlur={()=>{ setTimeout(()=>setShowUsuarioDrop(false),150); if(NODOS_MKW_AUTO.includes(ordenForm.nodo)) buscarIpOrdenNod04(); }} />
                           {showUsuarioDrop && usuariosNodo.length>0 && (
                             <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:6,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:999,maxHeight:200,overflowY:"auto"}}>
                               {usuariosNodo.map((u,i)=>(
-                                <div key={u.usuario} onMouseDown={()=>{setOrdenForm(p=>({...p,usuarioNodo:u.usuario}));setShowUsuarioDrop(false); if(ordenForm.nodo==="Nod_04") buscarIpOrdenNod04(u.usuario);}}
+                                <div key={u.usuario} onMouseDown={()=>{setOrdenForm(p=>({...p,usuarioNodo:u.usuario}));setShowUsuarioDrop(false); if(NODOS_MKW_AUTO.includes(ordenForm.nodo)) buscarIpOrdenNod04(u.usuario);}}
                                   style={{padding:"8px 12px",cursor:u.ocupado?"default":"pointer",fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",
                                     color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151",fontWeight:i===0?700:400,
                                     background:i===0&&!u.ocupado?"#eff6ff":"transparent",borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none"}}>
@@ -4468,7 +4473,7 @@ export default function SidebarApp() {
                             </div>
                           )}
                         </div>
-                        {esInst && ordenForm.nodo==="Nod_04" && (
+                        {esInst && NODOS_MKW_AUTO.includes(ordenForm.nodo) && (
                           <span title="IP detectada automaticamente en el Mikrotik — no editable" style={{fontSize:10,fontFamily:"monospace",fontWeight:700,padding:"5px 8px",borderRadius:6,whiteSpace:"nowrap",flexShrink:0,
                             background: buscandoIpOrden?"#eff6ff":ordenForm.ipMikrotik?"#f0fdf4":"#f9fafb",
                             color: buscandoIpOrden?"#1d4ed8":ordenForm.ipMikrotik?"#15803d":"#9ca3af",
@@ -6032,7 +6037,7 @@ export default function SidebarApp() {
                       </div>
                     </div>
                   )}
-                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" ? (
+                  {NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) ? (
                     <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                       <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Plan (Mikrowisp)</div>
                       <div>
@@ -6060,7 +6065,7 @@ export default function SidebarApp() {
                       </div>
                     </div>
                   )}
-                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" && (
+                  {NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) && (
                     <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                       <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Facturación</div>
                       <div>
@@ -6072,7 +6077,7 @@ export default function SidebarApp() {
                       </div>
                     </div>
                   )}
-                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) !== "Nod_04" && (
+                  {!NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) && (
                     <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                       <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Precio plan</div>
                       <div>
@@ -6090,11 +6095,11 @@ export default function SidebarApp() {
                           value={ordenForm.usuarioNodo}
                           onChange={e => setOrdenForm(p=>({...p, usuarioNodo:e.target.value}))}
                           onFocus={() => { setShowUsuarioDrop(true); const n = ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`; if(!usuariosNodo.length && n) cargarUsuariosNodo(n); }}
-                          onBlur={() => { setTimeout(()=>setShowUsuarioDrop(false),150); if((ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`)==="Nod_04") buscarIpOrdenNod04(); }} />
+                          onBlur={() => { setTimeout(()=>setShowUsuarioDrop(false),150); if(NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`)) buscarIpOrdenNod04(); }} />
                         {showUsuarioDrop && usuariosNodo.length > 0 && (
                           <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:`1px solid ${T.border}`, borderRadius:6, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:999, maxHeight:180, overflowY:"auto" }}>
                             {usuariosNodo.map((u,i) => (
-                              <div key={u.usuario} onMouseDown={() => { setOrdenForm(p=>({...p, usuarioNodo:u.usuario})); setShowUsuarioDrop(false); if((ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`)==="Nod_04") buscarIpOrdenNod04(u.usuario); }}
+                              <div key={u.usuario} onMouseDown={() => { setOrdenForm(p=>({...p, usuarioNodo:u.usuario})); setShowUsuarioDrop(false); if(NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`)) buscarIpOrdenNod04(u.usuario); }}
                                 style={{ padding:"8px 12px", cursor:u.ocupado?"default":"pointer", fontSize:12, display:"flex", justifyContent:"space-between", alignItems:"center",
                                   color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151", fontWeight:i===0?700:400,
                                   background:i===0&&!u.ocupado?"#eff6ff":"transparent", borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none" }}>
@@ -6105,7 +6110,7 @@ export default function SidebarApp() {
                           </div>
                         )}
                       </div>
-                      {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" && (
+                      {NODOS_MKW_AUTO.includes(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) && (
                         <span title="IP detectada automaticamente en el Mikrotik — no editable" style={{ fontSize:10, fontFamily:"monospace", fontWeight:700, padding:"5px 8px", borderRadius:6, whiteSpace:"nowrap", flexShrink:0,
                           background: buscandoIpOrden?"#eff6ff":ordenForm.ipMikrotik?"#f0fdf4":"#f9fafb",
                           color: buscandoIpOrden?"#1d4ed8":ordenForm.ipMikrotik?"#15803d":"#9ca3af",
