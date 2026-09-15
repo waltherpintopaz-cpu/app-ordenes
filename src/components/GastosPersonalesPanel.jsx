@@ -207,7 +207,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     if (filtrados.length === 0) return showToast("❌ No hay gastos para exportar.");
     const doc = new jsPDF();
     const periodoTxt = filtroMes ? `${MESES[filtroMes - 1]} ${filtroAnio}` : `Año ${filtroAnio}`;
-    doc.setFontSize(16); doc.text("Mis Gastos", 14, 18);
+    doc.setFontSize(16); doc.text("Reporte de Gastos", 14, 18);
     doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategorias.length ? ` · Categorías: ${filtroCategorias.join(", ")}` : ""}${filtroNodo !== "Todos" ? ` · Nodo: ${filtroNodo}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
     autoTable(doc, {
       startY: 32,
