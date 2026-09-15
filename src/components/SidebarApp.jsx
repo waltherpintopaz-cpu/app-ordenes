@@ -4357,7 +4357,7 @@ export default function SidebarApp() {
                             }
                           }}
                           onKeyDown={e=>e.key==="Enter"&&buscarDniNuevo()} />
-                        <button onClick={buscarDniNuevo} disabled={buscandoDniNew||!tipoDocumento(ordenForm.dni)}
+                        <button onClick={()=>buscarDniNuevo()} disabled={buscandoDniNew||!tipoDocumento(ordenForm.dni)}
                           style={{...S.btnSm(buscandoDniNew?"#9ca3af":T.blue),borderRadius:0,padding:"0 12px",height:"100%",fontSize:11,flexShrink:0,opacity:!tipoDocumento(ordenForm.dni)?0.5:1}}>
                           {buscandoDniNew?"...":"🔍 Buscar"}
                         </button>
@@ -4434,7 +4434,7 @@ export default function SidebarApp() {
                       <div style={{display:"flex",alignItems:"center"}}>
                         <input style={{...S.input,border:"none",borderRadius:0,fontSize:12,flex:1,fontFamily:"monospace"}} type="text" placeholder="Se busca por el usuario PPPoE"
                           value={ordenForm.ipMikrotik} onChange={e=>setOrdenForm(p=>({...p,ipMikrotik:e.target.value}))} />
-                        <button onClick={buscarIpOrdenNod04} disabled={buscandoIpOrden||!ordenForm.usuarioNodo.trim()}
+                        <button onClick={()=>buscarIpOrdenNod04()} disabled={buscandoIpOrden||!ordenForm.usuarioNodo.trim()}
                           style={{...S.btnSm(buscandoIpOrden?"#9ca3af":"#16a34a"),borderRadius:0,padding:"0 10px",height:"100%",fontSize:11,whiteSpace:"nowrap",flexShrink:0,opacity:!ordenForm.usuarioNodo.trim()?0.5:1}}>
                           {buscandoIpOrden?"...":"🔍 Buscar IP"}
                         </button>
@@ -6061,7 +6061,7 @@ export default function SidebarApp() {
                       <div style={{ display:"flex", alignItems:"center" }}>
                         <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12, flex:1, fontFamily:"monospace" }} type="text" placeholder="Se busca por el usuario PPPoE"
                           value={ordenForm.ipMikrotik} onChange={e => setOrdenForm(p=>({...p, ipMikrotik:e.target.value}))} />
-                        <button onClick={buscarIpOrdenNod04} disabled={buscandoIpOrden || !ordenForm.usuarioNodo.trim()}
+                        <button onClick={()=>buscarIpOrdenNod04()} disabled={buscandoIpOrden || !ordenForm.usuarioNodo.trim()}
                           style={{...S.btnSm(buscandoIpOrden?"#9ca3af":"#16a34a"), borderRadius:0, padding:"0 10px", height:"100%", fontSize:11, whiteSpace:"nowrap", flexShrink:0, opacity:!ordenForm.usuarioNodo.trim()?0.5:1}}>
                           {buscandoIpOrden?"...":"🔍 Buscar IP"}
                         </button>
