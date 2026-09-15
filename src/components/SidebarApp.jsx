@@ -595,10 +595,11 @@ export default function SidebarApp() {
   const [showMensajesRapidos, setShowMensajesRapidos] = useState(false);
   const [mensajesRapidosDisponibles, setMensajesRapidosDisponibles] = useState([]);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"", idPlantilla:"" });
   // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto) ─────────────
   const [mkwPerfilesOrden, setMkwPerfilesOrden] = useState([]);
   const [mkwRedesOrden,    setMkwRedesOrden]    = useState([]);
+  const [mkwPlantillasOrden, setMkwPlantillasOrden] = useState([]);
   const [cargandoCatalogoOrden, setCargandoCatalogoOrden] = useState(false);
   const [buscandoIpOrden,  setBuscandoIpOrden]  = useState(false);
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
@@ -2697,9 +2698,10 @@ export default function SidebarApp() {
   async function cargarCatalogoMikrowispOrdenNod04() {
     setCargandoCatalogoOrden(true);
     try {
-      const [pR, rR] = await Promise.all([
+      const [pR, rR, plR] = await Promise.all([
         mkwProxy(5, "GetPerfiles", {}),
         mkwProxy(5, "GetRedesIpv4", {}),
+        mkwProxy(5, "GetPlantillasFacturacion", {}),
       ]);
       const perfsRaw = pR?.datos || pR?.perfiles || (Array.isArray(pR) ? pR : []);
       // Solo perfiles activos con nombre 100% en MAYUSCULAS (excluye planes
@@ -2709,8 +2711,13 @@ export default function SidebarApp() {
         .filter(p => p.estado === "ACTIVADO" && /^[^a-z]*$/.test(String(p.plan || "")))
         .sort((a, b) => (parseInt(String(a.velocidad||"0"),10)||0) - (parseInt(String(b.velocidad||"0"),10)||0));
       const redes = rR?.datos || (Array.isArray(rR) ? rR : []);
+      const plantillas = plR?.plantillas || (Array.isArray(plR) ? plR : []);
       setMkwPerfilesOrden(perfs);
       setMkwRedesOrden(redes);
+      setMkwPlantillasOrden(plantillas);
+      if (plantillas.length) {
+        setOrdenForm(p => ({ ...p, idPlantilla: p.idPlantilla || String(plantillas[0].id) }));
+      }
     } catch (_) { /* si falla, el selector queda vacio y no bloquea la orden */ }
     setCargandoCatalogoOrden(false);
   }
@@ -2945,6 +2952,7 @@ export default function SidebarApp() {
         const ordenId = res.data.id;
         const idPerfilNum = ordenForm.idPerfil ? Number(ordenForm.idPerfil) : null;
         const idRedNum = ordenForm.idRedIpv4 ? Number(ordenForm.idRedIpv4) : null;
+        const idPlantillaNum = ordenForm.idPlantilla ? Number(ordenForm.idPlantilla) : null;
         const ipSugerida = ordenForm.ipMikrotik || null;
         crearClienteMikrowispNod04({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion })
           .then((r) => {
@@ -2952,6 +2960,7 @@ export default function SidebarApp() {
               mikrowisp_cliente_creado: !!r.ok,
               mikrowisp_id_perfil: idPerfilNum,
               mikrowisp_id_red_ipv4: idRedNum,
+              mikrowisp_id_plantilla: idPlantillaNum,
               mikrowisp_ip_sugerida: ipSugerida,
             };
             if (r.ok) update.mikrowisp_id_cliente = r.id;
@@ -4377,7 +4386,7 @@ export default function SidebarApp() {
                       <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.nodo}
                         onChange={e=>{
                           const n=e.target.value;
-                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:"",vlan:VLAN_POR_NODO[n]||"",idPerfil:"",idRedIpv4:"",ipMikrotik:""}));
+                          setOrdenForm(p=>({...p,nodo:n,empresa:empresaPorNodo(n),usuarioNodo:"",vlan:VLAN_POR_NODO[n]||"",idPerfil:"",idRedIpv4:"",ipMikrotik:"",idPlantilla:""}));
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
@@ -4407,37 +4416,44 @@ export default function SidebarApp() {
                     ) : (
                       esInst && fila("Velocidad", sel("velocidad", [["","Seleccionar"],"100 Mbps","200 Mbps","300 Mbps","400 Mbps","500 Mbps","600 Mbps","800 Mbps","1000 Mbps"]))
                     )}
+                    {esInst && ordenForm.nodo==="Nod_04" && fila("Facturación",
+                      <select style={{...S.select,border:"none",borderRadius:0,fontSize:12}} value={ordenForm.idPlantilla}
+                        onChange={e=>setOrdenForm(p=>({...p,idPlantilla:e.target.value}))}>
+                        <option value="">{cargandoCatalogoOrden?"Cargando...":"— Seleccionar —"}</option>
+                        {mkwPlantillasOrden.map(pl=><option key={pl.id} value={pl.id}>{pl.nombre}</option>)}
+                      </select>
+                    )}
                     {esInst && ordenForm.nodo!=="Nod_04" && fila("Precio plan", inp("precioPlan","S/ 0.00","number"))}
                     {fila("Usuario nodo",
-                      <div style={{position:"relative"}}>
-                        <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} placeholder={NODO_USUARIO_RULES[normalizeNodoKey(ordenForm.nodo)]?`Ej: ${listarUsuariosParaNodo(ordenForm.nodo,[],1)[0]?.usuario||""}` : "user730@americanet"}
-                          value={ordenForm.usuarioNodo}
-                          onChange={e=>setOrdenForm(p=>({...p,usuarioNodo:e.target.value}))}
-                          onFocus={()=>setShowUsuarioDrop(true)}
-                          onBlur={()=>setTimeout(()=>setShowUsuarioDrop(false),150)} />
-                        {showUsuarioDrop && usuariosNodo.length>0 && (
-                          <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:6,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:999,maxHeight:200,overflowY:"auto"}}>
-                            {usuariosNodo.map((u,i)=>(
-                              <div key={u.usuario} onMouseDown={()=>{setOrdenForm(p=>({...p,usuarioNodo:u.usuario}));setShowUsuarioDrop(false);}}
-                                style={{padding:"8px 12px",cursor:u.ocupado?"default":"pointer",fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",
-                                  color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151",fontWeight:i===0?700:400,
-                                  background:i===0&&!u.ocupado?"#eff6ff":"transparent",borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none"}}>
-                                <span>{u.usuario}{i===0&&!u.ocupado?" ✓":""}</span>
-                                {u.ocupado&&<span style={{fontSize:10,background:"#fef2f2",color:"#dc2626",borderRadius:4,padding:"1px 6px",fontWeight:700}}>Ocupado</span>}
-                              </div>
-                            ))}
-                          </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{position:"relative",flex:1}}>
+                          <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} placeholder={NODO_USUARIO_RULES[normalizeNodoKey(ordenForm.nodo)]?`Ej: ${listarUsuariosParaNodo(ordenForm.nodo,[],1)[0]?.usuario||""}` : "user730@americanet"}
+                            value={ordenForm.usuarioNodo}
+                            onChange={e=>setOrdenForm(p=>({...p,usuarioNodo:e.target.value}))}
+                            onFocus={()=>setShowUsuarioDrop(true)}
+                            onBlur={()=>{ setTimeout(()=>setShowUsuarioDrop(false),150); if(ordenForm.nodo==="Nod_04") buscarIpOrdenNod04(); }} />
+                          {showUsuarioDrop && usuariosNodo.length>0 && (
+                            <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:`1px solid ${T.border}`,borderRadius:6,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:999,maxHeight:200,overflowY:"auto"}}>
+                              {usuariosNodo.map((u,i)=>(
+                                <div key={u.usuario} onMouseDown={()=>{setOrdenForm(p=>({...p,usuarioNodo:u.usuario}));setShowUsuarioDrop(false); if(ordenForm.nodo==="Nod_04") buscarIpOrdenNod04(u.usuario);}}
+                                  style={{padding:"8px 12px",cursor:u.ocupado?"default":"pointer",fontSize:12,display:"flex",justifyContent:"space-between",alignItems:"center",
+                                    color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151",fontWeight:i===0?700:400,
+                                    background:i===0&&!u.ocupado?"#eff6ff":"transparent",borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none"}}>
+                                  <span>{u.usuario}{i===0&&!u.ocupado?" ✓":""}</span>
+                                  {u.ocupado&&<span style={{fontSize:10,background:"#fef2f2",color:"#dc2626",borderRadius:4,padding:"1px 6px",fontWeight:700}}>Ocupado</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {esInst && ordenForm.nodo==="Nod_04" && (
+                          <span title="IP detectada automaticamente en el Mikrotik — no editable" style={{fontSize:10,fontFamily:"monospace",fontWeight:700,padding:"5px 8px",borderRadius:6,whiteSpace:"nowrap",flexShrink:0,
+                            background: buscandoIpOrden?"#eff6ff":ordenForm.ipMikrotik?"#f0fdf4":"#f9fafb",
+                            color: buscandoIpOrden?"#1d4ed8":ordenForm.ipMikrotik?"#15803d":"#9ca3af",
+                            border:`1px solid ${buscandoIpOrden?"#bfdbfe":ordenForm.ipMikrotik?"#86efac":"#e5e7eb"}`}}>
+                            {buscandoIpOrden?"Buscando IP...":ordenForm.ipMikrotik||"Sin IP"}
+                          </span>
                         )}
-                      </div>
-                    )}
-                    {esInst && ordenForm.nodo==="Nod_04" && fila("IP (Mikrotik)",
-                      <div style={{display:"flex",alignItems:"center"}}>
-                        <input style={{...S.input,border:"none",borderRadius:0,fontSize:12,flex:1,fontFamily:"monospace"}} type="text" placeholder="Se busca por el usuario PPPoE"
-                          value={ordenForm.ipMikrotik} onChange={e=>setOrdenForm(p=>({...p,ipMikrotik:e.target.value}))} />
-                        <button onClick={()=>buscarIpOrdenNod04()} disabled={buscandoIpOrden||!ordenForm.usuarioNodo.trim()}
-                          style={{...S.btnSm(buscandoIpOrden?"#9ca3af":"#16a34a"),borderRadius:0,padding:"0 10px",height:"100%",fontSize:11,whiteSpace:"nowrap",flexShrink:0,opacity:!ordenForm.usuarioNodo.trim()?0.5:1}}>
-                          {buscandoIpOrden?"...":"🔍 Buscar IP"}
-                        </button>
                       </div>
                     )}
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
@@ -5974,7 +5990,7 @@ export default function SidebarApp() {
                         value={ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`}
                         onChange={e => {
                           const n = e.target.value;
-                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:"", vlan:VLAN_POR_NODO[n]||"", idPerfil:"", idRedIpv4:"", ipMikrotik:""}));
+                          setOrdenForm(p=>({...p, nodo:n, empresa:empresaPorNodo(n), usuarioNodo:"", vlan:VLAN_POR_NODO[n]||"", idPerfil:"", idRedIpv4:"", ipMikrotik:"", idPlantilla:""}));
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
@@ -6022,6 +6038,18 @@ export default function SidebarApp() {
                       </div>
                     </div>
                   )}
+                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" && (
+                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
+                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Facturación</div>
+                      <div>
+                        <select style={{ ...S.select, border:"none", borderRadius:0, fontSize:12 }}
+                          value={ordenForm.idPlantilla} onChange={e => setOrdenForm(p=>({...p, idPlantilla:e.target.value}))}>
+                          <option value="">{cargandoCatalogoOrden?"Cargando...":"— Seleccionar —"}</option>
+                          {mkwPlantillasOrden.map(pl => <option key={pl.id} value={pl.id}>{pl.nombre}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                   {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) !== "Nod_04" && (
                     <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                       <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Precio plan</div>
@@ -6033,41 +6061,38 @@ export default function SidebarApp() {
                   )}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Usuario nodo</div>
-                    <div style={{ position:"relative" }}>
-                      <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }}
-                        placeholder="user@americanet"
-                        value={ordenForm.usuarioNodo}
-                        onChange={e => setOrdenForm(p=>({...p, usuarioNodo:e.target.value}))}
-                        onFocus={() => { setShowUsuarioDrop(true); const n = ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`; if(!usuariosNodo.length && n) cargarUsuariosNodo(n); }}
-                        onBlur={() => setTimeout(()=>setShowUsuarioDrop(false),150)} />
-                      {showUsuarioDrop && usuariosNodo.length > 0 && (
-                        <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:`1px solid ${T.border}`, borderRadius:6, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:999, maxHeight:180, overflowY:"auto" }}>
-                          {usuariosNodo.map((u,i) => (
-                            <div key={u.usuario} onMouseDown={() => { setOrdenForm(p=>({...p, usuarioNodo:u.usuario})); setShowUsuarioDrop(false); }}
-                              style={{ padding:"8px 12px", cursor:u.ocupado?"default":"pointer", fontSize:12, display:"flex", justifyContent:"space-between", alignItems:"center",
-                                color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151", fontWeight:i===0?700:400,
-                                background:i===0&&!u.ocupado?"#eff6ff":"transparent", borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none" }}>
-                              <span>{u.usuario}{i===0&&!u.ocupado?" ✓":""}</span>
-                              {u.ocupado && <span style={{ fontSize:10, background:"#fef2f2", color:"#dc2626", borderRadius:4, padding:"1px 6px", fontWeight:700 }}>Ocupado</span>}
-                            </div>
-                          ))}
-                        </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                      <div style={{ position:"relative", flex:1 }}>
+                        <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12 }}
+                          placeholder="user@americanet"
+                          value={ordenForm.usuarioNodo}
+                          onChange={e => setOrdenForm(p=>({...p, usuarioNodo:e.target.value}))}
+                          onFocus={() => { setShowUsuarioDrop(true); const n = ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`; if(!usuariosNodo.length && n) cargarUsuariosNodo(n); }}
+                          onBlur={() => { setTimeout(()=>setShowUsuarioDrop(false),150); if((ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`)==="Nod_04") buscarIpOrdenNod04(); }} />
+                        {showUsuarioDrop && usuariosNodo.length > 0 && (
+                          <div style={{ position:"absolute", top:"100%", left:0, right:0, background:"#fff", border:`1px solid ${T.border}`, borderRadius:6, boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:999, maxHeight:180, overflowY:"auto" }}>
+                            {usuariosNodo.map((u,i) => (
+                              <div key={u.usuario} onMouseDown={() => { setOrdenForm(p=>({...p, usuarioNodo:u.usuario})); setShowUsuarioDrop(false); if((ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`)==="Nod_04") buscarIpOrdenNod04(u.usuario); }}
+                                style={{ padding:"8px 12px", cursor:u.ocupado?"default":"pointer", fontSize:12, display:"flex", justifyContent:"space-between", alignItems:"center",
+                                  color:u.ocupado?"#dc2626":i===0?"#1e40af":"#374151", fontWeight:i===0?700:400,
+                                  background:i===0&&!u.ocupado?"#eff6ff":"transparent", borderBottom:i<usuariosNodo.length-1?`1px solid ${T.border}`:"none" }}>
+                                <span>{u.usuario}{i===0&&!u.ocupado?" ✓":""}</span>
+                                {u.ocupado && <span style={{ fontSize:10, background:"#fef2f2", color:"#dc2626", borderRadius:4, padding:"1px 6px", fontWeight:700 }}>Ocupado</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" && (
+                        <span title="IP detectada automaticamente en el Mikrotik — no editable" style={{ fontSize:10, fontFamily:"monospace", fontWeight:700, padding:"5px 8px", borderRadius:6, whiteSpace:"nowrap", flexShrink:0,
+                          background: buscandoIpOrden?"#eff6ff":ordenForm.ipMikrotik?"#f0fdf4":"#f9fafb",
+                          color: buscandoIpOrden?"#1d4ed8":ordenForm.ipMikrotik?"#15803d":"#9ca3af",
+                          border:`1px solid ${buscandoIpOrden?"#bfdbfe":ordenForm.ipMikrotik?"#86efac":"#e5e7eb"}` }}>
+                          {buscandoIpOrden?"Buscando IP...":ordenForm.ipMikrotik||"Sin IP"}
+                        </span>
                       )}
                     </div>
                   </div>
-                  {(ordenForm.nodo || `Nod_${String(cliente.nodo).padStart(2,"0")}`) === "Nod_04" && (
-                    <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
-                      <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>IP (Mikrotik)</div>
-                      <div style={{ display:"flex", alignItems:"center" }}>
-                        <input style={{ ...S.input, border:"none", borderRadius:0, fontSize:12, flex:1, fontFamily:"monospace" }} type="text" placeholder="Se busca por el usuario PPPoE"
-                          value={ordenForm.ipMikrotik} onChange={e => setOrdenForm(p=>({...p, ipMikrotik:e.target.value}))} />
-                        <button onClick={()=>buscarIpOrdenNod04()} disabled={buscandoIpOrden || !ordenForm.usuarioNodo.trim()}
-                          style={{...S.btnSm(buscandoIpOrden?"#9ca3af":"#16a34a"), borderRadius:0, padding:"0 10px", height:"100%", fontSize:11, whiteSpace:"nowrap", flexShrink:0, opacity:!ordenForm.usuarioNodo.trim()?0.5:1}}>
-                          {buscandoIpOrden?"...":"🔍 Buscar IP"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
                   <div style={{ display:"grid", gridTemplateColumns:"100px 1fr", borderBottom:`1px solid ${T.border}` }}>
                     <div style={{ padding:"8px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted, display:"flex", alignItems:"center" }}>Contraseña PPP</div>
                     <div>
