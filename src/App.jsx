@@ -2211,7 +2211,7 @@ export default function App() {
   const [mikrotikConfigError, setMikrotikConfigError] = useState("");
   const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
   const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
-  const [loteForm, setLoteForm] = useState({ routerKey: "", nodo: "", ipInicio: "", ipFin: "", numeroInicio: "", profile: "", password: "" });
+  const [loteForm, setLoteForm] = useState({ routerKey: "", nodo: "", ipInicio: "", ipFin: "", numeroInicio: "", profile: "", password: "", localAddress: "" });
   const [lotePreview, setLotePreview] = useState(null); // array de {usuario,ip,password,profile}
   const [loteResultados, setLoteResultados] = useState(null); // array tras crear de verdad
   const [loteRouterInfo, setLoteRouterInfo] = useState(null);
@@ -11966,7 +11966,7 @@ export default function App() {
   // Mikrotik cuando el admin confirma explicitamente esa lista.
   const generarVistaPreviaLote = async () => {
     setLoteError(""); setLotePreview(null); setLoteResultados(null); setLoteRouterInfo(null);
-    const { routerKey, nodo, ipInicio, ipFin, numeroInicio, profile, password } = loteForm;
+    const { routerKey, nodo, ipInicio, ipFin, numeroInicio, profile, password, localAddress } = loteForm;
     if (!routerKey || !nodo || !ipInicio.trim() || !ipFin.trim() || !String(numeroInicio).trim() || !profile.trim()) {
       setLoteError("Completa router, nodo, rango de IP, numero inicial y perfil.");
       return;
@@ -11975,7 +11975,7 @@ export default function App() {
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/crear-secrets-lote`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, dryRun: true }),
+        body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, localAddress: localAddress.trim() || undefined, dryRun: true }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
@@ -11990,12 +11990,12 @@ export default function App() {
     if (!lotePreview?.length) return;
     const ok = window.confirm(`Vas a crear ${lotePreview.length} usuarios PPPoE reales en el router "${loteForm.routerKey}". Esta accion escribe directo en el Mikrotik en producción. ¿Confirmas?`);
     if (!ok) return;
-    const { routerKey, nodo, ipInicio, ipFin, numeroInicio, profile, password } = loteForm;
+    const { routerKey, nodo, ipInicio, ipFin, numeroInicio, profile, password, localAddress } = loteForm;
     setLoteEstado("creando"); setLoteError("");
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/crear-secrets-lote`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, dryRun: false }),
+        body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, localAddress: localAddress.trim() || undefined, dryRun: false }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
@@ -21628,6 +21628,10 @@ export default function App() {
                         <label style={labelStyle}>Contraseña (opcional)</label>
                         <input style={inputStyle} value={loteForm.password} onChange={(e) => setLoteForm((p) => ({ ...p, password: e.target.value }))} placeholder="Vacío = clave fija del nodo" />
                       </div>
+                      <div>
+                        <label style={labelStyle}>Local Address (opcional)</label>
+                        <input style={inputStyle} value={loteForm.localAddress} onChange={(e) => setLoteForm((p) => ({ ...p, localAddress: e.target.value }))} placeholder="Vacío = se hereda del perfil PPP" />
+                      </div>
                     </div>
 
                     {loteError && <div style={{ fontSize: "12px", color: "#dc2626", marginBottom: "10px", fontWeight: 600 }}>❌ {loteError}</div>}
@@ -21653,6 +21657,7 @@ export default function App() {
                               <th style={{ textAlign: "left", padding: "6px 10px" }}>IP</th>
                               <th style={{ textAlign: "left", padding: "6px 10px" }}>Clave</th>
                               <th style={{ textAlign: "left", padding: "6px 10px" }}>Perfil</th>
+                              <th style={{ textAlign: "left", padding: "6px 10px" }}>Local Address</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -21662,6 +21667,7 @@ export default function App() {
                                 <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.ip}</td>
                                 <td style={{ padding: "5px 10px", fontFamily: "monospace" }}>{row.password}</td>
                                 <td style={{ padding: "5px 10px" }}>{row.profile}</td>
+                                <td style={{ padding: "5px 10px", fontFamily: "monospace", color: "#a8a29e" }}>{row.localAddress || "(heredado del perfil)"}</td>
                               </tr>
                             ))}
                           </tbody>

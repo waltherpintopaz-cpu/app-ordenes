@@ -479,7 +479,7 @@ const buildUsuario = (nodo, numero) => {
   return `${rule.prefix || ""}${numText}${rule.suffix || ""}`;
 };
 
-const buildLotePreview = ({ nodo, ipInicio, ipFin, numeroInicio, password, profile }) => {
+const buildLotePreview = ({ nodo, ipInicio, ipFin, numeroInicio, password, profile, localAddress }) => {
   const ips = buildRangoIp(ipInicio, ipFin);
   const pass = password || NODO_PASSWORD_RULES[normalizeNodo(nodo)] || "";
   if (!pass) throw new Error(`No hay clave por defecto configurada para el nodo ${nodo}; indica "password".`);
@@ -489,6 +489,7 @@ const buildLotePreview = ({ nodo, ipInicio, ipFin, numeroInicio, password, profi
     ip,
     password: pass,
     profile,
+    localAddress: localAddress || "", // vacio = se hereda del perfil PPP, como ya funciona hoy
   }));
 };
 
@@ -515,14 +516,16 @@ const crearSecretsLote = async ({ routerKey, lote }) => {
         continue;
       }
       try {
+        const params = [
+          `=name=${item.usuario}`,
+          `=password=${item.password}`,
+          "=service=pppoe",
+          `=profile=${item.profile}`,
+          `=remote-address=${item.ip}`,
+        ];
+        if (item.localAddress) params.push(`=local-address=${item.localAddress}`);
         await withTimeout(
-          api.write("/ppp/secret/add", [
-            `=name=${item.usuario}`,
-            `=password=${item.password}`,
-            "=service=pppoe",
-            `=profile=${item.profile}`,
-            `=remote-address=${item.ip}`,
-          ]),
+          api.write("/ppp/secret/add", params),
           10000,
           `Crear secret ${item.usuario} en ${router.nombre}`
         );
@@ -1066,14 +1069,14 @@ const server = http.createServer(async (req, res) => {
     // para que efectivamente escriba en el Mikrotik.
     if (req.method === "POST" && req.url === "/api/diagnostico-servicio/crear-secrets-lote") {
       const body = await readJsonBody(req);
-      const { routerKey, nodo, ipInicio, ipFin, numeroInicio, password, profile } = body || {};
+      const { routerKey, nodo, ipInicio, ipFin, numeroInicio, password, profile, localAddress } = body || {};
       const dryRun = body?.dryRun !== false;
       if (!routerKey || !nodo || !ipInicio || !ipFin || numeroInicio == null) {
         writeJson(res, 400, { ok: false, error: "Faltan datos: routerKey, nodo, ipInicio, ipFin, numeroInicio son obligatorios." });
         return;
       }
       try {
-        const lote = buildLotePreview({ nodo, ipInicio, ipFin, numeroInicio, password, profile });
+        const lote = buildLotePreview({ nodo, ipInicio, ipFin, numeroInicio, password, profile, localAddress });
         if (dryRun) {
           writeJson(res, 200, { ok: true, dryRun: true, total: lote.length, lote });
           return;
