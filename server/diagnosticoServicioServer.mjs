@@ -29,6 +29,23 @@ const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
 
+// Mismas reglas que ya usa el frontend (SidebarApp.jsx/App.jsx) para sugerir
+// usuario/password al crear una orden -- se duplican aca (server) para poder
+// generar el lote correlativo con el mismo patron sin depender del frontend.
+const NODO_USUARIO_RULES = {
+  NOD_01: { prefix: "user", suffix: "@americanet", pad: 0 },
+  NOD_02: { prefix: "usuario_", suffix: "", pad: 0 },
+  NOD_03: { prefix: "", suffix: "@americanet", pad: 4 },
+  NOD_04: { prefix: "user", suffix: "@fiber", pad: 0 },
+  NOD_05: { prefix: "", suffix: "@dim", pad: 3 },
+  NOD_06: { prefix: "", suffix: "@amnet", pad: 0 },
+  NOD_07: { prefix: "Acliente", suffix: "", pad: 0 },
+};
+const NODO_PASSWORD_RULES = {
+  NOD_01: "madrid0021", NOD_02: "speedy2000", NOD_03: "aqp0021",
+  NOD_04: "uchumayo0021", NOD_05: "selva0021", NOD_06: "apipa0021",
+};
+
 const ROUTERS = {
   tiabaya: {
     id: "tiabaya",
@@ -428,6 +445,99 @@ const syncAllRoutersIpCache = async () => {
     }
   }
   return resultados;
+};
+
+// ── Creacion masiva y correlativa de PPP secrets ────────────────────────
+// El pool de IP en si (rango/subred en el Mikrotik) lo crea el usuario a
+// mano -- esto solo genera los secrets PPPoE correlativos (usuario+IP+clave)
+// dentro de un rango de IP ya existente que el usuario indica explicitamente
+// (ipInicio..ipFin), evitando cualquier adivinanza sobre que pool esta
+// "activo" cuando un router tiene varias subredes.
+const ipToInt = (ip) => {
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(String(ip || "").trim());
+  if (!m) return null;
+  return (Number(m[1]) << 24) + (Number(m[2]) << 16) + (Number(m[3]) << 8) + Number(m[4]);
+};
+const intToIp = (n) => [24, 16, 8, 0].map((shift) => (n >>> shift) & 0xff).join(".");
+
+const buildRangoIp = (ipInicio, ipFin) => {
+  const a = ipToInt(ipInicio);
+  const b = ipToInt(ipFin);
+  if (a === null || b === null) throw new Error("ipInicio/ipFin invalidos.");
+  if (b < a) throw new Error("ipFin debe ser mayor o igual a ipInicio.");
+  if (b - a > 500) throw new Error("Rango demasiado grande (maximo 500 IPs por lote, por seguridad).");
+  const out = [];
+  for (let n = a; n <= b; n++) out.push(intToIp(n));
+  return out;
+};
+
+const buildUsuario = (nodo, numero) => {
+  const key = normalizeNodo(nodo);
+  const rule = NODO_USUARIO_RULES[key];
+  if (!rule) throw new Error(`No hay patron de usuario configurado para el nodo ${nodo}.`);
+  const numText = rule.pad > 0 ? String(numero).padStart(rule.pad, "0") : String(numero);
+  return `${rule.prefix || ""}${numText}${rule.suffix || ""}`;
+};
+
+const buildLotePreview = ({ nodo, ipInicio, ipFin, numeroInicio, password, profile }) => {
+  const ips = buildRangoIp(ipInicio, ipFin);
+  const pass = password || NODO_PASSWORD_RULES[normalizeNodo(nodo)] || "";
+  if (!pass) throw new Error(`No hay clave por defecto configurada para el nodo ${nodo}; indica "password".`);
+  if (!profile) throw new Error('Falta "profile" (perfil PPP de Mikrotik a asignar).');
+  return ips.map((ip, i) => ({
+    usuario: buildUsuario(nodo, Number(numeroInicio) + i),
+    ip,
+    password: pass,
+    profile,
+  }));
+};
+
+const crearSecretsLote = async ({ routerKey, lote }) => {
+  let connection = null;
+  const resultados = [];
+  try {
+    connection = await connectRouterByKey(routerKey);
+    const { api, router } = connection;
+    const secretRows = await withTimeout(api.write("/ppp/secret/print", []), 15000, `Listar PPP Secret en ${router.nombre}`);
+    const existentesPorNombre = new Set((Array.isArray(secretRows) ? secretRows : []).map((s) => pickFirst(s?.name).toLowerCase()));
+    const existentesPorIp = new Set(
+      (Array.isArray(secretRows) ? secretRows : [])
+        .map((s) => resolveSecretRemoteAddress(s, null))
+        .filter(Boolean)
+    );
+    for (const item of lote) {
+      if (existentesPorNombre.has(item.usuario.toLowerCase())) {
+        resultados.push({ ...item, ok: false, motivo: "El usuario ya existe -- se omitio." });
+        continue;
+      }
+      if (existentesPorIp.has(item.ip)) {
+        resultados.push({ ...item, ok: false, motivo: "La IP ya esta asignada a otro secret -- se omitio." });
+        continue;
+      }
+      try {
+        await withTimeout(
+          api.write("/ppp/secret/add", [
+            `=name=${item.usuario}`,
+            `=password=${item.password}`,
+            "=service=pppoe",
+            `=profile=${item.profile}`,
+            `=remote-address=${item.ip}`,
+          ]),
+          10000,
+          `Crear secret ${item.usuario} en ${router.nombre}`
+        );
+        resultados.push({ ...item, ok: true });
+      } catch (error) {
+        resultados.push({ ...item, ok: false, motivo: formatErrorDetail(error) });
+      }
+    }
+    return { router: buildRouterInfo(router), resultados };
+  } catch (error) {
+    const detail = formatErrorDetail(connection?.getSocketError?.() || error);
+    throw new Error(`Creacion en lote fallo: ${detail}`);
+  } finally {
+    if (connection?.api) await closeRouterApiSafe(connection.api);
+  }
 };
 
 // Se pide la lista COMPLETA (sin filtro "?name=") y se busca el usuario en
@@ -947,6 +1057,34 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/diagnostico-servicio/sync-all") {
       const resultados = await syncAllRoutersIpCache();
       writeJson(res, 200, { ok: true, resultados });
+      return;
+    }
+
+    // Creacion masiva y correlativa de PPP secrets dentro de un rango de IP
+    // ya existente (el pool en si se crea a mano en Mikrotik). Por defecto
+    // es solo vista previa (dryRun) -- hay que mandar dryRun:false explicito
+    // para que efectivamente escriba en el Mikrotik.
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/crear-secrets-lote") {
+      const body = await readJsonBody(req);
+      const { routerKey, nodo, ipInicio, ipFin, numeroInicio, password, profile } = body || {};
+      const dryRun = body?.dryRun !== false;
+      if (!routerKey || !nodo || !ipInicio || !ipFin || numeroInicio == null) {
+        writeJson(res, 400, { ok: false, error: "Faltan datos: routerKey, nodo, ipInicio, ipFin, numeroInicio son obligatorios." });
+        return;
+      }
+      try {
+        const lote = buildLotePreview({ nodo, ipInicio, ipFin, numeroInicio, password, profile });
+        if (dryRun) {
+          writeJson(res, 200, { ok: true, dryRun: true, total: lote.length, lote });
+          return;
+        }
+        const { router, resultados } = await crearSecretsLote({ routerKey, lote });
+        const creados = resultados.filter((r) => r.ok).length;
+        const omitidos = resultados.filter((r) => !r.ok).length;
+        writeJson(res, 200, { ok: true, dryRun: false, router, creados, omitidos, resultados });
+      } catch (error) {
+        writeJson(res, 400, { ok: false, error: formatErrorDetail(error) });
+      }
       return;
     }
 
