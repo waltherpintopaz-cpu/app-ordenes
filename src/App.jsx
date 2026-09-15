@@ -2209,6 +2209,8 @@ export default function App() {
   const [mikrotikConfigSaving, setMikrotikConfigSaving] = useState(false);
   const [mikrotikConfigInfo, setMikrotikConfigInfo] = useState("");
   const [mikrotikConfigError, setMikrotikConfigError] = useState("");
+  const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
+  const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
   const [clientesSyncLoading, setClientesSyncLoading] = useState(false);
   const [clientesSyncInfo, setClientesSyncInfo] = useState("");
   const [clientesSyncError, setClientesSyncError] = useState("");
@@ -11918,6 +11920,41 @@ export default function App() {
     setMikrotikConfigError("");
   };
 
+  // Sincroniza la cache de IPs (mikrotik_ip_cache) trayendo TODOS los
+  // secrets+activos de un router de una sola conexion, en vez de una
+  // consulta por usuario. Ver server/diagnosticoServicioServer.mjs.
+  const sincronizarIpsRouter = async (routerKey) => {
+    setIpCacheSyncLoading(routerKey);
+    setIpCacheSyncInfo("");
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/sync-router`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ routerKey }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+      setIpCacheSyncInfo(`✅ ${routerKey}: ${json?.result?.total ?? 0} usuarios sincronizados.`);
+    } catch (e) {
+      setIpCacheSyncInfo(`❌ ${routerKey}: ${e.message}`);
+    }
+    setIpCacheSyncLoading("");
+  };
+
+  const sincronizarIpsTodos = async () => {
+    setIpCacheSyncLoading("all");
+    setIpCacheSyncInfo("");
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/sync-all`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+      const resumen = (json?.resultados || []).map((r) => r.ok ? `${r.router?.id}: ${r.total}` : `${r.router?.id || "?"}: error`).join(" · ");
+      setIpCacheSyncInfo(`✅ Sincronizado — ${resumen}`);
+    } catch (e) {
+      setIpCacheSyncInfo(`❌ Error: ${e.message}`);
+    }
+    setIpCacheSyncLoading("");
+  };
+
   const agregarMikrotikRouter = () => {
     setMikrotikRoutersConfig((prev) => {
       const existente = new Set(prev.map((item) => item.routerKey));
@@ -21373,10 +21410,18 @@ export default function App() {
                         <div style={{ fontSize: "12px", color: "#64748b" }}>Routers MikroTik</div>
                         <div style={{ fontSize: "18px", fontWeight: 800, color: "#0f172a" }}>Conectividad base</div>
                       </div>
-                      <button type="button" style={secondaryButton} onClick={agregarMikrotikRouter}>
-                        Agregar router
-                      </button>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                        <button type="button" style={secondaryButton} disabled={!!ipCacheSyncLoading} onClick={sincronizarIpsTodos}>
+                          {ipCacheSyncLoading === "all" ? "Sincronizando..." : "🔄 Sincronizar IPs (todos)"}
+                        </button>
+                        <button type="button" style={secondaryButton} onClick={agregarMikrotikRouter}>
+                          Agregar router
+                        </button>
+                      </div>
                     </div>
+                    {ipCacheSyncInfo && (
+                      <div style={{ fontSize: "12px", color: ipCacheSyncInfo.startsWith("❌") ? "#dc2626" : "#15803d", marginBottom: "10px" }}>{ipCacheSyncInfo}</div>
+                    )}
 
                     <div style={{ display: "grid", gap: "12px" }}>
                       {mikrotikRoutersConfig.map((router) => (
@@ -21466,6 +21511,12 @@ export default function App() {
                                 placeholder="VPN, observaciones o cambios operativos"
                               />
                             </div>
+                          </div>
+                          <div style={{ marginTop: "10px" }}>
+                            <button type="button" style={{ ...secondaryButton, fontSize: "12px", padding: "6px 12px" }}
+                              disabled={!!ipCacheSyncLoading} onClick={() => sincronizarIpsRouter(router.routerKey)}>
+                              {ipCacheSyncLoading === router.routerKey ? "Sincronizando..." : "🔄 Sincronizar IPs de este router"}
+                            </button>
                           </div>
                         </div>
                       ))}

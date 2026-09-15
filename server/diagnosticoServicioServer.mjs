@@ -249,7 +249,7 @@ const fetchClienteVlanPorPppoe = async (userPppoe = "") => {
   }
 };
 
-const connectRouterByNodo = async (nodo = "", userPppoe = "") => {
+const resolveRouterByNodo = async (nodo = "", userPppoe = "") => {
   const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
   let router = null;
   if (normalizeNodo(nodo) === "NOD_03") {
@@ -262,7 +262,10 @@ const connectRouterByNodo = async (nodo = "", userPppoe = "") => {
   if (!router) throw new Error(`No hay router configurado para el nodo ${nodo || "-"}.`);
   const configError = buildRouterConfigError(router);
   if (configError) throw new Error(configError);
+  return router;
+};
 
+const connectToRouter = async (router) => {
   const api = new RouterOSAPI({
     host: router.host,
     port: router.port,
@@ -301,12 +304,126 @@ const connectRouterByNodo = async (nodo = "", userPppoe = "") => {
   };
 };
 
+const connectRouterByNodo = async (nodo = "", userPppoe = "") => {
+  const router = await resolveRouterByNodo(nodo, userPppoe);
+  return connectToRouter(router);
+};
+
+const connectRouterByKey = async (routerKey = "") => {
+  const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
+  const key = normalizeRouterKey(routerKey);
+  const router = routers[key];
+  if (!router) throw new Error(`Router "${routerKey}" no encontrado.`);
+  const configError = buildRouterConfigError(router);
+  if (configError) throw new Error(configError);
+  return connectToRouter(router);
+};
+
 const closeRouterApiSafe = async (api) => {
   try {
     await api.close();
   } catch {
     // noop
   }
+};
+
+// ── Cache de IPs por router (sync masivo) ───────────────────────────────
+// En vez de conectar al Mikrotik una vez por cada busqueda individual (lento
+// y con cuelgues intermitentes cuando el router tarda en responder), se trae
+// TODA la lista de secrets+activos de un router de una sola conexion y se
+// guarda en Supabase. Las busquedas normales primero miran esta cache
+// (instantaneo) y solo conectan en vivo al Mikrotik si no encuentran nada
+// ahi (fallback, mismo comportamiento que antes).
+const MIKROTIK_IP_CACHE_TABLE = "mikrotik_ip_cache";
+
+const upsertIpCacheRows = async (routerKey, rows) => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !rows.length) return;
+  const url = `${SUPABASE_URL}/rest/v1/${MIKROTIK_IP_CACHE_TABLE}?on_conflict=router_key,usuario_pppoe`;
+  const CHUNK = 200;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(chunk.map((r) => ({ ...r, router_key: routerKey, actualizado_en: new Date().toISOString() }))),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Supabase ${MIKROTIK_IP_CACHE_TABLE} upsert HTTP ${res.status}: ${text || "sin detalle"}`);
+    }
+  }
+};
+
+const lookupIpCache = async (routerKey, userPppoe) => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  try {
+    const rows = await fetchSupabaseRows(
+      MIKROTIK_IP_CACHE_TABLE,
+      `select=ip,origen,profile,actualizado_en&router_key=eq.${encodeURIComponent(routerKey)}&usuario_pppoe=eq.${encodeURIComponent(userPppoe)}&limit=1`
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch (error) {
+    console.warn("No se pudo consultar mikrotik_ip_cache.", error);
+    return null;
+  }
+};
+
+const syncRouterIpCache = async (routerKey) => {
+  let connection = null;
+  try {
+    connection = await connectRouterByKey(routerKey);
+    const { api, router } = connection;
+    const [secretRows, activeRows] = await Promise.all([
+      withTimeout(api.write("/ppp/secret/print", []), 25000, `Listar PPP Secret en ${router.nombre}`),
+      withTimeout(api.write("/ppp/active/print", []), 15000, `Listar PPP Active en ${router.nombre}`).catch(() => []),
+    ]);
+    const activeByName = new Map();
+    (Array.isArray(activeRows) ? activeRows : []).forEach((row) => {
+      const name = pickFirst(row?.name);
+      if (name) activeByName.set(name, row);
+    });
+    const cacheRows = [];
+    (Array.isArray(secretRows) ? secretRows : []).forEach((secret) => {
+      const usuario = pickFirst(secret?.name);
+      if (!usuario) return;
+      const active = activeByName.get(usuario) || null;
+      const ip = active ? pickFirst(active.address) : resolveSecretRemoteAddress(secret, null);
+      if (!ip) return;
+      cacheRows.push({
+        usuario_pppoe: usuario,
+        ip,
+        origen: active ? "ppp-active" : "ppp-secret",
+        profile: pickFirst(secret?.profile),
+      });
+    });
+    await upsertIpCacheRows(router.id, cacheRows);
+    return { ok: true, router: buildRouterInfo(router), total: cacheRows.length };
+  } catch (error) {
+    const detail = formatErrorDetail(connection?.getSocketError?.() || error);
+    throw new Error(`Sync IP cache falló para "${routerKey}": ${detail}`);
+  } finally {
+    if (connection?.api) await closeRouterApiSafe(connection.api);
+  }
+};
+
+const syncAllRoutersIpCache = async () => {
+  const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
+  const resultados = [];
+  for (const router of Object.values(routers)) {
+    if (buildRouterConfigError(router)) continue;
+    try {
+      const r = await syncRouterIpCache(router.id);
+      resultados.push(r);
+    } catch (error) {
+      resultados.push({ ok: false, router: buildRouterInfo(router), error: formatErrorDetail(error) });
+    }
+  }
+  return resultados;
 };
 
 const loadSecretAndActive = async ({ api, router, userPppoe }) => {
@@ -748,7 +865,42 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const mikrotik = await queryRouter({ nodo, userPppoe });
+      // Camino rapido: si ya hay un sync reciente de este router en cache,
+      // responder al instante sin conectar al Mikrotik. Si no hay nada en
+      // cache (router nunca sincronizado, o usuario recien creado), cae al
+      // camino en vivo de siempre.
+      let mikrotik = null;
+      try {
+        const router = await resolveRouterByNodo(nodo, userPppoe);
+        const cached = await lookupIpCache(router.id, userPppoe);
+        if (cached?.ip) {
+          mikrotik = {
+            router: buildRouterInfo(router),
+            estado: "cache",
+            origen: `cache:${cached.origen || "?"}`,
+            userPppoe,
+            ip: cached.ip,
+            uptime: "",
+            lastLoggedOut: "",
+            disabled: "",
+            profile: cached.profile || "",
+            callerId: "",
+            actualizadoEn: cached.actualizado_en || "",
+          };
+        }
+      } catch (_) {
+        // si falla la resolucion/lectura de cache, seguir al camino en vivo
+      }
+      if (!mikrotik) {
+        mikrotik = await queryRouter({ nodo, userPppoe });
+        // Alimentar la cache con lo que se encontro en vivo, para que la
+        // proxima busqueda de este mismo usuario ya sea instantanea.
+        if (mikrotik?.ip && mikrotik?.router?.id) {
+          upsertIpCacheRows(mikrotik.router.id, [
+            { usuario_pppoe: userPppoe, ip: mikrotik.ip, origen: mikrotik.origen || "", profile: mikrotik.profile || "" },
+          ]).catch(() => {});
+        }
+      }
       writeJson(res, 200, {
         ok: true,
         dni,
@@ -757,6 +909,24 @@ const server = http.createServer(async (req, res) => {
         userPppoe,
         mikrotik,
       });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/sync-router") {
+      const body = await readJsonBody(req);
+      const routerKey = String(body?.routerKey || "").trim();
+      if (!routerKey) {
+        writeJson(res, 400, { ok: false, error: "Falta routerKey." });
+        return;
+      }
+      const result = await syncRouterIpCache(routerKey);
+      writeJson(res, 200, { ok: true, result });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/sync-all") {
+      const resultados = await syncAllRoutersIpCache();
+      writeJson(res, 200, { ok: true, resultados });
       return;
     }
 
@@ -837,3 +1007,17 @@ process.on("unhandledRejection", (reason) => {
 server.listen(SERVER_PORT, SERVER_HOST, () => {
   console.log(`Diagnostico servicio API escuchando en http://${SERVER_HOST}:${SERVER_PORT}`);
 });
+
+// Sync automatico de la cache de IPs: una vez poco despues de arrancar (para
+// no competir con el arranque del proceso) y luego cada 30 minutos.
+const IP_CACHE_SYNC_INTERVAL_MS = Number(process.env.MIKROTIK_IP_CACHE_SYNC_MINUTES || 30) * 60 * 1000;
+setTimeout(() => {
+  syncAllRoutersIpCache()
+    .then((r) => console.log("Sync inicial de cache de IPs:", JSON.stringify(r.map((x) => ({ router: x.router?.id, ok: x.ok, total: x.total })))))
+    .catch((e) => console.error("Sync inicial de cache de IPs fallo:", e));
+  setInterval(() => {
+    syncAllRoutersIpCache()
+      .then((r) => console.log("Sync periodico de cache de IPs:", JSON.stringify(r.map((x) => ({ router: x.router?.id, ok: x.ok, total: x.total })))))
+      .catch((e) => console.error("Sync periodico de cache de IPs fallo:", e));
+  }, IP_CACHE_SYNC_INTERVAL_MS);
+}, 15000);
