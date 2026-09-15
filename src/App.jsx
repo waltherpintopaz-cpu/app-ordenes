@@ -3737,14 +3737,14 @@ export default function App() {
     setCargandoCatalogoOrdenApp(false);
   }
 
-  async function buscarIpOrdenNod04App(pppuserParam, redesParam) {
+  async function buscarIpOrdenNod04App(pppuserParam, redesParam, nodoParam) {
     const pppuser = String(pppuserParam || orden.usuarioNodo || "").trim();
     if (!pppuser) return;
     setBuscandoIpOrdenApp(true);
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodo: orden.nodo || "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
+        body: JSON.stringify({ nodo: nodoParam || orden.nodo || "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
       });
       const json = await res.json().catch(() => ({}));
       const ip = json?.mikrotik?.ip || "";
@@ -6589,7 +6589,12 @@ export default function App() {
     });
     if (NODOS_MKW_AUTO_WEB.includes(nextNodo)) {
       // Encadenado: espera a que cargue el catalogo (redes) antes de buscar la IP.
-      cargarCatalogoMikrowispOrdenApp().then(() => { if (sugeridoParaIp) buscarIpOrdenNod04App(sugeridoParaIp); });
+      // Se pasa nextNodo explicito (3er arg) en vez de depender de orden.nodo por
+      // closure -- para cuando esta promesa resuelve, "orden" en este closure sigue
+      // siendo el valor de ANTES del cambio (React no re-crea este closure a mitad
+      // de una funcion ya en ejecucion), lo que hacia que buscara en el Mikrotik
+      // del nodo viejo con el usuario del nodo nuevo y nunca encontrara nada.
+      cargarCatalogoMikrowispOrdenApp().then(() => { if (sugeridoParaIp) buscarIpOrdenNod04App(sugeridoParaIp, null, nextNodo); });
     }
   };
 
