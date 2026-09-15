@@ -23,7 +23,8 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const [filtroAnio, setFiltroAnio] = useState(hoy.getFullYear());
   const [filtroMes, setFiltroMes] = useState(hoy.getMonth() + 1); // 1-12, 0 = todos
   const [filtroEntidad, setFiltroEntidad] = useState("Todas");
-  const [filtroCategoria, setFiltroCategoria] = useState("Todas");
+  const [filtroCategorias, setFiltroCategorias] = useState([]); // [] = todas
+  const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroNodo, setFiltroNodo] = useState("Todos");
 
@@ -61,13 +62,13 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       if (filtroAnio && y !== filtroAnio) return false;
       if (filtroMes && m !== filtroMes) return false;
       if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return false;
-      if (filtroCategoria !== "Todas" && (g.categoria || "Otros") !== filtroCategoria) return false;
+      if (filtroCategorias.length > 0 && !filtroCategorias.includes(g.categoria || "Otros")) return false;
       if (filtroNodo !== "Todos" && (g.nodo || "") !== filtroNodo) return false;
       const q = filtroTexto.trim().toLowerCase();
       if (q && !String(g.descripcion || "").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria, filtroNodo, filtroTexto]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategorias, filtroNodo, filtroTexto]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
   const totalPagado = useMemo(() => filtrados.reduce((s, g) => s + (g.pagado ? (Number(g.monto) || 0) : 0), 0), [filtrados]);
@@ -197,7 +198,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.csv`;
+    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategorias.length ? "-" + filtroCategorias.join("_") : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -207,7 +208,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const doc = new jsPDF();
     const periodoTxt = filtroMes ? `${MESES[filtroMes - 1]} ${filtroAnio}` : `Año ${filtroAnio}`;
     doc.setFontSize(16); doc.text("Mis Gastos", 14, 18);
-    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategoria !== "Todas" ? ` · Categoría: ${filtroCategoria}` : ""}${filtroNodo !== "Todos" ? ` · Nodo: ${filtroNodo}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
+    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategorias.length ? ` · Categorías: ${filtroCategorias.join(", ")}` : ""}${filtroNodo !== "Todos" ? ` · Nodo: ${filtroNodo}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
     autoTable(doc, {
       startY: 32,
       head: [["Fecha", "Descripción", "Categoría", "Nodo", "Entidad", "Monto (S/)"]],
@@ -216,7 +217,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       styles: { fontSize: 9 },
       footStyles: { fontStyle: "bold" },
     });
-    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategoria !== "Todas" ? "-" + filtroCategoria : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.pdf`);
+    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategorias.length ? "-" + filtroCategorias.join("_") : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.pdf`);
   };
 
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
@@ -263,10 +264,46 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
           <option value="Todas">Todas las entidades</option>
           {ENTIDADES.map((e) => <option key={e} value={e}>{e}</option>)}
         </select>
-        <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} style={inputSt}>
-          <option value="Todas">Todas las categorías</option>
-          {categoriasDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setCatDropdownOpen((v) => !v)}
+            style={{ ...inputSt, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+          >
+            {filtroCategorias.length === 0
+              ? "Todas las categorías"
+              : `${filtroCategorias.length} categoría${filtroCategorias.length > 1 ? "s" : ""}`}
+            <span style={{ fontSize: 9 }}>▼</span>
+          </button>
+          {catDropdownOpen && (
+            <>
+              <div style={{ position: "fixed", inset: 0, zIndex: 998 }} onClick={() => setCatDropdownOpen(false)} />
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 999, minWidth: 210, maxHeight: 280, overflowY: "auto",
+                background: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb",
+                borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", padding: 6,
+              }}>
+                <label style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6", marginBottom: 4, color: isDark ? "#e6ecf7" : "#111827",
+                }}>
+                  <input type="checkbox" checked={filtroCategorias.length === 0} onChange={() => setFiltroCategorias([])} />
+                  Todas
+                </label>
+                {categoriasDisponibles.map((c) => (
+                  <label key={c} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 13, cursor: "pointer", color: isDark ? "#c3d3ee" : "#374151" }}>
+                    <input
+                      type="checkbox"
+                      checked={filtroCategorias.includes(c)}
+                      onChange={() => setFiltroCategorias((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c])}
+                    />
+                    {c}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <select value={filtroNodo} onChange={(e) => setFiltroNodo(e.target.value)} style={inputSt}>
           <option value="Todos">Todos los nodos</option>
           {nodosDisponibles.map((n) => <option key={n} value={n}>{n}</option>)}
