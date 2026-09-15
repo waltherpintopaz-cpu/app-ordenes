@@ -4,7 +4,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Wallet, Plus, Edit2, Trash2, X, Download, FileText, Camera, RefreshCw } from "lucide-react";
 
-const CATEGORIAS = ["Compras", "Alimentación", "Transporte", "Otros"];
+const CATEGORIAS = ["Compras", "Alimentación", "Transporte", "Publicidad", "Actuaciones", "Materiales", "Otros"];
 const ENTIDADES = ["DIM", "Americanet", "Personal"];
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
@@ -70,6 +70,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategoria, filtroNodo, filtroTexto]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
+  const totalPagado = useMemo(() => filtrados.reduce((s, g) => s + (g.pagado ? (Number(g.monto) || 0) : 0), 0), [filtrados]);
 
   const aniosDisponibles = useMemo(() => {
     const set = new Set(gastos.map((g) => Number(String(g.fecha || "").slice(0, 4))).filter(Boolean));
@@ -82,6 +83,14 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const nodosDisponibles = useMemo(() => {
     const set = new Set(NODOS_SUGERIDOS);
     gastos.forEach((g) => { if (g.nodo) set.add(g.nodo); });
+    return Array.from(set).sort();
+  }, [gastos]);
+
+  // Igual que nodos: la lista base mas cualquier categoria nueva que ya se
+  // haya escrito, para que crezca sin tener que tocar codigo cada vez.
+  const categoriasDisponibles = useMemo(() => {
+    const set = new Set(CATEGORIAS);
+    gastos.forEach((g) => { if (g.categoria) set.add(g.categoria); });
     return Array.from(set).sort();
   }, [gastos]);
 
@@ -129,7 +138,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         fecha: form.fecha,
         descripcion: form.descripcion.trim(),
         monto,
-        categoria: form.categoria,
+        categoria: form.categoria.trim() || "Otros",
         entidad: form.entidad,
         nodo: form.nodo.trim() || null,
         fotos: form.fotos,
@@ -152,6 +161,18 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       showToast("❌ " + (e?.message || String(e)));
     }
     setGuardando(false);
+  };
+
+  const togglePagado = async (g) => {
+    const nuevo = !g.pagado;
+    setGastos((prev) => prev.map((x) => (x.id === g.id ? { ...x, pagado: nuevo } : x)));
+    try {
+      const { error: err } = await supabase.from("gastos_personales").update({ pagado: nuevo }).eq("id", g.id);
+      if (err) throw err;
+    } catch (e) {
+      setGastos((prev) => prev.map((x) => (x.id === g.id ? { ...x, pagado: !nuevo } : x)));
+      showToast("❌ No se pudo actualizar: " + (e?.message || String(e)));
+    }
   };
 
   const eliminar = async (g) => {
@@ -244,7 +265,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         </select>
         <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} style={inputSt}>
           <option value="Todas">Todas las categorías</option>
-          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+          {categoriasDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={filtroNodo} onChange={(e) => setFiltroNodo(e.target.value)} style={inputSt}>
           <option value="Todos">Todos los nodos</option>
@@ -263,8 +284,10 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         <button onClick={exportarPdf} style={{ display: "flex", alignItems: "center", gap: 6, background: isDark ? "#16213a" : "#f3f4f6", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>
           <FileText size={13} /> PDF
         </button>
-        <div style={{ marginLeft: "auto", fontSize: 13, fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827" }}>
-          Total: <span style={{ color: "#16a34a" }}>S/ {total.toFixed(2)}</span> ({filtrados.length})
+        <div style={{ marginLeft: "auto", display: "flex", gap: 16, fontSize: 13, fontWeight: 700, color: isDark ? "#e6ecf7" : "#111827" }}>
+          <span>Total: <span style={{ color: "#16a34a" }}>S/ {total.toFixed(2)}</span> ({filtrados.length})</span>
+          <span>Pagado: <span style={{ color: "#2563eb" }}>S/ {totalPagado.toFixed(2)}</span></span>
+          <span>Pendiente: <span style={{ color: "#dc2626" }}>S/ {(total - totalPagado).toFixed(2)}</span></span>
         </div>
       </div>
 
@@ -281,13 +304,14 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                 <th style={thSt}>Nodo</th>
                 <th style={thSt}>Entidad</th>
                 <th style={thSt}>Monto</th>
+                <th style={{ ...thSt, textAlign: "center" }}>Pagado</th>
                 <th style={thSt}>Foto</th>
                 <th style={{ ...thSt, textAlign: "right" }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtrados.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin gastos en este período.</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: "center", padding: 32, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin gastos en este período.</td></tr>
               )}
               {filtrados.map((g) => (
                 <tr key={g.id} style={{ borderTop: isDark ? "1px solid #2c3c58" : "1px solid #f3f4f6" }}>
@@ -305,6 +329,14 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                     </span>
                   </td>
                   <td style={{ ...tdSt, fontWeight: 700, color: "#16a34a" }}>S/ {Number(g.monto).toFixed(2)}</td>
+                  <td style={{ ...tdSt, textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!g.pagado}
+                      onChange={() => togglePagado(g)}
+                      style={{ width: 17, height: 17, cursor: "pointer", accentColor: "#16a34a" }}
+                    />
+                  </td>
                   <td style={tdSt}>
                     {(() => {
                       const fotos = Array.isArray(g.fotos) && g.fotos.length ? g.fotos : (g.foto_url ? [g.foto_url] : []);
@@ -361,10 +393,16 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
               </div>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", display: "block", marginBottom: 4 }}>Categoría</label>
-                <select style={{ ...inputSt, width: "100%", boxSizing: "border-box" }} value={form.categoria}
-                  onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}>
-                  {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <input
+                  list="categorias-sugeridas"
+                  style={{ ...inputSt, width: "100%", boxSizing: "border-box" }}
+                  value={form.categoria}
+                  onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}
+                  placeholder="Elige o escribe una nueva"
+                />
+                <datalist id="categorias-sugeridas">
+                  {categoriasDisponibles.map((c) => <option key={c} value={c} />)}
+                </datalist>
               </div>
             </div>
 
