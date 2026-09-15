@@ -972,6 +972,14 @@ function deserializeOrderFromSupabase(row = {}) {
     // Marca informativa desde la app movil: tecnico ya hizo el trabajo pero
     // aun no liquida (no reemplaza el flujo de liquidacion obligatorio).
     atendidaSinLiquidarEn: row.atendida_sin_liquidar_en || null,
+    // Automatizacion Mikrowisp Nod_04 (piloto) — se necesitan al editar para
+    // que los selectores de Plan/Facturacion no aparezcan vacios.
+    mikrowispIdPerfil: row.mikrowisp_id_perfil ?? null,
+    mikrowispIdRedIpv4: row.mikrowisp_id_red_ipv4 ?? null,
+    mikrowispIdPlantilla: row.mikrowisp_id_plantilla ?? null,
+    mikrowispIpSugerida: String(row.mikrowisp_ip_sugerida || ""),
+    mikrowispClienteCreado: !!row.mikrowisp_cliente_creado,
+    mikrowispServicioCreado: !!row.mikrowisp_servicio_creado,
   };
 }
 
@@ -9888,6 +9896,10 @@ export default function App() {
       alert("El usuario de nodo está deshabilitado por administración. Habilítalo o usa otro.");
       return;
     }
+    if (mostrarCamposPlan && orden.nodo === "Nod_04" && (!ordenIdPerfil || !ordenIdPlantilla)) {
+      alert("Selecciona el Plan (Mikrowisp) y la Facturación antes de guardar.");
+      return;
+    }
 
     // Chequeo en vivo contra la base de datos (no solo lo cargado en este navegador):
     // por si dos personas guardan casi al mismo tiempo y el estado local aun no se
@@ -10150,6 +10162,13 @@ export default function App() {
       ...baseOrden,
     });
     setOrdenEditandoId(id);
+    // Automatizacion Mikrowisp Nod_04 (piloto): recuperar lo guardado para
+    // que los selectores de Plan/Facturacion/IP no aparezcan vacios.
+    setOrdenIdPerfil(ordenItem.mikrowispIdPerfil != null ? String(ordenItem.mikrowispIdPerfil) : "");
+    setOrdenIdRedIpv4(ordenItem.mikrowispIdRedIpv4 != null ? String(ordenItem.mikrowispIdRedIpv4) : "");
+    setOrdenIdPlantilla(ordenItem.mikrowispIdPlantilla != null ? String(ordenItem.mikrowispIdPlantilla) : "");
+    setOrdenIpMikrotik(ordenItem.mikrowispIpSugerida || "");
+    if (String(baseOrden.nodo || "").trim() === "Nod_04") void cargarCatalogoMikrowispOrdenApp();
     setVistaActiva("crear");
     setTimeout(() => {
       contentWrapRef.current?.scrollTo({ top: 0, behavior: "smooth" });
