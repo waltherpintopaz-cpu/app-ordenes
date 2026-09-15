@@ -21916,77 +21916,108 @@ export default function App() {
                 {nodosConfigError && <div style={{ fontSize: "12px", color: "#dc2626", fontWeight: 600, marginBottom: "10px" }}>❌ {nodosConfigError}</div>}
                 {nodosConfigInfo && <div style={{ fontSize: "12px", color: "#15803d", fontWeight: 600, marginBottom: "10px" }}>{nodosConfigInfo}</div>}
 
-                <div style={{ overflowX: "auto", border: "1px solid #dbe6f5", borderRadius: "12px" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", minWidth: "1400px" }}>
-                    <thead style={{ background: "#f8fafc" }}>
-                      <tr>
-                        {["Nodo", "Empresa", "ID Mikrowisp", "Usuario prefijo", "Usuario sufijo", "Pad", "Usuario inicio", "Clave fija", "VLAN", "DimFiber", "Auto Mikrowisp", "Activo", "Orden", "Notas", ""].map((h) => (
-                          <th key={h} style={{ textAlign: "left", padding: "8px 10px", borderBottom: "2px solid #dbe6f5", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {nodosConfigFilas.map((f, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #eef2f7" }}>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "90px" }} value={f.nodo || ""} disabled={!f._nuevo}
-                              onChange={(e) => handleNodoConfigChange(idx, "nodo", e.target.value)} placeholder="Nod_08" />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <select style={{ ...inputStyle, width: "110px" }} value={f.empresa || "Americanet"} onChange={(e) => handleNodoConfigChange(idx, "empresa", e.target.value)}>
-                              <option value="Americanet">Americanet</option>
-                              <option value="DIM">DIM</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "80px" }} value={f.mikrowisp_router_id ?? ""} onChange={(e) => handleNodoConfigChange(idx, "mikrowisp_router_id", e.target.value.replace(/\D/g, ""))} placeholder="ej. 12" />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "90px" }} value={f.usuario_prefix || ""} onChange={(e) => handleNodoConfigChange(idx, "usuario_prefix", e.target.value)} />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "100px" }} value={f.usuario_suffix || ""} onChange={(e) => handleNodoConfigChange(idx, "usuario_suffix", e.target.value)} placeholder="@americanet" />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "50px" }} value={f.usuario_pad ?? 0} onChange={(e) => handleNodoConfigChange(idx, "usuario_pad", e.target.value.replace(/\D/g, ""))} />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "80px" }} value={f.usuario_start ?? 1} onChange={(e) => handleNodoConfigChange(idx, "usuario_start", e.target.value.replace(/\D/g, ""))} />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "110px" }} value={f.password_fija || ""} onChange={(e) => handleNodoConfigChange(idx, "password_fija", e.target.value)} placeholder="vacío = DNI" />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "60px" }} value={f.vlan || ""} onChange={(e) => handleNodoConfigChange(idx, "vlan", e.target.value.replace(/\D/g, ""))} />
-                          </td>
-                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {nodosConfigFilas.map((f, idx) => (
+                    <div key={idx} style={{ border: "1px solid #d8e2f0", borderRadius: "14px", padding: "14px", background: "#ffffff" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{f.nodo || "(nodo nuevo)"}</span>
+                          <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", background: f.empresa === "DIM" ? "#ede9fe" : "#e0f2fe", color: f.empresa === "DIM" ? "#6d28d9" : "#0369a1" }}>
+                            {f.empresa || "Americanet"}
+                          </span>
+                          {f.activo === false && (
+                            <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", background: "#fee2e2", color: "#dc2626" }}>Inactivo</span>
+                          )}
+                        </div>
+                        <button type="button" style={{ ...secondaryButton, color: "#dc2626", borderColor: "#fecaca", padding: "6px 12px", fontSize: "12px" }}
+                          onClick={() => eliminarNodoConfigFila(idx, f.nodo, f._nuevo)}>
+                          Eliminar nodo
+                        </button>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+                        <div>
+                          <label style={labelStyle}>Nombre del nodo</label>
+                          <input style={inputStyle} value={f.nodo || ""} disabled={!f._nuevo}
+                            onChange={(e) => handleNodoConfigChange(idx, "nodo", e.target.value)} placeholder="Nod_08" />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Empresa</label>
+                          <select style={inputStyle} value={f.empresa || "Americanet"} onChange={(e) => handleNodoConfigChange(idx, "empresa", e.target.value)}>
+                            <option value="Americanet">Americanet</option>
+                            <option value="DIM">DIM</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>ID de router en Mikrowisp</label>
+                          <input style={inputStyle} value={f.mikrowisp_router_id ?? ""} onChange={(e) => handleNodoConfigChange(idx, "mikrowisp_router_id", e.target.value.replace(/\D/g, ""))} placeholder="ej. 12" />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>VLAN (opcional)</label>
+                          <input style={inputStyle} value={f.vlan || ""} onChange={(e) => handleNodoConfigChange(idx, "vlan", e.target.value.replace(/\D/g, ""))} placeholder="ej. 100" />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Orden de aparición</label>
+                          <input style={inputStyle} value={f.orden ?? 0} onChange={(e) => handleNodoConfigChange(idx, "orden", e.target.value.replace(/\D/g, ""))} />
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #e2e8f0" }}>
+                        <div style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", marginBottom: "8px" }}>Patrón de usuario PPPoE correlativo</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
+                          <div>
+                            <label style={labelStyle}>Prefijo</label>
+                            <input style={inputStyle} value={f.usuario_prefix || ""} onChange={(e) => handleNodoConfigChange(idx, "usuario_prefix", e.target.value)} placeholder="user" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Sufijo</label>
+                            <input style={inputStyle} value={f.usuario_suffix || ""} onChange={(e) => handleNodoConfigChange(idx, "usuario_suffix", e.target.value)} placeholder="@americanet" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Ceros a la izquierda</label>
+                            <input style={inputStyle} value={f.usuario_pad ?? 0} onChange={(e) => handleNodoConfigChange(idx, "usuario_pad", e.target.value.replace(/\D/g, ""))} placeholder="0" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Número inicial</label>
+                            <input style={inputStyle} value={f.usuario_start ?? 1} onChange={(e) => handleNodoConfigChange(idx, "usuario_start", e.target.value.replace(/\D/g, ""))} placeholder="1" />
+                          </div>
+                          <div>
+                            <label style={labelStyle}>Contraseña fija (opcional)</label>
+                            <input style={inputStyle} value={f.password_fija || ""} onChange={(e) => handleNodoConfigChange(idx, "password_fija", e.target.value)} placeholder="vacío = usa el DNI" />
+                          </div>
+                        </div>
+                        <div style={{ marginTop: "6px", fontSize: "11px", color: "#94a3b8" }}>
+                          Ejemplo con estos valores: <b>{f.usuario_prefix || ""}{String(f.usuario_start ?? 1).padStart(Number(f.usuario_pad || 0), "0")}{f.usuario_suffix || ""}</b>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #e2e8f0" }}>
+                        <div>
+                          <label style={labelStyle}>Notas</label>
+                          <input style={inputStyle} value={f.notas || ""} onChange={(e) => handleNodoConfigChange(idx, "notas", e.target.value)} placeholder="Observaciones para el equipo" />
+                        </div>
+                        <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", marginTop: "10px" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "#334155", cursor: "pointer" }}>
                             <input type="checkbox" checked={!!f.es_dim} onChange={(e) => handleNodoConfigChange(idx, "es_dim", e.target.checked)} />
-                          </td>
-                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                            Nodo DimFiber (Mikrowisp app.dimfiber.com)
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "#334155", cursor: "pointer" }}>
                             <input type="checkbox" checked={!!f.mkw_auto} onChange={(e) => handleNodoConfigChange(idx, "mkw_auto", e.target.checked)} />
-                          </td>
-                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                            Automatización Mikrowisp al crear orden / liquidar
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "#334155", cursor: "pointer" }}>
                             <input type="checkbox" checked={f.activo !== false} onChange={(e) => handleNodoConfigChange(idx, "activo", e.target.checked)} />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "55px" }} value={f.orden ?? 0} onChange={(e) => handleNodoConfigChange(idx, "orden", e.target.value.replace(/\D/g, ""))} />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <input style={{ ...inputStyle, width: "160px" }} value={f.notas || ""} onChange={(e) => handleNodoConfigChange(idx, "notas", e.target.value)} />
-                          </td>
-                          <td style={{ padding: "4px 6px" }}>
-                            <button type="button" style={{ ...secondaryButton, color: "#dc2626", borderColor: "#dc2626", padding: "5px 10px", fontSize: "11px" }}
-                              onClick={() => eliminarNodoConfigFila(idx, f.nodo, f._nuevo)}>
-                              Eliminar
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {!nodosConfigFilas.length && !nodosConfigLoading && (
-                        <tr><td colSpan={15} style={{ padding: "16px", textAlign: "center", color: "#94a3b8" }}>Sin nodos cargados — presiona "Recargar" o "+ Agregar nodo".</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                            Nodo activo
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!nodosConfigFilas.length && !nodosConfigLoading && (
+                    <div style={{ padding: "24px", textAlign: "center", color: "#94a3b8", border: "1px dashed #cbd5e1", borderRadius: "14px" }}>
+                      Sin nodos cargados — presiona "Recargar" o "+ Agregar nodo".
+                    </div>
+                  )}
                 </div>
               </div>
             ) : null}
