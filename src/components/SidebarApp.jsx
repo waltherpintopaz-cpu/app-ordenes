@@ -516,6 +516,7 @@ export default function SidebarApp() {
     });
   };
   const contactLoadedRef = useRef(false);  // evita que urlParam sobreescriba postMessage
+  const dniAutoBuscadoRef = useRef(""); // evita re-disparar la busqueda automatica del mismo DNI
   const [contact, setContact]     = useState(null);  // datos de Chatwoot
   const [convId,  setConvId]      = useState(null);
   const [acctId,  setAcctId]      = useState("1");
@@ -2723,8 +2724,8 @@ export default function SidebarApp() {
     try { return (toInt(ip) & mask) === (toInt(base) & mask); } catch { return false; }
   }
 
-  async function buscarIpOrdenNod04() {
-    const pppuser = ordenForm.usuarioNodo.trim();
+  async function buscarIpOrdenNod04(pppuserParam) {
+    const pppuser = (pppuserParam || ordenForm.usuarioNodo).trim();
     if (!pppuser) return notify("Ingresa el usuario PPPoE primero", false);
     setBuscandoIpOrden(true);
     try {
@@ -3014,8 +3015,8 @@ export default function SidebarApp() {
     setModalSelectorServicio(null);
   }
 
-  async function buscarDniNuevo() {
-    const dni = ordenForm.dni.trim();
+  async function buscarDniNuevo(dniParam) {
+    const dni = (dniParam || ordenForm.dni).trim();
     const tipo = tipoDocumento(dni);
     if (!tipo) return notify("Ingresa un DNI (8 dígitos) o RUC (11 dígitos) válido", false);
     setBuscandoDniNew(true);
@@ -3058,6 +3059,9 @@ export default function SidebarApp() {
   // ── Cargar usuarios disponibles cuando cambia el nodo ────────────────────
   async function cargarUsuariosNodo(nodo) {
     if (!nodo) { setUsuariosNodo([]); return; }
+    // Cargar primero el catalogo de planes/redes para que la busqueda de IP
+    // que sigue mas abajo ya pueda detectar el rango correcto.
+    if (nodo === "Nod_04") await cargarCatalogoMikrowispOrdenNod04();
     try {
       const { data } = await supabase.from("ordenes")
         .select("usuario_nodo,estado")
@@ -3070,13 +3074,20 @@ export default function SidebarApp() {
       const { data: clts } = await supabase.from("clientes").select("usuario_nodo").eq("nodo",nodo);
       const usadosClientes = (clts||[]).map(c=>c.usuario_nodo).filter(Boolean);
       const todosUsados = [...new Set([...usados,...usadosClientes])];
-      setUsuariosNodo(listarUsuariosParaNodo(nodo, todosUsados, 10));
+      const sugeridos = listarUsuariosParaNodo(nodo, todosUsados, 10);
+      setUsuariosNodo(sugeridos);
       // Nod_07 no usa clave fija — su contraseña es el DNI del cliente.
       const esNod07 = normalizeNodoKey(nodo) === "NOD_07";
+      // Auto-completar con el primer usuario disponible para evitar el clic
+      // manual — la persona igual puede cambiarlo escribiendo encima.
+      const recomendado = sugeridos.find(u => !u.ocupado);
       setOrdenForm(p=>{
         const pwd = esNod07 ? String(p.dni||"").replace(/\D/g,"") : NODO_PASSWORD_RULES[normalizeNodoKey(nodo)];
-        return { ...p, empresa: empresaPorNodo(nodo), passwordUsuario: pwd || p.passwordUsuario };
+        return { ...p, empresa: empresaPorNodo(nodo), passwordUsuario: pwd || p.passwordUsuario, usuarioNodo: recomendado ? recomendado.usuario : p.usuarioNodo };
       });
+      if (recomendado && nodo === "Nod_04") {
+        void buscarIpOrdenNod04(recomendado.usuario);
+      }
     } catch(e) {}
   }
 
@@ -3234,15 +3245,21 @@ export default function SidebarApp() {
       };
 
       const campos = [];
+      let dniParaBuscar = "";
       setOrdenForm(p => {
         const next = { ...p };
-        if (extraido.dni       && !p.dni)       { next.dni       = String(extraido.dni);       campos.push("DNI"); }
+        if (extraido.dni       && !p.dni)       { next.dni       = String(extraido.dni);       campos.push("DNI"); dniParaBuscar = String(extraido.dni); }
         if (extraido.direccion && !p.direccion) { next.direccion = String(extraido.direccion); campos.push("Dirección"); }
         return next;
       });
 
       if (campos.length) notify(`✅ Extraído del chat: ${campos.join(", ")}`);
       else notify("No se encontraron datos nuevos en el chat", false);
+      // Encadenar la busqueda de DNI (Supabase/RENIEC) igual que si se hubiera tecleado.
+      if (dniParaBuscar && dniAutoBuscadoRef.current !== dniParaBuscar) {
+        dniAutoBuscadoRef.current = dniParaBuscar;
+        void buscarDniNuevo(dniParaBuscar);
+      }
     } catch(e) {
       notify("Error al extraer datos: " + e.message, false);
     }
@@ -4229,7 +4246,18 @@ export default function SidebarApp() {
           {/* ── Orden nueva para cliente no registrado ── */}
           <div style={{ marginTop:8 }}>
             <ActionBtn isDark={isDark} icon={ClipboardList} color="#1d4ed8" label="Crear orden de instalación" active={showOrdenNuevo} activeLabel="Cancelar" activeColor="#64748b"
-              onClick={() => { setShowOrdenNuevo(v=>!v); setOrdenCreada(null); setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") })); }} />
+              onClick={() => {
+                const abriendo = !showOrdenNuevo;
+                setShowOrdenNuevo(v=>!v);
+                setOrdenCreada(null);
+                setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") }));
+                // Auto-extraer datos del cliente y coordenadas del chat al abrir, para evitar los clics manuales.
+                if (abriendo) {
+                  dniAutoBuscadoRef.current = "";
+                  void extraerDatosDeChat();
+                  void extraerCoordsDeChat();
+                }
+              }} />
           </div>
 
           {showOrdenNuevo && (<>
@@ -4322,6 +4350,11 @@ export default function SidebarApp() {
                           value={ordenForm.dni} onChange={e=>{
                             const dniValue = e.target.value.replace(/\D/g,"");
                             setOrdenForm(p=>({ ...p, dni: dniValue, passwordUsuario: normalizeNodoKey(p.nodo)==="NOD_07" ? dniValue : p.passwordUsuario }));
+                            // Auto-buscar apenas se completa un DNI (8) o RUC (11), sin esperar clic/Enter.
+                            if ((dniValue.length===8 || dniValue.length===11) && dniAutoBuscadoRef.current !== dniValue) {
+                              dniAutoBuscadoRef.current = dniValue;
+                              void buscarDniNuevo(dniValue);
+                            }
                           }}
                           onKeyDown={e=>e.key==="Enter"&&buscarDniNuevo()} />
                         <button onClick={buscarDniNuevo} disabled={buscandoDniNew||!tipoDocumento(ordenForm.dni)}
@@ -4348,7 +4381,6 @@ export default function SidebarApp() {
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
-                          if(n==="Nod_04") cargarCatalogoMikrowispOrdenNod04();
                         }}>
                         <option value="">— Seleccionar —</option>
                         {NODOS_BASE.map(n=><option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
@@ -5946,7 +5978,6 @@ export default function SidebarApp() {
                           setUsuariosNodo([]);
                           setShowUsuarioDrop(false);
                           if(n) cargarUsuariosNodo(n);
-                          if(n==="Nod_04") cargarCatalogoMikrowispOrdenNod04();
                         }}>
                         {NODOS_BASE.map(n => <option key={n} value={n}>{n} ({empresaPorNodo(n)})</option>)}
                       </select>
