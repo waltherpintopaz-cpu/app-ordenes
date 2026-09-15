@@ -430,22 +430,38 @@ const syncAllRoutersIpCache = async () => {
   return resultados;
 };
 
+// Se pide la lista COMPLETA (sin filtro "?name=") y se busca el usuario en
+// el servidor, en vez de dejar que el Mikrotik filtre. Se comprobo que en
+// algunos routers (ej. Apipa) la consulta filtrada por nombre se cuelga ~10s
+// y truena cuando el usuario no existe todavia (caso normal al asignar un
+// PPPoE nuevo a una orden), mientras que pedir la lista completa responde
+// rapido siempre -- es la misma consulta que ya usa el sync masivo.
+const findByName = (rows, userPppoe) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const target = String(userPppoe || "").trim();
+  return (
+    list.find((row) => pickFirst(row?.name) === target) ||
+    list.find((row) => pickFirst(row?.name).toLowerCase() === target.toLowerCase()) ||
+    null
+  );
+};
+
 const loadSecretAndActive = async ({ api, router, userPppoe }) => {
   const secretRows = await withTimeout(
-    api.write("/ppp/secret/print", [`?name=${userPppoe}`]),
-    10000,
-    `Consulta PPP Secret en ${router.nombre}`
+    api.write("/ppp/secret/print", []),
+    15000,
+    `Listar PPP Secret en ${router.nombre}`
   );
-  const secret = Array.isArray(secretRows) && secretRows.length ? secretRows[0] : null;
+  const secret = findByName(secretRows, userPppoe);
   let active = null;
   let activeTimedOut = false;
   try {
     const activeRows = await withTimeout(
-      api.write("/ppp/active/print", [`?name=${userPppoe}`]),
-      6000,
-      `Consulta PPP Active en ${router.nombre}`
+      api.write("/ppp/active/print", []),
+      10000,
+      `Listar PPP Active en ${router.nombre}`
     );
-    active = Array.isArray(activeRows) && activeRows.length ? activeRows[0] : null;
+    active = findByName(activeRows, userPppoe);
   } catch (error) {
     const detail = formatErrorDetail(error);
     activeTimedOut = detail.toLowerCase().includes("ppp active") && detail.toLowerCase().includes("excedió");
@@ -458,11 +474,11 @@ const loadSecretAndActive = async ({ api, router, userPppoe }) => {
 
 const loadSecretOnly = async ({ api, router, userPppoe }) => {
   const secretRows = await withTimeout(
-    api.write("/ppp/secret/print", [`?name=${userPppoe}`]),
-    10000,
-    `Consulta PPP Secret en ${router.nombre}`
+    api.write("/ppp/secret/print", []),
+    15000,
+    `Listar PPP Secret en ${router.nombre}`
   );
-  return Array.isArray(secretRows) && secretRows.length ? secretRows[0] : null;
+  return findByName(secretRows, userPppoe);
 };
 
 const findMorosoEntries = async ({ api, userPppoe, ip = "" }) => {
