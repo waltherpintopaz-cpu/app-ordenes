@@ -21605,17 +21605,31 @@ export default function App() {
                       <div style={{ fontSize: "12px", color: ipCacheSyncInfo.startsWith("❌") ? "#dc2626" : "#15803d", marginBottom: "10px" }}>{ipCacheSyncInfo}</div>
                     )}
 
-                    <div style={{ display: "grid", gap: "12px" }}>
+                    <div style={{ display: "grid", gap: "16px" }}>
                       {mikrotikRoutersConfig.map((router) => (
                         <div
                           key={router.routerKey || router.nombre}
                           style={{
-                            border: "1px solid #d8e2f0",
+                            border: "1px solid #c7d5e8",
                             borderRadius: "14px",
-                            padding: "14px",
                             background: "#ffffff",
+                            boxShadow: "0 1px 4px rgba(15,23,42,0.07)",
+                            overflow: "hidden",
                           }}
                         >
+                          <div style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px",
+                            padding: "10px 16px", background: router.activo ? "#eff6ff" : "#f1f5f9", borderBottom: "1px solid #dbe6f5",
+                          }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                              <span style={{ fontSize: "15px", fontWeight: 800, color: "#0f172a" }}>{router.nombre || router.routerKey}</span>
+                              <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 9px", borderRadius: "999px", background: router.activo ? "#dcfce7" : "#fee2e2", color: router.activo ? "#15803d" : "#dc2626" }}>
+                                {router.activo ? "Activo" : "Inactivo"}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: "12px", fontFamily: "monospace", color: "#475569" }}>{router.host || "sin host"}:{router.port || "?"}</span>
+                          </div>
+                          <div style={{ padding: "16px" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
                             <div>
                               <label style={labelStyle}>Clave router</label>
@@ -21699,6 +21713,7 @@ export default function App() {
                               disabled={!!ipCacheSyncLoading} onClick={() => sincronizarIpsRouter(router.routerKey)}>
                               {ipCacheSyncLoading === router.routerKey ? "Sincronizando..." : "🔄 Sincronizar IPs de este router"}
                             </button>
+                          </div>
                           </div>
                         </div>
                       ))}
