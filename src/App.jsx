@@ -11947,7 +11947,7 @@ export default function App() {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/sync-all`, { method: "POST", headers: { "Content-Type": "application/json" } });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
-      const resumen = (json?.resultados || []).map((r) => r.ok ? `${r.router?.id}: ${r.total}` : `${r.router?.id || "?"}: error`).join(" · ");
+      const resumen = (json?.resultados || []).map((r) => r.ok ? `${r.router?.id}: ${r.total}` : `${r.router?.id || "?"}: ${r.error || "error"}`).join(" · ");
       setIpCacheSyncInfo(`✅ Sincronizado — ${resumen}`);
     } catch (e) {
       setIpCacheSyncInfo(`❌ Error: ${e.message}`);
