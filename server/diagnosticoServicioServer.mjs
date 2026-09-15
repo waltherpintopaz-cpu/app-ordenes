@@ -387,20 +387,24 @@ const syncRouterIpCache = async (routerKey) => {
       const name = pickFirst(row?.name);
       if (name) activeByName.set(name, row);
     });
-    const cacheRows = [];
+    // Deduplicar por usuario -- algunos routers tienen secrets duplicados
+    // (mismo nombre repetido) y un solo INSERT...ON CONFLICT no puede tocar
+    // la misma fila dos veces. Nos quedamos con la ultima ocurrencia.
+    const porUsuario = new Map();
     (Array.isArray(secretRows) ? secretRows : []).forEach((secret) => {
       const usuario = pickFirst(secret?.name);
       if (!usuario) return;
       const active = activeByName.get(usuario) || null;
       const ip = active ? pickFirst(active.address) : resolveSecretRemoteAddress(secret, null);
       if (!ip) return;
-      cacheRows.push({
+      porUsuario.set(usuario, {
         usuario_pppoe: usuario,
         ip,
         origen: active ? "ppp-active" : "ppp-secret",
         profile: pickFirst(secret?.profile),
       });
     });
+    const cacheRows = Array.from(porUsuario.values());
     await upsertIpCacheRows(router.id, cacheRows);
     return { ok: true, router: buildRouterInfo(router), total: cacheRows.length };
   } catch (error) {
