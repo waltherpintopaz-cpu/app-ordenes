@@ -398,6 +398,11 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
                   style={{ ...inputSt, width: "100%", boxSizing: "border-box" }}
                   value={form.categoria}
                   onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}
+                  onFocus={(e) => { e.target.dataset.prev = form.categoria; setForm((p) => ({ ...p, categoria: "" })); }}
+                  onBlur={(e) => {
+                    const prev = e.target.dataset.prev || "Otros";
+                    setForm((p) => (p.categoria.trim() ? p : { ...p, categoria: prev }));
+                  }}
                   placeholder="Elige o escribe una nueva"
                 />
                 <datalist id="categorias-sugeridas">
