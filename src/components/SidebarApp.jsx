@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
-import { normalizarEtiquetaNodo } from "../utils/nodos.js";
+import { normalizarEtiquetaNodo, NODOS_CONFIG_DEFAULT, cargarNodosConfig, nodosActivosOrdenados, mwNodoMapDesdeConfig, nodoUsuarioRulesDesdeConfig, nodoPasswordRulesDesdeConfig, vlanPorNodoDesdeConfig, nodosMkwAutoDesdeConfig, esDimNodoDesdeConfig, empresaPorNodoDesdeConfig } from "../utils/nodos.js";
 import { buscarZonaCobertura } from "../utils/cobertura.js";
 import CoberturaMapaModal from "./CoberturaMapaModal.jsx";
 import StreetViewThumb from "./StreetViewThumb.jsx";
@@ -167,9 +167,9 @@ const NODO_PASSWORD_RULES = {
   // NOD_07 no tiene clave fija — su contraseña es el DNI del cliente.
 };
 const normalizeNodoKey = (v="") => String(v||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"_");
-function listarUsuariosParaNodo(nodo="", usados=[], cantidad=8) {
+function listarUsuariosParaNodo(nodo="", usados=[], cantidad=8, rules=NODO_USUARIO_RULES) {
   const key = normalizeNodoKey(nodo);
-  const rule = NODO_USUARIO_RULES[key];
+  const rule = rules[key];
   if (!rule) return [];
   const prefix=String(rule.prefix||""), suffix=String(rule.suffix||""), base=Number(rule.start||1), pad=Number(rule.pad||0);
   const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}(\\d+)${suffix.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}$`,"i");
@@ -515,6 +515,12 @@ export default function SidebarApp() {
       return next;
     });
   };
+  // Configuracion de nodos (patron de usuario, clave fija, ID de router en
+  // Mikrowisp, VLAN, DimFiber, automatizacion) cargada desde Supabase
+  // (tabla nodos_config) en vez de vivir hardcodeada -- agregar un nodo
+  // nuevo ya no requiere tocar este archivo, solo esa tabla.
+  const [nodosConfig, setNodosConfig] = useState(NODOS_CONFIG_DEFAULT);
+  useEffect(() => { cargarNodosConfig(supabase).then(setNodosConfig); }, []);
   const contactLoadedRef = useRef(false);  // evita que urlParam sobreescriba postMessage
   const dniAutoBuscadoRef = useRef(""); // evita re-disparar la busqueda automatica del mismo DNI
   const [contact, setContact]     = useState(null);  // datos de Chatwoot
@@ -1594,19 +1600,26 @@ export default function SidebarApp() {
 
   // ── Búsqueda flexible por DNI o nombre ──────────────────────────────────
   // ── MW wizard helpers ─────────────────────────────────────────────────────
-  // IDs de router confirmados en Mikrowisp (Configuracion > Routers, instancia DimFiber):
-  // NODO_04=5, NODO_05=11, NODO_06=12.
-  const MW_NODO_MAP  = { "Nod_01":1, "Nod_02":2, "Nod_03":10, "Nod_04":5, "Nod_05":11, "Nod_06":12 };
+  // Todo lo de abajo viene de nodosConfig (Supabase, tabla nodos_config) --
+  // se recalcula solo cuando cambia esa config, y hace "shadow" (misma forma
+  // y nombre) de las constantes que antes estaban hardcodeadas aca, para no
+  // tener que tocar el resto del archivo que ya las usa.
+  const NODOS_BASE = useMemo(() => nodosActivosOrdenados(nodosConfig), [nodosConfig]);
+  const VLAN_POR_NODO = useMemo(() => vlanPorNodoDesdeConfig(nodosConfig), [nodosConfig]);
+  const NODO_USUARIO_RULES = useMemo(() => nodoUsuarioRulesDesdeConfig(nodosConfig), [nodosConfig]);
+  const NODO_PASSWORD_RULES = useMemo(() => nodoPasswordRulesDesdeConfig(nodosConfig), [nodosConfig]);
+  const empresaPorNodo = (n) => empresaPorNodoDesdeConfig(nodosConfig, normalizarEtiquetaNodo(n));
+  const MW_NODO_MAP = useMemo(() => mwNodoMapDesdeConfig(nodosConfig), [nodosConfig]);
   // Nod_03 en migracion: clientes ya pasados a VLAN 102 usan el router MikroWisp nuevo (12).
   const mikrowispRouterIdParaCliente = (nodo, vlan) => {
     const n = String(nodo || "").trim();
     if (n === "Nod_03" && Number(vlan) === 102) return 12;
     return MW_NODO_MAP[n] ?? 1;
   };
-  const MW_NODOS_OK  = ["Nod_01","Nod_03","Nod_04","Nod_05","Nod_06"];
-  const mwEsDim = (nodo) => ["Nod_04","Nod_05","Nod_06","Nod_07"].includes(String(nodo||""));
-  // Nodos con automatizacion Mikrowisp al crear orden / liquidar (piloto Nod_04, extendido a 05/06).
-  const NODOS_MKW_AUTO = ["Nod_04","Nod_05","Nod_06"];
+  const MW_NODOS_OK  = useMemo(() => nodosActivosOrdenados(nodosConfig).filter((n) => n !== "Nod_02" && n !== "Nod_07"), [nodosConfig]);
+  const mwEsDim = (nodo) => esDimNodoDesdeConfig(nodosConfig, nodo);
+  // Nodos con automatizacion Mikrowisp al crear orden / liquidar.
+  const NODOS_MKW_AUTO = useMemo(() => nodosMkwAutoDesdeConfig(nodosConfig), [nodosConfig]);
 
   async function mwBuscarEnClientes() {
     const q = mwBusqVal.trim();
@@ -3127,7 +3140,7 @@ export default function SidebarApp() {
       const { data: clts } = await supabase.from("clientes").select("usuario_nodo").eq("nodo",nodo);
       const usadosClientes = (clts||[]).map(c=>c.usuario_nodo).filter(Boolean);
       const todosUsados = [...new Set([...usados,...usadosClientes])];
-      const sugeridos = listarUsuariosParaNodo(nodo, todosUsados, 10);
+      const sugeridos = listarUsuariosParaNodo(nodo, todosUsados, 10, NODO_USUARIO_RULES);
       setUsuariosNodo(sugeridos);
       // Nod_07 no usa clave fija — su contraseña es el DNI del cliente.
       const esNod07 = normalizeNodoKey(nodo) === "NOD_07";
@@ -4471,7 +4484,7 @@ export default function SidebarApp() {
                     {fila("Usuario nodo",
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <div style={{position:"relative",flex:1}}>
-                          <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} placeholder={NODO_USUARIO_RULES[normalizeNodoKey(ordenForm.nodo)]?`Ej: ${listarUsuariosParaNodo(ordenForm.nodo,[],1)[0]?.usuario||""}` : "user730@americanet"}
+                          <input style={{...S.input,border:"none",borderRadius:0,fontSize:12}} placeholder={NODO_USUARIO_RULES[normalizeNodoKey(ordenForm.nodo)]?`Ej: ${listarUsuariosParaNodo(ordenForm.nodo,[],1,NODO_USUARIO_RULES)[0]?.usuario||""}` : "user730@americanet"}
                             value={ordenForm.usuarioNodo}
                             onChange={e=>setOrdenForm(p=>({...p,usuarioNodo:e.target.value}))}
                             onFocus={()=>setShowUsuarioDrop(true)}

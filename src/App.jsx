@@ -54,7 +54,7 @@ import logoDim from "./assets/dim-logo-trimmed.png";
 import { logoAmericanetB64, logoDimB64 } from "./assets/logos_b64.js";
 import { generarContratoPdf, empresaInfoContrato } from "./utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "./utils/contratoEnvio.js";
-import { normalizarEtiquetaNodo } from "./utils/nodos.js";
+import { normalizarEtiquetaNodo, cargarNodosConfig, nodosActivosOrdenados, mwNodoMapDesdeConfig, nodoUsuarioRulesDesdeConfig, nodoPasswordRulesDesdeConfig, vlanPorNodoDesdeConfig, nodosMkwAutoDesdeConfig } from "./utils/nodos.js";
 
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
@@ -231,6 +231,13 @@ async function buscarDniORuc(documento) {
   }
 }
 
+// ── Configuracion de nodos ───────────────────────────────────────────────
+// Estos objetos empiezan con los valores de siempre (respaldo si Supabase no
+// responde) pero se MUTAN EN EL LUGAR (no se reasignan) apenas carga la tabla
+// nodos_config, via aplicarNodosConfigWeb() mas abajo -- así todas las
+// funciones y componentes que ya los leen directamente (mikrowispRouterIdParaCliente,
+// empresaPorNodo, los ~30 sitios que usan NODOS_BASE_WEB, etc.) reciben los
+// valores actualizados sin tener que tocar cada uno de esos sitios.
 const NODO_USUARIO_RULES = {
   NOD_01: { prefix: "user", start: 801, suffix: "@americanet" },
   NOD_02: { prefix: "usuario_", start: 600, suffix: "" },
@@ -269,6 +276,24 @@ const VLAN_POR_NODO_WEB = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
 const MW_NODO_MAP_BASE_WEB = { "Nod_01": 1, "Nod_02": 2, "Nod_03": 10, "Nod_04": 5, "Nod_05": 11, "Nod_06": 12 };
 // Nodos con automatizacion Mikrowisp al crear orden / liquidar (piloto Nod_04, extendido a 05/06).
 const NODOS_MKW_AUTO_WEB = ["Nod_04", "Nod_05", "Nod_06"];
+
+const limpiarYAsignarObjeto = (obj, nuevo) => { Object.keys(obj).forEach((k) => delete obj[k]); Object.assign(obj, nuevo); };
+const reemplazarArray = (arr, nuevo) => { arr.length = 0; arr.push(...nuevo); };
+// Se llama una vez al montar el panel (ver useEffect en el componente App).
+// No reasigna ninguna de las constantes de arriba -- las muta en el lugar,
+// para que todo el codigo que ya las referencia por nombre vea el cambio.
+async function aplicarNodosConfigWeb() {
+  const config = await cargarNodosConfig(supabase);
+  limpiarYAsignarObjeto(NODO_USUARIO_RULES, nodoUsuarioRulesDesdeConfig(config));
+  limpiarYAsignarObjeto(NODO_PASSWORD_RULES, nodoPasswordRulesDesdeConfig(config));
+  limpiarYAsignarObjeto(VLAN_POR_NODO_WEB, vlanPorNodoDesdeConfig(config));
+  limpiarYAsignarObjeto(MW_NODO_MAP_BASE_WEB, mwNodoMapDesdeConfig(config));
+  reemplazarArray(NODOS_BASE_WEB, nodosActivosOrdenados(config));
+  reemplazarArray(NODOS_MKW_AUTO_WEB, nodosMkwAutoDesdeConfig(config));
+  DIM_NODOS_WEB.clear();
+  Object.entries(config).forEach(([nodo, c]) => { if (c.esDim) DIM_NODOS_WEB.add(nodo.toLowerCase()); });
+  return config;
+}
 const MW_ROUTER_ID_NOD03_NUEVO = 12;
 function mikrowispRouterIdParaCliente(nodo, vlan) {
   const n = String(nodo || "").trim();
@@ -1999,6 +2024,12 @@ function QRScanner({ onDetected, onClose }) {
 }
 
 export default function App() {
+  // Fuerza un re-render una vez que aplicarNodosConfigWeb() termina de mutar
+  // (en el lugar) los mapas de configuracion de nodos con lo cargado desde
+  // Supabase -- ese cambio no dispara re-render por si solo porque esos
+  // objetos son modulo-level, no estado de React.
+  const [, setNodosConfigVersion] = useState(0);
+  useEffect(() => { aplicarNodosConfigWeb().then(() => setNodosConfigVersion((v) => v + 1)); }, []);
   const [orden, setOrden] = useState(buildInitialOrder());
   const [ordenEditandoId, setOrdenEditandoId] = useState(null);
   // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto, panel web) ──
@@ -2211,6 +2242,11 @@ export default function App() {
   const [mikrotikConfigError, setMikrotikConfigError] = useState("");
   const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
   const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
+  const [nodosConfigFilas, setNodosConfigFilas] = useState([]);
+  const [nodosConfigLoading, setNodosConfigLoading] = useState(false);
+  const [nodosConfigSaving, setNodosConfigSaving] = useState(false);
+  const [nodosConfigInfo, setNodosConfigInfo] = useState("");
+  const [nodosConfigError, setNodosConfigError] = useState("");
   const [loteForm, setLoteForm] = useState({ routerKey: "", nodo: "", ipInicio: "", ipFin: "", numeroInicio: "", profile: "", password: "", localAddress: "" });
   const [lotePreview, setLotePreview] = useState(null); // array de {usuario,ip,password,profile}
   const [loteResultados, setLoteResultados] = useState(null); // array tras crear de verdad
@@ -3844,7 +3880,7 @@ export default function App() {
   }
 
   // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
-  const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06","Nod_07"].includes(String(nodo || ""));
+  const esDimNodo = (nodo) => DIM_NODOS_WEB.has(String(normalizarEtiquetaNodo(nodo) || "").trim().toLowerCase());
 
   const abrirFactPanel = async (cli) => {
     setFactPanelOpen(cli.id);
@@ -12006,6 +12042,90 @@ export default function App() {
       setLoteError(e.message);
     }
     setLoteEstado("");
+  };
+
+  // ── Administracion de nodos (tabla nodos_config) ────────────────────────
+  // Reemplaza el checklist manual de "editar codigo en 3 archivos" para
+  // agregar un nodo -- esta pantalla escribe directo a Supabase, y
+  // aplicarNodosConfigWeb() (llamado al guardar) refresca en caliente los
+  // mapas que usa el resto del panel, sin recargar la pagina.
+  const cargarNodosConfigFilas = async () => {
+    setNodosConfigLoading(true); setNodosConfigError("");
+    try {
+      const { data, error } = await supabase.from("nodos_config").select("*").order("orden", { ascending: true });
+      if (error) throw error;
+      setNodosConfigFilas(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setNodosConfigError(e.message);
+    }
+    setNodosConfigLoading(false);
+  };
+
+  const handleNodoConfigChange = (idx, field, value) => {
+    setNodosConfigFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, [field]: value } : f)));
+  };
+
+  const agregarNodoConfigNuevo = () => {
+    setNodosConfigFilas((prev) => [
+      ...prev,
+      {
+        nodo: "", empresa: "Americanet", mikrowisp_router_id: null,
+        usuario_prefix: "", usuario_suffix: "", usuario_pad: 0, usuario_start: 1,
+        password_fija: "", vlan: "", es_dim: false, mkw_auto: false, activo: true,
+        orden: prev.length + 1, notas: "", _nuevo: true,
+      },
+    ]);
+  };
+
+  const eliminarNodoConfigFila = async (idx, nodo, esNuevo) => {
+    if (esNuevo) { setNodosConfigFilas((prev) => prev.filter((_, i) => i !== idx)); return; }
+    const ok = window.confirm(`¿Eliminar la configuración del nodo "${nodo}"? Esto no borra clientes ni órdenes, solo la configuración (patrón de usuario, ID de Mikrowisp, etc).`);
+    if (!ok) return;
+    try {
+      const { error } = await supabase.from("nodos_config").delete().eq("nodo", nodo);
+      if (error) throw error;
+      setNodosConfigFilas((prev) => prev.filter((f) => f.nodo !== nodo));
+      await aplicarNodosConfigWeb();
+      setNodosConfigVersionBump();
+    } catch (e) {
+      setNodosConfigError(e.message);
+    }
+  };
+
+  const [, _setNodosConfigVersionForce] = useState(0);
+  const setNodosConfigVersionBump = () => _setNodosConfigVersionForce((v) => v + 1);
+
+  const guardarNodosConfigFilas = async () => {
+    const invalidos = nodosConfigFilas.filter((f) => !String(f.nodo || "").trim());
+    if (invalidos.length) { setNodosConfigError("Todos los nodos necesitan un nombre (ej. Nod_08)."); return; }
+    setNodosConfigSaving(true); setNodosConfigError(""); setNodosConfigInfo("");
+    try {
+      const payload = nodosConfigFilas.map((f) => ({
+        nodo: String(f.nodo).trim(),
+        empresa: f.empresa || "Americanet",
+        mikrowisp_router_id: f.mikrowisp_router_id === "" || f.mikrowisp_router_id == null ? null : Number(f.mikrowisp_router_id),
+        usuario_prefix: f.usuario_prefix || "",
+        usuario_suffix: f.usuario_suffix || "",
+        usuario_pad: Number(f.usuario_pad || 0),
+        usuario_start: Number(f.usuario_start || 1),
+        password_fija: f.password_fija || null,
+        vlan: f.vlan || null,
+        es_dim: !!f.es_dim,
+        mkw_auto: !!f.mkw_auto,
+        activo: f.activo !== false,
+        orden: Number(f.orden || 0),
+        notas: f.notas || null,
+      }));
+      const { error } = await supabase.from("nodos_config").upsert(payload, { onConflict: "nodo" });
+      if (error) throw error;
+      await aplicarNodosConfigWeb();
+      setNodosConfigVersionBump();
+      setNodosConfigInfo(`✅ Guardado. ${payload.length} nodo(s) configurados. Ya está activo en toda la app.`);
+      await cargarNodosConfigFilas();
+    } catch (e) {
+      setNodosConfigError(e.message);
+    }
+    setNodosConfigSaving(false);
   };
 
   const agregarMikrotikRouter = () => {
@@ -21124,6 +21244,15 @@ export default function App() {
                   {esAdminSesion ? (
                     <button
                       type="button"
+                      onClick={() => { setUsuariosPanelTab("nodos"); void cargarNodosConfigFilas(); }}
+                      style={usuariosPanelTab === "nodos" ? primaryButton : secondaryButton}
+                    >
+                      Nodos
+                    </button>
+                  ) : null}
+                  {esAdminSesion ? (
+                    <button
+                      type="button"
                       onClick={() => { setUsuariosPanelTab("app"); void cargarAppControlDesdeSupabase(); }}
                       style={usuariosPanelTab === "app" ? primaryButton : secondaryButton}
                     >
@@ -21759,6 +21888,105 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+            ) : null}
+
+            {esAdminSesion && usuariosPanelTab === "nodos" ? (
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center", marginBottom: "16px" }}>
+                  <div style={{ display: "grid", gap: "4px" }}>
+                    <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Configuración de Nodos</h2>
+                    <p style={{ ...subtitleStyle, margin: 0 }}>
+                      Agrega o edita nodos aquí — el patrón de usuario, contraseña fija, ID de router en Mikrowisp, VLAN,
+                      si es DimFiber y si tiene automatización se aplican al instante en toda la app, sin tocar código.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button type="button" style={secondaryButton} onClick={cargarNodosConfigFilas} disabled={nodosConfigLoading}>
+                      {nodosConfigLoading ? "Cargando..." : "Recargar"}
+                    </button>
+                    <button type="button" style={secondaryButton} onClick={agregarNodoConfigNuevo}>+ Agregar nodo</button>
+                    <button type="button" style={primaryButton} onClick={guardarNodosConfigFilas} disabled={nodosConfigSaving}>
+                      {nodosConfigSaving ? "Guardando..." : "Guardar configuración"}
+                    </button>
+                  </div>
+                </div>
+
+                {nodosConfigError && <div style={{ fontSize: "12px", color: "#dc2626", fontWeight: 600, marginBottom: "10px" }}>❌ {nodosConfigError}</div>}
+                {nodosConfigInfo && <div style={{ fontSize: "12px", color: "#15803d", fontWeight: 600, marginBottom: "10px" }}>{nodosConfigInfo}</div>}
+
+                <div style={{ overflowX: "auto", border: "1px solid #dbe6f5", borderRadius: "12px" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", minWidth: "1400px" }}>
+                    <thead style={{ background: "#f8fafc" }}>
+                      <tr>
+                        {["Nodo", "Empresa", "ID Mikrowisp", "Usuario prefijo", "Usuario sufijo", "Pad", "Usuario inicio", "Clave fija", "VLAN", "DimFiber", "Auto Mikrowisp", "Activo", "Orden", "Notas", ""].map((h) => (
+                          <th key={h} style={{ textAlign: "left", padding: "8px 10px", borderBottom: "2px solid #dbe6f5", whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nodosConfigFilas.map((f, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #eef2f7" }}>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "90px" }} value={f.nodo || ""} disabled={!f._nuevo}
+                              onChange={(e) => handleNodoConfigChange(idx, "nodo", e.target.value)} placeholder="Nod_08" />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <select style={{ ...inputStyle, width: "110px" }} value={f.empresa || "Americanet"} onChange={(e) => handleNodoConfigChange(idx, "empresa", e.target.value)}>
+                              <option value="Americanet">Americanet</option>
+                              <option value="DIM">DIM</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "80px" }} value={f.mikrowisp_router_id ?? ""} onChange={(e) => handleNodoConfigChange(idx, "mikrowisp_router_id", e.target.value.replace(/\D/g, ""))} placeholder="ej. 12" />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "90px" }} value={f.usuario_prefix || ""} onChange={(e) => handleNodoConfigChange(idx, "usuario_prefix", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "100px" }} value={f.usuario_suffix || ""} onChange={(e) => handleNodoConfigChange(idx, "usuario_suffix", e.target.value)} placeholder="@americanet" />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "50px" }} value={f.usuario_pad ?? 0} onChange={(e) => handleNodoConfigChange(idx, "usuario_pad", e.target.value.replace(/\D/g, ""))} />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "80px" }} value={f.usuario_start ?? 1} onChange={(e) => handleNodoConfigChange(idx, "usuario_start", e.target.value.replace(/\D/g, ""))} />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "110px" }} value={f.password_fija || ""} onChange={(e) => handleNodoConfigChange(idx, "password_fija", e.target.value)} placeholder="vacío = DNI" />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "60px" }} value={f.vlan || ""} onChange={(e) => handleNodoConfigChange(idx, "vlan", e.target.value.replace(/\D/g, ""))} />
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                            <input type="checkbox" checked={!!f.es_dim} onChange={(e) => handleNodoConfigChange(idx, "es_dim", e.target.checked)} />
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                            <input type="checkbox" checked={!!f.mkw_auto} onChange={(e) => handleNodoConfigChange(idx, "mkw_auto", e.target.checked)} />
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                            <input type="checkbox" checked={f.activo !== false} onChange={(e) => handleNodoConfigChange(idx, "activo", e.target.checked)} />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "55px" }} value={f.orden ?? 0} onChange={(e) => handleNodoConfigChange(idx, "orden", e.target.value.replace(/\D/g, ""))} />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <input style={{ ...inputStyle, width: "160px" }} value={f.notas || ""} onChange={(e) => handleNodoConfigChange(idx, "notas", e.target.value)} />
+                          </td>
+                          <td style={{ padding: "4px 6px" }}>
+                            <button type="button" style={{ ...secondaryButton, color: "#dc2626", borderColor: "#dc2626", padding: "5px 10px", fontSize: "11px" }}
+                              onClick={() => eliminarNodoConfigFila(idx, f.nodo, f._nuevo)}>
+                              Eliminar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {!nodosConfigFilas.length && !nodosConfigLoading && (
+                        <tr><td colSpan={15} style={{ padding: "16px", textAlign: "center", color: "#94a3b8" }}>Sin nodos cargados — presiona "Recargar" o "+ Agregar nodo".</td></tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             ) : null}
