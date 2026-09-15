@@ -1989,6 +1989,16 @@ function QRScanner({ onDetected, onClose }) {
 export default function App() {
   const [orden, setOrden] = useState(buildInitialOrder());
   const [ordenEditandoId, setOrdenEditandoId] = useState(null);
+  // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto, panel web) ──
+  const [mkwPerfilesOrdenApp, setMkwPerfilesOrdenApp] = useState([]);
+  const [mkwRedesOrdenApp, setMkwRedesOrdenApp] = useState([]);
+  const [mkwPlantillasOrdenApp, setMkwPlantillasOrdenApp] = useState([]);
+  const [cargandoCatalogoOrdenApp, setCargandoCatalogoOrdenApp] = useState(false);
+  const [buscandoIpOrdenApp, setBuscandoIpOrdenApp] = useState(false);
+  const [ordenIdPerfil, setOrdenIdPerfil] = useState("");
+  const [ordenIdRedIpv4, setOrdenIdRedIpv4] = useState("");
+  const [ordenIdPlantilla, setOrdenIdPlantilla] = useState("");
+  const [ordenIpMikrotik, setOrdenIpMikrotik] = useState("");
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [clienteEnDB, setClienteEnDB] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
@@ -3673,6 +3683,124 @@ export default function App() {
       setMikrowispLoading((p) => ({ ...p, [id]: false }));
     }
   };
+
+  // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto, panel web) ──
+  // Misma logica que la version del sidebar (SidebarApp.jsx), pero silenciosa
+  // (sin window.alert) porque se dispara sola al guardar la orden, no por un
+  // clic manual del usuario.
+  function ipEnRedCidrOrdenApp(ip, cidr) {
+    const [base, bitsStr] = String(cidr || "").split("/");
+    const bits = Number(bitsStr);
+    if (!base || !Number.isFinite(bits)) return false;
+    const toInt = (s) => String(s).split(".").reduce((acc, o) => (acc << 8) + (Number(o) || 0), 0) >>> 0;
+    const mask = bits <= 0 ? 0 : (0xFFFFFFFF << (32 - bits)) >>> 0;
+    try { return (toInt(ip) & mask) === (toInt(base) & mask); } catch { return false; }
+  }
+
+  async function cargarCatalogoMikrowispOrdenApp() {
+    setCargandoCatalogoOrdenApp(true);
+    try {
+      const [pR, rR, plR] = await Promise.all([
+        fetch(N8N_PROXY_SVC, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodo: 5, accion: "GetPerfiles", payload: {} }) }).then(r => r.json()).catch(() => ({})),
+        fetch(N8N_PROXY_SVC, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodo: 5, accion: "GetRedesIpv4", payload: {} }) }).then(r => r.json()).catch(() => ({})),
+        fetch(N8N_PROXY_SVC, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nodo: 5, accion: "GetPlantillasFacturacion", payload: {} }) }).then(r => r.json()).catch(() => ({})),
+      ]);
+      const pd = pR?.data ?? pR;
+      const perfsRaw = pd?.datos || pd?.perfiles || (Array.isArray(pd) ? pd : []);
+      const perfs = perfsRaw
+        .filter(p => p.estado === "ACTIVADO" && /^[^a-z]*$/.test(String(p.plan || "")))
+        .sort((a, b) => (parseInt(String(a.velocidad || "0"), 10) || 0) - (parseInt(String(b.velocidad || "0"), 10) || 0));
+      const rd = rR?.data ?? rR;
+      const redes = rd?.datos || (Array.isArray(rd) ? rd : []);
+      const pld = plR?.data ?? plR;
+      const plantillas = pld?.plantillas || (Array.isArray(pld) ? pld : []);
+      setMkwPerfilesOrdenApp(perfs);
+      setMkwRedesOrdenApp(redes);
+      setMkwPlantillasOrdenApp(plantillas);
+      if (plantillas.length) setOrdenIdPlantilla(prev => prev || String(plantillas[0].id));
+    } catch (_) { /* si falla, los selectores quedan vacios y no bloquean la orden */ }
+    setCargandoCatalogoOrdenApp(false);
+  }
+
+  async function buscarIpOrdenNod04App(pppuserParam, redesParam) {
+    const pppuser = String(pppuserParam || orden.usuarioNodo || "").trim();
+    if (!pppuser) return;
+    setBuscandoIpOrdenApp(true);
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo: "Nod_04", userPppoe: pppuser, dni: "", cliente: "" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      const ip = json?.mikrotik?.ip || "";
+      if (!ip) { setBuscandoIpOrdenApp(false); return; }
+      const redes = redesParam || mkwRedesOrdenApp;
+      let idRed = "";
+      for (const red of redes) {
+        const cidr = red.red || red.cidr || red.network || "";
+        if (cidr && ipEnRedCidrOrdenApp(ip, cidr)) { idRed = String(red.id); break; }
+      }
+      setOrdenIpMikrotik(ip);
+      if (idRed) setOrdenIdRedIpv4(idRed);
+    } catch (_) { /* silencioso: se puede completar a mano */ }
+    setBuscandoIpOrdenApp(false);
+  }
+
+  async function crearClienteMikrowispNod04App(datos) {
+    const dni = String(datos.dni || "").replace(/\D/g, "");
+    if (!dni) return { ok: false, error: "Sin DNI" };
+    const extraerId = (r) =>
+      r?.datos?.[0]?.id || r?.data?.[0]?.id ||
+      r?.idcliente || r?.id_cliente || r?.id ||
+      r?.datos?.id || r?.data?.id;
+    try {
+      const check = await mkFetchNod04("GetClientsDetails", { cedula: dni });
+      let id = extraerId(check.json);
+      if (!id) {
+        const add = await mkFetchNod04("NewUser", {
+          nombre: String(datos.nombre || "").trim(),
+          cedula: dni,
+          correo: String(datos.email || "").trim(),
+          telefono: "",
+          movil: String(datos.celular || "").trim(),
+          direccion_principal: String(datos.direccion || "").trim(),
+          codigo: dni,
+        });
+        if (add.json?.estado === "error") throw new Error(add.json?.mensaje || `HTTP ${add.status}`);
+        id = extraerId(add.json);
+        if (!id) {
+          const retry = await mkFetchNod04("GetClientsDetails", { cedula: dni });
+          id = extraerId(retry.json);
+        }
+        if (!id) throw new Error(add.json?.mensaje || add.json?.message || "Sin ID de respuesta");
+        await mkFetchNod04("UpdateUser", { idcliente: id, datos: { codigo: dni } });
+      }
+      // Sincronizar mikrowisp_clientes, igual que la version del sidebar,
+      // para que las busquedas por telefono encuentren a este cliente.
+      try {
+        const estadoExistente = check.json?.datos?.[0]?.estado || check.json?.data?.[0]?.estado || "";
+        const movilRaw = String(datos.celular || "").trim();
+        const movil = movilRaw.split(",").map(t => {
+          const s = t.trim();
+          return s && !s.startsWith("51") ? "51" + s : s;
+        }).filter(Boolean).join(",");
+        await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", 5);
+        await supabase.from("mikrowisp_clientes").insert({
+          mikrowisp_id: id,
+          cedula: dni,
+          nombre: String(datos.nombre || "").trim(),
+          telefonos: movil,
+          estado: estadoExistente || "ACTIVO",
+          nodo: 5,
+          updated_at: new Date().toISOString(),
+          agregado_por: "Automatico (orden)",
+        });
+      } catch (_) { /* no critico */ }
+      return { ok: true, id };
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
 
   // ── Agregar servicio Mikrowisp ────────────────────────────────────────────
   const esDimNodo = (nodo) => ["Nod_04","Nod_05","Nod_06","Nod_07"].includes(String(nodo || ""));
@@ -6420,8 +6548,12 @@ export default function App() {
   };
 
   const handleNodoChange = (nodoValue) => {
+    const nextNodo = String(nodoValue || "").trim();
+    // Automatizacion Mikrowisp Nod_04 (piloto): limpiar lo del nodo anterior
+    // y cargar el catalogo de planes/redes/plantillas de este.
+    setOrdenIdPerfil(""); setOrdenIdRedIpv4(""); setOrdenIdPlantilla(""); setOrdenIpMikrotik("");
+    let sugeridoParaIp = "";
     setOrden((prev) => {
-      const nextNodo = String(nodoValue || "").trim();
       const passwordSugerido = sugerirPasswordPorNodo(nextNodo, prev.dni);
       const empresaAuto = prev.empresa || empresaPorNodo(nextNodo);
       const vlanAuto = VLAN_POR_NODO_WEB[nextNodo] || "";
@@ -6430,6 +6562,7 @@ export default function App() {
       }
       const sugerido = sugerirUsuarioPorNodo(nextNodo, usuariosNodoUsados, usuariosNodoHabilitadosManual, usuariosNodoBloqueadosSet);
       if (!sugerido) return { ...prev, nodo: nextNodo, empresa: empresaAuto, vlan: vlanAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
+      sugeridoParaIp = sugerido;
       return {
         ...prev,
         nodo: nextNodo,
@@ -6439,6 +6572,10 @@ export default function App() {
         passwordUsuario: passwordSugerido || prev.passwordUsuario,
       };
     });
+    if (nextNodo === "Nod_04") {
+      // Encadenado: espera a que cargue el catalogo (redes) antes de buscar la IP.
+      cargarCatalogoMikrowispOrdenApp().then(() => { if (sugeridoParaIp) buscarIpOrdenNod04App(sugeridoParaIp); });
+    }
   };
 
   const normalizarUsuarioNodo = (value = "") => String(value || "").trim().toLowerCase();
@@ -9921,6 +10058,30 @@ export default function App() {
         } else {
           setOrdenes((prev) => [merged, ...prev.filter((x) => String(x.codigo) !== String(merged.codigo))]);
           escribirLog({ accion: "crear_orden", categoria: "orden", tabla: "ordenes", registro_id: merged.id, detalle: { codigo: merged.codigo, empresa: merged.empresa, cliente: merged.nombre, tecnico: merged.tecnico }, actor: usuarioSesion });
+
+          // Automatizacion Mikrowisp Nod_04 (piloto): crear el cliente en
+          // segundo plano, sin bloquear la creacion de la orden. Si falla,
+          // la orden queda creada igual y se completa a mano con el wizard.
+          if (orden.nodo === "Nod_04" && orden.tipoActuacion === "Instalacion Internet" && merged?.id) {
+            const ordenId = merged.id;
+            const idPerfilNum = ordenIdPerfil ? Number(ordenIdPerfil) : null;
+            const idRedNum = ordenIdRedIpv4 ? Number(ordenIdRedIpv4) : null;
+            const idPlantillaNum = ordenIdPlantilla ? Number(ordenIdPlantilla) : null;
+            const ipSugerida = ordenIpMikrotik || null;
+            crearClienteMikrowispNod04App({ dni: payload.dni, nombre: payload.nombre, email: payload.email, celular: payload.celular, direccion: payload.direccion })
+              .then((r) => {
+                const update = {
+                  mikrowisp_cliente_creado: !!r.ok,
+                  mikrowisp_id_perfil: idPerfilNum,
+                  mikrowisp_id_red_ipv4: idRedNum,
+                  mikrowisp_id_plantilla: idPlantillaNum,
+                  mikrowisp_ip_sugerida: ipSugerida,
+                };
+                if (r.ok) update.mikrowisp_id_cliente = r.id;
+                return supabase.from(ORDENES_TABLE).update(update).eq("id", ordenId);
+              })
+              .catch(() => {});
+          }
         }
       } catch (e) {
         const msg = String(e?.message || "No se pudo guardar orden en Supabase.");
@@ -9965,6 +10126,7 @@ export default function App() {
 
     setOrdenEditandoId(null);
     setOrden(buildInitialOrder());
+    setOrdenIdPerfil(""); setOrdenIdRedIpv4(""); setOrdenIdPlantilla(""); setOrdenIpMikrotik("");
     setFotosClienteDni([]);
     setEnviarWhatsappOrden(true);
     setOrdenIncluirIptv(false);
@@ -16336,7 +16498,30 @@ export default function App() {
               <div style={{ ...cardStyle, borderRadius: "14px" }}>
                 <h2 style={{ ...sectionTitleStyle, marginBottom: "12px" }}>Paso 3. Servicio</h2>
                 <div style={formGridStyle}>
-                  {mostrarCamposPlan && (
+                  {mostrarCamposPlan && orden.nodo === "Nod_04" ? (
+                    <>
+                      <div>
+                        <label style={labelStyle}>Plan (Mikrowisp)</label>
+                        <select style={inputStyle} value={ordenIdPerfil} onChange={(e) => {
+                          const idPerfil = e.target.value;
+                          const perfil = mkwPerfilesOrdenApp.find(p => String(p.id) === idPerfil);
+                          setOrdenIdPerfil(idPerfil);
+                          if (perfil) { handleChange("velocidad", String(perfil.plan || "").trim()); handleChange("precioPlan", String(perfil.costo || "")); }
+                        }}>
+                          <option value="">{cargandoCatalogoOrdenApp ? "Cargando planes..." : "Seleccionar"}</option>
+                          {mkwPerfilesOrdenApp.map(pf => <option key={pf.id} value={pf.id}>{String(pf.plan || "").trim()} — S/{pf.costo}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>Facturación</label>
+                        <select style={inputStyle} value={ordenIdPlantilla} onChange={(e) => setOrdenIdPlantilla(e.target.value)}>
+                          <option value="">{cargandoCatalogoOrdenApp ? "Cargando..." : "Seleccionar"}</option>
+                          {mkwPlantillasOrdenApp.map(pl => <option key={pl.id} value={pl.id}>{pl.nombre}</option>)}
+                        </select>
+                      </div>
+                    </>
+                  ) : mostrarCamposPlan && (
                     <>
                       <div>
                         <label style={labelStyle}>Velocidad a contratar</label>
@@ -16389,14 +16574,22 @@ export default function App() {
                       )}
 
                       <div style={{ position: "relative" }}>
-                        <label style={labelStyle}>Usuario</label>
+                        <label style={labelStyle}>Usuario{orden.nodo === "Nod_04" && (
+                          <span style={{ marginLeft: 8, fontSize: 10, fontFamily: "monospace", fontWeight: 700, padding: "3px 7px", borderRadius: 6,
+                            background: buscandoIpOrdenApp ? "#eff6ff" : ordenIpMikrotik ? "#f0fdf4" : "#f9fafb",
+                            color: buscandoIpOrdenApp ? "#1d4ed8" : ordenIpMikrotik ? "#15803d" : "#9ca3af",
+                            border: `1px solid ${buscandoIpOrdenApp ? "#bfdbfe" : ordenIpMikrotik ? "#86efac" : "#e5e7eb"}` }}
+                            title="IP detectada automaticamente en el Mikrotik — no editable">
+                            {buscandoIpOrdenApp ? "Buscando IP..." : ordenIpMikrotik || "Sin IP"}
+                          </span>
+                        )}</label>
                         <input
                           style={inputStyle}
                           value={orden.usuarioNodo}
                           onChange={(e) => handleChange("usuarioNodo", e.target.value)}
                           placeholder="user730@americanet"
                           onFocus={() => setShowUsuarioDropdown(true)}
-                          onBlur={() => setTimeout(() => setShowUsuarioDropdown(false), 150)}
+                          onBlur={() => { setTimeout(() => setShowUsuarioDropdown(false), 150); if (orden.nodo === "Nod_04") buscarIpOrdenNod04App(); }}
                         />
                         {showUsuarioDropdown && usuariosDisponiblesNodo.length > 0 && (
                           <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #d1d5db", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.12)", zIndex: 999, maxHeight: "220px", overflowY: "auto" }}>
@@ -16410,7 +16603,7 @@ export default function App() {
                               return (
                                 <div
                                   key={u}
-                                  onMouseDown={() => { handleChange("usuarioNodo", u); setShowUsuarioDropdown(false); }}
+                                  onMouseDown={() => { handleChange("usuarioNodo", u); setShowUsuarioDropdown(false); if (orden.nodo === "Nod_04") buscarIpOrdenNod04App(u); }}
                                   style={{ padding: "9px 14px", cursor: "pointer", fontSize: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", color: ocup ? "#dc2626" : i === 0 ? "#1e40af" : "#374151", fontWeight: i === 0 ? 700 : 400, background: i === 0 ? "#eff6ff" : "transparent", borderBottom: i < usuariosDisponiblesNodo.length - 1 ? "1px solid #f3f4f6" : "none" }}
                                 >
                                   <span>{u}{i === 0 ? " ✓" : ""}</span>
