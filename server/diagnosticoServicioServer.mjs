@@ -10,6 +10,8 @@ const DEFAULT_MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
 const DEFAULT_SMARTOLT_API_BASE = "https://americanet.smartolt.com/api";
 const WISPRO_BASE = "https://www.cloud.wispro.co/api/v1";
 const DEFAULT_SMARTOLT_TOKEN = "0cb1ad391ea4458cab6efe97769c761d";
+const DEFAULT_CHATWOOT_BASE = "https://chat.americanet.club";
+const DEFAULT_CHATWOOT_TOKEN = "Wm9K5UiCrfJPcgFJrWgxftYv";
 const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const SERVER_PORT = Number(process.env.DIAGNOSTICO_SERVER_PORT || 8787) || 8787;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
@@ -25,6 +27,8 @@ const SMARTOLT_API_BASE =
     .trim()
     .replace(/\/+$/, "") || DEFAULT_SMARTOLT_API_BASE;
 const SMARTOLT_TOKEN = String(process.env.SMARTOLT_TOKEN || process.env.VITE_SMART_OLT_TOKEN || DEFAULT_SMARTOLT_TOKEN).trim();
+const CHATWOOT_BASE = String(process.env.CHATWOOT_BASE || DEFAULT_CHATWOOT_BASE).trim().replace(/\/+$/, "") || DEFAULT_CHATWOOT_BASE;
+const CHATWOOT_TOKEN = String(process.env.CHATWOOT_TOKEN || DEFAULT_CHATWOOT_TOKEN).trim();
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
@@ -860,6 +864,185 @@ const proxyMikrowispNod04NewUser = async (req) => {
   return { status: response.status, json };
 };
 
+// ── Proxy generico "sidebar-proxy" (reemplaza el webhook de n8n) ───────────
+// Mismo contrato que el nodo "Code_Proxy" de n8n: recibe {nodo, accion,
+// payload, token} y decide a que Mikrowisp/Chatwoot/SmartOLT pegarle. Vive
+// aca (nuestro backend) en vez de n8n para evitar el salto extra de red y la
+// contencion con otros workflows (bot de pagos) que corren en esa misma
+// instancia de n8n compartida.
+const MKW_PROXY_TIMEOUT_MS = 20000;
+const fetchConTimeout = async (url, opts = {}, ms = MKW_PROXY_TIMEOUT_MS) => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error(`Tiempo de espera agotado (${ms}ms) llamando a ${url}`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+// Nod_04=5, Nod_05=11, Nod_06=12 son el mismo Mikrowisp de DimFiber
+// (app.dimfiber.com); el "4" se mantiene por compatibilidad con el codigo
+// viejo de n8n que ya usaba ese valor ademas del 5.
+const MKW_PROXY_NODOS_DIM = new Set([4, 5, 11, 12]);
+const MKW_PROXY_ACCIONES = new Set([
+  "GetInvoices", "GetInvoice", "GetClientsDetails", "PaidInvoice", "PromesaPago",
+  "CreateInvoice", "CreateInvoiceLibre", "DeleteInvoice", "DeleteTransaccion",
+  "ActiveService", "SuspendService", "UpdateUser", "GetPerfiles", "EditService",
+  "GetRedesIpv4", "NewService", "GetPlantillasFacturacion", "NewSMS",
+  "ChangeFacturacionConfig",
+]);
+
+const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride) => {
+  if (!MKW_PROXY_ACCIONES.has(accion)) throw new Error("Accion no permitida: " + accion);
+  const isDim = MKW_PROXY_NODOS_DIM.has(Number(nodo || 0));
+  const base = isDim ? MIKROWISP_NOD04_API_BASE : MIKROWISP_API_BASE;
+  const defaultTok = isDim ? MIKROWISP_NOD04_TOKEN : MIKROWISP_TOKEN;
+  const tok = tokenOverride || defaultTok;
+  const endpoint = buildAbsoluteApiUrl(base, "/" + accion);
+  const response = await fetchConTimeout(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ token: tok, ...(payload || {}) }),
+  });
+  const json = await readProxyJsonResponse(response, "Mikrowisp " + accion);
+  return json;
+};
+
+const cwBuscarContacto = async (phone) => {
+  const local = String(phone || "").slice(-9);
+  for (const q of [phone, "51" + local, local]) {
+    const sr = await fetchConTimeout(
+      `${CHATWOOT_BASE}/api/v1/accounts/1/contacts/search?q=${encodeURIComponent(q)}`,
+      { headers: { api_access_token: CHATWOOT_TOKEN } },
+    ).then((r) => r.json()).catch(() => ({}));
+    const contacts = sr?.payload?.contacts || sr?.payload || [];
+    const found = Array.isArray(contacts) ? contacts[0] : null;
+    if (found?.id) return found.id;
+  }
+  return null;
+};
+
+const cwFetchAllMessages = async (convId, acctId) => {
+  let all = [];
+  let beforeId = null;
+  for (let i = 0; i < 6; i++) {
+    let url = `${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`;
+    if (beforeId) url += "?before=" + beforeId;
+    const mr = await fetchConTimeout(url, { headers: { api_access_token: CHATWOOT_TOKEN } }).then((r) => r.json()).catch(() => ({}));
+    const page = mr?.payload?.messages || mr?.payload || [];
+    if (!page.length) break;
+    all = all.concat(page);
+    const idsPagina = page.map((m) => Number(m.id)).filter((n) => Number.isFinite(n));
+    if (!idsPagina.length) break;
+    const masViejo = Math.min(...idsPagina);
+    if (beforeId !== null && masViejo >= beforeId) break;
+    beforeId = masViejo;
+    if (page.length < 20) break;
+  }
+  return all;
+};
+
+const handleChatwootMessage = async (payload) => {
+  const phone = String(payload?.phone || "").replace(/\D/g, "");
+  const msg = String(payload?.message || "");
+  const acctId = String(payload?.account_id || "1");
+  const attachmentUrl = payload?.attachment_url || null;
+  if (!phone || !msg) throw new Error("phone y message requeridos");
+  const contactId = await cwBuscarContacto(phone);
+  if (!contactId) throw new Error("Contacto no encontrado: " + phone);
+  const cr = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+    headers: { api_access_token: CHATWOOT_TOKEN },
+  }).then((r) => r.json()).catch(() => ({}));
+  const convs = cr?.payload || [];
+  const conv = convs.find((c) => c.status === "open") || convs[0];
+  if (!conv?.id) throw new Error("Sin conversación activa");
+  if (attachmentUrl) {
+    const imgRes = await fetchConTimeout(attachmentUrl, {});
+    const buf = Buffer.from(await imgRes.arrayBuffer());
+    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    const fd = new FormData();
+    fd.append("attachments[]", new Blob([buf], { type: contentType }), "imagen");
+    fd.append("message_type", "outgoing");
+    fd.append("private", "false");
+    const upRes = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
+      method: "POST",
+      headers: { api_access_token: CHATWOOT_TOKEN },
+      body: fd,
+    });
+    await readProxyJsonResponse(upRes, "Chatwoot upload imagen").catch(() => ({}));
+    const txtRes = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", api_access_token: CHATWOOT_TOKEN },
+      body: JSON.stringify({ content: msg, message_type: "outgoing", private: false }),
+    });
+    return await readProxyJsonResponse(txtRes, "Chatwoot mensaje texto");
+  }
+  const mr = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", api_access_token: CHATWOOT_TOKEN },
+    body: JSON.stringify({ content: msg, message_type: "outgoing", private: false }),
+  });
+  return await readProxyJsonResponse(mr, "Chatwoot mensaje");
+};
+
+const handleGetChatwootMessages = async (payload) => {
+  const phone = String(payload?.phone || "").replace(/\D/g, "");
+  const acctId = String(payload?.account_id || "1");
+  const directConvId = payload?.conv_id || null;
+  if (directConvId) return { messages: await cwFetchAllMessages(directConvId, acctId) };
+  if (!phone) throw new Error("phone o conv_id requerido");
+  const contactId = await cwBuscarContacto(phone);
+  if (!contactId) throw new Error("Contacto no encontrado");
+  const cr = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+    headers: { api_access_token: CHATWOOT_TOKEN },
+  }).then((r) => r.json()).catch(() => ({}));
+  const convs = cr?.payload || [];
+  let allMessages = [];
+  for (const conv of convs.slice(0, 3)) {
+    if (!conv?.id) continue;
+    allMessages = allMessages.concat(await cwFetchAllMessages(conv.id, acctId));
+  }
+  return { messages: allMessages };
+};
+
+const handleSmartOltSignal = async (sn) => {
+  if (!sn) throw new Error("SN requerido");
+  const res = await fetchConTimeout(
+    `${SMARTOLT_API_BASE}/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`,
+    { headers: { "X-Token": SMARTOLT_TOKEN, Accept: "application/json" } },
+  );
+  return await readProxyJsonResponse(res, "SmartOLT signal");
+};
+
+const proxyMikrowispGenerico = async (req) => {
+  const rawBody = await readRawBody(req);
+  let body = {};
+  try { body = rawBody.length ? JSON.parse(rawBody.toString("utf8")) : {}; } catch { body = {}; }
+  const accion = body.accion || "";
+  try {
+    if (accion === "ChatwootMessage") {
+      const data = await handleChatwootMessage(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "GetChatwootMessages") {
+      const data = await handleGetChatwootMessages(body.payload || {});
+      return { status: 200, json: { ok: true, ...data } };
+    }
+    if (accion === "SmartOltSignal") {
+      const data = await handleSmartOltSignal(body.sn || "");
+      return { status: 200, json: { ok: true, data } };
+    }
+    const data = await handleMkwProxyAccion(accion, body.nodo, body.payload, body.token);
+    return { status: 200, json: { ok: true, data } };
+  } catch (e) {
+    return { status: 200, json: { ok: false, error: e.message } };
+  }
+};
+
 const proxySmartOltRequest = async (req) => {
   const url = new URL(req.url || "", "http://localhost");
   const targetPath = url.pathname.replace(/^\/api\/smartolt/, "");
@@ -941,6 +1124,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp-nod04/NewUser") {
       const result = await proxyMikrowispNod04NewUser(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/mikrowisp-proxy") {
+      const result = await proxyMikrowispGenerico(req);
       writeJson(res, result.status, result.json);
       return;
     }

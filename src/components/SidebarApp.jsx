@@ -100,8 +100,12 @@ async function upsertIptvClienteConFallback(payload) {
     throw rRes.error;
   }
 }
-const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
+// Antes n8n.americanet.space/webhook/sidebar-proxy -- migrado a nuestro
+// propio backend (mismo contrato {nodo,accion,payload,token}) para evitar el
+// salto extra de red y la contencion con otros workflows (bot de pagos) que
+// corren en esa misma instancia de n8n compartida.
+const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
 const MKW_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
 // Sin timeout, un fetch que Mikrowisp/n8n nunca cierra deja el boton

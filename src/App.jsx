@@ -3957,7 +3957,7 @@ export default function App() {
         const nodoNum = mikrowispRouterIdParaCliente(cli.nodo, cli.vlan);
         setMkwWizardFacturasLoad(true);
         setMkwWizardFacturas([]);
-        const r = await fetch("https://n8n.americanet.space/webhook/sidebar-proxy", {
+        const r = await fetch(`${DIAGNO_BASE}/api/mikrowisp-proxy`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ nodo: nodoNum, accion: "GetInvoices", payload: { idcliente: datos.id } })
         });
@@ -4032,7 +4032,9 @@ export default function App() {
     } catch { setMkwWizardStep(1); /* si API falla, mostrar paso 1 */ }
   };
 
-  const N8N_PROXY_SVC = "https://n8n.americanet.space/webhook/sidebar-proxy";
+  // Antes n8n.americanet.space/webhook/sidebar-proxy -- migrado a nuestro
+  // propio backend (mismo contrato {nodo,accion,payload,token}).
+  const N8N_PROXY_SVC = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 
   const cargarPerfilesSvcNuevo = async (nodo, vlan, routerIdOverride) => {
     const esDim = esDimNodo(nodo);

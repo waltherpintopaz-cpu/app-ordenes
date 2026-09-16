@@ -6,7 +6,10 @@ import ImportarCajasNapModal from "./ImportarCajasNapModal";
 import StreetViewThumb from "./StreetViewThumb";
 
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
-const PROXY_URL = "https://n8n.americanet.space/webhook/sidebar-proxy";
+const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
+// Antes n8n.americanet.space/webhook/sidebar-proxy -- migrado a nuestro
+// propio backend (mismo contrato {nodo,accion,payload,token}).
+const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
 const APPSHEET_APP_NAME = String(import.meta.env.VITE_APPSHEET_APP_NAME || "Actuaciones02-637142196").trim();
 const APPSHEET_TABLE_NAME = String(import.meta.env.VITE_APPSHEET_TABLE_NAME || "Tabla_1").trim();
