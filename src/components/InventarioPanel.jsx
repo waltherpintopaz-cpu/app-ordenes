@@ -1556,18 +1556,16 @@ ${filasNodos}
       const marca = String(e.marca || "").trim() || "Sin marca";
       const modelo = String(e.modelo || "").trim() || "Sin modelo";
       const key = `${tipo}||${marca}||${modelo}`;
-      bucket.items.set(key, (bucket.items.get(key) || 0) + 1);
+      const prev = bucket.items.get(key);
+      const foto = normalizePhotoUrl(e.foto || "");
+      if (prev) { prev.cantidad += 1; if (!prev.foto && foto) prev.foto = foto; }
+      else bucket.items.set(key, { tipo, marca, modelo, cantidad: 1, foto });
     });
     return Array.from(map.values())
       .map((b) => ({
         nombre: b.nombre,
         total: b.total,
-        items: Array.from(b.items.entries())
-          .map(([key, cantidad]) => {
-            const [tipo, marca, modelo] = key.split("||");
-            return { tipo, marca, modelo, cantidad };
-          })
-          .sort((a, b2) => b2.cantidad - a.cantidad),
+        items: Array.from(b.items.values()).sort((a, b2) => b2.cantidad - a.cantidad),
       }))
       .sort((a, b2) => b2.total - a.total);
   }, [equipos]);
@@ -1590,10 +1588,11 @@ ${filasNodos}
       const unidad = String(m.unidad || matInfo?.unidad || "unidad").trim() || "unidad";
       const nombreAlm = String(m.almacenNombre || "").trim() || "Sin almacén";
       const nombreMat = matInfo?.nombre || m.item || "Material";
+      const fotoMat = normalizePhotoUrl(matInfo?.foto || "");
       if (!map.has(nombreAlm)) map.set(nombreAlm, new Map());
       const bucket = map.get(nombreAlm);
       const key = materialKey(matId, unidad);
-      const prev = bucket.get(key) || { nombre: nombreMat, unidad, cantidad: 0 };
+      const prev = bucket.get(key) || { nombre: nombreMat, unidad, cantidad: 0, foto: fotoMat };
       const movNorm = norm(m.mov);
       const signo = movNorm.includes("salida") ? -1 : movNorm.includes("ingreso") || movNorm.includes("entrada") ? 1 : 0;
       prev.cantidad += signo * num(m.cant);
@@ -3759,12 +3758,21 @@ ${filasNodos}
                         <span className={`inv-state ${alm.nombre === "Sin almacén" ? "liquidado" : "almacen"}`}>{alm.total} equipo(s)</span>
                       </div>
                       {abierto && (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px", padding: "12px 14px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px", padding: "12px 14px" }}>
                           {alm.items.map((it, i) => (
-                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "10px", padding: "8px 10px" }}>
-                              <div style={{ fontSize: "12px", color: "#5a6e8d" }}>{it.tipo}</div>
-                              <div style={{ fontSize: "13px", fontWeight: 700, color: "#1f467f" }}>{it.marca} {it.modelo}</div>
-                              <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{it.cantidad}</div>
+                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
+                              <div style={{ width: "100%", aspectRatio: "1 / 1", background: "#f4f7fb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                                {it.foto ? (
+                                  <img src={it.foto} alt={`${it.marca} ${it.modelo}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                ) : (
+                                  <span style={{ fontSize: "34px", opacity: 0.35 }}>🖥️</span>
+                                )}
+                              </div>
+                              <div style={{ padding: "8px 10px" }}>
+                                <div style={{ fontSize: "11px", color: "#5a6e8d" }}>{it.tipo}</div>
+                                <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1f467f", lineHeight: 1.25 }}>{it.marca} {it.modelo}</div>
+                                <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>{it.cantidad}</div>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -3797,11 +3805,20 @@ ${filasNodos}
                         <span className={`inv-state ${alm.nombre === "Sin almacén" ? "liquidado" : "asignado"}`}>{alm.items.length} material(es)</span>
                       </div>
                       {abierto && (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px", padding: "12px 14px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px", padding: "12px 14px" }}>
                           {alm.items.map((it, i) => (
-                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "10px", padding: "8px 10px" }}>
-                              <div style={{ fontSize: "13px", fontWeight: 700, color: "#1f467f" }}>{it.nombre}</div>
-                              <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{it.cantidad} <span style={{ fontSize: "11px", fontWeight: 500, color: "#5a6e8d" }}>{it.unidad}</span></div>
+                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
+                              <div style={{ width: "100%", aspectRatio: "1 / 1", background: "#f4f7fb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                                {it.foto ? (
+                                  <img src={it.foto} alt={it.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                ) : (
+                                  <span style={{ fontSize: "34px", opacity: 0.35 }}>🧰</span>
+                                )}
+                              </div>
+                              <div style={{ padding: "8px 10px" }}>
+                                <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1f467f", lineHeight: 1.25 }}>{it.nombre}</div>
+                                <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>{it.cantidad} <span style={{ fontSize: "11px", fontWeight: 500, color: "#5a6e8d" }}>{it.unidad}</span></div>
+                              </div>
                             </div>
                           ))}
                         </div>
