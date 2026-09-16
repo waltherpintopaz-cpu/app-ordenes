@@ -104,11 +104,29 @@ const PROXY_URL  = "https://n8n.americanet.space/webhook/sidebar-proxy";
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
 const MKW_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
+// Sin timeout, un fetch que Mikrowisp/n8n nunca cierra deja el boton
+// "Guardando.../Activando..." colgado para siempre (confirmado en vivo: asi
+// paso con "Activar servicio" y "Actualizar tambien en Mikrowisp"). El
+// AbortController fuerza un error claro a los 25s en vez de una espera
+// infinita, para que el catch() de cada boton pueda reactivarlo y avisar.
+const MKW_TIMEOUT_MS = 25000;
+async function fetchConTimeout(url, opts, ms = MKW_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } catch (e) {
+    if (e?.name === "AbortError") throw new Error("Tiempo de espera agotado (Mikrowisp no respondió). Intenta de nuevo.");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function mkwDirect(esDim, endpoint, body) {
   const base = DIAGNO_BASE || "";
   const url = esDim ? `${base}/api/mikrowisp-nod04/${endpoint}` : `${base}/api/mikrowisp/${endpoint}`;
   const token = esDim ? MKW_NOD04_TOKEN : MKW_TOKEN;
-  const res = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token, ...body }) });
+  const res = await fetchConTimeout(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token, ...body }) });
   const json = await res.json().catch(()=>({}));
   return json;
 }
@@ -223,7 +241,7 @@ async function buscarDniORuc(documento) {
 }
 
 async function mkwProxy(nodo, accion, payload, token) {
-  const r = await fetch(PROXY_URL, {
+  const r = await fetchConTimeout(PROXY_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ nodo, accion, payload, ...(token ? { token } : {}) }),
