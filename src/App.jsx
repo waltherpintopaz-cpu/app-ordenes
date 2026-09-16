@@ -358,7 +358,6 @@ const MENU_VISTAS_WEB = [
   { key: "seguimientoVolanteadores", label: "Seguimiento volanteadores" },
   { key: "plantaExterna", label: "Planta externa" },
   { key: "inventario", label: "Inventario" },
-  { key: "almacenes", label: "Almacenes" },
   { key: "usuarios", label: "Usuarios" },
   { key: "clientes", label: "Clientes" },
   { key: "whatsapp", label: "WhatsApp" },
@@ -392,7 +391,7 @@ const MENU_GRUPO_POR_KEY_WEB = {
   clientes: "Clientes", consultaCliente: "Clientes",
   seguimientoTecnicos: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
   whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
-  inventario: "Inventario", almacenes: "Inventario",
+  inventario: "Inventario",
   reportes: "Reportes",
   iptv: "IPTV", maxplayerCuentas: "IPTV",
   finanzas: "Finanzas", misGastos: "Finanzas",
@@ -3148,7 +3147,10 @@ export default function App() {
     if (!puedeVerUsuarios && vistaActiva === "usuarios") setVistaActiva("crear");
     if (!puedeVerReportes && vistaActiva === "reportes") setVistaActiva("historial");
     if (!puedeVerPlantaExterna && vistaActiva === "plantaExterna") setVistaActiva("crear");
-    if (!esAdminSesion && vistaActiva === "almacenes") setVistaActiva("inventario");
+    // "Almacenes" ya no es un item de menu propio -- es solo una pestaña
+    // dentro de Inventario. Si algo deja vistaActiva="almacenes" (estado
+    // viejo), se redirige a Inventario para cualquier sesion.
+    if (vistaActiva === "almacenes") setVistaActiva("inventario");
   }, [puedeVerUsuarios, puedeVerReportes, puedeVerPlantaExterna, esAdminSesion, vistaActiva]);
 
   // Recargar liquidaciones al entrar a reportes para asegurar datos frescos
@@ -21280,9 +21282,6 @@ export default function App() {
           <InventarioPanel initialTab={rolSesion === "Tecnico" ? "stockTecnico" : "registro"} sessionUser={usuarioSesion} />
         )}
 
-        {esAdminSesion && vistaActiva === "almacenes" && (
-          <InventarioPanel initialTab="almacenes" sessionUser={usuarioSesion} />
-        )}
         {puedeVerUsuarios && vistaActiva === "usuarios" && (
           <div style={{ display: "grid", gap: "24px" }}>
             <div style={{ ...cardStyle, padding: "14px 16px" }}>
