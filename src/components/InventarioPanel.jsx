@@ -560,14 +560,14 @@ function InventoryPhotoThumb(props) {
 export default function InventarioPanel({ initialTab = "catalogo", sessionUser = null }) {
   const esTecnico = initialTab === "stockTecnico" || norm(sessionUser?.rol) === "tecnico";
   const tabs = useMemo(() => {
-    return esTecnico ? ["stockTecnico", "movimientos", "recogidos"] : ["registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes", "rendicion"];
+    return esTecnico ? ["stockTecnico", "movimientos", "recogidos"] : ["stock", "registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes", "rendicion"];
   }, [esTecnico]);
   const [tab, setTab] = useState(() => {
     const base = String(initialTab || "").trim();
     if (esTecnico) return base === "movimientos" ? "movimientos" : "stockTecnico";
     if (base === "materiales") return "articulos";
     if (base === "almacenes") return "almacenes";
-    return ["registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes"].includes(base) ? base : "registro";
+    return ["stock", "registro", "asignaciones", "articulos", "catalogo", "movimientos", "almacenes"].includes(base) ? base : "stock";
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1540,6 +1540,76 @@ ${filasNodos}
     () => materiales.filter((item) => stockMaterialActual(item.id, item.unidad) <= 0).length,
     [materiales, stockMaterialActual]
   );
+  // ── Vista "Stock" (dashboard visual) ────────────────────────────────────
+  // Desglose de equipos en almacen agrupados por almacen (y dentro de cada
+  // almacen, por tipo/marca/modelo) -- reutiliza estadoGrupo/equipos, mismo
+  // criterio que conteoCatalogo.almacen, solo que separado por almacenNombre.
+  const equiposPorAlmacen = useMemo(() => {
+    const map = new Map();
+    equipos.forEach((e) => {
+      if (estadoGrupo(e.estado) !== "almacen") return;
+      const nombreAlm = String(e.almacenNombre || "").trim() || "Sin almacén";
+      if (!map.has(nombreAlm)) map.set(nombreAlm, { nombre: nombreAlm, total: 0, items: new Map() });
+      const bucket = map.get(nombreAlm);
+      bucket.total += 1;
+      const tipo = String(e.tipo || "").trim() || "Sin tipo";
+      const marca = String(e.marca || "").trim() || "Sin marca";
+      const modelo = String(e.modelo || "").trim() || "Sin modelo";
+      const key = `${tipo}||${marca}||${modelo}`;
+      bucket.items.set(key, (bucket.items.get(key) || 0) + 1);
+    });
+    return Array.from(map.values())
+      .map((b) => ({
+        nombre: b.nombre,
+        total: b.total,
+        items: Array.from(b.items.entries())
+          .map(([key, cantidad]) => {
+            const [tipo, marca, modelo] = key.split("||");
+            return { tipo, marca, modelo, cantidad };
+          })
+          .sort((a, b2) => b2.cantidad - a.cantidad),
+      }))
+      .sort((a, b2) => b2.total - a.total);
+  }, [equipos]);
+  // Desglose de stock de materiales agrupado por almacen -- misma logica de
+  // signo/resolucion de material que materialStockMap (linea ~1517), pero
+  // sumando ademas por almacenNombre del movimiento en vez de solo por
+  // material+unidad. No reemplaza materialStockMap (se sigue usando en el
+  // resto del panel); es un desglose adicional solo para esta vista.
+  const materialesPorAlmacen = useMemo(() => {
+    const map = new Map();
+    movimientos.forEach((m) => {
+      if (norm(m.tipo) !== "material") return;
+      let matId = materialIdFromRef(m.ref);
+      if (!matId) {
+        const byName = materiales.find((x) => norm(x.nombre) === norm(m.item));
+        matId = String(byName?.id || "").trim();
+      }
+      if (!matId) return;
+      const matInfo = materiales.find((x) => String(x.id) === matId);
+      const unidad = String(m.unidad || matInfo?.unidad || "unidad").trim() || "unidad";
+      const nombreAlm = String(m.almacenNombre || "").trim() || "Sin almacén";
+      const nombreMat = matInfo?.nombre || m.item || "Material";
+      if (!map.has(nombreAlm)) map.set(nombreAlm, new Map());
+      const bucket = map.get(nombreAlm);
+      const key = materialKey(matId, unidad);
+      const prev = bucket.get(key) || { nombre: nombreMat, unidad, cantidad: 0 };
+      const movNorm = norm(m.mov);
+      const signo = movNorm.includes("salida") ? -1 : movNorm.includes("ingreso") || movNorm.includes("entrada") ? 1 : 0;
+      prev.cantidad += signo * num(m.cant);
+      bucket.set(key, prev);
+    });
+    return Array.from(map.entries())
+      .map(([nombreAlm, bucket]) => ({
+        nombre: nombreAlm,
+        items: Array.from(bucket.values())
+          .filter((it) => it.cantidad > 0)
+          .sort((a, b2) => b2.cantidad - a.cantidad),
+      }))
+      .filter((b) => b.items.length)
+      .sort((a, b2) => b2.items.reduce((s, i) => s + i.cantidad, 0) - a.items.reduce((s, i) => s + i.cantidad, 0));
+  }, [materiales, movimientos]);
+  const [stockAlmacenAbierto, setStockAlmacenAbierto] = useState({});
   const tiposLote = useMemo(
     () => uniqSorted(["ONU", "Router", "Repetidor", "Switch", ...articulos.map((a) => a.tipo), ...equipos.map((e) => e.tipo)]),
     [articulos, equipos]
@@ -3568,6 +3638,7 @@ ${filasNodos}
   const materialIngresoSeleccionado = materiales.find((m) => String(m.id) === String(ingresoMat.materialId || ""));
   const tituloInventario = useMemo(() => {
     if (esTecnico) return tab === "movimientos" ? "Kardex" : "Stock tecnico";
+    if (tab === "stock") return "Stock por almacén";
     if (tab === "registro") return registroSubTab === "ingresoStock" ? "Registro - Ingreso materiales" : "Registro";
     if (tab === "asignaciones") return "Asignaciones";
     if (tab === "articulos") return articulosSubTab === "materialesCatalogo" ? "Articulos - Catalogo materiales" : "Articulos";
@@ -3605,6 +3676,13 @@ ${filasNodos}
       {warning ? <p className="warn-text">{warning}</p> : null}
       {!esTecnico ? (
         <div className="inv-pills">
+          <button
+            type="button"
+            className={tab === "stock" ? "inv-pill active" : "inv-pill"}
+            onClick={() => setTab("stock")}
+          >
+            📦 Stock
+          </button>
           <button
             type="button"
             className={tab === "registro" ? "inv-pill active" : "inv-pill"}
@@ -3649,6 +3727,91 @@ ${filasNodos}
               Rendición
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {!esTecnico && tab === "stock" ? (
+        <div style={{ display: "grid", gap: "16px" }}>
+          <div className="inv-kpi-grid">
+            <article className="inv-kpi-card"><span>Equipos en almacén</span><strong>{equiposEnAlmacen}</strong></article>
+            <article className="inv-kpi-card"><span>Almacenes activos</span><strong>{almacenes.filter((a) => a.activo).length}</strong></article>
+            <article className="inv-kpi-card"><span>Stock materiales (total)</span><strong>{stockMaterialTotal.toFixed(2)}</strong></article>
+            <article className="inv-kpi-card"><span>Materiales sin stock</span><strong>{materialSinStock}</strong></article>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#1f2937", margin: "4px 0 10px" }}>🖥 Equipos por almacén</h3>
+            {!equiposPorAlmacen.length ? (
+              <p className="panel-meta">No hay equipos en almacén registrados todavía.</p>
+            ) : (
+              <div style={{ display: "grid", gap: "10px" }}>
+                {equiposPorAlmacen.map((alm) => {
+                  const abierto = !!stockAlmacenAbierto[`eq-${alm.nombre}`];
+                  return (
+                    <article key={alm.nombre} className="inv-card" style={{ padding: 0, overflow: "hidden" }}>
+                      <div
+                        onClick={() => setStockAlmacenAbierto((prev) => ({ ...prev, [`eq-${alm.nombre}`]: !prev[`eq-${alm.nombre}`] }))}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", background: alm.nombre === "Sin almacén" ? "#fff7ed" : "#f0fdf4" }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13.5px" }}>
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>{abierto ? "▼" : "▶"}</span>
+                          {alm.nombre}
+                        </span>
+                        <span className={`inv-state ${alm.nombre === "Sin almacén" ? "liquidado" : "almacen"}`}>{alm.total} equipo(s)</span>
+                      </div>
+                      {abierto && (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px", padding: "12px 14px" }}>
+                          {alm.items.map((it, i) => (
+                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "10px", padding: "8px 10px" }}>
+                              <div style={{ fontSize: "12px", color: "#5a6e8d" }}>{it.tipo}</div>
+                              <div style={{ fontSize: "13px", fontWeight: 700, color: "#1f467f" }}>{it.marca} {it.modelo}</div>
+                              <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{it.cantidad}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#1f2937", margin: "4px 0 10px" }}>🧰 Materiales por almacén</h3>
+            {!materialesPorAlmacen.length ? (
+              <p className="panel-meta">No hay stock de materiales con movimientos registrados todavía.</p>
+            ) : (
+              <div style={{ display: "grid", gap: "10px" }}>
+                {materialesPorAlmacen.map((alm) => {
+                  const abierto = !!stockAlmacenAbierto[`mat-${alm.nombre}`];
+                  return (
+                    <article key={alm.nombre} className="inv-card" style={{ padding: 0, overflow: "hidden" }}>
+                      <div
+                        onClick={() => setStockAlmacenAbierto((prev) => ({ ...prev, [`mat-${alm.nombre}`]: !prev[`mat-${alm.nombre}`] }))}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", background: alm.nombre === "Sin almacén" ? "#fff7ed" : "#eff6ff" }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13.5px" }}>
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>{abierto ? "▼" : "▶"}</span>
+                          {alm.nombre}
+                        </span>
+                        <span className={`inv-state ${alm.nombre === "Sin almacén" ? "liquidado" : "asignado"}`}>{alm.items.length} material(es)</span>
+                      </div>
+                      {abierto && (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px", padding: "12px 14px" }}>
+                          {alm.items.map((it, i) => (
+                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "10px", padding: "8px 10px" }}>
+                              <div style={{ fontSize: "13px", fontWeight: 700, color: "#1f467f" }}>{it.nombre}</div>
+                              <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{it.cantidad} <span style={{ fontSize: "11px", fontWeight: 500, color: "#5a6e8d" }}>{it.unidad}</span></div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       ) : null}
 	      {mostrarBuscadoresGenerales ? (
