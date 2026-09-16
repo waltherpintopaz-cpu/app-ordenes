@@ -1569,45 +1569,30 @@ ${filasNodos}
       }))
       .sort((a, b2) => b2.total - a.total);
   }, [equipos]);
-  // Desglose de stock de materiales agrupado por almacen -- misma logica de
-  // signo/resolucion de material que materialStockMap (linea ~1517), pero
-  // sumando ademas por almacenNombre del movimiento en vez de solo por
-  // material+unidad. No reemplaza materialStockMap (se sigue usando en el
-  // resto del panel); es un desglose adicional solo para esta vista.
-  const materialesPorAlmacen = useMemo(() => {
-    const map = new Map();
-    movimientos.forEach((m) => {
-      if (norm(m.tipo) !== "material") return;
-      let matId = materialIdFromRef(m.ref);
-      if (!matId) {
-        const byName = materiales.find((x) => norm(x.nombre) === norm(m.item));
-        matId = String(byName?.id || "").trim();
-      }
-      if (!matId) return;
-      const matInfo = materiales.find((x) => String(x.id) === matId);
-      const unidad = String(m.unidad || matInfo?.unidad || "unidad").trim() || "unidad";
-      const nombreAlm = String(m.almacenNombre || "").trim() || "Sin almacén";
-      const nombreMat = matInfo?.nombre || m.item || "Material";
-      const fotoMat = normalizePhotoUrl(matInfo?.foto || "");
-      if (!map.has(nombreAlm)) map.set(nombreAlm, new Map());
-      const bucket = map.get(nombreAlm);
-      const key = materialKey(matId, unidad);
-      const prev = bucket.get(key) || { nombre: nombreMat, unidad, cantidad: 0, foto: fotoMat };
-      const movNorm = norm(m.mov);
-      const signo = movNorm.includes("salida") ? -1 : movNorm.includes("ingreso") || movNorm.includes("entrada") ? 1 : 0;
-      prev.cantidad += signo * num(m.cant);
-      bucket.set(key, prev);
-    });
-    return Array.from(map.entries())
-      .map(([nombreAlm, bucket]) => ({
-        nombre: nombreAlm,
-        items: Array.from(bucket.values())
-          .filter((it) => it.cantidad > 0)
-          .sort((a, b2) => b2.cantidad - a.cantidad),
+  // Stock global de materiales para la vista visual -- reusa exactamente
+  // stockMaterialActual (la misma fuente que ya usa el resto del panel, ej.
+  // KPI "Stock materiales"/"Materiales sin stock"). Se intento desglosar por
+  // almacen igual que los equipos, pero se descarto: las salidas
+  // ("Asignacion a tecnico") no guardan almacen_nombre en
+  // inventario_movimientos, solo los ingresos si lo tienen -- agrupar por
+  // almacen del movimiento sumaba TODOS los ingresos a un almacen sin
+  // restarle nunca las salidas (que caian en "Sin almacen"), inflando el
+  // numero varias veces por encima del stock real. Con datos reales de
+  // Cable Drop: el desglose por almacen decia 54000m, pero sumando todo el
+  // historial completo (como hace stockMaterialActual) el neto real es
+  // 1000m. Hasta que las salidas registren almacen, esta vista muestra un
+  // solo total confiable por material, sin dividir por almacen.
+  const materialesStockVisual = useMemo(() => {
+    return materiales
+      .map((m) => ({
+        nombre: m.nombre,
+        unidad: m.unidad,
+        cantidad: stockMaterialActual(m.id, m.unidad),
+        foto: normalizePhotoUrl(m.foto || ""),
       }))
-      .filter((b) => b.items.length)
-      .sort((a, b2) => b2.items.reduce((s, i) => s + i.cantidad, 0) - a.items.reduce((s, i) => s + i.cantidad, 0));
-  }, [materiales, movimientos]);
+      .filter((it) => it.cantidad > 0)
+      .sort((a, b2) => b2.cantidad - a.cantidad);
+  }, [materiales, stockMaterialActual]);
   const [stockAlmacenAbierto, setStockAlmacenAbierto] = useState({});
   const tiposLote = useMemo(
     () => uniqSorted(["ONU", "Router", "Repetidor", "Switch", ...articulos.map((a) => a.tipo), ...equipos.map((e) => e.tipo)]),
@@ -3789,47 +3774,30 @@ ${filasNodos}
           </div>
 
           <div>
-            <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#1f2937", margin: "4px 0 10px" }}>🧰 Materiales por almacén</h3>
-            {!materialesPorAlmacen.length ? (
-              <p className="panel-meta">No hay stock de materiales con movimientos registrados todavía.</p>
+            <h3 style={{ fontSize: "14px", fontWeight: 800, color: "#1f2937", margin: "4px 0 10px" }}>🧰 Materiales — stock actual</h3>
+            <p className="panel-meta" style={{ marginTop: 0, marginBottom: "10px" }}>
+              No se desglosa por almacén: las salidas a técnicos no registran de qué almacén salió el material, así que separar
+              por almacén daría números inflados. Este total es el mismo cálculo confiable que usa el resto del panel.
+            </p>
+            {!materialesStockVisual.length ? (
+              <p className="panel-meta">No hay materiales con stock disponible.</p>
             ) : (
-              <div style={{ display: "grid", gap: "10px" }}>
-                {materialesPorAlmacen.map((alm) => {
-                  const abierto = !!stockAlmacenAbierto[`mat-${alm.nombre}`];
-                  return (
-                    <article key={alm.nombre} className="inv-card" style={{ padding: 0, overflow: "hidden" }}>
-                      <div
-                        onClick={() => setStockAlmacenAbierto((prev) => ({ ...prev, [`mat-${alm.nombre}`]: !prev[`mat-${alm.nombre}`] }))}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", cursor: "pointer", background: alm.nombre === "Sin almacén" ? "#fff7ed" : "#eff6ff" }}
-                      >
-                        <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13.5px" }}>
-                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>{abierto ? "▼" : "▶"}</span>
-                          {alm.nombre}
-                        </span>
-                        <span className={`inv-state ${alm.nombre === "Sin almacén" ? "liquidado" : "asignado"}`}>{alm.items.length} material(es)</span>
-                      </div>
-                      {abierto && (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px", padding: "12px 14px" }}>
-                          {alm.items.map((it, i) => (
-                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
-                              <div style={{ width: "100%", aspectRatio: "1 / 1", background: "#f4f7fb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                                {it.foto ? (
-                                  <img src={it.foto} alt={it.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                ) : (
-                                  <span style={{ fontSize: "34px", opacity: 0.35 }}>🧰</span>
-                                )}
-                              </div>
-                              <div style={{ padding: "8px 10px" }}>
-                                <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1f467f", lineHeight: 1.25 }}>{it.nombre}</div>
-                                <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>{it.cantidad} <span style={{ fontSize: "11px", fontWeight: 500, color: "#5a6e8d" }}>{it.unidad}</span></div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px" }}>
+                {materialesStockVisual.map((it, i) => (
+                  <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
+                    <div style={{ width: "100%", aspectRatio: "1 / 1", background: "#f4f7fb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                      {it.foto ? (
+                        <img src={it.foto} alt={it.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      ) : (
+                        <span style={{ fontSize: "34px", opacity: 0.35 }}>🧰</span>
                       )}
-                    </article>
-                  );
-                })}
+                    </div>
+                    <div style={{ padding: "8px 10px" }}>
+                      <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1f467f", lineHeight: 1.25 }}>{it.nombre}</div>
+                      <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>{it.cantidad} <span style={{ fontSize: "11px", fontWeight: 500, color: "#5a6e8d" }}>{it.unidad}</span></div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
