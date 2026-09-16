@@ -1521,7 +1521,14 @@ ${filasNodos}
       const key = materialKey(matId, unidad);
       const actual = num(map.get(key), 0);
       const movNorm = norm(m.mov);
-      const signo = movNorm.includes("salida") ? -1 : movNorm.includes("ingreso") || movNorm.includes("entrada") ? 1 : 0;
+      // La app movil (StockScreen.js) ya clasifica "merma"/"baja" como salida
+      // de stock (material dañado/perdido, ya no disponible) -- la web no lo
+      // hacia, dando un total mas alto de lo real (ej. Cable Drop mostraba
+      // 1000m en la web pero 680m en el movil, la diferencia exacta de una
+      // merma de 320m aprobada que la web ignoraba). Se unifica el criterio.
+      const esSalida = movNorm.includes("salida") || movNorm.includes("merma") || movNorm.includes("baja");
+      const esEntrada = movNorm.includes("ingreso") || movNorm.includes("entrada") || movNorm.includes("ajuste") || movNorm.includes("devolucion") || movNorm.includes("devolución");
+      const signo = esSalida ? -1 : esEntrada ? 1 : 0;
       map.set(key, actual + signo * num(m.cant));
     });
     return map;
