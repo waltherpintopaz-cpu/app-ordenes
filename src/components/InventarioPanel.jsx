@@ -3668,7 +3668,7 @@ ${filasNodos}
           <article className="inv-kpi-card"><span>Equipos asignados</span><strong>{equiposAsignados}</strong></article>
           <article className="inv-kpi-card"><span>Equipos liquidados</span><strong>{equiposLiquidados}</strong></article>
           <article className="inv-kpi-card"><span>Stock materiales</span><strong>{stockMaterialTotal.toFixed(2)}</strong></article>
-          <article className="inv-kpi-card"><span>Materiales sin stock</span><strong>{materialSinStock}</strong></article>
+          <article className="inv-kpi-card" style={materialSinStock > 0 ? { background: "#fef2f2", borderColor: "#fecaca" } : undefined}><span>Materiales sin stock</span><strong style={materialSinStock > 0 ? { color: "#dc2626" } : undefined}>{materialSinStock}</strong></article>
         </div>
       ) : null}
       {error ? <p className="warn-text">{error}</p> : null}
@@ -3734,7 +3734,7 @@ ${filasNodos}
             <article className="inv-kpi-card"><span>Equipos en almacén</span><strong>{equiposEnAlmacen}</strong></article>
             <article className="inv-kpi-card"><span>Almacenes activos</span><strong>{almacenes.filter((a) => a.activo).length}</strong></article>
             <article className="inv-kpi-card"><span>Stock materiales (total)</span><strong>{stockMaterialTotal.toFixed(2)}</strong></article>
-            <article className="inv-kpi-card"><span>Materiales sin stock</span><strong>{materialSinStock}</strong></article>
+            <article className="inv-kpi-card" style={materialSinStock > 0 ? { background: "#fef2f2", borderColor: "#fecaca" } : undefined}><span>Materiales sin stock</span><strong style={materialSinStock > 0 ? { color: "#dc2626" } : undefined}>{materialSinStock}</strong></article>
           </div>
 
           <div>
@@ -3759,8 +3759,11 @@ ${filasNodos}
                       </div>
                       {abierto && (
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px", padding: "12px 14px" }}>
-                          {alm.items.map((it, i) => (
-                            <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
+                          {alm.items.map((it, i) => {
+                            const bajo = it.cantidad <= 2;
+                            return (
+                            <div key={i} style={{ border: `1.5px solid ${bajo ? "#fbbf24" : "#e4eaf3"}`, borderRadius: "12px", overflow: "hidden", background: "#fff", position: "relative" }}>
+                              {bajo && <span style={{ position: "absolute", top: "6px", left: "6px", fontSize: "9px", fontWeight: 800, color: "#92400e", background: "#fef3c7", padding: "1px 6px", borderRadius: "999px", zIndex: 1 }}>STOCK BAJO</span>}
                               <div style={{ width: "100%", aspectRatio: "1 / 1", background: "#f4f7fb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                                 {it.foto ? (
                                   <img src={it.foto} alt={`${it.marca} ${it.modelo}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -3771,10 +3774,11 @@ ${filasNodos}
                               <div style={{ padding: "8px 10px" }}>
                                 <div style={{ fontSize: "11px", color: "#5a6e8d" }}>{it.tipo}</div>
                                 <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1f467f", lineHeight: 1.25 }}>{it.marca} {it.modelo}</div>
-                                <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", marginTop: "2px" }}>{it.cantidad}</div>
+                                <div style={{ fontSize: "20px", fontWeight: 800, color: bajo ? "#b45309" : "#0f172a", marginTop: "2px" }}>{it.cantidad}</div>
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </article>
