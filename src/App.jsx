@@ -381,6 +381,24 @@ const MENU_VISTAS_WEB = [
   { key: "misGastos", label: "Mis Gastos" },
 ];
 
+// Agrupacion del menu lateral en secciones colapsables -- antes era una
+// lista plana de 30+ opciones sin ningun orden visual. Un key que no
+// aparezca aca cae en "Otros" (red de seguridad si se agrega un item nuevo
+// y se olvida clasificarlo).
+const MENU_GRUPOS_ORDEN_WEB = ["Operación", "Red y Diagnóstico", "Clientes", "Seguimiento", "Comunicación", "Inventario", "Reportes", "IPTV", "Finanzas", "Administración", "Otros"];
+const MENU_GRUPO_POR_KEY_WEB = {
+  dashboard: "Operación", crear: "Operación", pendientes: "Operación", historial: "Operación", recuperaciones: "Operación", historialAppsheet: "Operación",
+  diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
+  clientes: "Clientes", consultaCliente: "Clientes",
+  seguimientoTecnicos: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
+  whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
+  inventario: "Inventario", almacenes: "Inventario",
+  reportes: "Reportes",
+  iptv: "IPTV", maxplayerCuentas: "IPTV",
+  finanzas: "Finanzas", misGastos: "Finanzas",
+  usuarios: "Administración", logs: "Administración", reclamaciones: "Administración",
+};
+
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
@@ -15757,11 +15775,41 @@ export default function App() {
     );
   };
 
+  const [menuGruposColapsados, setMenuGruposColapsados] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("menuGruposColapsadosWeb") || "{}"); } catch { return {}; }
+  });
+  const toggleMenuGrupo = (grupo) => {
+    setMenuGruposColapsados((prev) => {
+      const next = { ...prev, [grupo]: !prev[grupo] };
+      try { localStorage.setItem("menuGruposColapsadosWeb", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
   const mainMenuItems = MENU_VISTAS_WEB.filter((item) => {
     if (!accesosSesion.includes(item.key)) return false;
     if (item.key === "almacenes" && !esAdminSesion) return false;
     return true;
   });
+  // Agrupa mainMenuItems en secciones colapsables intercalando "encabezados"
+  // sinteticos en el mismo array -- asi el render de cada item real (mas
+  // abajo, con sus casos especiales de submenu) no se toca para nada, solo
+  // se le filtran los items de un grupo colapsado.
+  const mainMenuItemsAgrupados = useMemo(() => {
+    const porGrupo = {};
+    mainMenuItems.forEach((item) => {
+      const grupo = MENU_GRUPO_POR_KEY_WEB[item.key] || "Otros";
+      (porGrupo[grupo] = porGrupo[grupo] || []).push(item);
+    });
+    const out = [];
+    MENU_GRUPOS_ORDEN_WEB.forEach((grupo) => {
+      const items = porGrupo[grupo];
+      if (!items?.length) return;
+      const abierto = !menuGruposColapsados[grupo];
+      out.push({ __grupoHeader: true, grupo, key: `__hdr_${grupo}`, abierto });
+      if (abierto) out.push(...items);
+    });
+    return out;
+  }, [mainMenuItems, menuGruposColapsados]);
   const puedeGestionarSuspensionClientes = esAdminSesion || rolSesion === "Gestora";
   const diagnosticoMikrotik = diagnosticoServicioResultado?.mikrotik || null;
   const diagnosticoEstadoVisual = getDiagnosticoEstadoVisual(diagnosticoMikrotik?.estado);
@@ -15903,7 +15951,23 @@ export default function App() {
           Menú
         </div>
         <div style={sidebarBodyStyle}>
-          {mainMenuItems.map((item) => {
+          {mainMenuItemsAgrupados.map((item) => {
+            if (item.__grupoHeader) {
+              return (
+                <div
+                  key={item.key}
+                  onClick={() => toggleMenuGrupo(item.grupo)}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "10px 10px 4px", marginTop: "4px", cursor: "pointer",
+                    color: "#9ba4bb", fontSize: "10.5px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em",
+                  }}
+                >
+                  <span>{item.grupo}</span>
+                  <span style={{ fontSize: "10px" }}>{item.abierto ? "▾" : "▸"}</span>
+                </div>
+              );
+            }
             if (item.key === "historialAppsheet") {
               const isHistorialAppsheetActive = vistaActiva === item.key;
               return (
