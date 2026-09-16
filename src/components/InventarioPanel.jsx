@@ -745,6 +745,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       almacen_id: p.almacenId || null,
       almacen_nombre: p.almacenNombre || "",
     };
+    let fallo = null;
     try {
       let payload = { ...payloadBase };
       for (let i = 0; i < 12; i += 1) {
@@ -760,25 +761,36 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
         throw ins.error;
       }
     } catch (err) {
-      void err;
+      // Antes este error se tragaba en silencio (void err) y de todas formas
+      // se agregaba una fila temporal en pantalla, dando la falsa impresion
+      // de que el movimiento quedo guardado -- al recargar desde Supabase
+      // (cargar()) esa fila desaparecia sin ningun aviso. Se detecto asi un
+      // registro por lote de 59 equipos donde 23 perdieron su movimiento de
+      // ingreso sin que nadie se enterara. Ahora se devuelve el error para
+      // que quien llama (ej. el boton de registro por lote) pueda avisar
+      // exactamente cuales fallaron.
+      fallo = err?.message || String(err) || "Error desconocido al guardar el movimiento.";
     }
-    setMovimientos((prev) => [{
-      id: `tmp-${Date.now()}`,
-      fecha: new Date().toISOString(),
-      tipo: p.tipoItem || "",
-      mov: p.movimiento || "",
-      motivo: p.motivo || "",
-      item: p.itemNombre || "",
-      ref: p.referencia || "",
-      cant: num(p.cantidad),
-      unidad: p.unidad || "unidad",
-      costo: num(p.costoUnitario),
-      tecnico: p.tecnico || "",
-      actor: String(sessionUser?.nombre || sessionUser?.username || ""),
-      nodo: String(p.nodo || ""),
-      almacenId: p.almacenId || "",
-      almacenNombre: p.almacenNombre || "",
-    }, ...prev]);
+    if (!fallo) {
+      setMovimientos((prev) => [{
+        id: `tmp-${Date.now()}`,
+        fecha: new Date().toISOString(),
+        tipo: p.tipoItem || "",
+        mov: p.movimiento || "",
+        motivo: p.motivo || "",
+        item: p.itemNombre || "",
+        ref: p.referencia || "",
+        cant: num(p.cantidad),
+        unidad: p.unidad || "unidad",
+        costo: num(p.costoUnitario),
+        tecnico: p.tecnico || "",
+        actor: String(sessionUser?.nombre || sessionUser?.username || ""),
+        nodo: String(p.nodo || ""),
+        almacenId: p.almacenId || "",
+        almacenNombre: p.almacenNombre || "",
+      }, ...prev]);
+    }
+    return { ok: !fallo, error: fallo };
   }, [sessionUser?.nombre, sessionUser?.username]);
 
   const cargar = useCallback(async () => {
@@ -3983,23 +3995,44 @@ ${filasNodos}
                     saveLote = await supabase.from("equipos_catalogo").upsert(payloadLegacy, { onConflict: "codigo_qr" });
                   }
                   if (saveLote.error) return window.alert(saveLote.error.message || "No se pudo guardar.");
+                  // Cada equipo se registra con su propio reintento (hasta 3
+                  // veces) -- antes un solo fallo se tragaba en silencio y el
+                  // resto del lote quedaba sin movimiento de ingreso, sin
+                  // ningun aviso (se detecto un lote de 59 equipos donde 23
+                  // perdieron su registro asi).
+                  const fallidos = [];
                   for (const item of eqPendReg) {
-                    await registrarMov({
-                      tipoItem: "equipo",
-                      movimiento: "ingreso",
-                      motivo: "Registro por lote",
-                      itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`,
-                      referencia: item.codigo_qr,
-                      cantidad: 1,
-                      unidad: "unidad",
-                      costoUnitario: item.precio_unitario,
-                      tecnico: "",
-                      almacenId: item.almacen_id || "",
-                      almacenNombre: item.almacen_nombre || "",
-                    });
+                    let resultado = null;
+                    for (let intento = 0; intento < 3; intento += 1) {
+                      resultado = await registrarMov({
+                        tipoItem: "equipo",
+                        movimiento: "ingreso",
+                        motivo: "Registro por lote",
+                        itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`,
+                        referencia: item.codigo_qr,
+                        cantidad: 1,
+                        unidad: "unidad",
+                        costoUnitario: item.precio_unitario,
+                        tecnico: "",
+                        almacenId: item.almacen_id || "",
+                        almacenNombre: item.almacen_nombre || "",
+                      });
+                      if (resultado.ok) break;
+                    }
+                    if (!resultado.ok) fallidos.push({ qr: item.codigo_qr, error: resultado.error });
                   }
                   setEqPendReg([]);
-                  setQrRegistroMsg("Lote guardado correctamente.");
+                  if (fallidos.length) {
+                    window.alert(
+                      `Lote guardado (${eqPendReg.length - fallidos.length}/${eqPendReg.length} movimientos registrados en el kardex).\n\n` +
+                      `Los equipos YA quedaron en el catalogo, pero estos ${fallidos.length} no registraron su ingreso en el kardex ` +
+                      `(reintentar desde el kardex o contactar soporte):\n` +
+                      fallidos.map((f) => `- ${f.qr}: ${f.error}`).join("\n")
+                    );
+                    setQrRegistroMsg(`Lote guardado con ${fallidos.length} movimiento(s) pendiente(s) -- revisa el aviso.`);
+                  } else {
+                    setQrRegistroMsg("Lote guardado correctamente.");
+                  }
                   await cargar();
                 }}
               >
@@ -4093,7 +4126,7 @@ ${filasNodos}
             <p className="panel-meta">Seleccionado: {eqSelAsig ? `${eqSelAsig.codigo} | ${equipoNombre(eqSelAsig)}` : "-"}</p>
             <div className="inv-actions">
               <button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigEq.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn) || !asigEq.equipoId) return window.alert("Selecciona tecnico valido y equipo."); const target = equiposDispAsig.find((e) => String(e.id) === String(asigEq.equipoId)); if (!target) return window.alert("Equipo no disponible."); if (eqPendAsig.some((x) => String(x.id) === String(target.id))) return; setEqPendAsig((prev) => [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, id: target.id, tecnico: tec, codigo: target.codigo, tipo: target.tipo, marca: target.marca, modelo: target.modelo, precio: target.precio, almacenId: target.almacenId || "", almacenNombre: target.almacenNombre || "" }]); setAsigEq((p) => ({ ...p, equipoId: "", tecnico: tec })); setQrAsignacionMsg(`Equipo agregado: ${target.codigo || target.id}.`); }}>Agregar seleccionado</button>
-              <button type="button" className="secondary-btn" onClick={async () => { if (!eqPendAsig.length) return window.alert("No hay equipos en lista."); try { for (const item of eqPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.codigo || item.id}`); const { error: err } = await supabase.from("equipos_catalogo").update({ estado: "asignado", tecnico_asignado: tec }).eq("id", item.id); if (err) throw err; await registrarMov({ tipoItem: "equipo", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`, referencia: item.codigo, cantidad: 1, unidad: "unidad", costoUnitario: item.precio, tecnico: tec, almacenId: item.almacenId || "", almacenNombre: item.almacenNombre || "" }); } const total = eqPendAsig.length; setEqPendAsig([]); await cargar(); window.alert(`${total} equipo(s) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({eqPendAsig.length})</button>
+              <button type="button" className="secondary-btn" onClick={async () => { if (!eqPendAsig.length) return window.alert("No hay equipos en lista."); const fallidosMov = []; try { for (const item of eqPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.codigo || item.id}`); const { error: err } = await supabase.from("equipos_catalogo").update({ estado: "asignado", tecnico_asignado: tec }).eq("id", item.id); if (err) throw err; const rMov = await registrarMov({ tipoItem: "equipo", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`, referencia: item.codigo, cantidad: 1, unidad: "unidad", costoUnitario: item.precio, tecnico: tec, almacenId: item.almacenId || "", almacenNombre: item.almacenNombre || "" }); if (!rMov.ok) fallidosMov.push(`${item.codigo || item.id}: ${rMov.error}`); } const total = eqPendAsig.length; setEqPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} equipo(s) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} equipo(s) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({eqPendAsig.length})</button>
             </div>
             <div className="inv-list">{eqPendAsig.length === 0 ? <p className="empty">Sin equipos en lista.</p> : eqPendAsig.map((item) => <div key={item.tempId} className="inv-row"><div className="inv-row-head"><p className="inv-row-title">{item.codigo || "SIN-QR"} | {item.tipo} {item.marca} {item.modelo}</p><button type="button" className="secondary-btn small" onClick={() => setEqPendAsig((prev) => prev.filter((x) => x.tempId !== item.tempId))}>Quitar</button></div><p className="inv-row-meta">Tecnico: {item.tecnico || "-"}</p></div>)}</div>
 	          </article>
@@ -4109,7 +4142,7 @@ ${filasNodos}
 	            <label className="inv-field">Material<select value={asigMat.materialId} onChange={(e) => { const id = String(e.target.value || ""); const unidad = String(materiales.find((m) => String(m.id) === id)?.unidad || asigMat.unidad || "unidad"); setAsigMat((p) => ({ ...p, materialId: id, unidad })); }}><option value="">Seleccionar</option>{materiales.map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.unidad})</option>)}</select></label>
             <div className="inv-form-grid two"><label>Cantidad<input value={asigMat.cantidad} onChange={(e) => setAsigMat((p) => ({ ...p, cantidad: e.target.value }))} /></label><label>Unidad<select value={asigMat.unidad} onChange={(e) => setAsigMat((p) => ({ ...p, unidad: e.target.value }))}><option>unidad</option><option>metros</option><option>rollo</option><option>caja</option></select></label></div>
             <p className="panel-meta">Stock disponible: {asigMat.materialId ? `${stockMaterialDisponible(asigMat.materialId, asigMat.unidad).toFixed(2)} ${asigMat.unidad}` : "-"}</p>
-            <div className="inv-actions"><button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigMat.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); const matId = String(asigMat.materialId || "").trim(); const cant = num(asigMat.cantidad, -1); if (!tec || !esTecnicoRegistrado(tecIn) || !matId || cant <= 0) return window.alert("Completa tecnico/material/cantidad valida."); const mat = materiales.find((m) => String(m.id) === matId); if (!mat) return; const disponible = stockMaterialDisponible(matId, asigMat.unidad); if (cant > disponible) return window.alert(`Stock insuficiente. Disponible: ${disponible.toFixed(2)} ${asigMat.unidad}.`); const key = `${personaKey(tec)}|${matId}|${norm(asigMat.unidad)}`; setMatPendAsig((prev) => { const idx = prev.findIndex((x) => x.key === key); if (idx >= 0) { const siguiente = num(prev[idx].cantidad) + cant; const dispValidado = stockMaterialDisponible(matId, asigMat.unidad, prev.filter((x) => x.key !== key)); if (siguiente > dispValidado) { window.alert(`Stock insuficiente para acumular. Disponible: ${dispValidado.toFixed(2)} ${asigMat.unidad}.`); return prev; } const next = [...prev]; next[idx] = { ...next[idx], cantidad: siguiente }; return next; } return [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, key, tecnico: tec, materialId: matId, materialNombre: mat.nombre, unidad: asigMat.unidad, cantidad: cant, costoUnitario: mat.costo }]; }); setAsigMat((p) => ({ ...p, materialId: "", cantidad: "", tecnico: tec })); }}>Agregar</button><button type="button" className="secondary-btn" onClick={async () => { if (!matPendAsig.length) return window.alert("No hay materiales en lista."); try { for (const item of matPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.materialNombre}`); const ex = materialesAsig.find((m) => personaKey(m.tecnico) === personaKey(tec) && String(m.materialId) === String(item.materialId) && norm(m.unidad) === norm(item.unidad)); if (ex) { const nuevo = num(ex.disponible) + num(item.cantidad); const { error: err } = await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: nuevo, cantidad_asignada: nuevo }).eq("id", ex.id); if (err) throw err; } else { const { error: err } = await supabase.from("materiales_asignados_tecnicos").insert([{ tecnico: tec, material_id: Number.isFinite(Number(item.materialId)) ? Number(item.materialId) : null, material_nombre: item.materialNombre, cantidad_asignada: num(item.cantidad), cantidad_disponible: num(item.cantidad), unidad: item.unidad, fecha_asignacion: new Date().toISOString() }]); if (err) throw err; } await registrarMov({ tipoItem: "material", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: item.materialNombre, referencia: materialRef(item.materialId), cantidad: item.cantidad, unidad: item.unidad, costoUnitario: item.costoUnitario, tecnico: tec }); } const total = matPendAsig.length; setMatPendAsig([]); await cargar(); window.alert(`${total} material(es) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({matPendAsig.length})</button></div>
+            <div className="inv-actions"><button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigMat.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); const matId = String(asigMat.materialId || "").trim(); const cant = num(asigMat.cantidad, -1); if (!tec || !esTecnicoRegistrado(tecIn) || !matId || cant <= 0) return window.alert("Completa tecnico/material/cantidad valida."); const mat = materiales.find((m) => String(m.id) === matId); if (!mat) return; const disponible = stockMaterialDisponible(matId, asigMat.unidad); if (cant > disponible) return window.alert(`Stock insuficiente. Disponible: ${disponible.toFixed(2)} ${asigMat.unidad}.`); const key = `${personaKey(tec)}|${matId}|${norm(asigMat.unidad)}`; setMatPendAsig((prev) => { const idx = prev.findIndex((x) => x.key === key); if (idx >= 0) { const siguiente = num(prev[idx].cantidad) + cant; const dispValidado = stockMaterialDisponible(matId, asigMat.unidad, prev.filter((x) => x.key !== key)); if (siguiente > dispValidado) { window.alert(`Stock insuficiente para acumular. Disponible: ${dispValidado.toFixed(2)} ${asigMat.unidad}.`); return prev; } const next = [...prev]; next[idx] = { ...next[idx], cantidad: siguiente }; return next; } return [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, key, tecnico: tec, materialId: matId, materialNombre: mat.nombre, unidad: asigMat.unidad, cantidad: cant, costoUnitario: mat.costo }]; }); setAsigMat((p) => ({ ...p, materialId: "", cantidad: "", tecnico: tec })); }}>Agregar</button><button type="button" className="secondary-btn" onClick={async () => { if (!matPendAsig.length) return window.alert("No hay materiales en lista."); const fallidosMov = []; try { for (const item of matPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.materialNombre}`); const ex = materialesAsig.find((m) => personaKey(m.tecnico) === personaKey(tec) && String(m.materialId) === String(item.materialId) && norm(m.unidad) === norm(item.unidad)); if (ex) { const nuevo = num(ex.disponible) + num(item.cantidad); const { error: err } = await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: nuevo, cantidad_asignada: nuevo }).eq("id", ex.id); if (err) throw err; } else { const { error: err } = await supabase.from("materiales_asignados_tecnicos").insert([{ tecnico: tec, material_id: Number.isFinite(Number(item.materialId)) ? Number(item.materialId) : null, material_nombre: item.materialNombre, cantidad_asignada: num(item.cantidad), cantidad_disponible: num(item.cantidad), unidad: item.unidad, fecha_asignacion: new Date().toISOString() }]); if (err) throw err; } const rMov = await registrarMov({ tipoItem: "material", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: item.materialNombre, referencia: materialRef(item.materialId), cantidad: item.cantidad, unidad: item.unidad, costoUnitario: item.costoUnitario, tecnico: tec }); if (!rMov.ok) fallidosMov.push(`${item.materialNombre}: ${rMov.error}`); } const total = matPendAsig.length; setMatPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} material(es) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} material(es) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({matPendAsig.length})</button></div>
             <div className="inv-list">{matPendAsig.length === 0 ? <p className="empty">Sin materiales en lista.</p> : matPendAsig.map((item) => <div key={item.tempId} className="inv-row"><div className="inv-row-head"><p className="inv-row-title">{item.materialNombre} | {item.unidad}</p><button type="button" className="secondary-btn small" onClick={() => setMatPendAsig((prev) => prev.filter((x) => x.tempId !== item.tempId))}>Quitar</button></div><p className="inv-row-meta">Tecnico: {item.tecnico}</p><p className="inv-row-meta">Cantidad: {num(item.cantidad).toFixed(2)} {item.unidad}</p></div>)}</div>
           </article>
         </div>
