@@ -2611,13 +2611,25 @@ export default function SidebarApp() {
 
   async function cargarCajasNapSidebar() {
     try {
-      const { data } = await supabase
-        .from("nap_cajas")
-        .select("id,codigo,sector,nodo,lat,lng,capacidad,puertos_ocupados")
-        .not("lat", "is", null)
-        .not("lng", "is", null)
-        .limit(2000);
-      setCajasNapSidebar(Array.isArray(data) ? data : []);
+      // nap_cajas ya supera las 1000 filas (~1564) -- Supabase corta ahi sin
+      // importar el .limit(2000) pedido, sin ningun error visible (dejaba
+      // ~36% de las cajas fuera del mapa). Se pagina de verdad con .range().
+      const all = [];
+      for (let page = 0; page < 10; page += 1) {
+        const from = page * 1000;
+        const { data, error } = await supabase
+          .from("nap_cajas")
+          .select("id,codigo,sector,nodo,lat,lng,capacidad,puertos_ocupados")
+          .not("lat", "is", null)
+          .not("lng", "is", null)
+          .order("id", { ascending: false })
+          .range(from, from + 999);
+        if (error) break;
+        const chunk = data || [];
+        all.push(...chunk);
+        if (chunk.length < 1000) break;
+      }
+      setCajasNapSidebar(all);
     } catch { /* silencioso */ }
   }
 

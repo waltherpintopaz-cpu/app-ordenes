@@ -1298,6 +1298,25 @@ function firstText(...values) {
   return "";
 }
 
+// Supabase/PostgREST corta cualquier respuesta a 1000 filas por defecto, sin
+// importar el .limit(N>1000) pedido, y sin ningun error visible -- ya causo
+// un bug real (calculo de stock de materiales incompleto en InventarioPanel).
+// buildQuery recibe (from, to) y debe devolver la query con .range(from,to)
+// ya aplicado; se usa en reportes filtrados por fecha/tecnico que igual
+// pueden superar 1000 filas con un rango amplio o "TODOS" los tecnicos.
+async function fetchAllPagedQuery(buildQuery, { pageSize = 1000, maxPages = 20 } = {}) {
+  const all = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const from = page * pageSize;
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) return { data: all, error };
+    const chunk = data || [];
+    all.push(...chunk);
+    if (chunk.length < pageSize) break;
+  }
+  return { data: all, error: null };
+}
+
 function normalizarCodigoCatalogo(value = "") {
   return String(value || "")
     .trim()
@@ -6924,19 +6943,21 @@ export default function App() {
     try {
       const selectFull =
         "id,id_onu,id_register,producto,producto_codigo,info_producto,marca,modelo,estado,tecnico_asignado_codigo,fecha_registro,foto_etiqueta_url,foto_producto_url,usuario_pppoe,nodo,nombre_cliente,dni,liquidado_por_codigo,fecha_liquidacion,fecha_asignacion,empresa,foto02_url,precio_unitario,updated_at";
-      let { data, error } = await supabase
-        .from(HIST_APPSHEET_TABLE)
-        .select(selectFull)
-        .order("updated_at", { ascending: false })
-        .limit(3000);
+      // historial_appsheet_onus (~700 filas hoy, creciendo) -- .limit(3000)
+      // se corta en 1000 sin avisar. Se pagina de verdad.
+      let { data, error } = await fetchAllPagedQuery((from, to) =>
+        supabase.from(HIST_APPSHEET_TABLE).select(selectFull).order("updated_at", { ascending: false }).range(from, to)
+      );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
-        const fallback = await supabase
-          .from(HIST_APPSHEET_TABLE)
-          .select(
-            "id,id_onu,id_register,producto,estado,tecnico_asignado_codigo,fecha_registro,foto_etiqueta_url,usuario_pppoe,nodo,nombre_cliente,dni,liquidado_por_codigo,fecha_liquidacion,fecha_asignacion,empresa,foto02_url,updated_at"
-          )
-          .order("updated_at", { ascending: false })
-          .limit(3000);
+        const fallback = await fetchAllPagedQuery((from, to) =>
+          supabase
+            .from(HIST_APPSHEET_TABLE)
+            .select(
+              "id,id_onu,id_register,producto,estado,tecnico_asignado_codigo,fecha_registro,foto_etiqueta_url,usuario_pppoe,nodo,nombre_cliente,dni,liquidado_por_codigo,fecha_liquidacion,fecha_asignacion,empresa,foto02_url,updated_at"
+            )
+            .order("updated_at", { ascending: false })
+            .range(from, to)
+        );
         data = fallback.data;
         error = fallback.error;
       }
@@ -11500,11 +11521,12 @@ export default function App() {
     if (!isSupabaseConfigured) return;
     setCargandoStockTecnico(true);
     try {
-      const { data, error } = await supabase
-        .from("stock_tecnico")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500);
+      // stock_tecnico crece con cada recuperacion/ingreso a almacen -- se
+      // pagina de verdad en vez de un .limit(500) fijo que empezaria a
+      // dejar fuera registros viejos apenas se supere ese numero.
+      const { data, error } = await fetchAllPagedQuery((from, to) =>
+        supabase.from("stock_tecnico").select("*").order("created_at", { ascending: false }).range(from, to)
+      );
       if (!error && data) {
         // Auto-detectar cuáles seriales ya existen en equipos_catalogo con estado != liquidado
         const seriales = data.filter((s) => s.serial && !s.catalogado).map((s) => s.serial.trim());
@@ -14228,12 +14250,17 @@ export default function App() {
       })();
 
       // ── Q1: Movimientos equipos asignados en período ──────────────
-      let q1 = supabase.from("inventario_movimientos")
-        .select("created_at,item_nombre,referencia,costo_unitario,tecnico")
-        .eq("tipo_item","equipo").ilike("motivo","%asignac%")
-        .gte("created_at",desdeTs).lt("created_at",hastaTs).limit(2000);
-      if (fichaRptTecnico !== "TODOS") q1 = q1.eq("tecnico", fichaRptTecnico);
-      const { data: eqMovData } = await q1;
+      // inventario_movimientos ya supera las 1000 filas -- .limit(2000) se
+      // corta igual en 1000 sin avisar si el rango de fechas/tecnico "TODOS"
+      // devuelve mas de eso. Se pagina de verdad.
+      const { data: eqMovData } = await fetchAllPagedQuery((from, to) => {
+        let q = supabase.from("inventario_movimientos")
+          .select("created_at,item_nombre,referencia,costo_unitario,tecnico")
+          .eq("tipo_item","equipo").ilike("motivo","%asignac%")
+          .gte("created_at",desdeTs).lt("created_at",hastaTs);
+        if (fichaRptTecnico !== "TODOS") q = q.eq("tecnico", fichaRptTecnico);
+        return q.range(from, to);
+      });
 
       // Enriquecer equipos con tipo/marca/modelo desde catálogo
       const refs = [...new Set((eqMovData||[]).map(r => String(r.referencia||"").trim()).filter(Boolean))];
@@ -14246,18 +14273,25 @@ export default function App() {
       }
 
       // ── Q2: Equipos actualmente en custodia ───────────────────────
-      let q2 = supabase.from("equipos_catalogo")
-        .select("codigo_qr,tipo,marca,modelo,precio_unitario,tecnico_asignado")
-        .eq("estado","asignado");
-      if (fichaRptTecnico !== "TODOS") q2 = q2.eq("tecnico_asignado", fichaRptTecnico);
-      const { data: custData } = await q2;
+      // Sin .limit() en absoluto -- cae igual en el tope silencioso de 1000.
+      const { data: custData } = await fetchAllPagedQuery((from, to) => {
+        let q = supabase.from("equipos_catalogo")
+          .select("codigo_qr,tipo,marca,modelo,precio_unitario,tecnico_asignado")
+          .eq("estado","asignado");
+        if (fichaRptTecnico !== "TODOS") q = q.eq("tecnico_asignado", fichaRptTecnico);
+        return q.range(from, to);
+      });
 
       // ── Q3: Liquidaciones del período ─────────────────────────────
-      let q3 = supabase.from("liquidaciones")
-        .select("id,tecnico,tecnico_liquida,fecha_liquidacion")
-        .gte("fecha_liquidacion",desdeTs).lt("fecha_liquidacion",hastaTs).limit(5000);
-      if (fichaRptTecnico !== "TODOS") q3 = q3.or(`tecnico.eq.${fichaRptTecnico},tecnico_liquida.eq.${fichaRptTecnico}`);
-      const { data: liqData } = await q3;
+      // liquidaciones ya supera las 1000 filas -- .limit(5000) se corta
+      // igual en 1000 sin avisar. Se pagina de verdad.
+      const { data: liqData } = await fetchAllPagedQuery((from, to) => {
+        let q = supabase.from("liquidaciones")
+          .select("id,tecnico,tecnico_liquida,fecha_liquidacion")
+          .gte("fecha_liquidacion",desdeTs).lt("fecha_liquidacion",hastaTs);
+        if (fichaRptTecnico !== "TODOS") q = q.or(`tecnico.eq.${fichaRptTecnico},tecnico_liquida.eq.${fichaRptTecnico}`);
+        return q.range(from, to);
+      });
       const liqIds    = (liqData||[]).map(l => l.id);
       const liqTecMap = Object.fromEntries((liqData||[]).map(l => [l.id, {
         tec:   l.tecnico_liquida || l.tecnico || "",
@@ -14274,12 +14308,15 @@ export default function App() {
       }
 
       // ── Q4: Movimientos materiales asignados en período ───────────
-      let q4 = supabase.from("inventario_movimientos")
-        .select("item_nombre,cantidad,unidad,costo_unitario,tecnico")
-        .eq("tipo_item","material").ilike("motivo","%asignac%")
-        .gte("created_at",desdeTs).lt("created_at",hastaTs).limit(3000);
-      if (fichaRptTecnico !== "TODOS") q4 = q4.eq("tecnico", fichaRptTecnico);
-      const { data: matMovData } = await q4;
+      // Mismo problema que Q1 -- .limit(3000) se corta en 1000.
+      const { data: matMovData } = await fetchAllPagedQuery((from, to) => {
+        let q = supabase.from("inventario_movimientos")
+          .select("item_nombre,cantidad,unidad,costo_unitario,tecnico")
+          .eq("tipo_item","material").ilike("motivo","%asignac%")
+          .gte("created_at",desdeTs).lt("created_at",hastaTs);
+        if (fichaRptTecnico !== "TODOS") q = q.eq("tecnico", fichaRptTecnico);
+        return q.range(from, to);
+      });
 
       // ── Q5: Materiales usados en trabajos ─────────────────────────
       const liqMatsData = [];
@@ -14614,13 +14651,16 @@ export default function App() {
       const { data: stockData } = await stockQ;
 
       // ── FUENTE 2: Consumo real en trabajos (liquidacion_materiales + liquidaciones) ──
-      let liqQ = supabase.from("liquidaciones")
-        .select("id,tecnico,tecnico_liquida")
-        .gte("fecha_liquidacion", desdeTs)
-        .lt("fecha_liquidacion", hastaTs)
-        .limit(5000);
-      if (matRptTecnico !== "TODOS") liqQ = liqQ.or(`tecnico.eq.${matRptTecnico},tecnico_liquida.eq.${matRptTecnico}`);
-      const { data: liqData } = await liqQ;
+      // liquidaciones ya supera las 1000 filas -- .limit(5000) se corta
+      // igual en 1000 sin avisar. Se pagina de verdad.
+      const { data: liqData } = await fetchAllPagedQuery((from, to) => {
+        let q = supabase.from("liquidaciones")
+          .select("id,tecnico,tecnico_liquida")
+          .gte("fecha_liquidacion", desdeTs)
+          .lt("fecha_liquidacion", hastaTs);
+        if (matRptTecnico !== "TODOS") q = q.or(`tecnico.eq.${matRptTecnico},tecnico_liquida.eq.${matRptTecnico}`);
+        return q.range(from, to);
+      });
       const liqIds = (liqData || []).map((l) => l.id);
       const liqTecMap = Object.fromEntries((liqData || []).map((l) => [l.id, l.tecnico_liquida || l.tecnico || ""]));
 
@@ -14637,16 +14677,18 @@ export default function App() {
       }
 
       // ── FUENTE 3: Reposiciones recibidas (inventario_movimientos, solo asignaciones) ──
-      let repQ = supabase.from("inventario_movimientos")
-        .select("created_at,item_nombre,cantidad,unidad,tecnico,nodo")
-        .eq("tipo_item", "material")
-        .ilike("motivo", "%asignac%")
-        .gte("created_at", desdeTs)
-        .lt("created_at", hastaTs)
-        .order("created_at", { ascending: false })
-        .limit(3000);
-      if (matRptTecnico !== "TODOS") repQ = repQ.eq("tecnico", matRptTecnico);
-      const { data: repData } = await repQ;
+      // Mismo problema: .limit(3000) se corta en 1000. Se pagina de verdad.
+      const { data: repData } = await fetchAllPagedQuery((from, to) => {
+        let q = supabase.from("inventario_movimientos")
+          .select("created_at,item_nombre,cantidad,unidad,tecnico,nodo")
+          .eq("tipo_item", "material")
+          .ilike("motivo", "%asignac%")
+          .gte("created_at", desdeTs)
+          .lt("created_at", hastaTs)
+          .order("created_at", { ascending: false });
+        if (matRptTecnico !== "TODOS") q = q.eq("tecnico", matRptTecnico);
+        return q.range(from, to);
+      });
 
       // ── Agrupar por técnico ────────────────────────────────────────────
       const stockByTec = new Map();
