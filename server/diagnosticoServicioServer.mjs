@@ -896,11 +896,22 @@ const MKW_PROXY_ACCIONES = new Set([
   "ChangeFacturacionConfig",
 ]);
 
+// Tokens por defecto identicos a los que ya usaba el Code_Proxy de n8n
+// (hardcodeados ahi tambien, no via env var). OJO: son distintos de
+// MIKROWISP_TOKEN/MIKROWISP_NOD04_TOKEN de mas arriba -- esas dos si vienen
+// de variables de entorno del servicio "diagno" en Easypanel, y la de
+// Americanet (MIKROWISP_TOKEN) esta mal configurada ahi (se resuelve a
+// "......" en vez del token real, confirmado con /api/mikrowisp/test). En la
+// practica casi todas las llamadas ya mandan su propio token de agente, asi
+// que esto solo importa como fallback cuando no se manda ninguno.
+const MKW_PROXY_DEFAULT_TOKEN_DIM = "SE8xNXBlNzBvR2NFTFlQVWl0Y0psZz09";
+const MKW_PROXY_DEFAULT_TOKEN_AMN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
+
 const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride) => {
   if (!MKW_PROXY_ACCIONES.has(accion)) throw new Error("Accion no permitida: " + accion);
   const isDim = MKW_PROXY_NODOS_DIM.has(Number(nodo || 0));
   const base = isDim ? MIKROWISP_NOD04_API_BASE : MIKROWISP_API_BASE;
-  const defaultTok = isDim ? MIKROWISP_NOD04_TOKEN : MIKROWISP_TOKEN;
+  const defaultTok = isDim ? MKW_PROXY_DEFAULT_TOKEN_DIM : MKW_PROXY_DEFAULT_TOKEN_AMN;
   const tok = tokenOverride || defaultTok;
   const endpoint = buildAbsoluteApiUrl(base, "/" + accion);
   const response = await fetchConTimeout(endpoint, {
