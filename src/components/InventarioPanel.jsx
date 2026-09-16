@@ -806,13 +806,13 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       };
       // Postgrest corta en 1000 filas si no se pagina explicitamente. equipos_catalogo ya supera
       // ese limite, asi que se recorre por paginas para no perder equipos silenciosamente.
-      const fetchAllPaged = async (table, selectCols) => {
+      const fetchAllPaged = async (table, selectCols, orderCol = "id") => {
         const all = [];
         const pageSize = 1000;
         let offset = 0;
         try {
           while (true) {
-            const { data, error } = await supabase.from(table).select(selectCols).order("id", { ascending: false }).range(offset, offset + pageSize - 1);
+            const { data, error } = await supabase.from(table).select(selectCols).order(orderCol, { ascending: false }).range(offset, offset + pageSize - 1);
             if (error) return { data: all, error };
             const chunk = data || [];
             all.push(...chunk);
@@ -831,9 +831,9 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       let [eq, asig, mov, usu, liq, sol, art, alm, rel] = await Promise.all([
         fetchAllPaged("equipos_catalogo", "id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado,almacen_id,almacen_nombre"),
         safeQuery(supabase.from("materiales_asignados_tecnicos").select("id,tecnico,material_id,material_nombre,cantidad_asignada,cantidad_disponible,unidad").order("id", { ascending: false })),
-        safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,nodo,almacen_id,almacen_nombre").order("created_at", { ascending: false }).limit(1500)),
+        fetchAllPaged("inventario_movimientos", "id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,nodo,almacen_id,almacen_nombre", "created_at"),
         safeQuery(supabase.from("usuarios").select("id,nombre,username,rol,activo").eq("activo", true).order("nombre", { ascending: true })),
-        safeQuery(supabase.from("liquidaciones").select("id,tecnico,tecnico_liquida").order("id", { ascending: false }).limit(5000)),
+        fetchAllPaged("liquidaciones", "id,tecnico,tecnico_liquida"),
         safeQuery(
           supabase
             .from(INVENTARIO_DEV_SOL_TABLE)
@@ -848,12 +848,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
             .order("id", { ascending: false })
         ),
         safeQuery(supabase.from("almacenes").select("id,nombre,codigo,direccion,ubicacion,activo").order("nombre", { ascending: true })),
-        safeQuery(
-          supabase
-            .from("onu_liquidacion_relacion")
-            .select("id_onu,liquidacion_codigo,regla_match,pendiente_revision")
-            .limit(5000)
-        ),
+        fetchAllPaged("onu_liquidacion_relacion", "id_onu,liquidacion_codigo,regla_match,pendiente_revision", "id_onu"),
       ]);
       let almacenesColsOff = false;
       if (
@@ -864,14 +859,14 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
         eq = await fetchAllPaged("equipos_catalogo", "id,empresa,tipo,marca,modelo,precio_unitario,codigo_qr,serial_mac,foto_referencia,estado,tecnico_asignado");
       }
       if (mov.error && columnMissing("nodo", mov.error)) {
-        mov = await safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,almacen_id,almacen_nombre").order("created_at", { ascending: false }).limit(1500));
+        mov = await fetchAllPaged("inventario_movimientos", "id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,almacen_id,almacen_nombre", "created_at");
       }
       if (mov.error && (columnMissing("almacen_id", mov.error) || columnMissing("almacen_nombre", mov.error))) {
         almacenesColsOff = true;
-        mov = await safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,nodo").order("created_at", { ascending: false }).limit(1500));
+        mov = await fetchAllPaged("inventario_movimientos", "id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor,nodo", "created_at");
       }
       if (mov.error && columnMissing("nodo", mov.error)) {
-        mov = await safeQuery(supabase.from("inventario_movimientos").select("id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor").order("created_at", { ascending: false }).limit(1500));
+        mov = await fetchAllPaged("inventario_movimientos", "id,created_at,tipo_item,movimiento,motivo,item_nombre,referencia,cantidad,unidad,costo_unitario,tecnico,actor", "created_at");
       }
       if (sol.error && (columnMissing("tipo_solicitud", sol.error) || columnMissing("es_legacy_sin_qr", sol.error) || columnMissing("identificador_alterno", sol.error) || columnMissing("nodo_origen", sol.error) || columnMissing("updated_at", sol.error))) {
         sol = await safeQuery(
