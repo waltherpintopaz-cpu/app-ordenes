@@ -3866,6 +3866,209 @@ th {
   font-weight: 700;
 }
 
+/* Selector con foto + buscador -- reemplaza los <select> nativos donde
+   antes solo se veia texto plano en una lista larga y era facil elegir el
+   articulo/equipo/material equivocado. */
+.inv-picker-foto {
+  position: relative;
+  width: 100%;
+}
+
+.inv-picker-foto-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e1e8f2;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  min-height: 42px;
+}
+
+.inv-picker-foto-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.inv-picker-foto-trigger img {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 7px;
+  object-fit: cover;
+  border: 1px solid #e1e8f2;
+}
+
+.inv-picker-foto-noimg {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 7px;
+  border: 1px dashed #c7d5ea;
+  background: #eef2f9;
+  color: #93a4c2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.inv-picker-foto-trigger-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.inv-picker-foto-trigger-text strong {
+  font-size: 13px;
+  color: #1f2f46;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-picker-foto-trigger-text em {
+  font-size: 11px;
+  font-style: normal;
+  color: #5a6e8d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-picker-foto-placeholder {
+  flex: 1;
+  color: #93a4c2;
+  font-size: 13px;
+}
+
+.inv-picker-foto-chevron {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: #93a4c2;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.inv-picker-foto-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: #ffffff;
+  border: 1px solid #dfe8f5;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(20, 40, 80, 0.16);
+  padding: 8px;
+}
+
+.inv-picker-foto-search {
+  width: 100%;
+  border: 1px solid #e1e8f2;
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  outline: none;
+}
+
+.inv-picker-foto-search:focus {
+  border-color: #bfd1ea;
+  box-shadow: 0 0 0 2px rgba(47, 95, 168, 0.12);
+}
+
+.inv-picker-foto-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inv-picker-foto-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.inv-picker-foto-row:hover {
+  background: #f0f5fc;
+}
+
+.inv-picker-foto-row.active {
+  background: #e3edfb;
+}
+
+.inv-picker-foto-row img {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 7px;
+  object-fit: cover;
+  border: 1px solid #e1e8f2;
+}
+
+.inv-picker-foto-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.inv-picker-foto-row-text strong {
+  font-size: 13px;
+  color: #1f2f46;
+}
+
+.inv-picker-foto-row-text em {
+  font-size: 11px;
+  font-style: normal;
+  color: #5a6e8d;
+}
+
+.inv-picker-foto-empty {
+  padding: 14px 8px;
+  text-align: center;
+  color: #93a4c2;
+  font-size: 12.5px;
+}
+
+body[data-theme="dark"] .inv-picker-foto-trigger,
+body[data-theme="dark"] .inv-picker-foto-panel,
+body[data-theme="dark"] .inv-picker-foto-search {
+  background: #16233a;
+  border-color: #32455f;
+}
+
+body[data-theme="dark"] .inv-picker-foto-row:hover {
+  background: #1e2f4d;
+}
+
+body[data-theme="dark"] .inv-picker-foto-row.active {
+  background: #223a5e;
+}
+
+body[data-theme="dark"] .inv-picker-foto-trigger-text strong,
+body[data-theme="dark"] .inv-picker-foto-row-text strong {
+  color: #dce6f5;
+}
+
 .inv-divider {
   border: none;
   border-top: 1px solid #dbe5f5;

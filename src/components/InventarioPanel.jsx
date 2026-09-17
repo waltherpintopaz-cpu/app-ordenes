@@ -572,6 +572,89 @@ function InventoryPhotoThumb(props) {
   return <InventoryPhotoThumbInner key={photoKey} {...props} />;
 }
 
+// Selector con foto + buscador, para reemplazar los <select> nativos que no
+// pueden mostrar imagenes dentro de las opciones (limitacion del navegador,
+// no de este codigo). Se usa en los 4 lugares del panel donde antes habia
+// que reconocer un articulo/equipo/material solo por texto en una lista
+// larga: Articulo (Registro), Equipo (Asignaciones) y Material (Ingreso de
+// materiales y Asignaciones).
+function PickerFotoBuscable({ items, value, onChange, placeholder = "Seleccionar", disabled = false, emptyLabel = "Sin resultados" }) {
+  const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [abierto]);
+
+  const seleccionado = items.find((it) => String(it.id) === String(value));
+  const q = busqueda.trim().toLowerCase();
+  const filtrados = q
+    ? items.filter((it) => `${it.label} ${it.sublabel || ""}`.toLowerCase().includes(q))
+    : items;
+
+  return (
+    <div className="inv-picker-foto" ref={wrapRef}>
+      <button
+        type="button"
+        className="inv-picker-foto-trigger"
+        disabled={disabled}
+        onClick={() => { setAbierto((v) => !v); setBusqueda(""); }}
+      >
+        {seleccionado ? (
+          <>
+            {seleccionado.foto ? <img src={seleccionado.foto} alt={seleccionado.label} /> : <span className="inv-picker-foto-noimg">–</span>}
+            <span className="inv-picker-foto-trigger-text">
+              <strong>{seleccionado.label}</strong>
+              {seleccionado.sublabel ? <em>{seleccionado.sublabel}</em> : null}
+            </span>
+          </>
+        ) : (
+          <span className="inv-picker-foto-placeholder">{items.length ? placeholder : emptyLabel}</span>
+        )}
+        <svg viewBox="0 0 20 20" aria-hidden="true" className="inv-picker-foto-chevron"><path d="M5 8l5 5 5-5" /></svg>
+      </button>
+      {abierto ? (
+        <div className="inv-picker-foto-panel">
+          <input
+            autoFocus
+            type="text"
+            className="inv-picker-foto-search"
+            placeholder="Buscar..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          <div className="inv-picker-foto-list">
+            {filtrados.length === 0 ? (
+              <p className="inv-picker-foto-empty">{emptyLabel}</p>
+            ) : (
+              filtrados.map((it) => (
+                <button
+                  type="button"
+                  key={it.id}
+                  className={`inv-picker-foto-row${String(it.id) === String(value) ? " active" : ""}`}
+                  onClick={() => { onChange(it.id); setAbierto(false); }}
+                >
+                  {it.foto ? <img src={it.foto} alt={it.label} /> : <span className="inv-picker-foto-noimg">–</span>}
+                  <span className="inv-picker-foto-row-text">
+                    <strong>{it.label}</strong>
+                    {it.sublabel ? <em>{it.sublabel}</em> : null}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function InventarioPanel({ initialTab = "catalogo", sessionUser = null }) {
   const esTecnico = initialTab === "stockTecnico" || norm(sessionUser?.rol) === "tecnico";
   const tabs = useMemo(() => {
@@ -1445,7 +1528,6 @@ ${filasNodos}
   }, [artEditId, articulos]);
 
   const equiposDispAsig = useMemo(() => equipos.filter((e) => estadoGrupo(e.estado) === "almacen" && !eqPendAsig.some((p) => String(p.id) === String(e.id))), [equipos, eqPendAsig]);
-  const eqSelAsig = useMemo(() => equiposDispAsig.find((e) => String(e.id) === String(asigEq.equipoId)), [equiposDispAsig, asigEq.equipoId]);
   const matSelAsig = useMemo(() => materiales.find((m) => String(m.id) === String(asigMat.materialId)), [materiales, asigMat.materialId]);
   const catalogo = useMemo(
     () =>
@@ -3955,10 +4037,14 @@ ${filasNodos}
               <div className="inv-form-grid two">
                 <label>Empresa<select value={eqForm.empresa} onChange={(e) => cambiarCabeceraLote("empresa", e.target.value)} disabled={loteBloqueado}><option>Americanet</option><option>DIM</option></select></label>
                 <label>Articulo
-                  <select value={articuloRegistroId} onChange={(e) => seleccionarArticuloRegistro(e.target.value)} disabled={loteBloqueado || articulosDisponibles.length === 0}>
-                    <option value="">{articulosDisponibles.length ? "Seleccionar articulo" : "Sin articulos registrados"}</option>
-                    {articulosDisponibles.map((a) => <option key={a.id} value={a.id}>{`${a.tipo} | ${a.marca} | ${a.modelo}`}</option>)}
-                  </select>
+                  <PickerFotoBuscable
+                    items={articulosDisponibles.map((a) => ({ id: a.id, foto: a.foto, label: `${a.tipo} | ${a.marca}`, sublabel: a.modelo }))}
+                    value={articuloRegistroId}
+                    onChange={(id) => seleccionarArticuloRegistro(id)}
+                    disabled={loteBloqueado || articulosDisponibles.length === 0}
+                    placeholder="Seleccionar articulo"
+                    emptyLabel="Sin articulos registrados"
+                  />
                 </label>
                 <label>Almacén
                   <select value={almacenEqId} onChange={(e) => setAlmacenEqId(String(e.target.value || ""))} disabled={loteBloqueado || !almacenesDisponibles}>
@@ -4120,7 +4206,14 @@ ${filasNodos}
 	            <h3>Ingreso de materiales (por cantidad)</h3>
 	            <p className="panel-meta">Registra entradas de materiales desde el submenu Registro.</p>
 	            <div className="inv-form-grid two">
-	              <label>Material<select value={ingresoMat.materialId} onChange={(e) => { const id = String(e.target.value || ""); const unidad = String(materiales.find((m) => String(m.id) === id)?.unidad || "unidad"); setIngresoMat((p) => ({ ...p, materialId: id, unidad })); }}><option value="">Seleccionar</option>{materiales.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select></label>
+	              <label>Material
+                <PickerFotoBuscable
+                  items={materiales.map((m) => ({ id: m.id, foto: m.foto, label: m.nombre, sublabel: m.unidad }))}
+                  value={ingresoMat.materialId}
+                  onChange={(id) => { const unidad = String(materiales.find((m) => String(m.id) === String(id))?.unidad || "unidad"); setIngresoMat((p) => ({ ...p, materialId: id, unidad })); }}
+                  placeholder="Seleccionar"
+                />
+              </label>
                 <label>Almacén<select value={almacenMovId} onChange={(e) => setAlmacenMovId(String(e.target.value || ""))} disabled={!almacenesDisponibles}><option value="">{almacenesActivos.length ? "Seleccionar almacén" : almacenesDisponibles ? "Sin almacenes activos" : "Tabla almacenes no disponible"}</option>{almacenesActivos.map((a) => <option key={`al-mov-${a.id}`} value={a.id}>{a.nombre} ({a.codigo})</option>)}</select></label>
 	              <label>Cantidad<input value={ingresoMat.cantidad} onChange={(e) => setIngresoMat((p) => ({ ...p, cantidad: e.target.value }))} /></label>
 	              <label>Unidad<select value={ingresoMat.unidad} onChange={(e) => setIngresoMat((p) => ({ ...p, unidad: e.target.value }))}><option>unidad</option><option>metros</option><option>rollo</option><option>caja</option></select></label>
@@ -4165,18 +4258,14 @@ ${filasNodos}
 	              <button type="button" className="primary-btn small" onClick={() => agregarEquipoAsignacionPorCodigo()}>Agregar por QR</button>
 	            </div>
             {qrAsignacionMsg ? <p className="inv-note info">{qrAsignacionMsg}</p> : null}
-            <label className="inv-field">Equipo<select value={asigEq.equipoId} onChange={(e) => setAsigEq((p) => ({ ...p, equipoId: e.target.value }))}><option value="">Seleccionar</option>{equiposDispAsig.map((e) => <option key={e.id} value={e.id}>{e.codigo || "SIN-QR"} | {equipoNombre(e)}</option>)}</select></label>
-            {eqSelAsig ? (
-              <div className="inv-sel-preview">
-                {eqSelAsig.foto ? <img src={eqSelAsig.foto} alt={equipoNombre(eqSelAsig)} className="inv-thumb inv-thumb-mat" /> : <div className="inv-sel-preview-noimg">Sin foto</div>}
-                <div className="inv-sel-preview-info">
-                  <strong>{eqSelAsig.codigo || "SIN-QR"}</strong>
-                  <span>{equipoNombre(eqSelAsig)}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="panel-meta">Seleccionado: -</p>
-            )}
+            <label className="inv-field">Equipo
+              <PickerFotoBuscable
+                items={equiposDispAsig.map((e) => ({ id: e.id, foto: e.foto, label: e.codigo || "SIN-QR", sublabel: equipoNombre(e) }))}
+                value={asigEq.equipoId}
+                onChange={(id) => setAsigEq((p) => ({ ...p, equipoId: id }))}
+                placeholder="Seleccionar"
+              />
+            </label>
             <div className="inv-actions">
               <button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigEq.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn) || !asigEq.equipoId) return window.alert("Selecciona tecnico valido y equipo."); const target = equiposDispAsig.find((e) => String(e.id) === String(asigEq.equipoId)); if (!target) return window.alert("Equipo no disponible."); if (eqPendAsig.some((x) => String(x.id) === String(target.id))) return; setEqPendAsig((prev) => [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, id: target.id, tecnico: tec, codigo: target.codigo, tipo: target.tipo, marca: target.marca, modelo: target.modelo, precio: target.precio, almacenId: target.almacenId || "", almacenNombre: target.almacenNombre || "" }]); setAsigEq((p) => ({ ...p, equipoId: "", tecnico: tec })); setQrAsignacionMsg(`Equipo agregado: ${target.codigo || target.id}.`); }}>Agregar seleccionado</button>
               <button type="button" className="secondary-btn" onClick={async () => { if (!eqPendAsig.length) return window.alert("No hay equipos en lista."); const fallidosMov = []; try { for (const item of eqPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.codigo || item.id}`); const { error: err } = await supabase.from("equipos_catalogo").update({ estado: "asignado", tecnico_asignado: tec }).eq("id", item.id); if (err) throw err; const rMov = await registrarMov({ tipoItem: "equipo", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`, referencia: item.codigo, cantidad: 1, unidad: "unidad", costoUnitario: item.precio, tecnico: tec, almacenId: item.almacenId || "", almacenNombre: item.almacenNombre || "" }); if (!rMov.ok) fallidosMov.push(`${item.codigo || item.id}: ${rMov.error}`); } const total = eqPendAsig.length; setEqPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} equipo(s) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} equipo(s) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({eqPendAsig.length})</button>
@@ -4192,17 +4281,18 @@ ${filasNodos}
 	                {tecnicos.map((t) => <option key={t.id} value={t.nombre}>{t.nombre}</option>)}
 	              </select>
 	            </label>
-	            <label className="inv-field">Material<select value={asigMat.materialId} onChange={(e) => { const id = String(e.target.value || ""); const unidad = String(materiales.find((m) => String(m.id) === id)?.unidad || asigMat.unidad || "unidad"); setAsigMat((p) => ({ ...p, materialId: id, unidad })); }}><option value="">Seleccionar</option>{materiales.map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.unidad})</option>)}</select></label>
+	            <label className="inv-field">Material
+              <PickerFotoBuscable
+                items={materiales.map((m) => ({ id: m.id, foto: m.foto, label: m.nombre, sublabel: m.unidad }))}
+                value={asigMat.materialId}
+                onChange={(id) => { const unidad = String(materiales.find((m) => String(m.id) === String(id))?.unidad || asigMat.unidad || "unidad"); setAsigMat((p) => ({ ...p, materialId: id, unidad })); }}
+                placeholder="Seleccionar"
+              />
+            </label>
             {matSelAsig ? (
-              <div className="inv-sel-preview">
-                {matSelAsig.foto ? <img src={matSelAsig.foto} alt={matSelAsig.nombre} className="inv-thumb inv-thumb-mat" /> : <div className="inv-sel-preview-noimg">Sin foto</div>}
-                <div className="inv-sel-preview-info">
-                  <strong>{matSelAsig.nombre}</strong>
-                  <span className={stockMaterialDisponible(asigMat.materialId, asigMat.unidad) > 0 ? "inv-stock-ok" : "inv-stock-bajo"}>
-                    Disponible: {stockMaterialDisponible(asigMat.materialId, asigMat.unidad).toFixed(2)} {asigMat.unidad}
-                  </span>
-                </div>
-              </div>
+              <p className={`panel-meta ${stockMaterialDisponible(asigMat.materialId, asigMat.unidad) > 0 ? "inv-stock-ok" : "inv-stock-bajo"}`}>
+                Disponible: {stockMaterialDisponible(asigMat.materialId, asigMat.unidad).toFixed(2)} {asigMat.unidad}
+              </p>
             ) : null}
             <div className="inv-form-grid two"><label>Cantidad<input value={asigMat.cantidad} onChange={(e) => setAsigMat((p) => ({ ...p, cantidad: e.target.value }))} /></label><label>Unidad<select value={asigMat.unidad} onChange={(e) => setAsigMat((p) => ({ ...p, unidad: e.target.value }))}><option>unidad</option><option>metros</option><option>rollo</option><option>caja</option></select></label></div>
             <div className="inv-actions"><button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigMat.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); const matId = String(asigMat.materialId || "").trim(); const cant = num(asigMat.cantidad, -1); if (!tec || !esTecnicoRegistrado(tecIn) || !matId || cant <= 0) return window.alert("Completa tecnico/material/cantidad valida."); const mat = materiales.find((m) => String(m.id) === matId); if (!mat) return; const disponible = stockMaterialDisponible(matId, asigMat.unidad); if (cant > disponible) return window.alert(`Stock insuficiente. Disponible: ${disponible.toFixed(2)} ${asigMat.unidad}.`); const key = `${personaKey(tec)}|${matId}|${norm(asigMat.unidad)}`; setMatPendAsig((prev) => { const idx = prev.findIndex((x) => x.key === key); if (idx >= 0) { const siguiente = num(prev[idx].cantidad) + cant; const dispValidado = stockMaterialDisponible(matId, asigMat.unidad, prev.filter((x) => x.key !== key)); if (siguiente > dispValidado) { window.alert(`Stock insuficiente para acumular. Disponible: ${dispValidado.toFixed(2)} ${asigMat.unidad}.`); return prev; } const next = [...prev]; next[idx] = { ...next[idx], cantidad: siguiente }; return next; } return [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, key, tecnico: tec, materialId: matId, materialNombre: mat.nombre, unidad: asigMat.unidad, cantidad: cant, costoUnitario: mat.costo }]; }); setAsigMat((p) => ({ ...p, materialId: "", cantidad: "", tecnico: tec })); }}>Agregar</button><button type="button" className="secondary-btn" onClick={async () => { if (!matPendAsig.length) return window.alert("No hay materiales en lista."); const fallidosMov = []; try { for (const item of matPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.materialNombre}`); const ex = materialesAsig.find((m) => personaKey(m.tecnico) === personaKey(tec) && String(m.materialId) === String(item.materialId) && norm(m.unidad) === norm(item.unidad)); if (ex) { const nuevo = num(ex.disponible) + num(item.cantidad); const { error: err } = await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: nuevo, cantidad_asignada: nuevo }).eq("id", ex.id); if (err) throw err; } else { const { error: err } = await supabase.from("materiales_asignados_tecnicos").insert([{ tecnico: tec, material_id: Number.isFinite(Number(item.materialId)) ? Number(item.materialId) : null, material_nombre: item.materialNombre, cantidad_asignada: num(item.cantidad), cantidad_disponible: num(item.cantidad), unidad: item.unidad, fecha_asignacion: new Date().toISOString() }]); if (err) throw err; } const rMov = await registrarMov({ tipoItem: "material", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: item.materialNombre, referencia: materialRef(item.materialId), cantidad: item.cantidad, unidad: item.unidad, costoUnitario: item.costoUnitario, tecnico: tec }); if (!rMov.ok) fallidosMov.push(`${item.materialNombre}: ${rMov.error}`); } const total = matPendAsig.length; setMatPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} material(es) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} material(es) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({matPendAsig.length})</button></div>
