@@ -13,6 +13,21 @@ const normRef = (v) =>
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 const num = (v, fb = 0) => (Number.isFinite(Number(v)) ? Number(v) : fb);
+// "Hoy 7:43 a.m.", "Ayer 8:56 a.m." o "16 sept, 6:44 a.m." en vez del
+// timestamp completo repetido en cada fila del Kardex -- se escanea mucho
+// mas rapido una lista larga asi.
+const formatFechaCompacta = (fechaRaw) => {
+  const d = new Date(fechaRaw);
+  if (Number.isNaN(d.getTime())) return String(fechaRaw || "-");
+  const hora = d.toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" });
+  const hoy = new Date();
+  const ayer = new Date(hoy);
+  ayer.setDate(hoy.getDate() - 1);
+  const mismoDia = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (mismoDia(d, hoy)) return `Hoy, ${hora}`;
+  if (mismoDia(d, ayer)) return `Ayer, ${hora}`;
+  return `${d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}, ${hora}`;
+};
 const chunkList = (list = [], size = 200) => {
   const out = [];
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
@@ -4907,25 +4922,29 @@ ${filasNodos}
                 const fotoMov = resolverFotoKardex(m);
                 const movNorm = norm(m.mov);
                 const badgeMov =
-                  movNorm.includes("entrada") || movNorm.includes("ingreso") ? { bg: "#dcfce7", fg: "#15803d", label: "Entrada" }
-                  : movNorm.includes("salida") ? { bg: "#fee2e2", fg: "#b91c1c", label: "Salida" }
-                  : movNorm.includes("merma") ? { bg: "#fef3c7", fg: "#b45309", label: "Merma" }
-                  : movNorm.includes("baja") ? { bg: "#fef3c7", fg: "#b45309", label: "Baja" }
-                  : movNorm.includes("ajuste") ? { bg: "#dbeafe", fg: "#1d4ed8", label: "Ajuste" }
-                  : movNorm.includes("devolucion") || movNorm.includes("devolución") ? { bg: "#ede9fe", fg: "#6d28d9", label: "Devolución" }
-                  : { bg: "#f1f5f9", fg: "#475569", label: m.mov || "-" };
+                  movNorm.includes("entrada") || movNorm.includes("ingreso") ? { bg: "#dcfce7", fg: "#15803d", accent: "#22c55e", label: "Entrada", signo: "+" }
+                  : movNorm.includes("salida") ? { bg: "#fee2e2", fg: "#b91c1c", accent: "#ef4444", label: "Salida", signo: "-" }
+                  : movNorm.includes("merma") ? { bg: "#fef3c7", fg: "#b45309", accent: "#f59e0b", label: "Merma", signo: "-" }
+                  : movNorm.includes("baja") ? { bg: "#fef3c7", fg: "#b45309", accent: "#f59e0b", label: "Baja", signo: "-" }
+                  : movNorm.includes("ajuste") ? { bg: "#dbeafe", fg: "#1d4ed8", accent: "#3b82f6", label: "Ajuste", signo: "+" }
+                  : movNorm.includes("devolucion") || movNorm.includes("devolución") ? { bg: "#ede9fe", fg: "#6d28d9", accent: "#8b5cf6", label: "Devolución", signo: "+" }
+                  : { bg: "#f1f5f9", fg: "#475569", accent: "#94a3b8", label: m.mov || "-", signo: "" };
                 return (
-                  <div key={m.id} className="inv-row inv-row-eq">
+                  <div key={m.id} className="inv-row inv-row-eq" style={{ borderLeft: `4px solid ${badgeMov.accent}`, paddingLeft: "12px" }}>
                     <div className="inv-row-eq-info">
-                      <div className="inv-row-head">
-                        <p className="inv-row-title">{new Date(m.fecha).toLocaleString()} | {m.tipo || "-"}</p>
-                        <span style={{ background: badgeMov.bg, color: badgeMov.fg, fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px", borderRadius: "8px", padding: "3px 9px" }}>{badgeMov.label}</span>
+                      <div className="inv-row-head" style={{ alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
+                          <span style={{ background: badgeMov.bg, color: badgeMov.fg, fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px", borderRadius: "8px", padding: "3px 9px" }}>{badgeMov.label}</span>
+                          <span style={{ fontSize: "17px", fontWeight: 800, color: badgeMov.fg }}>
+                            {badgeMov.signo}{num(m.cant).toFixed(2)} <span style={{ fontSize: "12px", fontWeight: 600, color: "#5a6e8d" }}>{m.unidad || "unidad"}</span>
+                          </span>
+                        </div>
+                        <p className="inv-row-title" style={{ margin: 0, fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>{formatFechaCompacta(m.fecha)}</p>
                       </div>
                       <p className="inv-row-meta">
                         {[
                           m.motivo && `Motivo: ${m.motivo}`,
                           m.item && `Item: ${m.item}`,
-                          `Cant: ${num(m.cant).toFixed(2)} ${m.unidad || "unidad"}`,
                         ].filter(Boolean).join(" | ")}
                       </p>
                       {[
