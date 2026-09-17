@@ -4921,8 +4921,30 @@ ${filasNodos}
                         <p className="inv-row-title">{new Date(m.fecha).toLocaleString()} | {m.tipo || "-"}</p>
                         <span style={{ background: badgeMov.bg, color: badgeMov.fg, fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px", borderRadius: "8px", padding: "3px 9px" }}>{badgeMov.label}</span>
                       </div>
-                      <p className="inv-row-meta">Motivo: {m.motivo || "-"} | Item: {m.item || "-"} | Cant: {num(m.cant).toFixed(2)} {m.unidad || "unidad"}</p>
-                      <p className="inv-row-meta">QR: {m.ref || "SIN-QR"} | Tecnico: {m.tecnico || "-"} | Actor: {m.actor || "-"} | Nodo: {m.nodo || "-"} | Almacén: {m.almacenNombre || "-"}</p>
+                      <p className="inv-row-meta">
+                        {[
+                          m.motivo && `Motivo: ${m.motivo}`,
+                          m.item && `Item: ${m.item}`,
+                          `Cant: ${num(m.cant).toFixed(2)} ${m.unidad || "unidad"}`,
+                        ].filter(Boolean).join(" | ")}
+                      </p>
+                      {[
+                        m.ref && `QR: ${m.ref}`,
+                        m.tecnico && `Tecnico: ${m.tecnico}`,
+                        m.actor && `Actor: ${m.actor}`,
+                        m.nodo && `Nodo: ${m.nodo}`,
+                        m.almacenNombre && `Almacén: ${m.almacenNombre}`,
+                      ].filter(Boolean).length > 0 ? (
+                        <p className="inv-row-meta">
+                          {[
+                            m.ref && `QR: ${m.ref}`,
+                            m.tecnico && `Tecnico: ${m.tecnico}`,
+                            m.actor && `Actor: ${m.actor}`,
+                            m.nodo && `Nodo: ${m.nodo}`,
+                            m.almacenNombre && `Almacén: ${m.almacenNombre}`,
+                          ].filter(Boolean).join(" | ")}
+                        </p>
+                      ) : null}
                     </div>
                     {fotoMov ? <img src={fotoMov} alt={`mov-${m.ref || m.id || "item"}`} className="inv-thumb inv-thumb-kardex" /> : null}
                   </div>
