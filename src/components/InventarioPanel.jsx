@@ -1735,10 +1735,21 @@ ${filasNodos}
       const item = String(m?.item || "Sin item").trim() || "Sin item";
       const unidad = m?.unidad || "unidad";
       const cant = num(m?.cant || 0);
-      const esEntrada = norm(m?.mov || "").includes("entrada") || norm(m?.mov || "").includes("ingreso");
+      const movNorm = norm(m?.mov || "");
+      // Mismo criterio que stockMaterialActual: una merma/baja con tecnico
+      // ya se descarto del almacen central cuando salio (movimiento
+      // "salida" previo hacia ese tecnico) -- contarla aca otra vez como
+      // salida duplicaria la resta y el "Neto" no cuadraria con "Stock
+      // actual" (paso justo eso: Stock actual mostraba 1000 pero este
+      // resumen seguia en 680 por una merma con tecnico ya asignado).
+      const esEntrada = movNorm.includes("entrada") || movNorm.includes("ingreso") || movNorm.includes("ajuste") || movNorm.includes("devolucion") || movNorm.includes("devolución");
+      const esMermaOBaja = movNorm.includes("merma") || movNorm.includes("baja");
+      const tieneTecnico = String(m?.tecnico || "").trim().length > 0;
+      const esSalida = movNorm.includes("salida") || (esMermaOBaja && !tieneTecnico);
       if (!porItem.has(item)) porItem.set(item, { item, unidad, entradas: 0, salidas: 0 });
       const fila = porItem.get(item);
-      if (esEntrada) fila.entradas += cant; else fila.salidas += cant;
+      if (esEntrada) fila.entradas += cant;
+      else if (esSalida) fila.salidas += cant;
     });
     return Array.from(porItem.values())
       .map((f) => ({ ...f, neto: f.entradas - f.salidas }))
