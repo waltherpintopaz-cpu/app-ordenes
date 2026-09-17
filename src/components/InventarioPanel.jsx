@@ -636,6 +636,10 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   const [kardexFechaHasta, setKardexFechaHasta] = useState("");
   const [kardexMovFiltro, setKardexMovFiltro] = useState("TODOS");
   const [kardexTecnicoFiltro, setKardexTecnicoFiltro] = useState("");
+  // Al tocar una tarjeta de material en "Stock actual" se llena esto y se
+  // salta a la pestana Kardex ya filtrado a ese material -- igual que ya
+  // hace la app movil.
+  const [kardexMaterialFiltro, setKardexMaterialFiltro] = useState("");
   useEffect(() => {
     catalogoResumenMapRef.current = catalogoResumenMap || {};
   }, [catalogoResumenMap]);
@@ -1521,12 +1525,15 @@ ${filasNodos}
       const key = materialKey(matId, unidad);
       const actual = num(map.get(key), 0);
       const movNorm = norm(m.mov);
-      // La app movil (StockScreen.js) ya clasifica "merma"/"baja" como salida
-      // de stock (material dañado/perdido, ya no disponible) -- la web no lo
-      // hacia, dando un total mas alto de lo real (ej. Cable Drop mostraba
-      // 1000m en la web pero 680m en el movil, la diferencia exacta de una
-      // merma de 320m aprobada que la web ignoraba). Se unifica el criterio.
-      const esSalida = movNorm.includes("salida") || movNorm.includes("merma") || movNorm.includes("baja");
+      // Una merma/baja con tecnico asignado es material que YA habia salido
+      // del almacen central (via un movimiento "salida" anterior hacia ese
+      // tecnico) -- restarla aca otra vez seria descontarla dos veces del
+      // mismo total. Solo cuenta contra el almacen central si ocurrio ahi
+      // mismo, antes de salir a nadie (sin tecnico). La perdida de material
+      // ya asignado a un tecnico es saldo de ESE tecnico, no del almacen.
+      const esMermaOBaja = movNorm.includes("merma") || movNorm.includes("baja");
+      const tieneTecnico = String(m.tecnico || "").trim().length > 0;
+      const esSalida = movNorm.includes("salida") || (esMermaOBaja && !tieneTecnico);
       const esEntrada = movNorm.includes("ingreso") || movNorm.includes("entrada") || movNorm.includes("ajuste") || movNorm.includes("devolucion") || movNorm.includes("devolución");
       const signo = esSalida ? -1 : esEntrada ? 1 : 0;
       map.set(key, actual + signo * num(m.cant));
@@ -1715,9 +1722,10 @@ ${filasNodos}
       if (toTs && Number.isFinite(ts) && ts > toTs) return false;
       if (!movMatch(m?.mov || "")) return false;
       if (kardexTecnicoFiltro && personaKey(m?.tecnico || "") !== personaKey(kardexTecnicoFiltro)) return false;
+      if (kardexMaterialFiltro && norm(m?.item || "") !== norm(kardexMaterialFiltro)) return false;
       return true;
     });
-  }, [kardex, kardexFechaDesde, kardexFechaHasta, kardexMovFiltro, kardexTecnicoFiltro]);
+  }, [kardex, kardexFechaDesde, kardexFechaHasta, kardexMovFiltro, kardexTecnicoFiltro, kardexMaterialFiltro]);
   // Resumen de cantidad total por item (sobre el mismo filtro de arriba) --
   // separa entradas de salidas para no mezclar "cuanto entro" con "cuanto
   // salio" en un solo numero que no diga nada.
@@ -3792,13 +3800,19 @@ ${filasNodos}
             <p className="panel-meta" style={{ marginTop: 0, marginBottom: "10px" }}>
               No se desglosa por almacén: las salidas a técnicos no registran de qué almacén salió el material, así que separar
               por almacén daría números inflados. Este total es el mismo cálculo confiable que usa el resto del panel.
+              Toca un material para ver su historial de movimientos.
             </p>
             {!materialesStockVisual.length ? (
               <p className="panel-meta">No hay materiales con stock disponible.</p>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "12px" }}>
                 {materialesStockVisual.map((it, i) => (
-                  <div key={i} style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
+                  <div
+                    key={i}
+                    onClick={() => { setKardexMaterialFiltro(it.nombre); setTab("movimientos"); }}
+                    role="button"
+                    tabIndex={0}
+                    style={{ border: "1px solid #e4eaf3", borderRadius: "12px", overflow: "hidden", background: "#fff", cursor: "pointer" }}>
                     <div style={{ width: "100%", aspectRatio: "1 / 1", background: "#f4f7fb", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                       {it.foto ? (
                         <img src={it.foto} alt={it.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -4797,6 +4811,18 @@ ${filasNodos}
                 PDF kardex ({kardexFiltrado.length})
               </button>
             </div>
+            {kardexMaterialFiltro ? (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#eff6ff", border: "1px solid #93c5fd", borderRadius: "999px", padding: "5px 6px 5px 12px", margin: "0 0 10px" }}>
+                <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#1e40af" }}>Filtrando: {kardexMaterialFiltro}</span>
+                <button
+                  type="button"
+                  onClick={() => setKardexMaterialFiltro("")}
+                  style={{ border: "none", background: "#dbeafe", borderRadius: "999px", width: "20px", height: "20px", lineHeight: "20px", textAlign: "center", cursor: "pointer", color: "#1e40af", fontWeight: 700 }}
+                >
+                  ×
+                </button>
+              </div>
+            ) : null}
             <div className="inv-kardex-filters">
               <label>
                 Desde
@@ -4868,12 +4894,21 @@ ${filasNodos}
               {kardexFiltrado.length === 0 ? <p className="empty">No hay movimientos.</p> : null}
               {kardexFiltrado.map((m) => {
                 const fotoMov = resolverFotoKardex(m);
+                const movNorm = norm(m.mov);
+                const badgeMov =
+                  movNorm.includes("entrada") || movNorm.includes("ingreso") ? { bg: "#dcfce7", fg: "#15803d", label: "Entrada" }
+                  : movNorm.includes("salida") ? { bg: "#fee2e2", fg: "#b91c1c", label: "Salida" }
+                  : movNorm.includes("merma") ? { bg: "#fef3c7", fg: "#b45309", label: "Merma" }
+                  : movNorm.includes("baja") ? { bg: "#fef3c7", fg: "#b45309", label: "Baja" }
+                  : movNorm.includes("ajuste") ? { bg: "#dbeafe", fg: "#1d4ed8", label: "Ajuste" }
+                  : movNorm.includes("devolucion") || movNorm.includes("devolución") ? { bg: "#ede9fe", fg: "#6d28d9", label: "Devolución" }
+                  : { bg: "#f1f5f9", fg: "#475569", label: m.mov || "-" };
                 return (
                   <div key={m.id} className="inv-row inv-row-eq">
                     <div className="inv-row-eq-info">
                       <div className="inv-row-head">
-                        <p className="inv-row-title">{new Date(m.fecha).toLocaleString()} | {m.tipo || "-"} | {m.mov || "-"}</p>
-                        <span className={`inv-state ${norm(m.mov).includes("ingreso") || norm(m.mov).includes("entrada") ? "almacen" : "asignado"}`}>{m.mov || "-"}</span>
+                        <p className="inv-row-title">{new Date(m.fecha).toLocaleString()} | {m.tipo || "-"}</p>
+                        <span style={{ background: badgeMov.bg, color: badgeMov.fg, fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.4px", borderRadius: "8px", padding: "3px 9px" }}>{badgeMov.label}</span>
                       </div>
                       <p className="inv-row-meta">Motivo: {m.motivo || "-"} | Item: {m.item || "-"} | Cant: {num(m.cant).toFixed(2)} {m.unidad || "unidad"}</p>
                       <p className="inv-row-meta">QR: {m.ref || "SIN-QR"} | Tecnico: {m.tecnico || "-"} | Actor: {m.actor || "-"} | Nodo: {m.nodo || "-"} | Almacén: {m.almacenNombre || "-"}</p>
