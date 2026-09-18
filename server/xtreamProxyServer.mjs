@@ -84,7 +84,13 @@ async function resolveMapsLink(rawUrl) {
   // mapa (@lat,lng), que puede estar desplazado si el usuario movio la vista.
   const mPin = finalUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
   const mCenter = finalUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-  const match = mPin || mCenter;
+  // Formato nuevo que Google empezo a usar para resolver links cortos
+  // compartidos por ubicacion actual: /maps/search/LAT,+LNG (el "+" es un
+  // separador literal que aparece antes del signo cuando la longitud es
+  // negativa). Antes solo se reconocian !3d/!4d y @lat,lng, asi que estos
+  // links dejaron de leerse de un dia para otro cuando Google cambio esto.
+  const mSearch = finalUrl.match(/\/maps\/search\/(-?\d+\.\d+),\+?(-?\d+\.\d+)/);
+  const match = mPin || mCenter || mSearch;
   if (!match) {
     return { ok: false, error: "coords_not_found", final_url: finalUrl };
   }
