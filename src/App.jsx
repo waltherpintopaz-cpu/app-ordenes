@@ -16419,6 +16419,22 @@ export default function App() {
             .sort((a, b) => new Date(b.fechaActuacion || 0) - new Date(a.fechaActuacion || 0))
             .slice(0, 10);
 
+          // Antigüedad en días desde fechaActuacion -- para que "se acumula"
+          // se pueda ver (y actuar), no solo sentir. Ordenar por mas viejas
+          // primero es justo lo contrario de "ultimasOrdenes" de arriba: esa
+          // muestra lo nuevo, esta muestra lo que lleva mas tiempo sin
+          // resolverse (que es lo que de verdad importa cuando se acumula).
+          const diasPendiente = (o) => {
+            const f = new Date(o.fechaActuacion || 0).getTime();
+            if (!f) return null;
+            return Math.floor((Date.now() - f) / 86400000);
+          };
+          const pendientesMasAntiguas = [...pendientesTotal]
+            .filter((o) => diasPendiente(o) != null)
+            .sort((a, b) => new Date(a.fechaActuacion || 0) - new Date(b.fechaActuacion || 0))
+            .slice(0, 8);
+          const colorAntiguedad = (dias) => (dias >= 5 ? "#dc2626" : dias >= 2 ? "#d97706" : "#059669");
+
           const TIPO_COLORS = {
             "Instalacion Internet": "#2b5fb8",
             "Instalacion Internet y Cable": "#1e40af",
@@ -16549,6 +16565,47 @@ export default function App() {
                 )}
               </div>
 
+              {/* Pendientes mas antiguas -- lo que realmente se "acumula" */}
+              {pendientesMasAntiguas.length > 0 && (
+                <div style={cardStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                    <h3 style={{ ...sectionTitleStyle, fontSize: "15px", margin: 0 }}>Pendientes más antiguas</h3>
+                    <span style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}>Las que más tiempo llevan sin ejecutarse</span>
+                  </div>
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    {pendientesMasAntiguas.map((o, i) => {
+                      const d = diasPendiente(o);
+                      return (
+                        <div key={o.id || i} style={{
+                          display: "flex", alignItems: "center", gap: "10px", padding: "8px 10px",
+                          borderRadius: "10px", border: isDark ? "1px solid #2c3c58" : "1px solid #f0f4fb",
+                          background: isDark ? "#16213a" : "#fafcff",
+                        }}>
+                          <span style={{
+                            background: `${colorAntiguedad(d)}18`, color: colorAntiguedad(d),
+                            borderRadius: "8px", padding: "3px 9px", fontSize: "12px", fontWeight: 800, whiteSpace: "nowrap",
+                          }}>
+                            {d === 0 ? "Hoy" : d === 1 ? "1 día" : `${d} días`}
+                          </span>
+                          <span style={{ fontWeight: 600, color: isDark ? "#7fa1d4" : "#2b5fb8", whiteSpace: "nowrap" }}>{o.codigo || "-"}</span>
+                          <span style={{ color: isDark ? "#c3d3ee" : "#374151", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {o.nombre || "-"} · {o.tipoActuacion || "-"}
+                          </span>
+                          <span style={{ color: isDark ? "#93a2bd" : "#6b7280", fontSize: "12px", whiteSpace: "nowrap" }}>
+                            {o.tecnico || "Sin asignar"}
+                          </span>
+                          {o.nodo && (
+                            <span style={{ background: NODO_COLORS[o.nodo] ? `${NODO_COLORS[o.nodo]}18` : "#f3f6fb", color: NODO_COLORS[o.nodo] || "#6b7280", borderRadius: "6px", padding: "2px 8px", fontWeight: 600, fontSize: "12px", whiteSpace: "nowrap" }}>
+                              {o.nodo}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Últimas órdenes */}
               <div style={cardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
@@ -16567,7 +16624,7 @@ export default function App() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                       <thead>
                         <tr style={{ borderBottom: isDark ? "2px solid #2c3c58" : "2px solid #e4eaf4" }}>
-                          {["Código", "Tipo", "Cliente", "Técnico", "Nodo", "Fecha", "Estado"].map((h) => (
+                          {["Código", "Tipo", "Cliente", "Técnico", "Nodo", "Fecha", "Antigüedad", "Estado"].map((h) => (
                             <th key={h} style={{ textAlign: "left", padding: "6px 10px", color: isDark ? "#93a2bd" : "#6b7280", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
@@ -16590,6 +16647,13 @@ export default function App() {
                               ) : "-"}
                             </td>
                             <td style={{ padding: "7px 10px", color: isDark ? "#93a2bd" : "#6b7280", whiteSpace: "nowrap" }}>{o.fechaActuacion || "-"}</td>
+                            <td style={{ padding: "7px 10px", whiteSpace: "nowrap" }}>
+                              {(() => { const d = diasPendiente(o); return d == null ? "-" : (
+                                <span style={{ color: colorAntiguedad(d), fontWeight: 700, fontSize: "12px" }}>
+                                  {d === 0 ? "Hoy" : d === 1 ? "1 día" : `${d} días`}
+                                </span>
+                              ); })()}
+                            </td>
                             <td style={{ padding: "7px 10px" }}>
                               <span style={{
                                 background: String(o.estado || "").toLowerCase().includes("proceso") ? "#fef3c7" : "#e0e7ff",
