@@ -3963,7 +3963,7 @@ th {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 40;
+  z-index: 500;
   background: #ffffff;
   border: 1px solid #dfe8f5;
   border-radius: 12px;
