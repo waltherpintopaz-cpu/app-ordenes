@@ -16435,6 +16435,34 @@ export default function App() {
             .slice(0, 8);
           const colorAntiguedad = (dias) => (dias >= 5 ? "#dc2626" : dias >= 2 ? "#d97706" : "#059669");
 
+          // Tendencia por mes (ultimos 6): creadas vs liquidadas, para ver
+          // si el backlog crece o se achica en el tiempo, no solo "se siente
+          // que se acumula". fecha_creacion = cuando entro la orden al
+          // sistema; fechaLiquidacionISO ya viene en formato local yyyy-mm-dd.
+          const mesesTrend = (() => {
+            const ahora = new Date();
+            const meses = [];
+            for (let i = 5; i >= 0; i--) {
+              const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              const label = d.toLocaleDateString("es-PE", { month: "short" }).replace(".", "");
+              meses.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1), creadas: 0, liquidadas: 0 });
+            }
+            const porKey = new Map(meses.map((m) => [m.key, m]));
+            ordenesPorNodo.forEach((o) => {
+              const key = String(o.fecha_creacion || "").slice(0, 7);
+              const m = porKey.get(key);
+              if (m) m.creadas += 1;
+            });
+            liqPorNodo.forEach((l) => {
+              const key = String(l.fechaLiquidacionISO || "").slice(0, 7);
+              const m = porKey.get(key);
+              if (m) m.liquidadas += 1;
+            });
+            return meses;
+          })();
+          const maxTrend = Math.max(1, ...mesesTrend.map((m) => Math.max(m.creadas, m.liquidadas)));
+
           const TIPO_COLORS = {
             "Instalacion Internet": "#2b5fb8",
             "Instalacion Internet y Cable": "#1e40af",
@@ -16475,6 +16503,40 @@ export default function App() {
                 {kpiCard("Urgentes", urgentes.length, "#dc2626", "prioridad alta")}
                 {kpiCard("Liquidadas hoy", liquidadasHoy.length, "#059669", "completadas hoy")}
                 {kpiCard("Total clientes", clientesPorNodo.length, "#7c3aed", "registrados")}
+              </div>
+
+              {/* Tendencia mensual: creadas vs liquidadas */}
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <h3 style={{ ...sectionTitleStyle, fontSize: "15px", margin: 0 }}>Creadas vs. liquidadas por mes</h3>
+                  <div style={{ display: "flex", gap: "14px", fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "9px", height: "9px", borderRadius: "3px", background: "#2b5fb8", display: "inline-block" }} />Creadas</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><span style={{ width: "9px", height: "9px", borderRadius: "3px", background: "#059669", display: "inline-block" }} />Liquidadas</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: "18px", height: "140px", padding: "0 4px" }}>
+                  {mesesTrend.map((m) => (
+                    <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: "4px", height: "108px" }}>
+                        <div title={`Creadas: ${m.creadas}`} style={{
+                          width: "16px", borderRadius: "4px 4px 0 0", background: "#2b5fb8",
+                          height: `${Math.max(3, Math.round((m.creadas / maxTrend) * 100))}%`,
+                          transition: "height 0.4s ease",
+                        }} />
+                        <div title={`Liquidadas: ${m.liquidadas}`} style={{
+                          width: "16px", borderRadius: "4px 4px 0 0", background: "#059669",
+                          height: `${Math.max(3, Math.round((m.liquidadas / maxTrend) * 100))}%`,
+                          transition: "height 0.4s ease",
+                        }} />
+                      </div>
+                      <div style={{ display: "flex", gap: "4px", marginTop: "3px" }}>
+                        <span style={{ width: "16px", textAlign: "center", fontSize: "10.5px", fontWeight: 700, color: "#2b5fb8" }}>{m.creadas}</span>
+                        <span style={{ width: "16px", textAlign: "center", fontSize: "10.5px", fontWeight: 700, color: "#059669" }}>{m.liquidadas}</span>
+                      </div>
+                      <div style={{ marginTop: "4px", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
