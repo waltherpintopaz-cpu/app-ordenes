@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
@@ -27478,77 +27478,102 @@ export default function App() {
           </div>
         )}
 
-        {vistaActiva === "detalleLiquidacion" && liquidacionSeleccionada && (
-          <div style={{ display: "grid", gap: "24px" }}>
+        {vistaActiva === "detalleLiquidacion" && liquidacionSeleccionada && (() => {
+          const LQ = liquidacionSeleccionada;
+          const dTipoInfo = (tipo = "") => {
+            const t = String(tipo).toLowerCase();
+            if (t.includes("incidencia"))   return { color: "#EA580C", bg: "#FFF7ED", border: "#FED7AA" };
+            if (t.includes("instalacion"))  return { color: "#16A34A", bg: "#F0FDF4", border: "#BBF7D0" };
+            if (t.includes("recuperacion")) return { color: "#9333EA", bg: "#FDF4FF", border: "#E9D5FF" };
+            return { color: "#475569", bg: "#F8FAFC", border: "#E2E8F0" };
+          };
+          const dTi = dTipoInfo(LQ.tipoActuacion);
+          const resultado = String(LQ.liquidacion?.resultadoFinal || "Liquidada");
+          const resColor = resultado.toLowerCase().includes("no") || resultado.toLowerCase().includes("cancel") ? "#DC2626" :
+            resultado.toLowerCase().includes("complet") || resultado.toLowerCase().includes("instal") ? "#16A34A" : "#D97706";
+
+          const dBadge = (text, color, bg, border) => (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: bg, color, border: `1px solid ${border}`, borderRadius: 999, padding: "3px 10px", fontSize: 11.5, fontWeight: 700 }}>{text}</span>
+          );
+
+          const Field = ({ icon: Ic, label, value, mono }) => (
+            <div style={{ display: "flex", gap: 10, padding: "10px 12px", background: isDark ? "#16213a" : "#F8FAFC", borderRadius: 10, border: isDark ? "1px solid #223252" : "1px solid #EEF2F7" }}>
+              <div style={{ color: isDark ? "#7fa1d4" : "#64748B", flexShrink: 0, marginTop: 1 }}><Ic size={15} /></div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: isDark ? "#93a2bd" : "#94A3B8", marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: isDark ? "#e6ecf7" : "#0F172A", wordBreak: "break-word", fontFamily: mono ? "'SFMono-Regular',Consolas,monospace" : undefined }}>{value ?? "-"}</div>
+              </div>
+            </div>
+          );
+          const fieldGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10, marginTop: 16 };
+
+          const tabs = [
+            { key: "orden", label: "Orden", icon: FileText },
+            { key: "liquidacion", label: "Liquidación", icon: CheckCircle2 },
+            { key: "materiales", label: "Materiales", icon: Box },
+            { key: "equipos", label: "Equipos", icon: Package },
+            { key: "fotos", label: "Fotos", icon: Camera },
+          ];
+
+          return (
+          <div style={{ display: "grid", gap: "16px" }}>
+            {/* Header: identidad + acciones */}
             <div style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
-                <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Detalle de liquidación</h2>
-                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "14px", flexWrap: "wrap", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
+                  <div style={{ width: 46, height: 46, borderRadius: 12, background: isDark ? "#1e2b45" : "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#1D4ED8", flexShrink: 0 }}>
+                    <User size={21} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <h2 style={{ ...sectionTitleStyle, margin: 0, fontSize: 19 }}>{LQ.nombre || "Sin nombre"}</h2>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 7, alignItems: "center" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: isDark ? "#7fa1d4" : "#0A2E5F" }}>
+                        <Hash size={12} /> {LQ.codigo}
+                      </span>
+                      {dBadge(LQ.tipoActuacion || "—", dTi.color, dTi.bg, dTi.border)}
+                      {LQ.nodo && dBadge(LQ.nodo, "#1D4ED8", "#EFF6FF", "#BFDBFE")}
+                      {dBadge(resultado, resColor, resColor + "18", resColor + "40")}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
+                  <button onClick={() => setVistaActiva("historial")} style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <ArrowLeft size={14} /> Volver
+                  </button>
                   {puedeEditarLiquidacion ? (
-                    <button onClick={() => void abrirEditarLiquidacionHistorial(liquidacionSeleccionada)} style={warningButton}>
-                      Editar
+                    <button onClick={() => void abrirEditarLiquidacionHistorial(LQ)} style={{ ...warningButton, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Edit3 size={14} /> Editar
                     </button>
                   ) : null}
-                  <button onClick={() => setVistaActiva("historial")} style={secondaryButton}>
-                    Volver
-                  </button>
                 </div>
               </div>
 
-              <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                <button onClick={() => void generarYSubirContrato()} disabled={contratoGenerando} style={{ ...secondaryButton, opacity: contratoGenerando ? 0.6 : 1 }}>
-                  {contratoGenerando ? "Generando..." : "📄 Generar contrato"}
-                </button>
-                {contratoPdfUrl && (
-                  <>
-                    <a href={contratoPdfUrl} target="_blank" rel="noopener noreferrer" style={{ ...secondaryButton, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-                      Ver PDF
-                    </a>
-                    <button onClick={() => void enviarContratoPorWhatsappHandler()} disabled={contratoEnviando} style={{ ...primaryButton, opacity: contratoEnviando ? 0.6 : 1 }}>
-                      {contratoEnviando ? "Enviando..." : "📲 Enviar por WhatsApp"}
-                    </button>
-                  </>
-                )}
-                {contratoMsg && <span style={{ fontSize: "12px", color: contratoMsg.startsWith("✓") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{contratoMsg}</span>}
-              </div>
-
+              {/* Integridad */}
               <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                 {(() => {
                   const faltantesOrden = [
-                    { k: "plan", v: liquidacionSeleccionada.velocidad },
-                    { k: "precio", v: liquidacionSeleccionada.precioPlan },
-                    { k: "nodo", v: liquidacionSeleccionada.nodo },
-                    { k: "usuario", v: liquidacionSeleccionada.usuarioNodo },
-                    { k: "password", v: liquidacionSeleccionada.passwordUsuario },
-                    { k: "ubicacion", v: liquidacionSeleccionada.ubicacion },
+                    { k: "plan", v: LQ.velocidad },
+                    { k: "precio", v: LQ.precioPlan },
+                    { k: "nodo", v: LQ.nodo },
+                    { k: "usuario", v: LQ.usuarioNodo },
+                    { k: "password", v: LQ.passwordUsuario },
+                    { k: "ubicacion", v: LQ.ubicacion },
                   ].filter((x) => !String(x.v ?? "").trim());
-                  const relacionOk = Boolean(liquidacionSeleccionada?.ordenOriginalId) || Boolean(String(liquidacionSeleccionada?.codigo || "").trim());
+                  const relacionOk = Boolean(LQ?.ordenOriginalId) || Boolean(String(LQ?.codigo || "").trim());
                   const tone = !relacionOk ? "error" : faltantesOrden.length > 0 ? "warn" : "ok";
                   const styleByTone = {
-                    ok: { bg: "#dcfce7", color: "#166534", border: "#86efac", text: "Integridad: OK" },
-                    warn: { bg: "#fef3c7", color: "#92400e", border: "#fcd34d", text: `Integridad parcial (${faltantesOrden.length} campos orden)` },
-                    error: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", text: "Sin relación de orden" },
+                    ok: { bg: "#dcfce7", color: "#166534", border: "#86efac", text: "Integridad: OK", Ic: CheckCircle2 },
+                    warn: { bg: "#fef3c7", color: "#92400e", border: "#fcd34d", text: `Integridad parcial (${faltantesOrden.length} campos orden)`, Ic: AlertTriangle },
+                    error: { bg: "#fee2e2", color: "#991b1b", border: "#fca5a5", text: "Sin relación de orden", Ic: AlertTriangle },
                   };
                   const theme = styleByTone[tone];
                   return (
                     <>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          borderRadius: "999px",
-                          padding: "7px 11px",
-                          border: `1px solid ${theme.border}`,
-                          background: theme.bg,
-                          color: theme.color,
-                          fontWeight: 700,
-                          fontSize: "12px",
-                        }}
-                      >
-                        {theme.text}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: "999px", padding: "6px 11px", border: `1px solid ${theme.border}`, background: theme.bg, color: theme.color, fontWeight: 700, fontSize: "12px" }}>
+                        <theme.Ic size={13} /> {theme.text}
                       </span>
                       {faltantesOrden.length > 0 ? (
-                        <span style={{ fontSize: "12px", color: "#64748b" }}>
+                        <span style={{ fontSize: "12px", color: isDark ? "#93a2bd" : "#64748b" }}>
                           Faltan: {faltantesOrden.map((x) => x.k).join(", ")}
                         </span>
                       ) : null}
@@ -27557,174 +27582,168 @@ export default function App() {
                 })()}
               </div>
 
-              <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {[
-                  { key: "orden", label: "Orden" },
-                  { key: "liquidacion", label: "Liquidación" },
-                  { key: "materiales", label: "Materiales" },
-                  { key: "equipos", label: "Equipos" },
-                  { key: "fotos", label: "Fotos" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setDetalleLiquidacionTab(tab.key)}
-                    style={detalleLiquidacionTab === tab.key ? primaryButton : secondaryButton}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+              {/* Contrato */}
+              <div style={{ marginTop: "12px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <button onClick={() => void generarYSubirContrato()} disabled={contratoGenerando} style={{ ...secondaryButton, opacity: contratoGenerando ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <FileText size={14} /> {contratoGenerando ? "Generando..." : "Generar contrato"}
+                </button>
+                {contratoPdfUrl && (
+                  <>
+                    <a href={contratoPdfUrl} target="_blank" rel="noopener noreferrer" style={{ ...secondaryButton, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Download size={14} /> Ver PDF
+                    </a>
+                    <button onClick={() => void enviarContratoPorWhatsappHandler()} disabled={contratoEnviando} style={{ ...primaryButton, opacity: contratoEnviando ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Send size={14} /> {contratoEnviando ? "Enviando..." : "Enviar por WhatsApp"}
+                    </button>
+                  </>
+                )}
+                {contratoMsg && <span style={{ fontSize: "12px", color: contratoMsg.startsWith("✓") ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{contratoMsg}</span>}
               </div>
 
+              {/* Tabs */}
+              <div style={{ marginTop: "16px", display: "flex", gap: "6px", flexWrap: "wrap", borderTop: isDark ? "1px solid #223252" : "1px solid #EEF2F7", paddingTop: "14px" }}>
+                {tabs.map((tab) => {
+                  const active = detalleLiquidacionTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setDetalleLiquidacionTab(tab.key)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 10, fontWeight: 700, fontSize: 12.5, cursor: "pointer",
+                        border: `1.5px solid ${active ? "#1E4F9C" : (isDark ? "#2c3c58" : "#E2E8F0")}`,
+                        background: active ? "#1E4F9C" : (isDark ? "#16213a" : "#F8FAFC"),
+                        color: active ? "#fff" : (isDark ? "#c3d3ee" : "#475569"),
+                      }}
+                    >
+                      <tab.icon size={14} /> {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Contenido */}
+            <div style={cardStyle}>
               {detalleLiquidacionTab === "orden" ? (
-                <div style={{ display: "grid", gap: "8px", marginTop: "16px" }}>
-                  <div><strong>Código:</strong> {liquidacionSeleccionada.codigo}</div>
-                  <div><strong>Cliente:</strong> {liquidacionSeleccionada.nombre}</div>
-                  <div><strong>DNI:</strong> {liquidacionSeleccionada.dni}</div>
-                  <div><strong>Dirección:</strong> {liquidacionSeleccionada.direccion}</div>
-                  <div><strong>Celular:</strong> {liquidacionSeleccionada.celular || "-"}</div>
-                  <div><strong>Tipo de actuación:</strong> {liquidacionSeleccionada.tipoActuacion || "-"}</div>
-                  <div><strong>Plan:</strong> {liquidacionSeleccionada.velocidad || "-"}</div>
-                  <div><strong>Precio:</strong> {liquidacionSeleccionada.precioPlan || "-"}</div>
-                  <div><strong>Nodo:</strong> {liquidacionSeleccionada.nodo || "-"}</div>
-                  <div><strong>Usuario:</strong> {liquidacionSeleccionada.usuarioNodo || "-"}</div>
-                  <div><strong>Contraseña:</strong> {liquidacionSeleccionada.passwordUsuario || "-"}</div>
-                  <div><strong>Ubicación:</strong> {liquidacionSeleccionada.ubicacion || "-"}</div>
-                  <div><strong>Observaciones:</strong> {liquidacionSeleccionada.descripcion || "-"}</div>
-                  <div><strong>Técnico asignado:</strong> {liquidacionSeleccionada.tecnico || "-"}</div>
-                  <div><strong>Autor de la orden:</strong> {liquidacionSeleccionada.autorOrden || "-"}</div>
+                <div style={fieldGrid}>
+                  <Field icon={Hash} label="Código" value={LQ.codigo} mono />
+                  <Field icon={User} label="Cliente" value={LQ.nombre} />
+                  <Field icon={Contact} label="DNI" value={LQ.dni} mono />
+                  <Field icon={MapPin} label="Dirección" value={LQ.direccion} />
+                  <Field icon={Phone} label="Celular" value={LQ.celular} />
+                  <Field icon={Package} label="Tipo de actuación" value={LQ.tipoActuacion} />
+                  <Field icon={Wifi} label="Plan" value={LQ.velocidad} />
+                  <Field icon={DollarSign} label="Precio" value={LQ.precioPlan} />
+                  <Field icon={Radio} label="Nodo" value={LQ.nodo} />
+                  <Field icon={User} label="Usuario PPPoE" value={LQ.usuarioNodo} mono />
+                  <Field icon={KeyRound} label="Contraseña" value={LQ.passwordUsuario} mono />
+                  <Field icon={MapPin} label="Ubicación" value={LQ.ubicacion} mono />
+                  <Field icon={Briefcase} label="Técnico asignado" value={LQ.tecnico} />
+                  <Field icon={UserCog} label="Autor de la orden" value={LQ.autorOrden} />
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <Field icon={MessageSquare} label="Observaciones" value={LQ.descripcion} />
+                  </div>
                 </div>
               ) : null}
 
               {detalleLiquidacionTab === "liquidacion" ? (
-                <div style={{ display: "grid", gap: "8px", marginTop: "16px" }}>
-                  <div><strong>Técnico que liquida:</strong> {liquidacionSeleccionada.liquidacion?.tecnicoLiquida || "-"}</div>
-                  <div><strong>Resultado final:</strong> {liquidacionSeleccionada.liquidacion?.resultadoFinal || "-"}</div>
-                  <div><strong>Observación final:</strong> {liquidacionSeleccionada.liquidacion?.observacionFinal || "-"}</div>
-                  <div><strong>Cobro realizado:</strong> {liquidacionSeleccionada.liquidacion?.cobroRealizado || "-"}</div>
-                  <div><strong>Monto cobrado:</strong> S/ {Number(liquidacionSeleccionada.liquidacion?.montoCobrado || 0).toFixed(2)}</div>
-                  <div><strong>Medio de pago:</strong> {liquidacionSeleccionada.liquidacion?.medioPago || "-"}</div>
-                  <div><strong>Código etiqueta:</strong> {liquidacionSeleccionada.liquidacion?.codigoEtiqueta || "-"}</div>
-                  <div><strong>SN ONU:</strong> {liquidacionSeleccionada.liquidacion?.snOnu || "-"}</div>
-                  <div><strong>Caja NAP:</strong> {liquidacionSeleccionada.liquidacion?.cajaNap || "-"}</div>
-                  {liquidacionSeleccionada.liquidacion?.parametro && (
-                    <div><strong>Parámetro:</strong> {liquidacionSeleccionada.liquidacion.parametro}</div>
-                  )}
-                  <div><strong>Fecha liquidación:</strong> {liquidacionSeleccionada.fechaLiquidacion}</div>
+                <div style={fieldGrid}>
+                  <Field icon={Briefcase} label="Técnico que liquida" value={LQ.liquidacion?.tecnicoLiquida} />
+                  <Field icon={CheckCircle2} label="Resultado final" value={resultado} />
+                  <Field icon={CreditCard} label="Cobro realizado" value={LQ.liquidacion?.cobroRealizado} />
+                  <Field icon={DollarSign} label="Monto cobrado" value={`S/ ${Number(LQ.liquidacion?.montoCobrado || 0).toFixed(2)}`} />
+                  <Field icon={Wallet} label="Medio de pago" value={LQ.liquidacion?.medioPago} />
+                  <Field icon={Hash} label="Código etiqueta" value={LQ.liquidacion?.codigoEtiqueta} mono />
+                  <Field icon={ScanLine} label="SN ONU" value={LQ.liquidacion?.snOnu} mono />
+                  <Field icon={Box} label="Caja NAP" value={LQ.liquidacion?.cajaNap} />
+                  <Field icon={Calendar} label="Fecha liquidación" value={LQ.fechaLiquidacion} />
+                  {LQ.liquidacion?.parametro && <Field icon={Cpu} label="Parámetro" value={LQ.liquidacion.parametro} />}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <Field icon={MessageSquare} label="Observación final" value={LQ.liquidacion?.observacionFinal} />
+                  </div>
                 </div>
               ) : null}
 
               {detalleLiquidacionTab === "equipos" ? (
-                <>
-                  <h2 style={{ ...sectionTitleStyle, marginTop: "16px" }}>Equipos con código</h2>
-                  {(liquidacionSeleccionada.liquidacion?.equipos || []).length === 0 ? (
-                    <p>No hay equipos registrados.</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: "10px" }}>
-                      {liquidacionSeleccionada.liquidacion.equipos.map((eq, idx) => (
-                        <div key={idx} style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px" }}>
-                          <div><strong>Tipo:</strong> {eq.tipo}</div>
-                          <div><strong>Código:</strong> {eq.codigo || "-"}</div>
-                          <div><strong>Serial / Identificador:</strong> {eq.serial || "-"}</div>
-                          <div><strong>Marca / Modelo:</strong> {eq.marca || "-"} {eq.modelo || ""}</div>
-                          <div><strong>Acción:</strong> {eq.accion}</div>
-                          <div style={{ marginTop: "8px" }}>
-                            <strong>Foto serial/equipo:</strong>{" "}
-                            {String(eq?.fotoReferencia || "").trim() ? "Cargada" : "FALTA FOTO"}
-                          </div>
-                          {String(eq?.fotoReferencia || "").trim() ? (
+                (LQ.liquidacion?.equipos || []).length === 0 ? (
+                  <p style={{ color: "#94A3B8", fontWeight: 600, fontSize: 13.5, margin: 0 }}>No hay equipos registrados.</p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
+                    {LQ.liquidacion.equipos.map((eq, idx) => {
+                      const tieneFoto = String(eq?.fotoReferencia || "").trim();
+                      return (
+                        <div key={idx} style={{ border: isDark ? "1px solid #223252" : "1px solid #E2E8F0", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff" }}>
+                          {tieneFoto ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                abrirFotoZoom(
-                                  normalizeClienteSheetPhotoUrl(eq.fotoReferencia),
-                                  `Equipo ${eq.codigo || idx + 1}`
-                                )
-                              }
-                              style={{
-                                marginTop: "8px",
-                                background: "transparent",
-                                border: "none",
-                                padding: 0,
-                                cursor: "zoom-in",
-                              }}
+                              onClick={() => abrirFotoZoom(normalizeClienteSheetPhotoUrl(eq.fotoReferencia), `Equipo ${eq.codigo || idx + 1}`)}
+                              style={{ display: "block", width: "100%", border: "none", padding: 0, cursor: "zoom-in" }}
                             >
-                              <img
-                                src={normalizeClienteSheetPhotoUrl(eq.fotoReferencia)}
-                                alt={`equipo-foto-${idx}`}
-                                style={{
-                                  width: "120px",
-                                  height: "90px",
-                                  objectFit: "cover",
-                                  borderRadius: "10px",
-                                  border: "1px solid #e5e7eb",
-                                }}
-                              />
+                              <img src={normalizeClienteSheetPhotoUrl(eq.fotoReferencia)} alt={`equipo-foto-${idx}`} style={{ width: "100%", height: 130, objectFit: "cover", display: "block" }} />
                             </button>
                           ) : (
-                            <div style={{ marginTop: "6px", color: "#b45309", fontSize: "12px", fontWeight: 700 }}>
-                              Este equipo no tiene foto cargada.
+                            <div style={{ width: "100%", height: 90, background: isDark ? "#0d172a" : "#FFFBEB", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, color: "#b45309" }}>
+                              <Camera size={20} />
+                              <span style={{ fontSize: 11, fontWeight: 700 }}>Sin foto</span>
                             </div>
                           )}
+                          <div style={{ padding: "10px 12px", display: "grid", gap: 4 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0F172A" }}>{eq.tipo}</div>
+                            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>Código: <b>{eq.codigo || "-"}</b></div>
+                            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>Serial: <b>{eq.serial || "-"}</b></div>
+                            <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>Marca/Modelo: <b>{eq.marca || "-"} {eq.modelo || ""}</b></div>
+                            <div style={{ marginTop: 2 }}>{dBadge(eq.accion || "-", "#1D4ED8", isDark ? "#1e2b45" : "#EFF6FF", isDark ? "#3a4d78" : "#BFDBFE")}</div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </>
+                      );
+                    })}
+                  </div>
+                )
               ) : null}
 
               {detalleLiquidacionTab === "materiales" ? (
-                <>
-                  <h2 style={{ ...sectionTitleStyle, marginTop: "16px" }}>Materiales consumidos</h2>
-                  {(liquidacionSeleccionada.liquidacion?.materiales || []).length === 0 ? (
-                    <p>No hay materiales registrados.</p>
-                  ) : (
-                    <div style={{ display: "grid", gap: "10px" }}>
-                      {liquidacionSeleccionada.liquidacion.materiales.map((mat, idx) => (
-                        <div key={idx} style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "12px" }}>
-                          <div><strong>Material:</strong> {mat.material || "-"}</div>
-                          <div><strong>Cantidad:</strong> {mat.cantidad || "0"}</div>
-                          <div><strong>Unidad:</strong> {mat.unidad}</div>
+                (LQ.liquidacion?.materiales || []).length === 0 ? (
+                  <p style={{ color: "#94A3B8", fontWeight: 600, fontSize: 13.5, margin: 0 }}>No hay materiales registrados.</p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                    {LQ.liquidacion.materiales.map((mat, idx) => (
+                      <div key={idx} style={{ display: "flex", gap: 10, alignItems: "center", border: isDark ? "1px solid #223252" : "1px solid #E2E8F0", borderRadius: 12, padding: "10px 12px", background: isDark ? "#16213a" : "#fff" }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 9, background: isDark ? "#1e2b45" : "#F0FDF4", color: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Box size={16} />
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? "#e6ecf7" : "#0F172A" }}>{mat.material || "-"}</div>
+                          <div style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>{mat.cantidad || "0"} {mat.unidad || ""}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : null}
 
               {detalleLiquidacionTab === "fotos" ? (
-                <>
-                  <h2 style={{ ...sectionTitleStyle, marginTop: "16px" }}>Fotos</h2>
-                  {(liquidacionSeleccionada.liquidacion?.fotos || []).length === 0 ? (
-                    <p>No hay fotos registradas.</p>
-                  ) : (
-                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                      {liquidacionSeleccionada.liquidacion.fotos.map((foto, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => abrirFotoZoom(foto, `Liquidación ${liquidacionSeleccionada.codigo || ""} · Foto ${idx + 1}`)}
-                          style={{ border: "none", padding: 0, background: "transparent", cursor: "zoom-in" }}
-                        >
-                          <img
-                            src={foto}
-                            alt={`liq-${idx}`}
-                            style={{
-                              width: "200px",
-                              maxWidth: "100%",
-                              borderRadius: "14px",
-                              border: "1px solid #e5e7eb",
-                            }}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
+                (LQ.liquidacion?.fotos || []).length === 0 ? (
+                  <p style={{ color: "#94A3B8", fontWeight: 600, fontSize: 13.5, margin: 0 }}>No hay fotos registradas.</p>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
+                    {LQ.liquidacion.fotos.map((foto, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => abrirFotoZoom(foto, `Liquidación ${LQ.codigo || ""} · Foto ${idx + 1}`)}
+                        style={{ border: isDark ? "1px solid #223252" : "1px solid #E2E8F0", borderRadius: 14, padding: 0, background: "transparent", cursor: "zoom-in", overflow: "hidden", aspectRatio: "1 / 1" }}
+                      >
+                        <img src={foto} alt={`liq-${idx}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      </button>
+                    ))}
+                  </div>
+                )
               ) : null}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {vistaActiva === "historialAppsheet" && historialColsModalOpen ? (
           <div
