@@ -16476,6 +16476,34 @@ export default function App() {
             Nod_04: "#d97706", Nod_05: "#dc2626", Nod_06: "#0891b2", Nod_07: "#7c3aed",
           };
 
+          // Pendientes por mes de creacion, desglosadas por nodo -- misma
+          // ventana de 6 meses que el grafico de arriba, pero mostrando
+          // donde se esta concentrando el backlog (que nodo, que tan viejo).
+          const pendientesPorMesNodo = (() => {
+            const ahora = new Date();
+            const meses = [];
+            for (let i = 5; i >= 0; i--) {
+              const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+              const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+              const label = d.toLocaleDateString("es-PE", { month: "short" }).replace(".", "");
+              meses.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1), porNodo: {}, total: 0 });
+            }
+            const porKey = new Map(meses.map((m) => [m.key, m]));
+            pendientesTotal.forEach((o) => {
+              const key = String(o.fecha_creacion || "").slice(0, 7);
+              const m = porKey.get(key);
+              if (!m) return;
+              const n = o.nodo || "Sin nodo";
+              m.porNodo[n] = (m.porNodo[n] || 0) + 1;
+              m.total += 1;
+            });
+            return meses;
+          })();
+          const nodosEnPendientes = Array.from(
+            new Set(pendientesPorMesNodo.flatMap((m) => Object.keys(m.porNodo)))
+          ).sort();
+          const maxPendMes = Math.max(1, ...pendientesPorMesNodo.map((m) => m.total));
+
           const kpiCard = (label, value, color, sub) => (
             <div key={label} style={{
               background: isDark ? "#1a2740" : "#fff", borderRadius: "14px", padding: "18px 20px",
@@ -16537,6 +16565,50 @@ export default function App() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Pendientes por mes de creacion, por nodo */}
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+                  <h3 style={{ ...sectionTitleStyle, fontSize: "15px", margin: 0 }}>Pendientes por mes, por nodo</h3>
+                  <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "12px", color: isDark ? "#93a2bd" : "#6b7280" }}>
+                    {nodosEnPendientes.map((n) => (
+                      <span key={n} style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                        <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: NODO_COLORS[n] || "#9ca3af", display: "inline-block" }} />
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {pendientesPorMesNodo.every((m) => m.total === 0) ? (
+                  <p style={{ color: "#9ca3af", margin: 0, fontSize: "13px" }}>Sin pendientes en los últimos 6 meses</p>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: "18px", height: "150px", padding: "0 4px" }}>
+                    {pendientesPorMesNodo.map((m) => (
+                      <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "3px" }}>
+                          {m.total > 0 ? m.total : ""}
+                        </div>
+                        <div style={{
+                          width: "26px", height: "108px", display: "flex", flexDirection: "column-reverse",
+                          borderRadius: "4px", overflow: "hidden", background: isDark ? "#0d172a" : "#f0f4fb",
+                        }}>
+                          {nodosEnPendientes.map((n) => {
+                            const cnt = m.porNodo[n] || 0;
+                            if (!cnt) return null;
+                            return (
+                              <div key={n} title={`${n}: ${cnt}`} style={{
+                                background: NODO_COLORS[n] || "#9ca3af",
+                                height: `${Math.max(4, Math.round((cnt / maxPendMes) * 100))}%`,
+                              }} />
+                            );
+                          })}
+                        </div>
+                        <div style={{ marginTop: "4px", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{m.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
