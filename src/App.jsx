@@ -16503,6 +16503,16 @@ export default function App() {
             new Set(pendientesPorMesNodo.flatMap((m) => Object.keys(m.porNodo)))
           ).sort();
           const maxPendMes = Math.max(1, ...pendientesPorMesNodo.map((m) => m.total));
+          const maxCeldaPendMes = Math.max(
+            1,
+            ...nodosEnPendientes.map((n) => Math.max(...pendientesPorMesNodo.map((m) => m.porNodo[n] || 0)))
+          );
+          const hexToRgb = (hex) => {
+            const h = (hex || "#9ca3af").replace("#", "");
+            const v = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+            const num = parseInt(v, 16);
+            return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+          };
 
           const kpiCard = (label, value, color, sub) => (
             <div key={label} style={{
@@ -16583,30 +16593,59 @@ export default function App() {
                 {pendientesPorMesNodo.every((m) => m.total === 0) ? (
                   <p style={{ color: "#9ca3af", margin: 0, fontSize: "13px" }}>Sin pendientes en los últimos 6 meses</p>
                 ) : (
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: "18px", height: "150px", padding: "0 4px" }}>
-                    {pendientesPorMesNodo.map((m) => (
-                      <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end" }}>
-                        <div style={{ fontSize: "11px", fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", marginBottom: "3px" }}>
-                          {m.total > 0 ? m.total : ""}
-                        </div>
-                        <div style={{
-                          width: "26px", height: "108px", display: "flex", flexDirection: "column-reverse",
-                          borderRadius: "4px", overflow: "hidden", background: isDark ? "#0d172a" : "#f0f4fb",
-                        }}>
-                          {nodosEnPendientes.map((n) => {
-                            const cnt = m.porNodo[n] || 0;
-                            if (!cnt) return null;
-                            return (
-                              <div key={n} title={`${n}: ${cnt}`} style={{
-                                background: NODO_COLORS[n] || "#9ca3af",
-                                height: `${Math.max(4, Math.round((cnt / maxPendMes) * 100))}%`,
-                              }} />
-                            );
-                          })}
-                        </div>
-                        <div style={{ marginTop: "4px", fontSize: "12px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151" }}>{m.label}</div>
-                      </div>
-                    ))}
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "480px" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: "left", fontSize: "12px", fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", padding: "0 8px 8px 0" }}>Nodo</th>
+                          {pendientesPorMesNodo.map((m) => (
+                            <th key={m.key} style={{ textAlign: "center", fontSize: "12px", fontWeight: 600, color: isDark ? "#93a2bd" : "#6b7280", padding: "0 4px 8px" }}>{m.label}</th>
+                          ))}
+                          <th style={{ textAlign: "center", fontSize: "12px", fontWeight: 700, color: isDark ? "#c3d3ee" : "#374151", padding: "0 4px 8px 10px" }}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {nodosEnPendientes.map((n) => {
+                          const { r, g, b } = hexToRgb(NODO_COLORS[n]);
+                          const totalNodo = pendientesPorMesNodo.reduce((s, m) => s + (m.porNodo[n] || 0), 0);
+                          return (
+                            <tr key={n}>
+                              <td style={{ fontSize: "12.5px", fontWeight: 600, color: isDark ? "#c3d3ee" : "#374151", padding: "3px 8px 3px 0", whiteSpace: "nowrap" }}>
+                                <span style={{ width: "9px", height: "9px", borderRadius: "3px", background: NODO_COLORS[n] || "#9ca3af", display: "inline-block", marginRight: "6px" }} />
+                                {n}
+                              </td>
+                              {pendientesPorMesNodo.map((m) => {
+                                const cnt = m.porNodo[n] || 0;
+                                const alpha = cnt === 0 ? 0 : 0.16 + 0.74 * (cnt / maxCeldaPendMes);
+                                return (
+                                  <td key={m.key} title={`${n} · ${m.label}: ${cnt}`} style={{
+                                    textAlign: "center", padding: "3px 4px", borderRadius: "6px",
+                                  }}>
+                                    <div style={{
+                                      background: cnt === 0 ? (isDark ? "#0d172a" : "#f0f4fb") : `rgba(${r},${g},${b},${alpha})`,
+                                      borderRadius: "6px", padding: "6px 0", fontSize: "12.5px", fontWeight: 700,
+                                      color: cnt === 0 ? (isDark ? "#3a4a68" : "#c3cbd8") : (alpha > 0.5 ? "#fff" : (isDark ? "#e6ecf8" : "#1f2937")),
+                                    }}>
+                                      {cnt || ""}
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                              <td style={{ textAlign: "center", fontSize: "13px", fontWeight: 800, color: isDark ? "#c3d3ee" : "#374151", padding: "3px 4px 3px 10px" }}>{totalNodo}</td>
+                            </tr>
+                          );
+                        })}
+                        <tr>
+                          <td style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", padding: "8px 8px 0 0", borderTop: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4" }}>Total</td>
+                          {pendientesPorMesNodo.map((m) => (
+                            <td key={m.key} style={{ textAlign: "center", fontSize: "12px", fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", padding: "8px 4px 0", borderTop: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4" }}>{m.total || ""}</td>
+                          ))}
+                          <td style={{ textAlign: "center", fontSize: "13px", fontWeight: 800, color: isDark ? "#c3d3ee" : "#374151", padding: "8px 4px 0 10px", borderTop: isDark ? "1px solid #2c3c58" : "1px solid #e4eaf4" }}>
+                            {pendientesPorMesNodo.reduce((s, m) => s + m.total, 0)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
