@@ -27638,11 +27638,42 @@ export default function App() {
                   <Field icon={Radio} label="Nodo" value={LQ.nodo} />
                   <Field icon={User} label="Usuario PPPoE" value={LQ.usuarioNodo} mono />
                   <Field icon={KeyRound} label="Contraseña" value={LQ.passwordUsuario} mono />
-                  <Field icon={MapPin} label="Ubicación" value={LQ.ubicacion} mono />
                   <Field icon={Briefcase} label="Técnico asignado" value={LQ.tecnico} />
                   <Field icon={UserCog} label="Autor de la orden" value={LQ.autorOrden} />
                   <div style={{ gridColumn: "1 / -1" }}>
                     <Field icon={MessageSquare} label="Observaciones" value={LQ.descripcion} />
+                  </div>
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    {(() => {
+                      const parts = String(LQ.ubicacion || "").split(",").map((s) => parseFloat(s.trim()));
+                      const okCoords = parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]);
+                      return (
+                        <div style={{ borderRadius: 12, border: isDark ? "1px solid #223252" : "1px solid #EEF2F7", overflow: "hidden", background: isDark ? "#16213a" : "#F8FAFC" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderBottom: isDark ? "1px solid #223252" : "1px solid #EEF2F7" }}>
+                            <MapPin size={15} style={{ color: isDark ? "#7fa1d4" : "#64748B" }} />
+                            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: isDark ? "#93a2bd" : "#94A3B8" }}>Ubicación</div>
+                            {okCoords && (
+                              <a href={`https://www.google.com/maps?q=${parts[0]},${parts[1]}`} target="_blank" rel="noopener noreferrer" style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 700, color: "#1D4ED8", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                Abrir en Google Maps <Send size={11} />
+                              </a>
+                            )}
+                          </div>
+                          {okCoords ? (
+                            <>
+                              <iframe
+                                title="ubicacion-liquidacion"
+                                src={`https://www.google.com/maps?q=${parts[0]},${parts[1]}&hl=es&z=16&output=embed`}
+                                style={{ width: "100%", height: 220, border: "none", display: "block" }}
+                                loading="lazy"
+                              />
+                              <div style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'SFMono-Regular',Consolas,monospace", color: isDark ? "#93a2bd" : "#64748B" }}>{LQ.ubicacion}</div>
+                            </>
+                          ) : (
+                            <div style={{ padding: "14px 12px", fontSize: 13, color: isDark ? "#93a2bd" : "#94A3B8" }}>{LQ.ubicacion || "Sin ubicación registrada"}</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : null}
