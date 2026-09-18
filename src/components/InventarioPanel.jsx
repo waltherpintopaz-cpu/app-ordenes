@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import QRScanner from "./QRScanner";
 import { LEGACY_TECH_CODE_MAP, normalizeTechCode } from "../app/techCodeMap";
@@ -581,16 +582,40 @@ function InventoryPhotoThumb(props) {
 function PickerFotoBuscable({ items, value, onChange, placeholder = "Seleccionar", disabled = false, emptyLabel = "Sin resultados" }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [coords, setCoords] = useState(null);
   const wrapRef = useRef(null);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+
+  // El panel se dibuja con un portal directo a <body> (position:fixed, con
+  // las coordenadas calculadas del boton) en vez de vivir anidado dentro
+  // del formulario -- si no, cualquier contenedor ancestro con su propio
+  // scroll/overflow (los hay varios en este panel) lo recorta y solo se ve
+  // la primera fila, como paso en vivo.
+  const recalcularCoords = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setCoords({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
 
   useEffect(() => {
     if (!abierto) return;
+    recalcularCoords();
+    const onReposicionar = () => recalcularCoords();
+    window.addEventListener("scroll", onReposicionar, true);
+    window.addEventListener("resize", onReposicionar);
     const onDocClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setAbierto(false);
+      if (wrapRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setAbierto(false);
     };
     document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [abierto]);
+    return () => {
+      window.removeEventListener("scroll", onReposicionar, true);
+      window.removeEventListener("resize", onReposicionar);
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  }, [abierto, recalcularCoords]);
 
   const seleccionado = items.find((it) => String(it.id) === String(value));
   const q = busqueda.trim().toLowerCase();
@@ -602,6 +627,7 @@ function PickerFotoBuscable({ items, value, onChange, placeholder = "Seleccionar
     <div className="inv-picker-foto" ref={wrapRef}>
       <button
         type="button"
+        ref={triggerRef}
         className="inv-picker-foto-trigger"
         disabled={disabled}
         onClick={() => { setAbierto((v) => !v); setBusqueda(""); }}
@@ -619,8 +645,8 @@ function PickerFotoBuscable({ items, value, onChange, placeholder = "Seleccionar
         )}
         <svg viewBox="0 0 20 20" aria-hidden="true" className="inv-picker-foto-chevron"><path d="M5 8l5 5 5-5" /></svg>
       </button>
-      {abierto ? (
-        <div className="inv-picker-foto-panel">
+      {abierto && coords ? createPortal(
+        <div className="inv-picker-foto-panel" ref={panelRef} style={{ position: "fixed", top: coords.top, left: coords.left, width: coords.width }}>
           <input
             autoFocus
             type="text"
@@ -649,7 +675,8 @@ function PickerFotoBuscable({ items, value, onChange, placeholder = "Seleccionar
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );

@@ -3959,10 +3959,9 @@ th {
 }
 
 .inv-picker-foto-panel {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
+  /* position/top/left/width reales los pone el componente inline (portal a
+     body con coordenadas calculadas del boton) -- esto es solo respaldo. */
+  position: fixed;
   z-index: 500;
   background: #ffffff;
   border: 1px solid #dfe8f5;
