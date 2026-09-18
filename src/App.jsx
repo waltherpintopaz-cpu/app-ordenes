@@ -5035,7 +5035,7 @@ export default function App() {
     };
     const urls = DIAGNOSTICO_API_BASE
       ? [DIAGNOSTICO_API_BASE]
-      : ["/api/diagnostico-servicio", "http://127.0.0.1:8787/api/diagnostico-servicio"];
+      : [DIAGNO_BASE ? `${DIAGNO_BASE}/api/diagnostico-servicio` : "/api/diagnostico-servicio"];
     let lastError = null;
     let json = {};
     let success = false;
@@ -5077,7 +5077,7 @@ export default function App() {
     };
     const urls = DIAGNOSTICO_API_BASE
       ? [`${DIAGNOSTICO_API_BASE}/${path}`]
-      : [`/api/diagnostico-servicio/${path}`, `http://127.0.0.1:8787/api/diagnostico-servicio/${path}`];
+      : [DIAGNO_BASE ? `${DIAGNO_BASE}/api/diagnostico-servicio/${path}` : `/api/diagnostico-servicio/${path}`];
     let lastError = null;
     let json = {};
     let success = false;
@@ -20888,34 +20888,7 @@ export default function App() {
                 </p>
               </div>
 
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
-                {puedeDiagnosticoPorDni ? (
-                  <button
-                    type="button"
-                    style={diagnosticoServicioModo === "dni" ? primaryButton : secondaryButton}
-                    onClick={() => {
-                      setDiagnosticoServicioModo("dni");
-                      setDiagnosticoServicioError("");
-                    }}
-                  >
-                    Buscar por DNI
-                  </button>
-                ) : null}
-                {puedeDiagnosticoConsultaDirecta ? (
-                  <button
-                    type="button"
-                    style={diagnosticoServicioModo === "manual" ? primaryButton : secondaryButton}
-                    onClick={() => {
-                      setDiagnosticoServicioModo("manual");
-                      setDiagnosticoServicioError("");
-                    }}
-                  >
-                    Consulta directa por usuario
-                  </button>
-                ) : null}
-              </div>
-
-              {diagnosticoServicioModosDisponibles.length > 0 ? (
+              {puedeDiagnosticoPorDni ? (
                 <div
                   style={{
                     display: "grid",
@@ -20924,51 +20897,21 @@ export default function App() {
                     alignItems: "center",
                   }}
                 >
-                  {diagnosticoServicioModo === "dni" ? (
-                    <input
-                      style={inputStyle}
-                      value={diagnosticoServicioDni}
-                      onChange={(e) => setDiagnosticoServicioDni(String(e.target.value || "").replace(/\D/g, "").slice(0, 8))}
-                      placeholder="Ingresa DNI"
-                      maxLength={8}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void consultarDiagnosticoServicio();
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <select
-                        style={inputStyle}
-                        value={diagnosticoServicioManualNodo}
-                        onChange={(e) => setDiagnosticoServicioManualNodo(e.target.value)}
-                      >
-                        {NODOS_BASE_WEB.map((nodo) => (
-                          <option key={nodo} value={nodo}>
-                            {nodo}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        style={{ ...inputStyle, minWidth: "240px" }}
-                        value={diagnosticoServicioManualUser}
-                        onChange={(e) => setDiagnosticoServicioManualUser(String(e.target.value || "").trimStart())}
-                        placeholder="Ingresa usuario PPPoE"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") void consultarDiagnosticoServicio();
-                        }}
-                      />
-                    </>
-                  )}
+                  <input
+                    style={inputStyle}
+                    value={diagnosticoServicioDni}
+                    onChange={(e) => setDiagnosticoServicioDni(String(e.target.value || "").replace(/\D/g, "").slice(0, 8))}
+                    placeholder="Ingresa DNI"
+                    maxLength={8}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void consultarDiagnosticoServicio();
+                    }}
+                  />
                   <button
                     type="button"
                     style={primaryButton}
                     onClick={() => void consultarDiagnosticoServicio()}
-                    disabled={
-                      diagnosticoServicioLoading ||
-                      (diagnosticoServicioModo === "dni"
-                        ? String(diagnosticoServicioDni || "").trim().length !== 8
-                        : !String(diagnosticoServicioManualUser || "").trim() || !String(diagnosticoServicioManualNodo || "").trim())
-                    }
+                    disabled={diagnosticoServicioLoading || String(diagnosticoServicioDni || "").trim().length !== 8}
                   >
                     {diagnosticoServicioLoading ? "Consultando..." : "Consultar"}
                   </button>
@@ -20977,8 +20920,6 @@ export default function App() {
                     style={secondaryButton}
                     onClick={() => {
                       setDiagnosticoServicioDni("");
-                      setDiagnosticoServicioManualUser("");
-                      setDiagnosticoServicioManualNodo("Nod_01");
                       setDiagnosticoServicioConsulta("");
                       setDiagnosticoServicioResultado(null);
                       setDiagnosticoServicioError("");
@@ -21003,125 +20944,6 @@ export default function App() {
                 </div>
               )}
 
-              {puedeDiagnosticoSuspensionManual ? (
-                <div
-                  style={{
-                    marginTop: "14px",
-                    border: "1px solid #dbe6f5",
-                    borderRadius: "14px",
-                    padding: "14px",
-                    background: "#f8fbff",
-                    display: "grid",
-                    gap: "10px",
-                  }}
-                >
-                <div style={{ display: "grid", gap: "4px" }}>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>Operación directa</div>
-                  <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
-                    Suspensión manual
-                  </div>
-                  <div style={{ fontSize: "13px", color: "#334155" }}>
-                    Usa solo nodo y usuario PPPoE para suspender o activar por address-list.
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, max-content))",
-                    gap: "10px",
-                    alignItems: "center",
-                  }}
-                >
-                  <select
-                    style={inputStyle}
-                    value={diagnosticoSuspensionManualNodo}
-                    onChange={(e) => setDiagnosticoSuspensionManualNodo(e.target.value)}
-                  >
-                    {NODOS_BASE_WEB.map((nodo) => (
-                      <option key={`susp-manual-${nodo}`} value={nodo}>
-                        {nodo}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    style={{ ...inputStyle, minWidth: "240px" }}
-                    value={diagnosticoSuspensionManualUser}
-                    onChange={(e) => setDiagnosticoSuspensionManualUser(String(e.target.value || "").trimStart())}
-                    placeholder="Usuario PPPoE"
-                  />
-                  <button
-                    type="button"
-                    style={warningButton}
-                    onClick={() => void ejecutarSuspensionManualDiagnostico("suspender")}
-                    disabled={
-                      diagnosticoSuspensionManualLoading === "suspender" ||
-                      !String(diagnosticoSuspensionManualNodo || "").trim() ||
-                      !String(diagnosticoSuspensionManualUser || "").trim()
-                    }
-                  >
-                    {diagnosticoSuspensionManualLoading === "suspender" ? "Suspendiendo..." : "Suspender"}
-                  </button>
-                  <button
-                    type="button"
-                    style={secondaryButton}
-                    onClick={() => void ejecutarSuspensionManualDiagnostico("activar")}
-                    disabled={
-                      diagnosticoSuspensionManualLoading === "activar" ||
-                      !String(diagnosticoSuspensionManualNodo || "").trim() ||
-                      !String(diagnosticoSuspensionManualUser || "").trim()
-                    }
-                  >
-                    {diagnosticoSuspensionManualLoading === "activar" ? "Activando..." : "Activar"}
-                  </button>
-                  <button
-                    type="button"
-                    style={secondaryButton}
-                    onClick={() => {
-                      setDiagnosticoSuspensionManualNodo("Nod_01");
-                      setDiagnosticoSuspensionManualUser("");
-                      setDiagnosticoSuspensionManualInfo("");
-                      setDiagnosticoSuspensionManualError("");
-                    }}
-                  >
-                    Limpiar
-                  </button>
-                </div>
-
-                {diagnosticoSuspensionManualError ? (
-                  <div
-                    style={{
-                      border: "1px solid #fed7aa",
-                      borderRadius: "12px",
-                      padding: "10px 12px",
-                      background: "#fff7ed",
-                      color: "#9a3412",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {diagnosticoSuspensionManualError}
-                  </div>
-                ) : null}
-
-                {diagnosticoSuspensionManualInfo ? (
-                  <div
-                    style={{
-                      border: "1px solid #bfdbfe",
-                      borderRadius: "12px",
-                      padding: "10px 12px",
-                      background: "#eff6ff",
-                      color: "#1e3a8a",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {diagnosticoSuspensionManualInfo}
-                  </div>
-                ) : null}
-                </div>
-              ) : null}
-
               {diagnosticoServicioConsulta ? (
                 <div style={{ marginTop: "18px", display: "grid", gap: "16px" }}>
                   <div
@@ -21129,29 +20951,19 @@ export default function App() {
                       border: "1px solid #dbe6f5",
                       borderRadius: "16px",
                       padding: "16px",
-                      background: diagnosticoServicioModo === "manual" || diagnosticoServicioCliente ? "#f8fbff" : "#fff7ed",
+                      background: diagnosticoServicioCliente ? "#f8fbff" : "#fff7ed",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
                       <div>
                         <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Resultado base de abonados</div>
                         <div style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
-                          {diagnosticoServicioModo === "manual"
-                            ? diagnosticoServicioPppoe || "Consulta manual"
-                            : diagnosticoServicioCliente
-                              ? diagnosticoServicioCliente.nombre || "Cliente encontrado"
-                              : "Cliente no encontrado"}
+                          {diagnosticoServicioCliente
+                            ? diagnosticoServicioCliente.nombre || "Cliente encontrado"
+                            : "Cliente no encontrado"}
                         </div>
                         <div style={{ fontSize: "13px", color: "#475569", marginTop: "4px" }}>
-                          {diagnosticoServicioModo === "manual" ? (
-                            <>
-                              Usuario consultado: <strong>{diagnosticoServicioConsulta}</strong> · Nodo: <strong>{diagnosticoServicioNodo || "-"}</strong>
-                            </>
-                          ) : (
-                            <>
-                              DNI consultado: <strong>{diagnosticoServicioConsulta}</strong>
-                            </>
-                          )}
+                          DNI consultado: <strong>{diagnosticoServicioConsulta}</strong>
                         </div>
                       </div>
                       <span
@@ -21161,28 +20973,11 @@ export default function App() {
                             : { ...badgeStyle, background: "#ffedd5", color: "#9a3412" }
                         }
                       >
-                        {diagnosticoServicioModo === "manual"
-                          ? "Consulta manual"
-                          : diagnosticoServicioCliente
-                            ? "Encontrado en base"
-                            : "Sin coincidencias"}
+                        {diagnosticoServicioCliente ? "Encontrado en base" : "Sin coincidencias"}
                       </span>
                     </div>
 
-                    {diagnosticoServicioModo === "manual" ? (
-                      <div
-                        style={{
-                          marginTop: "14px",
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                          gap: "10px",
-                        }}
-                      >
-                        <div><strong>Nodo:</strong> {diagnosticoServicioNodo || "-"}</div>
-                        <div><strong>User PPPoE:</strong> {diagnosticoServicioPppoe || "-"}</div>
-                        <div><strong>Origen:</strong> Consulta directa</div>
-                      </div>
-                    ) : diagnosticoServicioCliente ? (
+                    {diagnosticoServicioCliente ? (
                       <div
                         style={{
                           marginTop: "14px",
@@ -21379,9 +21174,7 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ marginTop: "16px", color: "#64748b", fontSize: "13px" }}>
-                  {diagnosticoServicioModo === "manual"
-                    ? "Ingresa el nodo y el usuario PPPoE para consultar directo contra MikroTik."
-                    : "Ingresa un DNI de 8 dígitos para consultar primero contra la base de abonados."}
+                  Ingresa un DNI de 8 dígitos para consultar primero contra la base de abonados.
                 </div>
               )}
             </div>
