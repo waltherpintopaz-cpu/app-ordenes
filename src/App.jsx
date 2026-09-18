@@ -18103,75 +18103,91 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <div style={{ display: "grid", gap: "10px" }}>
-                    {pagina.map((item) => {
-                      const ti = tipoInfo(item.tipoActuacion);
-                      const resultado = String(item.liquidacion?.resultadoFinal || "Liquidada");
-                      const resColor = resultado.toLowerCase().includes("no") || resultado.toLowerCase().includes("cancel") ? "#DC2626" :
-                        resultado.toLowerCase().includes("complet") || resultado.toLowerCase().includes("instal") ? "#16A34A" : "#D97706";
-                      return (
-                        <div key={item.id} style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, border: isDark ? "1px solid #2c3c58" : "1px solid #E2E8F0", borderLeft: `4px solid ${ti.color}`, padding: "14px 18px", display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap" }}>
-                          {/* Left content */}
-                          <div style={{ flex: 1, minWidth: 200 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                              <span style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#7fa1d4" : "#0A2E5F" }}>{item.codigo}</span>
-                              <span style={{ background: ti.bg, color: ti.color, border: `1px solid ${ti.border}`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.tipoActuacion || "—"}</span>
-                              {item.nodo && (
-                                <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{item.nodo}</span>
-                              )}
-                              <span style={{ background: resColor + "18", color: resColor, border: `1px solid ${resColor}40`, borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{resultado}</span>
-                            </div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#e6ecf7" : "#0F172A", marginBottom: 3 }}>{item.nombre || "—"}</div>
-                            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>DNI: <b>{item.dni || "-"}</b></span>
-                              {item.celular && <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>Cel: <b>{item.celular}</b></span>}
-                              <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>Técnico: <b>{item.liquidacion?.tecnicoLiquida || item.tecnico || "-"}</b></span>
-                              <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#64748B" }}>📅 <b>{item.fechaLiquidacion}</b></span>
-                            </div>
-                            {(item.velocidad || item.usuarioNodo) && (
-                              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
-                                {item.velocidad && <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#64748B" }}>Plan: <b>{item.velocidad}</b></span>}
-                                {item.usuarioNodo && <span style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#64748B" }}>Usuario: <b>{item.usuarioNodo}</b></span>}
-                              </div>
-                            )}
-                          </div>
-                          {/* Actions */}
-                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                            <button onClick={() => void abrirDetalleLiquidacionHistorial(item)} style={{ ...infoButton, padding: "7px 14px", fontSize: 12 }}>
-                              Ver detalle
-                            </button>
-                            {esAdminSesion && (
-                              <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "7px 12px", fontSize: 12 }}>
-                                Editar liquidación
-                              </button>
-                            )}
-                            {esAdminSesion && (
-                              <button onClick={() => void editarOrdenDesdeHistorial(item)} style={{ padding: "7px 12px", background: isDark ? "#1e2b45" : "#EEF2FF", border: isDark ? "1px solid #3a4d78" : "1px solid #C7D2FE", borderRadius: 8, fontSize: 12, fontWeight: 600, color: isDark ? "#a5b8ea" : "#3730A3", cursor: "pointer" }} title="Corregir datos de la orden (nodo, usuario, etc.)">
-                                Editar orden
-                              </button>
-                            )}
-                            {esAdminSesion && (
-                              <button
-                                onClick={() => {
-                                  if (!window.confirm(`¿Restaurar cliente "${item.nombre}" (${item.dni}) desde esta liquidación?`)) return;
-                                  void guardarClienteDesdeLiquidacion({ ...item, liquidacion: item.liquidacion || {} }, { isEditing: false });
-                                  alert("Cliente enviado a base de datos.");
-                                }}
-                                style={{ padding: "7px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#166534", cursor: "pointer" }}
-                                title="Restaurar cliente en base de datos (solo admin)"
-                              >
-                                + Cliente
-                              </button>
-                            )}
-                            {puedeEliminarLiquidacion && (
-                              <button onClick={() => eliminarLiquidacion(item)} style={{ ...dangerButton, padding: "7px 12px", fontSize: 12 }}>
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <style>{`
+                    .hist-tr { cursor: pointer; transition: background 0.12s ease; }
+                    .hist-tr:hover { background: ${isDark ? "#16213a" : "#F8FAFC"}; }
+                    .hist-tbl td, .hist-tbl th { padding: 9px 10px; text-align: left; white-space: nowrap; }
+                    .hist-tbl { font-size: 12.5px; }
+                  `}</style>
+                  <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 14, border: isDark ? "1px solid #2c3c58" : "1px solid #E2E8F0", overflow: "hidden" }}>
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="hist-tbl" style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ background: isDark ? "#16213a" : "#F8FAFC", borderBottom: isDark ? "1px solid #2c3c58" : "1px solid #E2E8F0" }}>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>Código</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>Tipo</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>Nodo</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "normal" }}>Cliente</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>DNI</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>Técnico</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>Fecha</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em" }}>Resultado</th>
+                            <th style={{ fontSize: 11, fontWeight: 800, color: isDark ? "#93a2bd" : "#64748B", textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "right" }}>Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagina.map((item) => {
+                            const ti = tipoInfo(item.tipoActuacion);
+                            const resultado = String(item.liquidacion?.resultadoFinal || "Liquidada");
+                            const resColor = resultado.toLowerCase().includes("no") || resultado.toLowerCase().includes("cancel") ? "#DC2626" :
+                              resultado.toLowerCase().includes("complet") || resultado.toLowerCase().includes("instal") ? "#16A34A" : "#D97706";
+                            return (
+                              <tr key={item.id} className="hist-tr" onClick={() => void abrirDetalleLiquidacionHistorial(item)} style={{ borderBottom: isDark ? "1px solid #223252" : "1px solid #F1F5F9" }}>
+                                <td>
+                                  <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: ti.color, marginRight: 8 }} />
+                                  <b style={{ color: isDark ? "#7fa1d4" : "#0A2E5F" }}>{item.codigo}</b>
+                                </td>
+                                <td>
+                                  <span style={{ background: ti.bg, color: ti.color, border: `1px solid ${ti.border}`, borderRadius: 999, padding: "2px 9px", fontSize: 10.5, fontWeight: 700 }}>{item.tipoActuacion || "—"}</span>
+                                </td>
+                                <td>
+                                  {item.nodo ? <span style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: 999, padding: "2px 9px", fontSize: 10.5, fontWeight: 700 }}>{item.nodo}</span> : "-"}
+                                </td>
+                                <td style={{ whiteSpace: "normal", minWidth: 160, fontWeight: 600, color: isDark ? "#e6ecf7" : "#0F172A" }}>{item.nombre || "—"}</td>
+                                <td style={{ color: isDark ? "#93a2bd" : "#64748B" }}>{item.dni || "-"}</td>
+                                <td style={{ color: isDark ? "#93a2bd" : "#64748B" }}>{item.liquidacion?.tecnicoLiquida || item.tecnico || "-"}</td>
+                                <td style={{ color: isDark ? "#93a2bd" : "#64748B" }}>{item.fechaLiquidacion}</td>
+                                <td>
+                                  <span style={{ background: resColor + "18", color: resColor, border: `1px solid ${resColor}40`, borderRadius: 999, padding: "2px 9px", fontSize: 10.5, fontWeight: 700 }}>{resultado}</span>
+                                </td>
+                                <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
+                                  <div style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                                    {esAdminSesion && (
+                                      <button onClick={() => void abrirEditarLiquidacionHistorial(item)} style={{ ...warningButton, padding: "5px 10px", fontSize: 11 }}>
+                                        Editar liq.
+                                      </button>
+                                    )}
+                                    {esAdminSesion && (
+                                      <button onClick={() => void editarOrdenDesdeHistorial(item)} style={{ padding: "5px 10px", background: isDark ? "#1e2b45" : "#EEF2FF", border: isDark ? "1px solid #3a4d78" : "1px solid #C7D2FE", borderRadius: 8, fontSize: 11, fontWeight: 600, color: isDark ? "#a5b8ea" : "#3730A3", cursor: "pointer" }} title="Corregir datos de la orden (nodo, usuario, etc.)">
+                                        Editar orden
+                                      </button>
+                                    )}
+                                    {esAdminSesion && (
+                                      <button
+                                        onClick={() => {
+                                          if (!window.confirm(`¿Restaurar cliente "${item.nombre}" (${item.dni}) desde esta liquidación?`)) return;
+                                          void guardarClienteDesdeLiquidacion({ ...item, liquidacion: item.liquidacion || {} }, { isEditing: false });
+                                          alert("Cliente enviado a base de datos.");
+                                        }}
+                                        style={{ padding: "5px 10px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, fontSize: 11, fontWeight: 600, color: "#166534", cursor: "pointer" }}
+                                        title="Restaurar cliente en base de datos (solo admin)"
+                                      >
+                                        + Cliente
+                                      </button>
+                                    )}
+                                    {puedeEliminarLiquidacion && (
+                                      <button onClick={() => eliminarLiquidacion(item)} style={{ ...dangerButton, padding: "5px 9px", fontSize: 11 }}>
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                   {totalPaginas > 1 && (
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: isDark ? "#1a2740" : "#fff", borderRadius: 12, border: isDark ? "1px solid #2c3c58" : "1px solid #E2E8F0", padding: "12px 18px" }}>
