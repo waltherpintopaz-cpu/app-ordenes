@@ -122,13 +122,25 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
   const loadCajas = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("nap_cajas")
-        .select("id,ctoid,codigo,sector,nodo,empresa,capacidad,puertos_ocupados,estado,tecnico_responsable,observacion,ubicacion,lat,lng,fotos,fecha_instalacion,updated_at")
-        .order("nodo", { ascending: true })
-        .order("codigo", { ascending: true });
-      if (error) throw error;
-      setCajas(data || []);
+      // Supabase/PostgREST corta cualquier respuesta a 1000 filas por
+      // defecto sin ningun error visible, asi que hay que paginar con
+      // .range() para traer todas las cajas cuando son mas de 1000.
+      const pageSize = 1000;
+      const all = [];
+      for (let page = 0; ; page += 1) {
+        const from = page * pageSize;
+        const { data, error } = await supabase
+          .from("nap_cajas")
+          .select("id,ctoid,codigo,sector,nodo,empresa,capacidad,puertos_ocupados,estado,tecnico_responsable,observacion,ubicacion,lat,lng,fotos,fecha_instalacion,updated_at")
+          .order("nodo", { ascending: true })
+          .order("codigo", { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = data || [];
+        all.push(...chunk);
+        if (chunk.length < pageSize) break;
+      }
+      setCajas(all);
     } catch (e) {
       showToast(e?.message || "Error cargando cajas", false);
     } finally { setLoading(false); }
