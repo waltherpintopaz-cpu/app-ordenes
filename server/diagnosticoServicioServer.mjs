@@ -907,10 +907,13 @@ const MKW_PROXY_ACCIONES = new Set([
 const MKW_PROXY_DEFAULT_TOKEN_DIM = "SE8xNXBlNzBvR2NFTFlQVWl0Y0psZz09";
 const MKW_PROXY_DEFAULT_TOKEN_AMN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
 
-const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride) => {
+const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride, baseOverride) => {
   if (!MKW_PROXY_ACCIONES.has(accion)) throw new Error("Accion no permitida: " + accion);
   const isDim = MKW_PROXY_NODOS_DIM.has(Number(nodo || 0));
-  const base = isDim ? MIKROWISP_NOD04_API_BASE : MIKROWISP_API_BASE;
+  // baseOverride: permite que un cliente (via CRM/tenant_config) mande su
+  // propia URL de Mikrowisp sin que el servidor tenga que conocerla de
+  // antemano -- asi un tenant nuevo funciona sin tocar este archivo.
+  const base = baseOverride || (isDim ? MIKROWISP_NOD04_API_BASE : MIKROWISP_API_BASE);
   const defaultTok = isDim ? MKW_PROXY_DEFAULT_TOKEN_DIM : MKW_PROXY_DEFAULT_TOKEN_AMN;
   const tok = tokenOverride || defaultTok;
   const endpoint = buildAbsoluteApiUrl(base, "/" + accion);
@@ -1047,7 +1050,7 @@ const proxyMikrowispGenerico = async (req) => {
       const data = await handleSmartOltSignal(body.sn || "");
       return { status: 200, json: { ok: true, data } };
     }
-    const data = await handleMkwProxyAccion(accion, body.nodo, body.payload, body.token);
+    const data = await handleMkwProxyAccion(accion, body.nodo, body.payload, body.token, body.apiBase);
     return { status: 200, json: { ok: true, data } };
   } catch (e) {
     return { status: 200, json: { ok: false, error: e.message } };
@@ -1057,7 +1060,11 @@ const proxyMikrowispGenerico = async (req) => {
 const proxySmartOltRequest = async (req) => {
   const url = new URL(req.url || "", "http://localhost");
   const targetPath = url.pathname.replace(/^\/api\/smartolt/, "");
-  const targetUrl = buildAbsoluteApiUrl(SMARTOLT_API_BASE, targetPath);
+  // x-smartolt-base: permite que un cliente (via CRM/tenant_config) mande su
+  // propia URL base de SmartOLT -- igual que el token, sin que el servidor
+  // tenga que conocer de antemano el dominio de cada tenant nuevo.
+  const incomingBase = String(req.headers["x-smartolt-base"] || "").trim();
+  const targetUrl = buildAbsoluteApiUrl(incomingBase || SMARTOLT_API_BASE, targetPath);
   const rawBody = await readRawBody(req);
   const incomingType = String(req.headers["content-type"] || "").trim();
   const incomingToken = String(req.headers["x-token"] || req.headers.token || "").trim();
