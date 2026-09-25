@@ -13,6 +13,7 @@ import MapaPanel from "./components/MapaPanel";
 import PromocionesPanel from "./components/PromocionesPanel";
 import MensajesRapidosPanel from "./components/MensajesRapidosPanel";
 import SmartOltPanel from "./components/SmartOltPanel";
+import OnuInventarioPanel from "./components/OnuInventarioPanel";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import BotControlPanel from "./components/BotControlPanel";
@@ -353,6 +354,7 @@ const MENU_VISTAS_WEB = [
   { key: "mapa", label: "Mapa" },
   { key: "consultaCliente", label: "Consulta API" },
   { key: "smartOlt", label: "Smart OLT" },
+  { key: "onuInventario", label: "Central OLT (Huawei)", gestoraVisible: true },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
   { key: "seguimientoVehiculos", label: "Seguimiento vehiculos" },
   { key: "seguimientoVolanteadores", label: "Seguimiento volanteadores" },
@@ -387,7 +389,7 @@ const MENU_VISTAS_WEB = [
 const MENU_GRUPOS_ORDEN_WEB = ["Operación", "Red y Diagnóstico", "Clientes", "Seguimiento", "Comunicación", "Inventario", "Reportes", "IPTV", "Finanzas", "Administración", "Otros"];
 const MENU_GRUPO_POR_KEY_WEB = {
   dashboard: "Operación", crear: "Operación", pendientes: "Operación", historial: "Operación", recuperaciones: "Operación", historialAppsheet: "Operación",
-  diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
+  diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", onuInventario: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
   clientes: "Clientes", consultaCliente: "Clientes",
   seguimientoTecnicos: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
   whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
@@ -21457,6 +21459,7 @@ export default function App() {
         )}
 
         {vistaActiva === "smartOlt" && <SmartOltPanel theme={theme} />}
+        {vistaActiva === "onuInventario" && <OnuInventarioPanel theme={theme} />}
 
         {vistaActiva === "seguimientoTecnicos" && (
           <SeguimientoTecnicosPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
