@@ -293,6 +293,7 @@ export default function OnuInventarioPanel({ theme }) {
   const [page, setPage] = useState(1);
   const [estadoFiltro, setEstadoFiltro] = useState("");
   const [boardFiltro, setBoardFiltro] = useState("");
+  const [portFiltro, setPortFiltro] = useState("");
   const [zonaFiltro, setZonaFiltro] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [busquedaInput, setBusquedaInput] = useState("");
@@ -300,7 +301,7 @@ export default function OnuInventarioPanel({ theme }) {
   const [error, setError] = useState("");
   const [generadoEn, setGeneradoEn] = useState(null);
   const [conteoEstados, setConteoEstados] = useState({ online: 0, power_fail: 0, los: 0, admin_disabled: 0 });
-  const [facetas, setFacetas] = useState({ boards: [], zonas: [] });
+  const [facetas, setFacetas] = useState({ boards: [], ports: [], zonas: [] });
   const [snSeleccionado, setSnSeleccionado] = useState(null);
 
   const cargar = useCallback(async ({ refresh = false } = {}) => {
@@ -310,6 +311,7 @@ export default function OnuInventarioPanel({ theme }) {
       const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
       if (estadoFiltro) params.set("estado", estadoFiltro);
       if (boardFiltro) params.set("board", boardFiltro);
+      if (portFiltro) params.set("port", portFiltro);
       if (zonaFiltro) params.set("zona", zonaFiltro);
       if (busqueda) params.set("q", busqueda);
       if (refresh) params.set("refresh", "1");
@@ -333,7 +335,11 @@ export default function OnuInventarioPanel({ theme }) {
     } finally {
       setCargando(false);
     }
-  }, [page, estadoFiltro, boardFiltro, zonaFiltro, busqueda]);
+  }, [page, estadoFiltro, boardFiltro, portFiltro, zonaFiltro, busqueda]);
+
+  // Si el board cambia, el puerto elegido puede ya no existir en esa
+  // tarjeta -- se resetea para no quedar en un filtro imposible.
+  useEffect(() => { setPortFiltro(""); }, [boardFiltro]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -401,6 +407,14 @@ export default function OnuInventarioPanel({ theme }) {
             <select value={boardFiltro} onChange={e => { setPage(1); setBoardFiltro(e.target.value); }} style={s.select}>
               <option value="">Todos</option>
               {facetas.boards.map(b => <option key={b} value={b}>Board {b}</option>)}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={s.label}><Ico.plug width={12} height={12} />Puerto</span>
+            <select value={portFiltro} onChange={e => { setPage(1); setPortFiltro(e.target.value); }} style={s.select}>
+              <option value="">Todos</option>
+              {facetas.ports.map(p => <option key={p} value={p}>Puerto {p}</option>)}
             </select>
           </div>
 
