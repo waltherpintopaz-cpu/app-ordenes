@@ -251,7 +251,7 @@ function GraficoSenalHistorialSB({ sn }) {
       {!loading && !chart && <div style={{ fontSize: 11, color: "#6b7280", padding: "14px 0" }}>Todavía no hay suficiente historial guardado para este período.</div>}
       {!loading && chart && (
         <>
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: "block" }}>
             <defs>
               <linearGradient id={`gradSenalSB-${sn}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
@@ -332,7 +332,7 @@ function GraficoTraficoSB({ sn }) {
       {!loading && !chart && <div style={{ fontSize: 11, color: "#6b7280", padding: "14px 0" }}>Todavía no hay suficiente historial de tráfico guardado (se mide cada 15 min).</div>}
       {!loading && chart && (
         <>
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: "block" }}>
             {chart.ticksY.map((t, i) => (
               <g key={i}>
                 <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
