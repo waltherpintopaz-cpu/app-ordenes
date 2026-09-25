@@ -2043,6 +2043,7 @@ function FichaOnuHuawei({ sn }) {
                   online:     { label: "Online",     bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
                   power_fail: { label: "Power Fail — sin luz (avisó antes de apagarse)", bg: "#fef3c7", fg: "#92400e", dot: "#d97706" },
                   los:        { label: "Loss of Signal — sin señal óptica (fibra/desconexión)", bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
+                  admin_disabled: { label: "Deshabilitada a mano (Admin Disabled)", bg: "#f1f5f9", fg: "#475569", dot: "#94a3b8" },
                 };
                 const e = ESTADOS[ficha.estado] || { label: ficha.estado, bg: "#f1f5f9", fg: "#475569", dot: "#94a3b8" };
                 return (
