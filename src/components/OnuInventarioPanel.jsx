@@ -94,6 +94,63 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
     return () => { cancelado = true; };
   }, [sn, rango]);
 
+  // Resumen por periodo (Hoy/Ayer/Semana/Mes/Año) -- independiente del
+  // selector de rango del grafico, siempre trae hasta 1 año para tener los
+  // baldes completos.
+  const [filasResumen, setFilasResumen] = useState([]);
+  useEffect(() => {
+    if (!sn) return undefined;
+    let cancelado = false;
+    const desde = new Date(Date.now() - 366 * 24 * 3600 * 1000).toISOString();
+    supabase.from("trafico_onu_historial").select("up_bps,down_bps,medido_en")
+      .eq("sn_onu", sn).gte("medido_en", desde).order("medido_en", { ascending: true })
+      .then(({ data }) => { if (!cancelado) setFilasResumen(data || []); });
+    return () => { cancelado = true; };
+  }, [sn]);
+
+  const resumenPeriodos = useMemo(() => {
+    if (filasResumen.length < 2) return null;
+    const inicioDia = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const ahora = new Date();
+    const hoy0 = inicioDia(ahora);
+    const ayer0 = hoy0 - 86400000;
+    const diaSemana = (new Date(hoy0).getDay() + 6) % 7; // lunes=0
+    const semana0 = hoy0 - diaSemana * 86400000;
+    const mes0 = new Date(ahora.getFullYear(), ahora.getMonth(), 1).getTime();
+    const mesPasado0 = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1).getTime();
+    const anio0 = new Date(ahora.getFullYear(), 0, 1).getTime();
+
+    const buckets = {
+      hoy: { desde: hoy0, hasta: Infinity, down: 0, up: 0 },
+      ayer: { desde: ayer0, hasta: hoy0, down: 0, up: 0 },
+      semana: { desde: semana0, hasta: Infinity, down: 0, up: 0 },
+      mes: { desde: mes0, hasta: Infinity, down: 0, up: 0 },
+      mesPasado: { desde: mesPasado0, hasta: mes0, down: 0, up: 0 },
+      anio: { desde: anio0, hasta: Infinity, down: 0, up: 0 },
+    };
+
+    for (let i = 1; i < filasResumen.length; i++) {
+      const prev = filasResumen[i - 1], cur = filasResumen[i];
+      const tPrev = new Date(prev.medido_en).getTime();
+      const tCur = new Date(cur.medido_en).getTime();
+      const gapSeg = Math.min((tCur - tPrev) / 1000, 1800); // tope 30min para no inflar tras un corte
+      if (gapSeg <= 0) continue;
+      const bytesDown = cur.down_bps != null ? (cur.down_bps * gapSeg) / 8 : 0;
+      const bytesUp = cur.up_bps != null ? (cur.up_bps * gapSeg) / 8 : 0;
+      for (const b of Object.values(buckets)) {
+        if (tCur > b.desde && tCur <= b.hasta) { b.down += bytesDown; b.up += bytesUp; }
+      }
+    }
+    return buckets;
+  }, [filasResumen]);
+
+  const fmtBytes = (b) => {
+    if (!b || b <= 0) return "—";
+    const gb = b / 1e9;
+    if (gb >= 1) return `${gb.toFixed(2)} GB`;
+    return `${(b / 1e6).toFixed(2)} MB`;
+  };
+
   const puntos = useMemo(() => filas.filter(f => f.rx_dbm != null).map(f => ({ t: new Date(f.medido_en).getTime(), rx: Number(f.rx_dbm) })), [filas]);
   const puntosTrafico = useMemo(() => filasTrafico
     .filter(f => f.up_bps != null || f.down_bps != null)
@@ -278,6 +335,38 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                 <span>Máximo Download: <strong style={{ color: col.text }}>{chartTrafico.maxDown.toFixed(2)} Mbps</strong></span>
               </div>
             </>
+          )}
+
+          {resumenPeriodos && (
+            <div style={{ marginTop: 14, borderTop: `1px solid ${col.border}`, paddingTop: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: col.sub, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Resumen de consumo</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+                <thead>
+                  <tr>
+                    {["", "Download", "Upload", "Total"].map((h, i) => (
+                      <th key={i} style={{ textAlign: i === 0 ? "left" : "right", padding: "3px 6px", color: col.sub, fontWeight: 700, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ["Hoy", resumenPeriodos.hoy],
+                    ["Ayer", resumenPeriodos.ayer],
+                    ["Esta semana", resumenPeriodos.semana],
+                    ["Este mes", resumenPeriodos.mes],
+                    ["Mes pasado", resumenPeriodos.mesPasado],
+                    ["Este año", resumenPeriodos.anio],
+                  ].map(([label, b]) => (
+                    <tr key={label} style={{ borderTop: `1px solid ${col.border}` }}>
+                      <td style={{ padding: "4px 6px", color: col.text }}>{label}</td>
+                      <td style={{ padding: "4px 6px", textAlign: "right", color: col.text }}>{fmtBytes(b.down)}</td>
+                      <td style={{ padding: "4px 6px", textAlign: "right", color: col.text }}>{fmtBytes(b.up)}</td>
+                      <td style={{ padding: "4px 6px", textAlign: "right", color: col.text, fontWeight: 700 }}>{fmtBytes(b.down + b.up)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
