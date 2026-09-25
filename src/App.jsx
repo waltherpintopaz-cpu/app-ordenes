@@ -1957,18 +1957,27 @@ function GraficoSenalHistorial({ sn }) {
       )}
       {!loading && !error && puntos.length >= 2 && (
         <>
-          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-            {ticksY.map((t, i) => (
-              <g key={i}>
-                <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
-                <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
-              </g>
-            ))}
-            {ticksX.map((t, i) => (
-              <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
-            ))}
-            <path d={pathD} fill="none" stroke="#f97316" strokeWidth="2" />
-          </svg>
+          <div style={{ width: "100%", maxWidth: 640, height: 180 }}>
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+              <defs>
+                <linearGradient id="gradSenalHist" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {ticksY.map((t, i) => (
+                <g key={i}>
+                  <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
+                  <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
+                </g>
+              ))}
+              {ticksX.map((t, i) => (
+                <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
+              ))}
+              {pathD && <path d={`${pathD} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill="url(#gradSenalHist)" stroke="none" />}
+              <path d={pathD} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4 }}>
             <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Rx ONU (dBm)</span>
             {ultimo && <span>Actual: <strong style={{ color: "#374151" }}>{ultimo.rx.toFixed(2)}</strong></span>}
