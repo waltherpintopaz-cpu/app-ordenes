@@ -2715,6 +2715,18 @@ export default function App() {
     return () => clearTimeout(safetyTimer);
   }, []);
 
+  // Auto-refresh de la señal ONU mientras esté abierta la ficha del cliente
+  // (mismo criterio que SmartOLT: se actualiza sola cada 5s, sin que el
+  // usuario tenga que presionar "Consultar Señal" a cada rato).
+  useEffect(() => {
+    if (vistaActiva !== "detalleCliente") return;
+    const sn = String(clienteSeleccionado?.snOnu || "").trim();
+    if (!sn || !nodoUsaHuawei(clienteSeleccionado?.nodo)) return;
+    const cli = clienteSeleccionado;
+    const timer = setInterval(() => { void consultarSenalClienteSilencioso(cli); }, 5000);
+    return () => clearInterval(timer);
+  }, [vistaActiva, clienteSeleccionado?.id, clienteSeleccionado?.snOnu, clienteSeleccionado?.nodo]);
+
   // Cargar configuración de reportes desde Supabase
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -5218,6 +5230,23 @@ export default function App() {
       setClienteSenalError(String(e?.message || "Error al consultar señal."));
     } finally {
       setClienteSenalLoading(false);
+    }
+  };
+
+  // Version "silenciosa" para el auto-refresh de la ficha del cliente: solo
+  // actualiza los valores en pantalla, sin loading/error visibles y sin
+  // escribir en Supabase en cada tick (evita saturar la base con un update
+  // cada 5s -- el guardado real sigue pasando via el boton manual).
+  const consultarSenalClienteSilencioso = async (cli) => {
+    const sn = String(cli?.snOnu || "").trim();
+    if (!sn) return;
+    try {
+      const { rx, tx, fuente } = await leerSenalHuawei(sn);
+      const now = new Date().toISOString();
+      setClienteSenal({ rx, tx, queried_at: now, fuente });
+      setClienteSeleccionado(prev => (prev && prev.id === cli.id) ? { ...prev, rxSignal: rx, txSignal: tx, signalUpdatedAt: now } : prev);
+    } catch (e) {
+      // best-effort: si falla un tick, se mantiene el ultimo valor bueno
     }
   };
 
@@ -24169,6 +24198,9 @@ export default function App() {
                           Actualizado {new Date(cli.signalUpdatedAt).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </span>
                       )}
+                      <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 600 }}>
+                        🔄 se actualiza sola cada 5s
+                      </span>
                       <button
                         onClick={() => consultarSenalCliente(cli)}
                         disabled={clienteSenalLoading}
