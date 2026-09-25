@@ -24315,6 +24315,7 @@ export default function App() {
                       {!cli.vlan && <span style={{ color: "#f59e0b", fontWeight: 600 }}> (Recomendado: asignar VLAN para mayor velocidad)</span>}
                     </div>
                   )}
+                  <GraficoSenalHistorial sn={cli.snOnu} />
                 </div>
               )}
 
