@@ -111,7 +111,11 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
     const y = (rx) => PAD_T + (1 - (rx - min) / (max - min)) * (H - PAD_T - PAD_B);
     const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.rx).toFixed(1)}`).join(" ");
     const ticksY = [min, min + (max - min) / 2, max].map(v => ({ v, y: y(v) }));
-    return { d, ticksY, ultimo: puntos[puntos.length - 1], max: Math.max(...rxVals) };
+    const ticksX = Array.from({ length: 5 }, (_, i) => {
+      const t = tMin + ((tMax - tMin) * i) / 4;
+      return { t, x: x(t) };
+    });
+    return { d, ticksY, ticksX, ultimo: puntos[puntos.length - 1], max: Math.max(...rxVals) };
   }, [puntos]);
 
   const chartTrafico = useMemo(() => {
@@ -129,10 +133,21 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
       return pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p[campo]).toFixed(1)}`).join(" ");
     };
     const ticksY = [0, max / 2, max].map(v => ({ v, y: y(v) }));
+    const ticksX = Array.from({ length: 5 }, (_, i) => {
+      const t = tMin + ((tMax - tMin) * i) / 4;
+      return { t, x: x(t) };
+    });
     const ultimoUp = [...puntosTrafico].reverse().find(p => p.up != null)?.up;
     const ultimoDown = [...puntosTrafico].reverse().find(p => p.down != null)?.down;
-    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ticksY, ultimoUp, ultimoDown, maxDown: Math.max(...puntosTrafico.map(p => p.down || 0)) };
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ticksY, ticksX, ultimoUp, ultimoDown, maxDown: Math.max(...puntosTrafico.map(p => p.down || 0)) };
   }, [puntosTrafico]);
+
+  const fmtFecha = (t) => {
+    const d = new Date(t);
+    if (rango === "dia") return d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+    if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+    return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
+  };
 
   const cfg = ficha?.estado ? (ESTADO[ficha.estado] || ESTADO_DESCONOCIDO) : null;
   const col = isDark ? { bg: "#111c33", card: "#1a2740", border: "#2c3c58", text: "#e6ecf7", sub: "#93a2bd" }
@@ -218,6 +233,9 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                     <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill={col.sub}>{t.v.toFixed(1)}</text>
                   </g>
                 ))}
+                {chart.ticksX.map((t, i) => (
+                  <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill={col.sub}>{fmtFecha(t.t)}</text>
+                ))}
                 <path d={`${chart.d} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill="url(#gradSenalDrawer)" stroke="none" />
                 <path d={chart.d} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -247,6 +265,9 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                     <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke={isDark ? "#2c3c58" : "#e5e7eb"} strokeWidth="1" />
                     <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill={col.sub}>{t.v.toFixed(1)}</text>
                   </g>
+                ))}
+                {chartTrafico.ticksX.map((t, i) => (
+                  <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill={col.sub}>{fmtFecha(t.t)}</text>
                 ))}
                 <path d={chartTrafico.dDown} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 <path d={chartTrafico.dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
