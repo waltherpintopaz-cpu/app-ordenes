@@ -5449,7 +5449,7 @@ export default function App() {
   };
 
   // Consulta señal via SSH API (Nod_06, Nod_04) — desde fila de tabla
-  const consultarSenalOltSshTabla = async (cli) => {
+  const consultarSenalOltSshTabla = async (cli, opts = {}) => {
     const id = cli?.id;
     if (!id) return;
     const sn = String(cli.snOnu || "").trim();
@@ -5460,6 +5460,8 @@ export default function App() {
     try {
       const params = new URLSearchParams({ sn });
       if (cli.vlan) params.set("vlan", String(cli.vlan));
+      if (cli.nodo) params.set("nodo", String(cli.nodo));
+      if (opts.snmpOnly) params.set("snmpOnly", "1");
       const res  = await fetch(`${OLT_SSH_API}/signal?${params}`);
       const json = await res.json().catch(() => ({}));
       if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
@@ -5518,7 +5520,7 @@ export default function App() {
     async function worker() {
       while (i < targets.length) {
         const c = targets[i++];
-        await consultarSenalOltSshTabla(c);
+        await consultarSenalOltSshTabla(c, { snmpOnly: true });
       }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_REFRESH_SENAL, targets.length) }, worker));
