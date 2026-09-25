@@ -2038,17 +2038,24 @@ function FichaOnuHuawei({ sn }) {
           {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
           {!loading && !error && ficha && (
             <>
-              {ficha.online != null && (
-                <div style={{
-                  display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10,
-                  padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
-                  background: ficha.online ? "#dcfce7" : "#fee2e2",
-                  color: ficha.online ? "#166534" : "#991b1b",
-                }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: ficha.online ? "#16a34a" : "#dc2626" }} />
-                  {ficha.online ? "Online" : "Offline"} (directo del equipo)
-                </div>
-              )}
+              {ficha.estado != null && (() => {
+                const ESTADOS = {
+                  online:     { label: "Online",     bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
+                  power_fail: { label: "Power Fail — sin luz (avisó antes de apagarse)", bg: "#fef3c7", fg: "#92400e", dot: "#d97706" },
+                  los:        { label: "Loss of Signal — sin señal óptica (fibra/desconexión)", bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
+                };
+                const e = ESTADOS[ficha.estado] || { label: ficha.estado, bg: "#f1f5f9", fg: "#475569", dot: "#94a3b8" };
+                return (
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10,
+                    padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                    background: e.bg, color: e.fg,
+                  }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: e.dot, flexShrink: 0 }} />
+                    {e.label} (directo del equipo)
+                  </div>
+                );
+              })()}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
               {[
                 ["Rx ONU (dBm)", ficha.rxPower != null ? ficha.rxPower : "-", true],
