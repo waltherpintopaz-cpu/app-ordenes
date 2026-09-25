@@ -5193,40 +5193,15 @@ export default function App() {
     };
   };
 
-  // Señal de ONUs Huawei: primero el servicio propio (SNMP directo, sin
-  // costo), y si falla (ONU no encontrada, timeout, servicio caido, etc.)
-  // cae automaticamente a SmartOLT -- asi el reemplazo ya es el camino
-  // principal pero sin perder la red de seguridad mientras se termina de
-  // validar contra todas las ONUs reales (no solo la de prueba).
+  // Señal de ONUs Huawei: solo el servicio propio (SNMP directo). Sin
+  // respaldo a SmartOLT -- si este servicio falla, la consulta falla y se
+  // muestra el error tal cual, no se intenta con SmartOLT.
   const leerSenalHuawei = async (sn) => {
-    if (HUAWEI_OLT_SNMP_API) {
-      try {
-        const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(sn)}`);
-        const json = await res.json().catch(() => ({}));
-        if (json.ok && (json.rxPower != null || json.txPower != null)) {
-          return { rx: json.rxPower != null ? String(json.rxPower) : "-", tx: json.txPower != null ? String(json.txPower) : "-", fuente: "propio" };
-        }
-      } catch { /* cae a SmartOLT */ }
-    }
-    if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
-    const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" },
-      cache: "no-store",
-    });
+    if (!HUAWEI_OLT_SNMP_API) throw new Error("Servicio SNMP propio no configurado (VITE_HUAWEI_OLT_SNMP_API).");
+    const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(sn)}`);
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
-    const base =
-      (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
-      (json?.response?.full_status_json && typeof json.response.full_status_json === "object" ? json.response.full_status_json : null) ||
-      (Array.isArray(json?.response) ? json.response[0] : null) ||
-      (json?.response && typeof json.response === "object" ? json.response : null) ||
-      json;
-    const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
-    const tx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
-    if (rx === "-" && tx === "-") throw new Error("Sin datos de señal.");
-    return { rx: String(rx), tx: String(tx), fuente: "smartolt" };
+    if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+    return { rx: json.rxPower != null ? String(json.rxPower) : "-", tx: json.txPower != null ? String(json.txPower) : "-", fuente: "propio" };
   };
 
   const consultarSenalCliente = async (cli) => {
