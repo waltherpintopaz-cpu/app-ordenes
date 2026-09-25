@@ -2039,8 +2039,8 @@ function FichaOnuHuawei({ sn }) {
           {!loading && !error && ficha && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
               {[
-                ["Rx ONU (dBm)", ficha.rxPower != null ? ficha.rxPower : null],
-                ["Tx ONU (dBm)", ficha.txPower != null ? ficha.txPower : null],
+                ["Rx ONU (dBm)", ficha.rxPower != null ? ficha.rxPower : "-", true],
+                ["Tx ONU (dBm)", ficha.txPower != null ? ficha.txPower : "-", true],
                 ["Nombre (en la OLT)", ficha.nombre],
                 ["Zona", ficha.zona],
                 ["Comentario/Dirección", ficha.comentario],
@@ -2048,7 +2048,7 @@ function FichaOnuHuawei({ sn }) {
                 ["Perfil de línea", ficha.perfilLinea],
                 ["Modelo", ficha.modelo],
                 ["Firmware", ficha.firmware],
-              ].filter(([, v]) => v != null && v !== "").map(([label, value]) => (
+              ].filter(([, v, siempre]) => siempre || (v != null && v !== "")).map(([label, value]) => (
                 <div key={label} style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px", border: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
                   <div style={{ fontSize: 12.5, color: "#374151", fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
