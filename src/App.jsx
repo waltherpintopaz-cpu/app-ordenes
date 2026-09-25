@@ -2118,6 +2118,87 @@ function GraficoTrafico({ sn }) {
   );
 }
 
+// ── Resumen de consumo por periodo (Hoy/Ayer/Semana/Mes/Año), igual a
+// SmartOLT -- calculado sobre trafico_onu_historial (bps cada 15min,
+// integrado a bytes por el gap real entre lecturas, tope 30min).
+function ResumenConsumo({ sn }) {
+  const [filas, setFilas] = useState([]);
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    const desde = new Date(Date.now() - 366 * 24 * 3600 * 1000).toISOString();
+    supabase.from("trafico_onu_historial").select("up_bps,down_bps,medido_en")
+      .eq("sn_onu", sn).gte("medido_en", desde).order("medido_en", { ascending: true })
+      .then(({ data }) => { if (!cancelado) setFilas(data || []); });
+    return () => { cancelado = true; };
+  }, [sn]);
+
+  const resumen = useMemo(() => {
+    if (filas.length < 2) return null;
+    const inicioDia = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const ahora = new Date();
+    const hoy0 = inicioDia(ahora);
+    const ayer0 = hoy0 - 86400000;
+    const diaSemana = (new Date(hoy0).getDay() + 6) % 7;
+    const semana0 = hoy0 - diaSemana * 86400000;
+    const mes0 = new Date(ahora.getFullYear(), ahora.getMonth(), 1).getTime();
+    const mesPasado0 = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1).getTime();
+    const anio0 = new Date(ahora.getFullYear(), 0, 1).getTime();
+    const buckets = {
+      hoy: { desde: hoy0, hasta: Infinity, down: 0, up: 0 },
+      ayer: { desde: ayer0, hasta: hoy0, down: 0, up: 0 },
+      semana: { desde: semana0, hasta: Infinity, down: 0, up: 0 },
+      mes: { desde: mes0, hasta: Infinity, down: 0, up: 0 },
+      mesPasado: { desde: mesPasado0, hasta: mes0, down: 0, up: 0 },
+      anio: { desde: anio0, hasta: Infinity, down: 0, up: 0 },
+    };
+    for (let i = 1; i < filas.length; i++) {
+      const prev = filas[i - 1], cur = filas[i];
+      const gapSeg = Math.min((new Date(cur.medido_en) - new Date(prev.medido_en)) / 1000, 1800);
+      if (gapSeg <= 0) continue;
+      const bytesDown = cur.down_bps != null ? (cur.down_bps * gapSeg) / 8 : 0;
+      const bytesUp = cur.up_bps != null ? (cur.up_bps * gapSeg) / 8 : 0;
+      const tCur = new Date(cur.medido_en).getTime();
+      for (const b of Object.values(buckets)) if (tCur > b.desde && tCur <= b.hasta) { b.down += bytesDown; b.up += bytesUp; }
+    }
+    return buckets;
+  }, [filas]);
+
+  const fmtBytes = (b) => {
+    if (!b || b <= 0) return "—";
+    const gb = b / 1e9;
+    return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(b / 1e6).toFixed(2)} MB`;
+  };
+
+  if (!resumen) return null;
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+        📊 Resumen de consumo
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr>
+            {["", "Download", "Upload", "Total"].map((h, i) => (
+              <th key={i} style={{ textAlign: i === 0 ? "left" : "right", padding: "3px 6px", color: "#9ca3af", fontWeight: 700, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {[["Hoy", resumen.hoy], ["Ayer", resumen.ayer], ["Esta semana", resumen.semana], ["Este mes", resumen.mes], ["Mes pasado", resumen.mesPasado], ["Este año", resumen.anio]].map(([label, b]) => (
+            <tr key={label} style={{ borderTop: "1px solid #f3f4f6" }}>
+              <td style={{ padding: "5px 6px", color: "#374151" }}>{label}</td>
+              <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.down)}</td>
+              <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.up)}</td>
+              <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151", fontWeight: 700 }}>{fmtBytes(b.down + b.up)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Ficha completa de ONU Huawei (Fase 1 del reemplazo propio de SmartOLT)
 // Lee nombre/zona/comentario/fecha de autorizacion directo de la OLT via
 // SNMP (servicio huawei-olt-signal, endpoint /onu-info) -- confirmado que
@@ -24630,6 +24711,7 @@ export default function App() {
                   )}
                   <GraficoSenalHistorial sn={cli.snOnu} />
                   <GraficoTrafico sn={cli.snOnu} />
+                  <ResumenConsumo sn={cli.snOnu} />
                   <FichaOnuHuawei sn={cli.snOnu} />
                 </div>
               )}

@@ -185,6 +185,27 @@ const RANGOS_SENAL_HISTORIAL_SB = [
 ];
 
 // ── Grafico de señal RX (igual patron que App.jsx GraficoSenalHistorial) ──
+function RangoTabsSB({ rango, setRango }) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      {RANGOS_SENAL_HISTORIAL_SB.map(r => (
+        <button key={r.key} onClick={() => setRango(r.key)} style={{
+          padding: "3px 8px", fontSize: 10, fontWeight: 700, borderRadius: 6, cursor: "pointer",
+          border: rango === r.key ? "1.5px solid #16a34a" : "1.5px solid #e2e8f0",
+          background: rango === r.key ? "#dcfce7" : "#fff", color: rango === r.key ? "#166534" : "#6b7280",
+        }}>{r.label}</button>
+      ))}
+    </div>
+  );
+}
+
+function fmtFechaSB(t, rango) {
+  const d = new Date(t);
+  if (rango === "dia") return d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+  if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+  return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
+}
+
 function GraficoSenalHistorialSB({ sn }) {
   const [rango, setRango] = useState("dia");
   const [filas, setFilas] = useState([]);
@@ -203,7 +224,7 @@ function GraficoSenalHistorialSB({ sn }) {
   }, [sn, rango]);
 
   const puntos = useMemo(() => filas.filter(f => f.rx_dbm != null).map(f => ({ t: new Date(f.medido_en).getTime(), rx: Number(f.rx_dbm) })), [filas]);
-  const W = 300, H = 130, PAD_L = 34, PAD_R = 8, PAD_T = 10, PAD_B = 20;
+  const W = 320, H = 160, PAD_L = 38, PAD_R = 10, PAD_T = 10, PAD_B = 22;
   const chart = useMemo(() => {
     if (puntos.length < 2) return null;
     const rxVals = puntos.map(p => p.rx);
@@ -215,31 +236,45 @@ function GraficoSenalHistorialSB({ sn }) {
     const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
     const y = (rx) => PAD_T + (1 - (rx - min) / (max - min)) * (H - PAD_T - PAD_B);
     const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.rx).toFixed(1)}`).join(" ");
-    return { d, ultimo: puntos[puntos.length - 1] };
+    const ticksY = [min, min + (max - min) / 2, max].map(v => ({ v, y: y(v) }));
+    const ticksX = Array.from({ length: 4 }, (_, i) => { const t = tMin + ((tMax - tMin) * i) / 3; return { t, x: x(t) }; });
+    return { d, ticksY, ticksX, ultimo: puntos[puntos.length - 1], max: Math.max(...rxVals) };
   }, [puntos]);
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginTop: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 4, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 9, fontWeight: 800, color: "#374151", textTransform: "uppercase" }}>Historial Señal (RX)</span>
-        <div style={{ display: "flex", gap: 3 }}>
-          {RANGOS_SENAL_HISTORIAL_SB.map(r => (
-            <button key={r.key} onClick={() => setRango(r.key)} style={{
-              padding: "2px 6px", fontSize: 9, fontWeight: 700, borderRadius: 5, cursor: "pointer",
-              border: rango === r.key ? "1px solid #16a34a" : "1px solid #e2e8f0",
-              background: rango === r.key ? "#dcfce7" : "#fff", color: rango === r.key ? "#166534" : "#6b7280",
-            }}>{r.label}</button>
-          ))}
-        </div>
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", marginTop: 8, boxShadow: "0 1px 2px rgba(0,0,0,.04)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em" }}>📈 Historial de señal (Rx)</span>
+        <RangoTabsSB rango={rango} setRango={setRango} />
       </div>
-      {loading && <div style={{ fontSize: 10, color: "#6b7280" }}>Cargando…</div>}
-      {!loading && !chart && <div style={{ fontSize: 10, color: "#6b7280" }}>Sin historial suficiente aún.</div>}
+      {loading && <div style={{ fontSize: 11, color: "#6b7280", padding: "14px 0" }}>Cargando historial…</div>}
+      {!loading && !chart && <div style={{ fontSize: 11, color: "#6b7280", padding: "14px 0" }}>Todavía no hay suficiente historial guardado para este período.</div>}
       {!loading && chart && (
         <>
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+            <defs>
+              <linearGradient id={`gradSenalSB-${sn}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {chart.ticksY.map((t, i) => (
+              <g key={i}>
+                <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
+                <text x={PAD_L - 5} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
+              </g>
+            ))}
+            {chart.ticksX.map((t, i) => (
+              <text key={i} x={t.x} y={H - 6} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFechaSB(t.t, rango)}</text>
+            ))}
+            <path d={`${chart.d} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill={`url(#gradSenalSB-${sn})`} stroke="none" />
             <path d={chart.d} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <div style={{ fontSize: 9, color: "#6b7280" }}>Actual: <strong>{chart.ultimo.rx.toFixed(2)} dBm</strong></div>
+          <div style={{ display: "flex", gap: 14, fontSize: 10.5, color: "#6b7280", marginTop: 2 }}>
+            <span><span style={{ display: "inline-block", width: 7, height: 7, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Rx ONU</span>
+            <span>Actual: <strong style={{ color: "#374151" }}>{chart.ultimo.rx.toFixed(2)} dBm</strong></span>
+            <span>Máximo: <strong style={{ color: "#374151" }}>{chart.max.toFixed(2)} dBm</strong></span>
+          </div>
         </>
       )}
     </div>
@@ -267,7 +302,7 @@ function GraficoTraficoSB({ sn }) {
   const puntos = useMemo(() => filas
     .filter(f => f.up_bps != null || f.down_bps != null)
     .map(f => ({ t: new Date(f.medido_en).getTime(), up: f.up_bps != null ? f.up_bps / 1e6 : null, down: f.down_bps != null ? f.down_bps / 1e6 : null })), [filas]);
-  const W = 300, H = 130, PAD_L = 34, PAD_R = 8, PAD_T = 10, PAD_B = 20;
+  const W = 320, H = 160, PAD_L = 38, PAD_R = 10, PAD_T = 10, PAD_B = 22;
   const chart = useMemo(() => {
     if (puntos.length < 2) return null;
     const todos = puntos.flatMap(p => [p.up, p.down]).filter(v => v != null);
@@ -280,36 +315,39 @@ function GraficoTraficoSB({ sn }) {
       if (pts.length < 2) return "";
       return pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p[campo]).toFixed(1)}`).join(" ");
     };
+    const ticksY = [0, max / 2, max].map(v => ({ v, y: y(v) }));
+    const ticksX = Array.from({ length: 4 }, (_, i) => { const t = tMin + ((tMax - tMin) * i) / 3; return { t, x: x(t) }; });
     const ultUp = [...puntos].reverse().find(p => p.up != null)?.up ?? null;
     const ultDown = [...puntos].reverse().find(p => p.down != null)?.down ?? null;
-    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ultUp, ultDown };
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ticksY, ticksX, ultUp, ultDown, maxDown: Math.max(...puntos.map(p => p.down || 0)) };
   }, [puntos]);
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginTop: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 4, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 9, fontWeight: 800, color: "#374151", textTransform: "uppercase" }}>Tráfico (Up/Down)</span>
-        <div style={{ display: "flex", gap: 3 }}>
-          {RANGOS_SENAL_HISTORIAL_SB.map(r => (
-            <button key={r.key} onClick={() => setRango(r.key)} style={{
-              padding: "2px 6px", fontSize: 9, fontWeight: 700, borderRadius: 5, cursor: "pointer",
-              border: rango === r.key ? "1px solid #16a34a" : "1px solid #e2e8f0",
-              background: rango === r.key ? "#dcfce7" : "#fff", color: rango === r.key ? "#166534" : "#6b7280",
-            }}>{r.label}</button>
-          ))}
-        </div>
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", marginTop: 8, boxShadow: "0 1px 2px rgba(0,0,0,.04)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em" }}>📶 Tráfico (Upload/Download)</span>
+        <RangoTabsSB rango={rango} setRango={setRango} />
       </div>
-      {loading && <div style={{ fontSize: 10, color: "#6b7280" }}>Cargando…</div>}
-      {!loading && !chart && <div style={{ fontSize: 10, color: "#6b7280" }}>Sin historial suficiente aún.</div>}
+      {loading && <div style={{ fontSize: 11, color: "#6b7280", padding: "14px 0" }}>Cargando tráfico…</div>}
+      {!loading && !chart && <div style={{ fontSize: 11, color: "#6b7280", padding: "14px 0" }}>Todavía no hay suficiente historial de tráfico guardado (se mide cada 15 min).</div>}
       {!loading && chart && (
         <>
-          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+            {chart.ticksY.map((t, i) => (
+              <g key={i}>
+                <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
+                <text x={PAD_L - 5} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
+              </g>
+            ))}
+            {chart.ticksX.map((t, i) => (
+              <text key={i} x={t.x} y={H - 6} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFechaSB(t.t, rango)}</text>
+            ))}
             <path d={chart.dDown} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             <path d={chart.dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <div style={{ display: "flex", gap: 10, fontSize: 9, color: "#6b7280" }}>
-            <span>↑ {chart.ultUp != null ? `${chart.ultUp.toFixed(2)} Mbps` : "—"}</span>
-            <span>↓ {chart.ultDown != null ? `${chart.ultDown.toFixed(2)} Mbps` : "—"}</span>
+          <div style={{ display: "flex", gap: 14, fontSize: 10.5, color: "#6b7280", marginTop: 2, flexWrap: "wrap" }}>
+            <span><span style={{ display: "inline-block", width: 7, height: 7, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Upload: <strong style={{ color: "#374151" }}>{chart.ultUp != null ? `${chart.ultUp.toFixed(2)} Mbps` : "—"}</strong></span>
+            <span><span style={{ display: "inline-block", width: 7, height: 7, background: "#3b82f6", borderRadius: 2, marginRight: 4 }} />Download: <strong style={{ color: "#374151" }}>{chart.ultDown != null ? `${chart.ultDown.toFixed(2)} Mbps` : "—"}</strong></span>
           </div>
         </>
       )}
@@ -318,6 +356,83 @@ function GraficoTraficoSB({ sn }) {
 }
 
 // ── Ficha completa de ONU Huawei (directo del equipo, igual que App.jsx) ──
+// ── Resumen de consumo por periodo (igual patron que App.jsx) ──
+function ResumenConsumoSB({ sn }) {
+  const [filas, setFilas] = useState([]);
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    const desde = new Date(Date.now() - 366 * 24 * 3600 * 1000).toISOString();
+    supabase.from("trafico_onu_historial").select("up_bps,down_bps,medido_en")
+      .eq("sn_onu", sn).gte("medido_en", desde).order("medido_en", { ascending: true })
+      .then(({ data }) => { if (!cancelado) setFilas(data || []); });
+    return () => { cancelado = true; };
+  }, [sn]);
+
+  const resumen = useMemo(() => {
+    if (filas.length < 2) return null;
+    const inicioDia = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const ahora = new Date();
+    const hoy0 = inicioDia(ahora);
+    const ayer0 = hoy0 - 86400000;
+    const diaSemana = (new Date(hoy0).getDay() + 6) % 7;
+    const semana0 = hoy0 - diaSemana * 86400000;
+    const mes0 = new Date(ahora.getFullYear(), ahora.getMonth(), 1).getTime();
+    const mesPasado0 = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1).getTime();
+    const anio0 = new Date(ahora.getFullYear(), 0, 1).getTime();
+    const buckets = {
+      hoy: { desde: hoy0, hasta: Infinity, down: 0, up: 0 },
+      ayer: { desde: ayer0, hasta: hoy0, down: 0, up: 0 },
+      semana: { desde: semana0, hasta: Infinity, down: 0, up: 0 },
+      mes: { desde: mes0, hasta: Infinity, down: 0, up: 0 },
+      mesPasado: { desde: mesPasado0, hasta: mes0, down: 0, up: 0 },
+      anio: { desde: anio0, hasta: Infinity, down: 0, up: 0 },
+    };
+    for (let i = 1; i < filas.length; i++) {
+      const prev = filas[i - 1], cur = filas[i];
+      const gapSeg = Math.min((new Date(cur.medido_en) - new Date(prev.medido_en)) / 1000, 1800);
+      if (gapSeg <= 0) continue;
+      const bytesDown = cur.down_bps != null ? (cur.down_bps * gapSeg) / 8 : 0;
+      const bytesUp = cur.up_bps != null ? (cur.up_bps * gapSeg) / 8 : 0;
+      const tCur = new Date(cur.medido_en).getTime();
+      for (const b of Object.values(buckets)) if (tCur > b.desde && tCur <= b.hasta) { b.down += bytesDown; b.up += bytesUp; }
+    }
+    return buckets;
+  }, [filas]);
+
+  const fmtBytes = (b) => {
+    if (!b || b <= 0) return "—";
+    const gb = b / 1e9;
+    return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(b / 1e6).toFixed(2)} MB`;
+  };
+
+  if (!resumen) return null;
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", marginTop: 8, boxShadow: "0 1px 2px rgba(0,0,0,.04)" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>📊 Resumen de consumo</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+        <thead>
+          <tr>
+            {["", "Download", "Upload", "Total"].map((h, i) => (
+              <th key={i} style={{ textAlign: i === 0 ? "left" : "right", padding: "3px 5px", color: "#9ca3af", fontWeight: 700, fontSize: 9, textTransform: "uppercase" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {[["Hoy", resumen.hoy], ["Ayer", resumen.ayer], ["Esta semana", resumen.semana], ["Este mes", resumen.mes], ["Mes pasado", resumen.mesPasado], ["Este año", resumen.anio]].map(([label, b]) => (
+            <tr key={label} style={{ borderTop: "1px solid #f3f4f6" }}>
+              <td style={{ padding: "4px 5px", color: "#374151" }}>{label}</td>
+              <td style={{ padding: "4px 5px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.down)}</td>
+              <td style={{ padding: "4px 5px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.up)}</td>
+              <td style={{ padding: "4px 5px", textAlign: "right", color: "#374151", fontWeight: 700 }}>{fmtBytes(b.down + b.up)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function FichaOnuHuaweiSB({ sn }) {
   const [ficha, setFicha] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -340,27 +455,43 @@ function FichaOnuHuaweiSB({ sn }) {
   }, [sn]);
 
   if (!HUAWEI_OLT_SNMP_API) return null;
+  const ESTADOS = {
+    online:         { label: "Online",     bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
+    power_fail:     { label: "Power Fail — sin luz", bg: "#fef3c7", fg: "#92400e", dot: "#d97706" },
+    los:            { label: "Sin señal óptica (LOS)", bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
+    admin_disabled: { label: "Deshabilitada a mano", bg: "#f1f5f9", fg: "#475569", dot: "#94a3b8" },
+  };
+  const e = ficha?.estado ? (ESTADOS[ficha.estado] || null) : null;
   return (
-    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginTop: 8 }}>
-      <div style={{ fontSize: 9, fontWeight: 800, color: "#374151", textTransform: "uppercase", marginBottom: 4 }}>Ficha ONU (directo del equipo)</div>
-      {loading && <div style={{ fontSize: 10, color: "#6b7280" }}>Consultando…</div>}
-      {!loading && error && <div style={{ fontSize: 10, color: "#dc2626" }}>{error}</div>}
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", marginTop: 8, boxShadow: "0 1px 2px rgba(0,0,0,.04)" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>🗂️ Ficha de la ONU (directo del equipo)</div>
+      {loading && <div style={{ fontSize: 11, color: "#6b7280" }}>Consultando la OLT…</div>}
+      {!loading && error && <div style={{ fontSize: 11, color: "#dc2626" }}>{error}</div>}
       {!loading && !error && ficha && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
-          {[
-            ["Board/Puerto", ficha.board != null ? `0/${ficha.board}/${ficha.port}` : null],
-            ["Zona", ficha.zona],
-            ["Fecha alta", ficha.fechaAutorizacion],
-            ["Tipo", ficha.onuType],
-            ["Modelo", ficha.modelo],
-            ["Firmware", ficha.firmware],
-          ].filter(([, v]) => v != null && v !== "").map(([label, value]) => (
-            <div key={label} style={{ background: "#f8fafc", borderRadius: 6, padding: "5px 7px", border: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
-              <div style={{ fontSize: 10.5, color: "#374151", fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
+        <>
+          {e && (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "4px 10px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: e.bg, color: e.fg }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: e.dot }} />
+              {e.label}
             </div>
-          ))}
-        </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            {[
+              ["Board/Puerto", ficha.board != null ? `0/${ficha.board}/${ficha.port}` : null],
+              ["Zona", ficha.zona],
+              ["Fecha de autorización", ficha.fechaAutorizacion],
+              ["Tipo de ONU", ficha.onuType],
+              ["Perfil de línea", ficha.perfilLinea],
+              ["Modelo", ficha.modelo],
+              ["Firmware", ficha.firmware],
+            ].filter(([, v]) => v != null && v !== "").map(([label, value]) => (
+              <div key={label} style={{ background: "#f8fafc", borderRadius: 8, padding: "7px 9px", border: "1px solid #e2e8f0" }}>
+                <div style={{ fontSize: 8.5, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 11.5, color: "#374151", fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -5255,6 +5386,7 @@ export default function SidebarApp() {
                       <>
                         <GraficoSenalHistorialSB sn={snOnu} />
                         <GraficoTraficoSB sn={snOnu} />
+                        <ResumenConsumoSB sn={snOnu} />
                         <FichaOnuHuaweiSB sn={snOnu} />
                       </>
                     )}
