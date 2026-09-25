@@ -5193,6 +5193,42 @@ export default function App() {
     };
   };
 
+  // Señal de ONUs Huawei: primero el servicio propio (SNMP directo, sin
+  // costo), y si falla (ONU no encontrada, timeout, servicio caido, etc.)
+  // cae automaticamente a SmartOLT -- asi el reemplazo ya es el camino
+  // principal pero sin perder la red de seguridad mientras se termina de
+  // validar contra todas las ONUs reales (no solo la de prueba).
+  const leerSenalHuawei = async (sn) => {
+    if (HUAWEI_OLT_SNMP_API) {
+      try {
+        const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(sn)}`);
+        const json = await res.json().catch(() => ({}));
+        if (json.ok && (json.rxPower != null || json.txPower != null)) {
+          return { rx: json.rxPower != null ? String(json.rxPower) : "-", tx: json.txPower != null ? String(json.txPower) : "-", fuente: "propio" };
+        }
+      } catch { /* cae a SmartOLT */ }
+    }
+    if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
+    const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" },
+      cache: "no-store",
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
+    const base =
+      (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
+      (json?.response?.full_status_json && typeof json.response.full_status_json === "object" ? json.response.full_status_json : null) ||
+      (Array.isArray(json?.response) ? json.response[0] : null) ||
+      (json?.response && typeof json.response === "object" ? json.response : null) ||
+      json;
+    const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
+    const tx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
+    if (rx === "-" && tx === "-") throw new Error("Sin datos de señal.");
+    return { rx: String(rx), tx: String(tx), fuente: "smartolt" };
+  };
+
   const consultarSenalCliente = async (cli) => {
     if (!cli?.snOnu) return;
     setClienteSenalLoading(true);
@@ -5201,29 +5237,12 @@ export default function App() {
     try {
       const sn = String(cli.snOnu || "").trim();
       if (!sn) throw new Error("Cliente sin SN ONU.");
-      if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
-      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" },
-        cache: "no-store",
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
-      const base =
-        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
-        (json?.response?.full_status_json && typeof json.response.full_status_json === "object" ? json.response.full_status_json : null) ||
-        (Array.isArray(json?.response) ? json.response[0] : null) ||
-        (json?.response && typeof json.response === "object" ? json.response : null) ||
-        json;
-      const rx = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-";
-      const tx = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-";
-      if (rx === "-" && tx === "-") throw new Error("Sin datos de señal.");
+      const { rx, tx, fuente } = await leerSenalHuawei(sn);
       const now = new Date().toISOString();
-      setClienteSenal({ rx: String(rx), tx: String(tx), queried_at: now });
-      setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: String(rx), txSignal: String(tx), signalUpdatedAt: now } : prev);
+      setClienteSenal({ rx, tx, queried_at: now, fuente });
+      setClienteSeleccionado(prev => prev ? { ...prev, rxSignal: rx, txSignal: tx, signalUpdatedAt: now } : prev);
       await supabase.from("clientes").update({
-        rx_signal: String(rx), tx_signal: String(tx), signal_updated_at: now,
+        rx_signal: rx, tx_signal: tx, signal_updated_at: now,
       }).eq("id", cli.id);
     } catch (e) {
       setClienteSenalError(String(e?.message || "Error al consultar señal."));
@@ -5259,21 +5278,11 @@ export default function App() {
     if (!id) return;
     const sn = String(cli.snOnu || "").trim();
     if (!sn) { setCliSenalError(p => ({ ...p, [id]: "Sin SN ONU." })); return; }
-    if (!SMART_OLT_TOKEN) { setCliSenalError(p => ({ ...p, [id]: "Token no configurado." })); return; }
     setCliSenalLoading(p => ({ ...p, [id]: true }));
     setCliSenalError(p => ({ ...p, [id]: "" }));
     setCliSenalData(p => ({ ...p, [id]: null }));
     try {
-      const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
-      const res = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.status !== true) throw new Error(json?._proxyTargetUrl ? `SmartOLT HTTP ${res.status} → ${json._proxyTargetUrl}` : json?.message || `SmartOLT HTTP ${res.status}`);
-      const base =
-        (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
-        (Array.isArray(json?.response) ? json.response[0] : null) ||
-        (json?.response && typeof json.response === "object" ? json.response : null) || json;
-      const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
-      const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
+      const { rx, tx } = await leerSenalHuawei(sn);
       setCliSenalData(p => ({ ...p, [id]: { rx, tx } }));
     } catch (e) {
       setCliSenalError(p => ({ ...p, [id]: String(e?.message || "Error") }));
@@ -5431,18 +5440,8 @@ export default function App() {
         setPendSenalData(p => ({ ...p, [id]: { rx: String(json.rxPower ?? "-"), tx: String(json.txPower ?? "-"), at: now } }));
         supabase.from("clientes").update({ rx_signal: json.rxPower, tx_signal: json.txPower, signal_updated_at: now }).eq("sn_onu", sn).then(() => {});
       } else {
-        // SmartOLT fallback
-        if (!SMART_OLT_TOKEN) throw new Error("Token SmartOLT no configurado.");
-        const url = SMART_OLT_API(`/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`);
-        const res  = await fetch(url, { method: "GET", headers: { "X-Token": SMART_OLT_TOKEN, Accept: "application/json" } });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok || json?.status !== true) throw new Error(json?.message || `SmartOLT HTTP ${res.status}`);
-        const base =
-          (json?.full_status_json && typeof json.full_status_json === "object" ? json.full_status_json : null) ||
-          (Array.isArray(json?.response) ? json.response[0] : null) ||
-          (json?.response && typeof json.response === "object" ? json.response : null) || json;
-        const rx = String(base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"] ?? "-");
-        const tx = String(base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"] ?? "-");
+        // Huawei -- servicio propio (SNMP) primero, SmartOLT de respaldo
+        const { rx, tx } = await leerSenalHuawei(sn);
         setPendSenalData(p => ({ ...p, [id]: { rx, tx, at: now } }));
         supabase.from("clientes").update({ rx_signal: rx, tx_signal: tx, signal_updated_at: now }).eq("sn_onu", sn).then(() => {});
       }
