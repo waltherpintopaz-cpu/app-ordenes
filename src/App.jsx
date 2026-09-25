@@ -1849,6 +1849,137 @@ const markerIcon = L.divIcon({
   popupAnchor: [0, -48],
 });
 
+// ── Gráfico de historial de señal ONU (Diario/Semanal/Mensual/Anual) ──
+// Lee "senal_onu_historial" (una fila por ONU cada ~1h, ver servicio
+// huawei-olt-signal) y dibuja un SVG simple, sin librería de charts.
+const RANGOS_SENAL_HISTORIAL = [
+  { key: "dia", label: "Diario", horas: 24 },
+  { key: "semana", label: "Semanal", horas: 24 * 7 },
+  { key: "mes", label: "Mensual", horas: 24 * 30 },
+  { key: "anio", label: "Anual", horas: 24 * 365 },
+];
+
+function GraficoSenalHistorial({ sn }) {
+  const [rango, setRango] = useState("dia");
+  const [filas, setFilas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    setLoading(true);
+    setError("");
+    const cfg = RANGOS_SENAL_HISTORIAL.find(r => r.key === rango) || RANGOS_SENAL_HISTORIAL[0];
+    const desde = new Date(Date.now() - cfg.horas * 3600 * 1000).toISOString();
+    supabase
+      .from("senal_onu_historial")
+      .select("rx_dbm,tx_dbm,medido_en")
+      .eq("sn_onu", sn)
+      .gte("medido_en", desde)
+      .order("medido_en", { ascending: true })
+      .then(({ data, error: err }) => {
+        if (cancelado) return;
+        if (err) { setError(err.message); setFilas([]); }
+        else setFilas(data || []);
+        setLoading(false);
+      });
+    return () => { cancelado = true; };
+  }, [sn, rango]);
+
+  const puntos = useMemo(() => {
+    return filas
+      .filter(f => f.rx_dbm != null)
+      .map(f => ({ t: new Date(f.medido_en).getTime(), rx: Number(f.rx_dbm) }));
+  }, [filas]);
+
+  const W = 640, H = 180, PAD_L = 44, PAD_R = 12, PAD_T = 14, PAD_B = 28;
+
+  const { pathD, ticksY, ticksX, minRx, maxRx } = useMemo(() => {
+    if (puntos.length < 2) return { pathD: "", ticksY: [], ticksX: [], minRx: 0, maxRx: 0 };
+    const rxVals = puntos.map(p => p.rx);
+    let min = Math.min(...rxVals), max = Math.max(...rxVals);
+    if (min === max) { min -= 1; max += 1; }
+    const margen = (max - min) * 0.15 || 1;
+    min -= margen; max += margen;
+    const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
+    const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
+    const y = (rx) => PAD_T + (1 - (rx - min) / (max - min)) * (H - PAD_T - PAD_B);
+    const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.rx).toFixed(1)}`).join(" ");
+    const yTicks = [min, min + (max - min) / 2, max].map(v => ({ v, y: y(v) }));
+    const xTickCount = 4;
+    const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
+      const t = tMin + ((tMax - tMin) * i) / xTickCount;
+      return { t, x: x(t) };
+    });
+    return { pathD: d, ticksY: yTicks, ticksX: xTicks, minRx: min, maxRx: max };
+  }, [puntos]);
+
+  const fmtFecha = (t) => {
+    const d = new Date(t);
+    if (rango === "dia") return d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+    if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+    return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
+  };
+
+  const ultimo = puntos[puntos.length - 1];
+  const maxAbs = puntos.length ? Math.max(...puntos.map(p => p.rx)) : null;
+
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          📈 Historial de señal (Rx)
+        </span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {RANGOS_SENAL_HISTORIAL.map(r => (
+            <button
+              key={r.key}
+              onClick={() => setRango(r.key)}
+              style={{
+                padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: 7, cursor: "pointer",
+                border: rango === r.key ? "1.5px solid #16a34a" : "1.5px solid #e2e8f0",
+                background: rango === r.key ? "#dcfce7" : "#fff",
+                color: rango === r.key ? "#166534" : "#6b7280",
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading && <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>Cargando historial…</div>}
+      {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
+      {!loading && !error && puntos.length < 2 && (
+        <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
+          Todavía no hay suficiente historial guardado para este período (se guarda 1 medición por hora).
+        </div>
+      )}
+      {!loading && !error && puntos.length >= 2 && (
+        <>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            {ticksY.map((t, i) => (
+              <g key={i}>
+                <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
+                <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
+              </g>
+            ))}
+            {ticksX.map((t, i) => (
+              <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
+            ))}
+            <path d={pathD} fill="none" stroke="#f97316" strokeWidth="2" />
+          </svg>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+            <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Rx ONU (dBm)</span>
+            {ultimo && <span>Actual: <strong style={{ color: "#374151" }}>{ultimo.rx.toFixed(2)}</strong></span>}
+            {maxAbs != null && <span>Máximo: <strong style={{ color: "#374151" }}>{maxAbs.toFixed(2)}</strong></span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function QRScanner({ onDetected, onClose }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
@@ -24248,6 +24379,7 @@ export default function App() {
                       <span>Sin señal registrada — presiona "Consultar Señal" para obtener datos en tiempo real.</span>
                     </div>
                   )}
+                  <GraficoSenalHistorial sn={cli.snOnu} />
                 </div>
               )}
 
