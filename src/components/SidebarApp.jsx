@@ -2226,8 +2226,8 @@ export default function SidebarApp() {
         if (!json.ok) throw new Error(json.error || "No se pudo obtener señal SNMP.");
         setSenal({
           rx: json.rxPower != null ? String(json.rxPower) : "—",
-          oltRx: json.txPower != null ? String(json.txPower) : "—",
-          estado: "—",
+          oltRx: json.rxPowerOlt != null ? String(json.rxPowerOlt) : "—",
+          estado: json.estado || "—",
           ts: new Date().toLocaleTimeString(),
         });
       } else {
@@ -5022,6 +5022,23 @@ export default function SidebarApp() {
                     <RefreshCw size={11}/>
                   </button>
                 </div>
+
+                {/* Estado real de la OLT (online/power_fail/los/admin_disabled) */}
+                {!senalLoad && senal && senal.estado && senal.estado !== "—" && (() => {
+                  const ESTADOS = {
+                    online:         { label:"Online", bg:"#dcfce7", fg:"#166534" },
+                    power_fail:     { label:"Power Fail (sin luz)", bg:"#fef3c7", fg:"#92400e" },
+                    los:            { label:"Loss of Signal", bg:"#fee2e2", fg:"#991b1b" },
+                    admin_disabled: { label:"Deshabilitada a mano", bg:"#f1f5f9", fg:"#475569" },
+                  };
+                  const e = ESTADOS[senal.estado];
+                  if (!e) return null;
+                  return (
+                    <div style={{ display:"inline-block", marginTop:6, padding:"2px 8px", borderRadius:999, fontSize:10, fontWeight:700, background:e.bg, color:e.fg }}>
+                      {e.label}
+                    </div>
+                  );
+                })()}
 
                 {/* Detalle expandible */}
                 {showSenalDetail && senal && (
