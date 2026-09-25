@@ -169,6 +169,7 @@ const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
 // antes de comparar.
 const empresaPorNodo = (n) => DIM_NODOS.has(String(normalizarEtiquetaNodo(n) || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "").trim().replace(/\/$/, "");
+const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "").trim().replace(/\/$/, "");
 // Nod_01/02/03 son Huawei/SmartOLT (fijo, especifico de Americanet). Cualquier
 // otro nodo con SN ONU -- incluidos nombres propios de tenants nuevos como
 // "Nodo_05" -- se asume VSOL/SSH si ese servidor esta configurado, sin
@@ -2218,8 +2219,19 @@ export default function SidebarApp() {
           estado: "—",
           ts: new Date().toLocaleTimeString(),
         });
+      } else if (HUAWEI_OLT_SNMP_API) {
+        // Nod_01/02/03 — servicio SNMP propio (reemplaza el proxy SmartOLT)
+        const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(snOnu)}`);
+        const json = await res.json().catch(() => ({}));
+        if (!json.ok) throw new Error(json.error || "No se pudo obtener señal SNMP.");
+        setSenal({
+          rx: json.rxPower != null ? String(json.rxPower) : "—",
+          oltRx: json.txPower != null ? String(json.txPower) : "—",
+          estado: "—",
+          ts: new Date().toLocaleTimeString(),
+        });
       } else {
-        // Nod_01/02/03 — SmartOLT via proxy
+        // Fallback: SmartOLT via proxy (solo si el servicio SNMP no esta configurado)
         const res = await fetch(PROXY_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
