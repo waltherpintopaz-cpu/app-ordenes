@@ -33,6 +33,13 @@ export default function OnuInventarioPanel({ theme }) {
       if (busqueda) params.set("q", busqueda);
       if (refresh) params.set("refresh", "1");
       const json = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-list?${params}`).then(r => r.json());
+      if (json.cargando) {
+        setError("");
+        setOnus([]);
+        setTotal(0);
+        setGeneradoEn(null);
+        return; // el useEffect de reintento se encarga de volver a preguntar
+      }
       if (!json.ok) throw new Error(json.error || "Error consultando el listado de ONUs.");
       setOnus(Array.isArray(json.onus) ? json.onus : []);
       setTotal(Number(json.total) || 0);
@@ -46,6 +53,15 @@ export default function OnuInventarioPanel({ theme }) {
   }, [page, estadoFiltro, busqueda]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  // Primer recorrido en curso en el servidor (recien reiniciado el servicio):
+  // reintenta solo cada 10s hasta que el cache este listo, sin que el
+  // usuario tenga que refrescar la pagina a mano.
+  useEffect(() => {
+    if (total > 0 || cargando) return undefined;
+    const id = setInterval(() => cargar(), 10000);
+    return () => clearInterval(id);
+  }, [total, cargando, cargar]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -128,6 +144,10 @@ export default function OnuInventarioPanel({ theme }) {
             <tbody>
               {cargando && onus.length === 0 ? (
                 <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Cargando…</td></tr>
+              ) : total === 0 && !error ? (
+                <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>
+                  Generando el primer inventario completo desde la OLT — puede tardar unos minutos. Se actualiza solo, no hace falta recargar la página.
+                </td></tr>
               ) : onus.length === 0 ? (
                 <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin resultados.</td></tr>
               ) : onus.map((o, i) => {
