@@ -34,7 +34,13 @@ const Ico = {
   refresh: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6" /><path d="M23 20v-6h-6" /><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" /></svg>,
   chevronRight: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>,
   card: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>,
+  checkCircle: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>,
+  alertTriangle: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
+  wifiOff: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.58 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>,
+  slash: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>,
 };
+
+const ESTADO_ICONO = { online: Ico.checkCircle, power_fail: Ico.alertTriangle, los: Ico.wifiOff, admin_disabled: Ico.slash };
 
 // ── Ficha detallada (drawer lateral) ────────────────────────────────────────
 function FichaOnuDrawer({ sn, onClose, isDark }) {
@@ -273,11 +279,11 @@ export default function OnuInventarioPanel({ theme }) {
       <div style={{ ...s.card, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {[
-            { key: "", label: "Todos" },
-            { key: "online", label: "Online" },
-            { key: "power_fail", label: "Power Fail" },
-            { key: "los", label: "LOS" },
-            { key: "admin_disabled", label: "Deshabilitado" },
+            { key: "", label: "Todos", Icon: Ico.filter },
+            { key: "online", label: "Online", Icon: Ico.checkCircle },
+            { key: "power_fail", label: "Power Fail", Icon: Ico.alertTriangle },
+            { key: "los", label: "LOS", Icon: Ico.wifiOff },
+            { key: "admin_disabled", label: "Deshabilitado", Icon: Ico.slash },
           ].map(t => (
             <button key={t.key} type="button" onClick={() => { setPage(1); setEstadoFiltro(t.key); }}
               style={{
@@ -287,7 +293,7 @@ export default function OnuInventarioPanel({ theme }) {
                 background: estadoFiltro === t.key ? "#1d4ed8" : (isDark ? "#16213a" : "#f9fafb"),
                 color: estadoFiltro === t.key ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
               }}>
-              <Ico.signal width={11} height={11} />{t.label}
+              <t.Icon width={11} height={11} />{t.label}
             </button>
           ))}
         </div>
@@ -327,13 +333,16 @@ export default function OnuInventarioPanel({ theme }) {
       {error ? <div style={{ ...s.card, color: "#b91c1c", fontWeight: 600 }}>{error}</div> : null}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {Object.entries(conteoEstados).map(([k, v]) => (
-          <div key={k} style={{ ...s.card, padding: "10px 16px", display: "flex", alignItems: "center", gap: 8, flex: "1 1 140px" }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: ESTADO[k]?.dot }} />
-            <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{ESTADO[k]?.label}</span>
-            <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 14, color: isDark ? "#e6ecf7" : "#111827" }}>{v}</span>
-          </div>
-        ))}
+        {Object.entries(conteoEstados).map(([k, v]) => {
+          const IconoEstado = ESTADO_ICONO[k] || Ico.signal;
+          return (
+            <div key={k} style={{ ...s.card, padding: "10px 16px", display: "flex", alignItems: "center", gap: 9, flex: "1 1 140px" }}>
+              <IconoEstado width={16} height={16} style={{ color: ESTADO[k]?.dot, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{ESTADO[k]?.label}</span>
+              <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 14, color: isDark ? "#e6ecf7" : "#111827" }}>{v}</span>
+            </div>
+          );
+        })}
       </div>
 
       <div style={{ ...s.card, padding: 0, overflow: "hidden" }}>
