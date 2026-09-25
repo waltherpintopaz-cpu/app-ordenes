@@ -2041,6 +2041,7 @@ function FichaOnuHuawei({ sn }) {
               {[
                 ["Rx ONU (dBm)", ficha.rxPower != null ? ficha.rxPower : "-", true],
                 ["Tx ONU (dBm)", ficha.txPower != null ? ficha.txPower : "-", true],
+                ["Rx OLT (dBm)", ficha.rxPowerOlt != null ? ficha.rxPowerOlt : "-", true],
                 ["Nombre (en la OLT)", ficha.nombre],
                 ["Zona", ficha.zona],
                 ["Comentario/Dirección", ficha.comentario],
