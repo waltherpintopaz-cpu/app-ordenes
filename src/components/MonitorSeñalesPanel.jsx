@@ -6,7 +6,15 @@ import * as XLSX from "xlsx";
 import { requestSmartOlt, SMART_OLT_TOKEN } from "../app/useSmartOltSenal";
 
 const OLT_SSH_API      = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
 const SMARTOLT_NODOS   = new Set(["Nod_01", "Nod_02", "Nod_03"]);
+
+const ESTADO = {
+  online:        { label: "Online",         dot: "#22c55e", text: "#15803d", bg: "#dcfce7" },
+  power_fail:    { label: "Power Fail",     dot: "#f59e0b", text: "#92400e", bg: "#fef3c7" },
+  los:           { label: "Sin señal (LOS)",dot: "#ef4444", text: "#991b1b", bg: "#fee2e2" },
+  admin_disabled:{ label: "Deshabilitado",  dot: "#6b7280", text: "#374151", bg: "#e5e7eb" },
+};
 
 function nivelSenal(rx) {
   if (rx == null || isNaN(rx)) return "sin_datos";
@@ -85,6 +93,7 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
   const [ultimaAct, setUltimaAct]     = useState(null);
   const [busqueda, setBusqueda]       = useState("");
   const [sortDir, setSortDir]         = useState("asc");
+  const [estados, setEstados]         = useState({}); // { [cli.id]: "online"|"power_fail"|"los"|"admin_disabled" } — en memoria, se llena al refrescar
 
   // Si gestor tiene un solo nodo, pre-seleccionarlo
   useEffect(() => {
@@ -172,24 +181,31 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
     try{
       let json={};
       if(SMARTOLT_NODOS.has(cli.nodo)){
-        // Nod_01/02/03 — OLT vía SmartOLT API
-        const { status, json: sJson } = await requestSmartOlt({
-          path: `/api/smartolt/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`,
-          token: SMART_OLT_TOKEN,
-          context: "SmartOLT señal",
-        }).catch(() => ({ status: 0, json: {} }));
-        if (status >= 200 && status < 300 && sJson?.status === true) {
-          const base =
-            (sJson?.full_status_json && typeof sJson.full_status_json === "object" ? sJson.full_status_json : null) ||
-            (sJson?.response?.full_status_json && typeof sJson.response.full_status_json === "object" ? sJson.response.full_status_json : null) ||
-            (Array.isArray(sJson?.response) ? sJson.response[0] : null) ||
-            (sJson?.response && typeof sJson.response === "object" ? sJson.response : null) ||
-            sJson;
-          const rxRaw = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"];
-          const txRaw = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"];
-          const rxPower = parseFloat(String(rxRaw ?? ""));
-          const txPower = parseFloat(String(txRaw ?? ""));
-          if (!isNaN(rxPower)) json = { ok: true, rxPower, txPower: isNaN(txPower) ? null : txPower };
+        // Nod_01/02/03 — Huawei OLT vía servicio SNMP propio
+        json = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(sn)}`).then(r=>r.json()).catch(()=>({}));
+        if(json.ok && json.estado){
+          setEstados(p=>({...p,[cli.id]:json.estado}));
+        }
+        if(!json.ok){
+          // Respaldo: SmartOLT si el servicio propio no responde
+          const { status, json: sJson } = await requestSmartOlt({
+            path: `/api/smartolt/onu/get_onu_full_status_info/${encodeURIComponent(sn)}`,
+            token: SMART_OLT_TOKEN,
+            context: "SmartOLT señal",
+          }).catch(() => ({ status: 0, json: {} }));
+          if (status >= 200 && status < 300 && sJson?.status === true) {
+            const base =
+              (sJson?.full_status_json && typeof sJson.full_status_json === "object" ? sJson.full_status_json : null) ||
+              (sJson?.response?.full_status_json && typeof sJson.response.full_status_json === "object" ? sJson.response.full_status_json : null) ||
+              (Array.isArray(sJson?.response) ? sJson.response[0] : null) ||
+              (sJson?.response && typeof sJson.response === "object" ? sJson.response : null) ||
+              sJson;
+            const rxRaw = base?.["Optical status"]?.["Rx optical power(dBm)"] ?? base?.["Rx optical power(dBm)"];
+            const txRaw = base?.["Optical status"]?.["OLT Rx ONT optical power(dBm)"] ?? base?.["OLT Rx ONT optical power(dBm)"];
+            const rxPower = parseFloat(String(rxRaw ?? ""));
+            const txPower = parseFloat(String(txRaw ?? ""));
+            if (!isNaN(rxPower)) json = { ok: true, rxPower, txPower: isNaN(txPower) ? null : txPower };
+          }
         }
       } else {
         // Nod_04/05/06 — VSOL vía SSH API
@@ -442,7 +458,14 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
                       <span style={{ fontSize:11, fontWeight:600, color:"#6b7280", background:"#f3f4f6", padding:"2px 7px", borderRadius:5 }}>{c.nodo||"—"}</span>
                     </td>
                     <td style={{ padding:"9px 14px", fontSize:11, color:"#9ca3af", fontFamily:"monospace" }}>{c.sn_onu}</td>
-                    <td style={{ padding:"9px 14px" }}><BarraSenal rx={isNaN(rx)?null:rx}/></td>
+                    <td style={{ padding:"9px 14px" }}>
+                      <BarraSenal rx={isNaN(rx)?null:rx}/>
+                      {estados[c.id] && ESTADO[estados[c.id]] && (
+                        <span style={{ display:"inline-block", marginTop:4, fontSize:10, fontWeight:600, color:ESTADO[estados[c.id]].text, background:ESTADO[estados[c.id]].bg, padding:"1px 7px", borderRadius:99 }}>
+                          {ESTADO[estados[c.id]].label}
+                        </span>
+                      )}
+                    </td>
                     <td style={{ padding:"9px 14px", fontSize:12, color:"#6b7280" }}>{c.tx_signal!=null?`${c.tx_signal} dBm`:"—"}</td>
                     <td style={{ padding:"9px 14px", fontSize:11, color:"#9ca3af", whiteSpace:"nowrap" }}>{fmt(c.signal_updated_at)}</td>
                     <td style={{ padding:"9px 14px" }}>

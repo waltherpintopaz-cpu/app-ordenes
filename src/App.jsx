@@ -1849,6 +1849,242 @@ const markerIcon = L.divIcon({
   popupAnchor: [0, -48],
 });
 
+// ── Gráfico de historial de señal ONU (Diario/Semanal/Mensual/Anual) ──
+// Lee "senal_onu_historial" (una fila por ONU cada ~1h, ver servicio
+// huawei-olt-signal) y dibuja un SVG simple, sin librería de charts.
+const RANGOS_SENAL_HISTORIAL = [
+  { key: "dia", label: "Diario", horas: 24 },
+  { key: "semana", label: "Semanal", horas: 24 * 7 },
+  { key: "mes", label: "Mensual", horas: 24 * 30 },
+  { key: "anio", label: "Anual", horas: 24 * 365 },
+];
+
+function GraficoSenalHistorial({ sn }) {
+  const [rango, setRango] = useState("dia");
+  const [filas, setFilas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    setLoading(true);
+    setError("");
+    const cfg = RANGOS_SENAL_HISTORIAL.find(r => r.key === rango) || RANGOS_SENAL_HISTORIAL[0];
+    const desde = new Date(Date.now() - cfg.horas * 3600 * 1000).toISOString();
+    supabase
+      .from("senal_onu_historial")
+      .select("rx_dbm,tx_dbm,medido_en")
+      .eq("sn_onu", sn)
+      .gte("medido_en", desde)
+      .order("medido_en", { ascending: true })
+      .then(({ data, error: err }) => {
+        if (cancelado) return;
+        if (err) { setError(err.message); setFilas([]); }
+        else setFilas(data || []);
+        setLoading(false);
+      });
+    return () => { cancelado = true; };
+  }, [sn, rango]);
+
+  const puntos = useMemo(() => {
+    return filas
+      .filter(f => f.rx_dbm != null)
+      .map(f => ({ t: new Date(f.medido_en).getTime(), rx: Number(f.rx_dbm) }));
+  }, [filas]);
+
+  const W = 640, H = 180, PAD_L = 44, PAD_R = 12, PAD_T = 14, PAD_B = 28;
+
+  const { pathD, ticksY, ticksX, minRx, maxRx } = useMemo(() => {
+    if (puntos.length < 2) return { pathD: "", ticksY: [], ticksX: [], minRx: 0, maxRx: 0 };
+    const rxVals = puntos.map(p => p.rx);
+    let min = Math.min(...rxVals), max = Math.max(...rxVals);
+    if (min === max) { min -= 1; max += 1; }
+    const margen = (max - min) * 0.15 || 1;
+    min -= margen; max += margen;
+    const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
+    const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
+    const y = (rx) => PAD_T + (1 - (rx - min) / (max - min)) * (H - PAD_T - PAD_B);
+    const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.rx).toFixed(1)}`).join(" ");
+    const yTicks = [min, min + (max - min) / 2, max].map(v => ({ v, y: y(v) }));
+    const xTickCount = 4;
+    const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
+      const t = tMin + ((tMax - tMin) * i) / xTickCount;
+      return { t, x: x(t) };
+    });
+    return { pathD: d, ticksY: yTicks, ticksX: xTicks, minRx: min, maxRx: max };
+  }, [puntos]);
+
+  const fmtFecha = (t) => {
+    const d = new Date(t);
+    if (rango === "dia") return d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+    if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+    return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
+  };
+
+  const ultimo = puntos[puntos.length - 1];
+  const maxAbs = puntos.length ? Math.max(...puntos.map(p => p.rx)) : null;
+
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          📈 Historial de señal (Rx)
+        </span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {RANGOS_SENAL_HISTORIAL.map(r => (
+            <button
+              key={r.key}
+              onClick={() => setRango(r.key)}
+              style={{
+                padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: 7, cursor: "pointer",
+                border: rango === r.key ? "1.5px solid #16a34a" : "1.5px solid #e2e8f0",
+                background: rango === r.key ? "#dcfce7" : "#fff",
+                color: rango === r.key ? "#166534" : "#6b7280",
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading && <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>Cargando historial…</div>}
+      {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
+      {!loading && !error && puntos.length < 2 && (
+        <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
+          Todavía no hay suficiente historial guardado para este período (se guarda 1 medición por hora).
+        </div>
+      )}
+      {!loading && !error && puntos.length >= 2 && (
+        <>
+          <div style={{ width: "100%", maxWidth: 640, height: 180 }}>
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+              <defs>
+                <linearGradient id="gradSenalHist" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
+                  <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {ticksY.map((t, i) => (
+                <g key={i}>
+                  <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
+                  <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
+                </g>
+              ))}
+              {ticksX.map((t, i) => (
+                <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
+              ))}
+              {pathD && <path d={`${pathD} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill="url(#gradSenalHist)" stroke="none" />}
+              <path d={pathD} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+            <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Rx ONU (dBm)</span>
+            {ultimo && <span>Actual: <strong style={{ color: "#374151" }}>{ultimo.rx.toFixed(2)}</strong></span>}
+            {maxAbs != null && <span>Máximo: <strong style={{ color: "#374151" }}>{maxAbs.toFixed(2)}</strong></span>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Ficha completa de ONU Huawei (Fase 1 del reemplazo propio de SmartOLT)
+// Lee nombre/zona/comentario/fecha de autorizacion directo de la OLT via
+// SNMP (servicio huawei-olt-signal, endpoint /onu-info) -- confirmado que
+// coincide exacto con lo que muestra SmartOLT, porque vive en el propio
+// equipo, no en una base de SmartOLT aparte.
+const HUAWEI_OLT_SNMP_API_MODULO = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "").trim().replace(/\/$/, "");
+
+function FichaOnuHuawei({ sn }) {
+  const [ficha, setFicha] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    if (!sn || !abierto || !HUAWEI_OLT_SNMP_API_MODULO) return;
+    let cancelado = false;
+    setLoading(true);
+    setError("");
+    fetch(`${HUAWEI_OLT_SNMP_API_MODULO}/onu-info?sn=${encodeURIComponent(sn)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (cancelado) return;
+        if (!json.ok) { setError(json.error || "No se pudo obtener la ficha."); setFicha(null); }
+        else setFicha(json);
+      })
+      .catch(e => { if (!cancelado) setError(e.message || "Error de red."); })
+      .finally(() => { if (!cancelado) setLoading(false); });
+    return () => { cancelado = true; };
+  }, [sn, abierto]);
+
+  if (!HUAWEI_OLT_SNMP_API_MODULO) return null;
+
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+      <div
+        onClick={() => setAbierto(v => !v)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          🗂️ Ficha de la ONU (directo del equipo)
+        </span>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>{abierto ? "▲ Ocultar" : "▼ Ver"}</span>
+      </div>
+      {abierto && (
+        <div style={{ marginTop: 10 }}>
+          {loading && <div style={{ fontSize: 12, color: "#6b7280" }}>Consultando la OLT…</div>}
+          {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
+          {!loading && !error && ficha && (
+            <>
+              {ficha.estado != null && (() => {
+                const ESTADOS = {
+                  online:     { label: "Online",     bg: "#dcfce7", fg: "#166534", dot: "#16a34a" },
+                  power_fail: { label: "Power Fail — sin luz (avisó antes de apagarse)", bg: "#fef3c7", fg: "#92400e", dot: "#d97706" },
+                  los:        { label: "Loss of Signal — sin señal óptica (fibra/desconexión)", bg: "#fee2e2", fg: "#991b1b", dot: "#dc2626" },
+                  admin_disabled: { label: "Deshabilitada a mano (Admin Disabled)", bg: "#f1f5f9", fg: "#475569", dot: "#94a3b8" },
+                };
+                const e = ESTADOS[ficha.estado] || { label: ficha.estado, bg: "#f1f5f9", fg: "#475569", dot: "#94a3b8" };
+                return (
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10,
+                    padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                    background: e.bg, color: e.fg,
+                  }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: e.dot, flexShrink: 0 }} />
+                    {e.label} (directo del equipo)
+                  </div>
+                );
+              })()}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+              {[
+                ["Rx ONU (dBm)", ficha.rxPower != null ? ficha.rxPower : "-", true],
+                ["Tx ONU (dBm)", ficha.txPower != null ? ficha.txPower : "-", true],
+                ["Rx OLT (dBm)", ficha.rxPowerOlt != null ? ficha.rxPowerOlt : "-", true],
+                ["Nombre (en la OLT)", ficha.nombre],
+                ["Zona", ficha.zona],
+                ["Comentario/Dirección", ficha.comentario],
+                ["Fecha de autorización", ficha.fechaAutorizacion],
+                ["Tipo de ONU", ficha.onuType],
+                ["Perfil de línea", ficha.perfilLinea],
+                ["Modelo", ficha.modelo],
+                ["Firmware", ficha.firmware],
+              ].filter(([, v, siempre]) => siempre || (v != null && v !== "")).map(([label, value]) => (
+                <div key={label} style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px", border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 12.5, color: "#374151", fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QRScanner({ onDetected, onClose }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
@@ -2477,11 +2713,6 @@ export default function App() {
   const [clienteSenal, setClienteSenal] = useState(null);      // { rxOnuDbm, oltRxOntDbm, estado, fecha }
   const [clienteSenalLoading, setClienteSenalLoading] = useState(false);
   const [clienteSenalError, setClienteSenalError] = useState("");
-  // Piloto: señal leída por el servicio SNMP propio, solo para comparar al
-  // lado de la de SmartOLT -- ver consultarSenalHuaweiPropia().
-  const [clienteSenalPropia, setClienteSenalPropia] = useState(null);
-  const [clienteSenalPropiaLoading, setClienteSenalPropiaLoading] = useState(false);
-  const [clienteSenalPropiaError, setClienteSenalPropiaError] = useState("");
   const [pendSenalData, setPendSenalData] = useState({});   // { [ordenId]: { rx, tx, estado } }
   const [pendSenalLoading, setPendSenalLoading] = useState({});
   const [pendSenalError, setPendSenalError] = useState({});
@@ -2719,6 +2950,18 @@ export default function App() {
     const safetyTimer = setTimeout(() => setUsuariosSupabaseReady(true), 12000);
     return () => clearTimeout(safetyTimer);
   }, []);
+
+  // Auto-refresh de la señal ONU mientras esté abierta la ficha del cliente
+  // (mismo criterio que SmartOLT: se actualiza sola cada 5s, sin que el
+  // usuario tenga que presionar "Consultar Señal" a cada rato).
+  useEffect(() => {
+    if (vistaActiva !== "detalleCliente") return;
+    const sn = String(clienteSeleccionado?.snOnu || "").trim();
+    if (!sn || !nodoUsaHuawei(clienteSeleccionado?.nodo)) return;
+    const cli = clienteSeleccionado;
+    const timer = setInterval(() => { void consultarSenalClienteSilencioso(cli); }, 5000);
+    return () => clearInterval(timer);
+  }, [vistaActiva, clienteSeleccionado?.id, clienteSeleccionado?.snOnu, clienteSeleccionado?.nodo]);
 
   // Cargar configuración de reportes desde Supabase
   useEffect(() => {
@@ -5226,25 +5469,20 @@ export default function App() {
     }
   };
 
-  // Consulta el servicio SNMP propio (piloto), solo para comparar al lado
-  // del valor que ya trae SmartOLT -- no reemplaza nada todavia, no guarda
-  // en Supabase, es puramente informativo mientras se valida.
-  const consultarSenalHuaweiPropia = async (cli) => {
+  // Version "silenciosa" para el auto-refresh de la ficha del cliente: solo
+  // actualiza los valores en pantalla, sin loading/error visibles y sin
+  // escribir en Supabase en cada tick (evita saturar la base con un update
+  // cada 5s -- el guardado real sigue pasando via el boton manual).
+  const consultarSenalClienteSilencioso = async (cli) => {
     const sn = String(cli?.snOnu || "").trim();
     if (!sn) return;
-    if (!HUAWEI_OLT_SNMP_API) { setClienteSenalPropiaError("Servicio propio no configurado (VITE_HUAWEI_OLT_SNMP_API)."); return; }
-    setClienteSenalPropiaLoading(true);
-    setClienteSenalPropiaError("");
-    setClienteSenalPropia(null);
     try {
-      const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(sn)}`);
-      const json = await res.json().catch(() => ({}));
-      if (!json.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      setClienteSenalPropia({ rx: json.rxPower, tx: json.txPower, queried_at: new Date().toISOString() });
+      const { rx, tx, fuente } = await leerSenalHuawei(sn);
+      const now = new Date().toISOString();
+      setClienteSenal({ rx, tx, queried_at: now, fuente });
+      setClienteSeleccionado(prev => (prev && prev.id === cli.id) ? { ...prev, rxSignal: rx, txSignal: tx, signalUpdatedAt: now } : prev);
     } catch (e) {
-      setClienteSenalPropiaError(String(e?.message || "Error al consultar el servicio propio."));
-    } finally {
-      setClienteSenalPropiaLoading(false);
+      // best-effort: si falla un tick, se mantiene el ultimo valor bueno
     }
   };
 
@@ -5307,7 +5545,7 @@ export default function App() {
   };
 
   // Consulta señal via SSH API (Nod_06, Nod_04) — desde fila de tabla
-  const consultarSenalOltSshTabla = async (cli) => {
+  const consultarSenalOltSshTabla = async (cli, opts = {}) => {
     const id = cli?.id;
     if (!id) return;
     const sn = String(cli.snOnu || "").trim();
@@ -5318,6 +5556,8 @@ export default function App() {
     try {
       const params = new URLSearchParams({ sn });
       if (cli.vlan) params.set("vlan", String(cli.vlan));
+      if (cli.nodo) params.set("nodo", String(cli.nodo));
+      if (opts.snmpOnly) params.set("snmpOnly", "1");
       const res  = await fetch(`${OLT_SSH_API}/signal?${params}`);
       const json = await res.json().catch(() => ({}));
       if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
@@ -5362,14 +5602,24 @@ export default function App() {
     }
   };
 
+  // Consulta en paralelo con concurrencia limitada (no todas juntas para no
+  // saturar el OLT real con cientos de consultas SNMP de golpe, pero
+  // tampoco una por una -- con SNMP cada consulta es rápida, 10 a la vez es
+  // un numero razonable para este tipo de equipo).
+  const CONCURRENCIA_REFRESH_SENAL = 10;
   const refrescarTodosNod6 = async (listaClientes) => {
     const base = listaClientes || clientesPorNodo || [];
     const targets = base.filter(c => nodoUsaOltSsh(c.nodo) && c.snOnu);
     if (!targets.length) return;
     setNod6Refreshing(true);
-    for (const c of targets) {
-      await consultarSenalOltSshTabla(c);
+    let i = 0;
+    async function worker() {
+      while (i < targets.length) {
+        const c = targets[i++];
+        await consultarSenalOltSshTabla(c, { snmpOnly: true });
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_REFRESH_SENAL, targets.length) }, worker));
     setNod6Refreshing(false);
   };
 
@@ -24182,6 +24432,7 @@ export default function App() {
                       {!cli.vlan && <span style={{ color: "#f59e0b", fontWeight: 600 }}> (Recomendado: asignar VLAN para mayor velocidad)</span>}
                     </div>
                   )}
+                  <GraficoSenalHistorial sn={cli.snOnu} />
                 </div>
               )}
 
@@ -24196,6 +24447,9 @@ export default function App() {
                           Actualizado {new Date(cli.signalUpdatedAt).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                         </span>
                       )}
+                      <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 600 }}>
+                        🔄 se actualiza sola cada 5s
+                      </span>
                       <button
                         onClick={() => consultarSenalCliente(cli)}
                         disabled={clienteSenalLoading}
@@ -24203,36 +24457,11 @@ export default function App() {
                       >
                         {clienteSenalLoading ? "⏳ Consultando..." : "📡 Consultar Señal"}
                       </button>
-                      {HUAWEI_OLT_SNMP_API && (
-                        <button
-                          onClick={() => consultarSenalHuaweiPropia(cli)}
-                          disabled={clienteSenalPropiaLoading}
-                          title="Piloto: consulta el servicio SNMP propio, solo para comparar contra SmartOLT"
-                          style={{ padding: "6px 14px", background: "#fff", color: "#166534", border: "1.5px solid #86efac", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: clienteSenalPropiaLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
-                        >
-                          {clienteSenalPropiaLoading ? "⏳..." : "🧪 Comparar con servicio propio"}
-                        </button>
-                      )}
                     </div>
                   </div>
                   {clienteSenalError && (
                     <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", color: "#dc2626", fontSize: 12, marginBottom: 12 }}>
                       {clienteSenalError}
-                    </div>
-                  )}
-                  {clienteSenalPropiaError && (
-                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", color: "#dc2626", fontSize: 12, marginBottom: 12 }}>
-                      Servicio propio: {clienteSenalPropiaError}
-                    </div>
-                  )}
-                  {clienteSenalPropia && (
-                    <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", borderRadius: 10, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>🧪 Servicio propio (piloto)</span>
-                      <span style={{ fontSize: 13, color: "#1e3a8a" }}>Rx: <strong>{clienteSenalPropia.rx != null ? `${clienteSenalPropia.rx} dBm` : "-"}</strong></span>
-                      <span style={{ fontSize: 13, color: "#1e3a8a" }}>Tx: <strong>{clienteSenalPropia.tx != null ? `${clienteSenalPropia.tx} dBm` : "-"}</strong></span>
-                      {clienteSenal?.rx != null && clienteSenalPropia.rx != null && (
-                        <span style={{ fontSize: 11, color: "#64748b" }}>Diferencia vs SmartOLT: {(Math.abs(parseFloat(clienteSenal.rx) - clienteSenalPropia.rx)).toFixed(2)} dB</span>
-                      )}
                     </div>
                   )}
                   {cli.rxSignal != null && (
@@ -24268,6 +24497,8 @@ export default function App() {
                       <span>Sin señal registrada — presiona "Consultar Señal" para obtener datos en tiempo real.</span>
                     </div>
                   )}
+                  <GraficoSenalHistorial sn={cli.snOnu} />
+                  <FichaOnuHuawei sn={cli.snOnu} />
                 </div>
               )}
 

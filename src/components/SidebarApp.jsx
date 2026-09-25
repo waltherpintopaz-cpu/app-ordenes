@@ -169,6 +169,7 @@ const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
 // antes de comparar.
 const empresaPorNodo = (n) => DIM_NODOS.has(String(normalizarEtiquetaNodo(n) || "").trim().toLowerCase()) ? "DIM" : "Americanet";
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "").trim().replace(/\/$/, "");
+const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "").trim().replace(/\/$/, "");
 // Nod_01/02/03 son Huawei/SmartOLT (fijo, especifico de Americanet). Cualquier
 // otro nodo con SN ONU -- incluidos nombres propios de tenants nuevos como
 // "Nodo_05" -- se asume VSOL/SSH si ese servidor esta configurado, sin
@@ -2218,8 +2219,19 @@ export default function SidebarApp() {
           estado: "—",
           ts: new Date().toLocaleTimeString(),
         });
+      } else if (HUAWEI_OLT_SNMP_API) {
+        // Nod_01/02/03 — servicio SNMP propio (reemplaza el proxy SmartOLT)
+        const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(snOnu)}`);
+        const json = await res.json().catch(() => ({}));
+        if (!json.ok) throw new Error(json.error || "No se pudo obtener señal SNMP.");
+        setSenal({
+          rx: json.rxPower != null ? String(json.rxPower) : "—",
+          oltRx: json.rxPowerOlt != null ? String(json.rxPowerOlt) : "—",
+          estado: json.estado || "—",
+          ts: new Date().toLocaleTimeString(),
+        });
       } else {
-        // Nod_01/02/03 — SmartOLT via proxy
+        // Fallback: SmartOLT via proxy (solo si el servicio SNMP no esta configurado)
         const res = await fetch(PROXY_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -5010,6 +5022,23 @@ export default function SidebarApp() {
                     <RefreshCw size={11}/>
                   </button>
                 </div>
+
+                {/* Estado real de la OLT (online/power_fail/los/admin_disabled) */}
+                {!senalLoad && senal && senal.estado && senal.estado !== "—" && (() => {
+                  const ESTADOS = {
+                    online:         { label:"Online", bg:"#dcfce7", fg:"#166534" },
+                    power_fail:     { label:"Power Fail (sin luz)", bg:"#fef3c7", fg:"#92400e" },
+                    los:            { label:"Loss of Signal", bg:"#fee2e2", fg:"#991b1b" },
+                    admin_disabled: { label:"Deshabilitada a mano", bg:"#f1f5f9", fg:"#475569" },
+                  };
+                  const e = ESTADOS[senal.estado];
+                  if (!e) return null;
+                  return (
+                    <div style={{ display:"inline-block", marginTop:6, padding:"2px 8px", borderRadius:999, fontSize:10, fontWeight:700, background:e.bg, color:e.fg }}>
+                      {e.label}
+                    </div>
+                  );
+                })()}
 
                 {/* Detalle expandible */}
                 {showSenalDetail && senal && (
