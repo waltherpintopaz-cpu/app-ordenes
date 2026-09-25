@@ -2037,6 +2037,18 @@ function FichaOnuHuawei({ sn }) {
           {loading && <div style={{ fontSize: 12, color: "#6b7280" }}>Consultando la OLT…</div>}
           {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
           {!loading && !error && ficha && (
+            <>
+              {ficha.online != null && (
+                <div style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10,
+                  padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  background: ficha.online ? "#dcfce7" : "#fee2e2",
+                  color: ficha.online ? "#166534" : "#991b1b",
+                }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: ficha.online ? "#16a34a" : "#dc2626" }} />
+                  {ficha.online ? "Online" : "Offline"} (directo del equipo)
+                </div>
+              )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
               {[
                 ["Rx ONU (dBm)", ficha.rxPower != null ? ficha.rxPower : "-", true],
@@ -2046,6 +2058,7 @@ function FichaOnuHuawei({ sn }) {
                 ["Zona", ficha.zona],
                 ["Comentario/Dirección", ficha.comentario],
                 ["Fecha de autorización", ficha.fechaAutorizacion],
+                ["Tipo de ONU", ficha.onuType],
                 ["Perfil de línea", ficha.perfilLinea],
                 ["Modelo", ficha.modelo],
                 ["Firmware", ficha.firmware],
@@ -2056,6 +2069,7 @@ function FichaOnuHuawei({ sn }) {
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       )}
