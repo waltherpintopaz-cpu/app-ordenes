@@ -176,6 +176,195 @@ const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "
 // necesidad de listar cada nombre de nodo a mano por tenant.
 const NODOS_HUAWEI = new Set(["Nod_01", "Nod_02", "Nod_03"]);
 const esNodoOltSsh = (nodo) => !!OLT_SSH_API && !NODOS_HUAWEI.has(String(nodo || ""));
+
+const RANGOS_SENAL_HISTORIAL_SB = [
+  { key: "dia", label: "Diario", horas: 24 },
+  { key: "semana", label: "Semanal", horas: 24 * 7 },
+  { key: "mes", label: "Mensual", horas: 24 * 30 },
+  { key: "anio", label: "Anual", horas: 24 * 365 },
+];
+
+// ── Grafico de señal RX (igual patron que App.jsx GraficoSenalHistorial) ──
+function GraficoSenalHistorialSB({ sn }) {
+  const [rango, setRango] = useState("dia");
+  const [filas, setFilas] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    setLoading(true);
+    const cfg = RANGOS_SENAL_HISTORIAL_SB.find(r => r.key === rango) || RANGOS_SENAL_HISTORIAL_SB[0];
+    const desde = new Date(Date.now() - cfg.horas * 3600 * 1000).toISOString();
+    supabase.from("senal_onu_historial").select("rx_dbm,medido_en")
+      .eq("sn_onu", sn).gte("medido_en", desde).order("medido_en", { ascending: true })
+      .then(({ data }) => { if (!cancelado) { setFilas(data || []); setLoading(false); } });
+    return () => { cancelado = true; };
+  }, [sn, rango]);
+
+  const puntos = useMemo(() => filas.filter(f => f.rx_dbm != null).map(f => ({ t: new Date(f.medido_en).getTime(), rx: Number(f.rx_dbm) })), [filas]);
+  const W = 300, H = 130, PAD_L = 34, PAD_R = 8, PAD_T = 10, PAD_B = 20;
+  const chart = useMemo(() => {
+    if (puntos.length < 2) return null;
+    const rxVals = puntos.map(p => p.rx);
+    let min = Math.min(...rxVals), max = Math.max(...rxVals);
+    if (min === max) { min -= 1; max += 1; }
+    const margen = (max - min) * 0.15 || 1;
+    min -= margen; max += margen;
+    const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
+    const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
+    const y = (rx) => PAD_T + (1 - (rx - min) / (max - min)) * (H - PAD_T - PAD_B);
+    const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.rx).toFixed(1)}`).join(" ");
+    return { d, ultimo: puntos[puntos.length - 1] };
+  }, [puntos]);
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginTop: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 4, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 9, fontWeight: 800, color: "#374151", textTransform: "uppercase" }}>Historial Señal (RX)</span>
+        <div style={{ display: "flex", gap: 3 }}>
+          {RANGOS_SENAL_HISTORIAL_SB.map(r => (
+            <button key={r.key} onClick={() => setRango(r.key)} style={{
+              padding: "2px 6px", fontSize: 9, fontWeight: 700, borderRadius: 5, cursor: "pointer",
+              border: rango === r.key ? "1px solid #16a34a" : "1px solid #e2e8f0",
+              background: rango === r.key ? "#dcfce7" : "#fff", color: rango === r.key ? "#166534" : "#6b7280",
+            }}>{r.label}</button>
+          ))}
+        </div>
+      </div>
+      {loading && <div style={{ fontSize: 10, color: "#6b7280" }}>Cargando…</div>}
+      {!loading && !chart && <div style={{ fontSize: 10, color: "#6b7280" }}>Sin historial suficiente aún.</div>}
+      {!loading && chart && (
+        <>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+            <path d={chart.d} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div style={{ fontSize: 9, color: "#6b7280" }}>Actual: <strong>{chart.ultimo.rx.toFixed(2)} dBm</strong></div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Grafico de trafico Up/Down (igual patron que App.jsx GraficoTrafico) ──
+function GraficoTraficoSB({ sn }) {
+  const [rango, setRango] = useState("dia");
+  const [filas, setFilas] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    setLoading(true);
+    const cfg = RANGOS_SENAL_HISTORIAL_SB.find(r => r.key === rango) || RANGOS_SENAL_HISTORIAL_SB[0];
+    const desde = new Date(Date.now() - cfg.horas * 3600 * 1000).toISOString();
+    supabase.from("trafico_onu_historial").select("up_bps,down_bps,medido_en")
+      .eq("sn_onu", sn).gte("medido_en", desde).order("medido_en", { ascending: true })
+      .then(({ data }) => { if (!cancelado) { setFilas(data || []); setLoading(false); } });
+    return () => { cancelado = true; };
+  }, [sn, rango]);
+
+  const puntos = useMemo(() => filas
+    .filter(f => f.up_bps != null || f.down_bps != null)
+    .map(f => ({ t: new Date(f.medido_en).getTime(), up: f.up_bps != null ? f.up_bps / 1e6 : null, down: f.down_bps != null ? f.down_bps / 1e6 : null })), [filas]);
+  const W = 300, H = 130, PAD_L = 34, PAD_R = 8, PAD_T = 10, PAD_B = 20;
+  const chart = useMemo(() => {
+    if (puntos.length < 2) return null;
+    const todos = puntos.flatMap(p => [p.up, p.down]).filter(v => v != null);
+    let max = (todos.length ? Math.max(...todos) : 0.1) * 1.15 || 0.1;
+    const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
+    const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
+    const y = (v) => PAD_T + (1 - v / max) * (H - PAD_T - PAD_B);
+    const lineaDe = (campo) => {
+      const pts = puntos.filter(p => p[campo] != null);
+      if (pts.length < 2) return "";
+      return pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p[campo]).toFixed(1)}`).join(" ");
+    };
+    const ultUp = [...puntos].reverse().find(p => p.up != null)?.up ?? null;
+    const ultDown = [...puntos].reverse().find(p => p.down != null)?.down ?? null;
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ultUp, ultDown };
+  }, [puntos]);
+
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginTop: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 4, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 9, fontWeight: 800, color: "#374151", textTransform: "uppercase" }}>Tráfico (Up/Down)</span>
+        <div style={{ display: "flex", gap: 3 }}>
+          {RANGOS_SENAL_HISTORIAL_SB.map(r => (
+            <button key={r.key} onClick={() => setRango(r.key)} style={{
+              padding: "2px 6px", fontSize: 9, fontWeight: 700, borderRadius: 5, cursor: "pointer",
+              border: rango === r.key ? "1px solid #16a34a" : "1px solid #e2e8f0",
+              background: rango === r.key ? "#dcfce7" : "#fff", color: rango === r.key ? "#166534" : "#6b7280",
+            }}>{r.label}</button>
+          ))}
+        </div>
+      </div>
+      {loading && <div style={{ fontSize: 10, color: "#6b7280" }}>Cargando…</div>}
+      {!loading && !chart && <div style={{ fontSize: 10, color: "#6b7280" }}>Sin historial suficiente aún.</div>}
+      {!loading && chart && (
+        <>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+            <path d={chart.dDown} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={chart.dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div style={{ display: "flex", gap: 10, fontSize: 9, color: "#6b7280" }}>
+            <span>↑ {chart.ultUp != null ? `${chart.ultUp.toFixed(2)} Mbps` : "—"}</span>
+            <span>↓ {chart.ultDown != null ? `${chart.ultDown.toFixed(2)} Mbps` : "—"}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Ficha completa de ONU Huawei (directo del equipo, igual que App.jsx) ──
+function FichaOnuHuaweiSB({ sn }) {
+  const [ficha, setFicha] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!sn || !HUAWEI_OLT_SNMP_API) return;
+    let cancelado = false;
+    setLoading(true);
+    fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(sn)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (cancelado) return;
+        if (!json.ok) { setError(json.error || "No se pudo obtener la ficha."); setFicha(null); }
+        else setFicha(json);
+      })
+      .catch(e => { if (!cancelado) setError(e.message || "Error de red."); })
+      .finally(() => { if (!cancelado) setLoading(false); });
+    return () => { cancelado = true; };
+  }, [sn]);
+
+  if (!HUAWEI_OLT_SNMP_API) return null;
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", marginTop: 8 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: "#374151", textTransform: "uppercase", marginBottom: 4 }}>Ficha ONU (directo del equipo)</div>
+      {loading && <div style={{ fontSize: 10, color: "#6b7280" }}>Consultando…</div>}
+      {!loading && error && <div style={{ fontSize: 10, color: "#dc2626" }}>{error}</div>}
+      {!loading && !error && ficha && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+          {[
+            ["Board/Puerto", ficha.board != null ? `0/${ficha.board}/${ficha.port}` : null],
+            ["Zona", ficha.zona],
+            ["Fecha alta", ficha.fechaAutorizacion],
+            ["Tipo", ficha.onuType],
+            ["Modelo", ficha.modelo],
+            ["Firmware", ficha.firmware],
+          ].filter(([, v]) => v != null && v !== "").map(([label, value]) => (
+            <div key={label} style={{ background: "#f8fafc", borderRadius: 6, padding: "5px 7px", border: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 8, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
+              <div style={{ fontSize: 10.5, color: "#374151", fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06","Nod_07"];
 // VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
 const VLAN_POR_NODO = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
@@ -5062,6 +5251,13 @@ export default function SidebarApp() {
                     <div style={{ fontSize:10, color:T.muted, textAlign:"right", marginTop:4 }}>
                       SN: {snOnu} · {senal.ts}
                     </div>
+                    {!esNodoOltSsh(nodoReal) && HUAWEI_OLT_SNMP_API && (
+                      <>
+                        <GraficoSenalHistorialSB sn={snOnu} />
+                        <GraficoTraficoSB sn={snOnu} />
+                        <FichaOnuHuaweiSB sn={snOnu} />
+                      </>
+                    )}
                   </div>
                 )}
               </div>

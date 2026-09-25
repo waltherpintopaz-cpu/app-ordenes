@@ -1991,6 +1991,133 @@ function GraficoSenalHistorial({ sn }) {
   );
 }
 
+// ── Grafico de trafico (Upload/Download Mbps) -- solo Huawei por ahora
+// (unico OLT del que sacamos los contadores de bytes acumulados via SNMP,
+// ver huawei-olt-signal/index.js OID.bytesUp/bytesDown). Mismo patron que
+// GraficoSenalHistorial: lee trafico_onu_historial, calculado por el job
+// pollearTrafico() cada 15min.
+function GraficoTrafico({ sn }) {
+  const [rango, setRango] = useState("dia");
+  const [filas, setFilas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!sn) return;
+    let cancelado = false;
+    setLoading(true);
+    setError("");
+    const cfg = RANGOS_SENAL_HISTORIAL.find(r => r.key === rango) || RANGOS_SENAL_HISTORIAL[0];
+    const desde = new Date(Date.now() - cfg.horas * 3600 * 1000).toISOString();
+    supabase
+      .from("trafico_onu_historial")
+      .select("up_bps,down_bps,medido_en")
+      .eq("sn_onu", sn)
+      .gte("medido_en", desde)
+      .order("medido_en", { ascending: true })
+      .then(({ data, error: err }) => {
+        if (cancelado) return;
+        if (err) { setError(err.message); setFilas([]); }
+        else setFilas(data || []);
+        setLoading(false);
+      });
+    return () => { cancelado = true; };
+  }, [sn, rango]);
+
+  const puntos = useMemo(() => filas
+    .filter(f => f.up_bps != null || f.down_bps != null)
+    .map(f => ({ t: new Date(f.medido_en).getTime(), up: f.up_bps != null ? f.up_bps / 1e6 : null, down: f.down_bps != null ? f.down_bps / 1e6 : null })), [filas]);
+
+  const W = 640, H = 180, PAD_L = 44, PAD_R = 12, PAD_T = 14, PAD_B = 28;
+
+  const { dUp, dDown, ticksY, ticksX, ultimoUp, ultimoDown, maxDown } = useMemo(() => {
+    if (puntos.length < 2) return { dUp: "", dDown: "", ticksY: [], ticksX: [], ultimoUp: null, ultimoDown: null, maxDown: 0 };
+    const todos = puntos.flatMap(p => [p.up, p.down]).filter(v => v != null);
+    let max = (todos.length ? Math.max(...todos) : 0.1) * 1.15 || 0.1;
+    const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
+    const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
+    const y = (v) => PAD_T + (1 - v / max) * (H - PAD_T - PAD_B);
+    const lineaDe = (campo) => {
+      const pts = puntos.filter(p => p[campo] != null);
+      if (pts.length < 2) return "";
+      return pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p[campo]).toFixed(1)}`).join(" ");
+    };
+    const yTicks = [0, max / 2, max].map(v => ({ v, y: y(v) }));
+    const xTickCount = 4;
+    const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
+      const t = tMin + ((tMax - tMin) * i) / xTickCount;
+      return { t, x: x(t) };
+    });
+    const ultUp = [...puntos].reverse().find(p => p.up != null)?.up ?? null;
+    const ultDown = [...puntos].reverse().find(p => p.down != null)?.down ?? null;
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ticksY: yTicks, ticksX: xTicks, ultimoUp: ultUp, ultimoDown: ultDown, maxDown: Math.max(...puntos.map(p => p.down || 0)) };
+  }, [puntos]);
+
+  const fmtFecha = (t) => {
+    const d = new Date(t);
+    if (rango === "dia") return d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+    if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+    return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
+  };
+
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          📶 Tráfico (Upload/Download)
+        </span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {RANGOS_SENAL_HISTORIAL.map(r => (
+            <button
+              key={r.key}
+              onClick={() => setRango(r.key)}
+              style={{
+                padding: "4px 10px", fontSize: 11, fontWeight: 700, borderRadius: 7, cursor: "pointer",
+                border: rango === r.key ? "1.5px solid #16a34a" : "1.5px solid #e2e8f0",
+                background: rango === r.key ? "#dcfce7" : "#fff",
+                color: rango === r.key ? "#166534" : "#6b7280",
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {loading && <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>Cargando tráfico…</div>}
+      {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
+      {!loading && !error && puntos.length < 2 && (
+        <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
+          Todavía no hay suficiente historial de tráfico guardado (se mide cada 15 min).
+        </div>
+      )}
+      {!loading && !error && puntos.length >= 2 && (
+        <>
+          <div style={{ width: "100%", maxWidth: 640, height: 180 }}>
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+              {ticksY.map((t, i) => (
+                <g key={i}>
+                  <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
+                  <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v.toFixed(1)}</text>
+                </g>
+              ))}
+              {ticksX.map((t, i) => (
+                <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
+              ))}
+              <path d={dDown} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d={dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4, flexWrap: "wrap" }}>
+            <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Upload: <strong style={{ color: "#374151" }}>{ultimoUp != null ? `${ultimoUp.toFixed(2)} Mbps` : "—"}</strong></span>
+            <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#3b82f6", borderRadius: 2, marginRight: 4 }} />Download: <strong style={{ color: "#374151" }}>{ultimoDown != null ? `${ultimoDown.toFixed(2)} Mbps` : "—"}</strong></span>
+            <span>Máximo Download: <strong style={{ color: "#374151" }}>{maxDown.toFixed(2)} Mbps</strong></span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Ficha completa de ONU Huawei (Fase 1 del reemplazo propio de SmartOLT)
 // Lee nombre/zona/comentario/fecha de autorizacion directo de la OLT via
 // SNMP (servicio huawei-olt-signal, endpoint /onu-info) -- confirmado que
@@ -2065,6 +2192,7 @@ function FichaOnuHuawei({ sn }) {
                 ["Tx ONU (dBm)", ficha.txPower != null ? ficha.txPower : "-", true],
                 ["Rx OLT (dBm)", ficha.rxPowerOlt != null ? ficha.rxPowerOlt : "-", true],
                 ["Nombre (en la OLT)", ficha.nombre],
+                ["Board/Puerto", ficha.board != null ? `0/${ficha.board}/${ficha.port}` : null],
                 ["Zona", ficha.zona],
                 ["Comentario/Dirección", ficha.comentario],
                 ["Fecha de autorización", ficha.fechaAutorizacion],
@@ -24501,6 +24629,7 @@ export default function App() {
                     </div>
                   )}
                   <GraficoSenalHistorial sn={cli.snOnu} />
+                  <GraficoTrafico sn={cli.snOnu} />
                   <FichaOnuHuawei sn={cli.snOnu} />
                 </div>
               )}
