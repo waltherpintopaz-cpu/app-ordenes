@@ -1989,6 +1989,77 @@ function GraficoSenalHistorial({ sn }) {
   );
 }
 
+// ── Ficha completa de ONU Huawei (Fase 1 del reemplazo propio de SmartOLT)
+// Lee nombre/zona/comentario/fecha de autorizacion directo de la OLT via
+// SNMP (servicio huawei-olt-signal, endpoint /onu-info) -- confirmado que
+// coincide exacto con lo que muestra SmartOLT, porque vive en el propio
+// equipo, no en una base de SmartOLT aparte.
+const HUAWEI_OLT_SNMP_API_MODULO = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "").trim().replace(/\/$/, "");
+
+function FichaOnuHuawei({ sn }) {
+  const [ficha, setFicha] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    if (!sn || !abierto || !HUAWEI_OLT_SNMP_API_MODULO) return;
+    let cancelado = false;
+    setLoading(true);
+    setError("");
+    fetch(`${HUAWEI_OLT_SNMP_API_MODULO}/onu-info?sn=${encodeURIComponent(sn)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (cancelado) return;
+        if (!json.ok) { setError(json.error || "No se pudo obtener la ficha."); setFicha(null); }
+        else setFicha(json);
+      })
+      .catch(e => { if (!cancelado) setError(e.message || "Error de red."); })
+      .finally(() => { if (!cancelado) setLoading(false); });
+    return () => { cancelado = true; };
+  }, [sn, abierto]);
+
+  if (!HUAWEI_OLT_SNMP_API_MODULO) return null;
+
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+      <div
+        onClick={() => setAbierto(v => !v)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          🗂️ Ficha de la ONU (directo del equipo)
+        </span>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>{abierto ? "▲ Ocultar" : "▼ Ver"}</span>
+      </div>
+      {abierto && (
+        <div style={{ marginTop: 10 }}>
+          {loading && <div style={{ fontSize: 12, color: "#6b7280" }}>Consultando la OLT…</div>}
+          {!loading && error && <div style={{ fontSize: 12, color: "#dc2626" }}>{error}</div>}
+          {!loading && !error && ficha && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10 }}>
+              {[
+                ["Nombre (en la OLT)", ficha.nombre],
+                ["Zona", ficha.zona],
+                ["Comentario/Dirección", ficha.comentario],
+                ["Fecha de autorización", ficha.fechaAutorizacion],
+                ["Perfil de línea", ficha.perfilLinea],
+                ["Modelo", ficha.modelo],
+                ["Firmware", ficha.firmware],
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 10px", border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 12.5, color: "#374151", fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QRScanner({ onDetected, onClose }) {
   const videoRef = useRef(null);
   const readerRef = useRef(null);
@@ -24402,6 +24473,7 @@ export default function App() {
                     </div>
                   )}
                   <GraficoSenalHistorial sn={cli.snOnu} />
+                  <FichaOnuHuawei sn={cli.snOnu} />
                 </div>
               )}
 
