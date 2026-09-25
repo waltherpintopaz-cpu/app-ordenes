@@ -50,6 +50,8 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [rango, setRango] = useState("dia");
   const [filas, setFilas] = useState([]);
   const [loadingHist, setLoadingHist] = useState(false);
+  const [filasTrafico, setFilasTrafico] = useState([]);
+  const [loadingTrafico, setLoadingTrafico] = useState(false);
 
   useEffect(() => {
     if (!sn) return undefined;
@@ -80,7 +82,22 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
     return () => { cancelado = true; };
   }, [sn, rango]);
 
+  useEffect(() => {
+    if (!sn) return undefined;
+    let cancelado = false;
+    setLoadingTrafico(true);
+    const cfg = RANGOS_SENAL_HISTORIAL.find(r => r.key === rango) || RANGOS_SENAL_HISTORIAL[0];
+    const desde = new Date(Date.now() - cfg.horas * 3600 * 1000).toISOString();
+    supabase.from("trafico_onu_historial").select("up_bps,down_bps,medido_en")
+      .eq("sn_onu", sn).gte("medido_en", desde).order("medido_en", { ascending: true })
+      .then(({ data }) => { if (!cancelado) { setFilasTrafico(data || []); setLoadingTrafico(false); } });
+    return () => { cancelado = true; };
+  }, [sn, rango]);
+
   const puntos = useMemo(() => filas.filter(f => f.rx_dbm != null).map(f => ({ t: new Date(f.medido_en).getTime(), rx: Number(f.rx_dbm) })), [filas]);
+  const puntosTrafico = useMemo(() => filasTrafico
+    .filter(f => f.up_bps != null || f.down_bps != null)
+    .map(f => ({ t: new Date(f.medido_en).getTime(), up: f.up_bps != null ? f.up_bps / 1e6 : null, down: f.down_bps != null ? f.down_bps / 1e6 : null })), [filasTrafico]);
   const W = 480, H = 150, PAD_L = 40, PAD_R = 10, PAD_T = 10, PAD_B = 24;
   const chart = useMemo(() => {
     if (puntos.length < 2) return null;
@@ -96,6 +113,26 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
     const ticksY = [min, min + (max - min) / 2, max].map(v => ({ v, y: y(v) }));
     return { d, ticksY, ultimo: puntos[puntos.length - 1], max: Math.max(...rxVals) };
   }, [puntos]);
+
+  const chartTrafico = useMemo(() => {
+    if (puntosTrafico.length < 2) return null;
+    const todos = puntosTrafico.flatMap(p => [p.up, p.down]).filter(v => v != null);
+    if (!todos.length) return null;
+    let max = Math.max(...todos, 0.1);
+    max *= 1.15;
+    const tMin = puntosTrafico[0].t, tMax = puntosTrafico[puntosTrafico.length - 1].t;
+    const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
+    const y = (v) => PAD_T + (1 - v / max) * (H - PAD_T - PAD_B);
+    const lineaDe = (campo) => {
+      const pts = puntosTrafico.filter(p => p[campo] != null);
+      if (pts.length < 2) return "";
+      return pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p[campo]).toFixed(1)}`).join(" ");
+    };
+    const ticksY = [0, max / 2, max].map(v => ({ v, y: y(v) }));
+    const ultimoUp = [...puntosTrafico].reverse().find(p => p.up != null)?.up;
+    const ultimoDown = [...puntosTrafico].reverse().find(p => p.down != null)?.down;
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ticksY, ultimoUp, ultimoDown, maxDown: Math.max(...puntosTrafico.map(p => p.down || 0)) };
+  }, [puntosTrafico]);
 
   const cfg = ficha?.estado ? (ESTADO[ficha.estado] || ESTADO_DESCONOCIDO) : null;
   const col = isDark ? { bg: "#111c33", card: "#1a2740", border: "#2c3c58", text: "#e6ecf7", sub: "#93a2bd" }
@@ -187,6 +224,37 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
               <div style={{ display: "flex", gap: 14, fontSize: 11, color: col.sub, marginTop: 4 }}>
                 <span>Actual: <strong style={{ color: col.text }}>{chart.ultimo.rx.toFixed(2)}</strong></span>
                 <span>Máximo: <strong style={{ color: col.text }}>{chart.max.toFixed(2)}</strong></span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div style={{ background: col.card, border: `1px solid ${col.border}`, borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: col.text, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+            <Ico.signal width={13} height={13} />Tráfico (Upload/Download)
+          </span>
+          {loadingTrafico && <div style={{ fontSize: 12, color: col.sub, padding: "16px 0" }}>Cargando tráfico…</div>}
+          {!loadingTrafico && !chartTrafico && (
+            <div style={{ fontSize: 12, color: col.sub, padding: "16px 0" }}>
+              Todavía no hay suficiente historial de tráfico guardado (se mide cada 15 min, necesita al menos 2 lecturas).
+            </div>
+          )}
+          {!loadingTrafico && chartTrafico && (
+            <>
+              <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+                {chartTrafico.ticksY.map((t, i) => (
+                  <g key={i}>
+                    <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke={isDark ? "#2c3c58" : "#e5e7eb"} strokeWidth="1" />
+                    <text x={PAD_L - 6} y={t.y + 3} textAnchor="end" fontSize="9" fill={col.sub}>{t.v.toFixed(1)}</text>
+                  </g>
+                ))}
+                <path d={chartTrafico.dDown} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={chartTrafico.dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div style={{ display: "flex", gap: 14, fontSize: 11, color: col.sub, marginTop: 4, flexWrap: "wrap" }}>
+                <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Upload: <strong style={{ color: col.text }}>{chartTrafico.ultimoUp != null ? `${chartTrafico.ultimoUp.toFixed(2)} Mbps` : "—"}</strong></span>
+                <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#3b82f6", borderRadius: 2, marginRight: 4 }} />Download: <strong style={{ color: col.text }}>{chartTrafico.ultimoDown != null ? `${chartTrafico.ultimoDown.toFixed(2)} Mbps` : "—"}</strong></span>
+                <span>Máximo Download: <strong style={{ color: col.text }}>{chartTrafico.maxDown.toFixed(2)} Mbps</strong></span>
               </div>
             </>
           )}
