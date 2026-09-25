@@ -2085,10 +2085,24 @@ export default function App() {
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
   const [ordenIptvPantallas, setOrdenIptvPantallas] = useState("1");
   const [ordenIptvPlan, setOrdenIptvPlan] = useState("Premium");
+  // La pantalla activa se guarda tambien en la URL (?vista=...) -- antes
+  // vivia solo en memoria (useState), asi que recargar la pagina siempre
+  // volvia al dashboard y era imposible mandar un link directo a una
+  // pantalla. Al ser la URL (no localStorage), cada pestaña del navegador
+  // mantiene su propia pantalla de forma independiente -- no se pisan entre
+  // si al abrir dos pestañas de la app.
   const [vistaActiva, setVistaActiva] = useState(() => {
+    const vistaUrl = new URLSearchParams(window.location.search).get("vista");
+    if (vistaUrl) return vistaUrl;
     const sesionGuardada = localStorage.getItem("usuarioSesionId");
     return sesionGuardada ? "dashboard" : "crear";
   });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("vista") === vistaActiva) return;
+    params.set("vista", vistaActiva);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [vistaActiva]);
   const [historialAppsheetSubmenu, setHistorialAppsheetSubmenu] = useState("equipos");
   const [reportesSubmenu, setReportesSubmenu] = useState("general");
   const [botSubmenu, setBotSubmenu] = useState("botControl");
