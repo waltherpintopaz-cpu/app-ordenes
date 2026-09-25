@@ -2477,6 +2477,11 @@ export default function App() {
   const [clienteSenal, setClienteSenal] = useState(null);      // { rxOnuDbm, oltRxOntDbm, estado, fecha }
   const [clienteSenalLoading, setClienteSenalLoading] = useState(false);
   const [clienteSenalError, setClienteSenalError] = useState("");
+  // Piloto: señal leída por el servicio SNMP propio, solo para comparar al
+  // lado de la de SmartOLT -- ver consultarSenalHuaweiPropia().
+  const [clienteSenalPropia, setClienteSenalPropia] = useState(null);
+  const [clienteSenalPropiaLoading, setClienteSenalPropiaLoading] = useState(false);
+  const [clienteSenalPropiaError, setClienteSenalPropiaError] = useState("");
   const [pendSenalData, setPendSenalData] = useState({});   // { [ordenId]: { rx, tx, estado } }
   const [pendSenalLoading, setPendSenalLoading] = useState({});
   const [pendSenalError, setPendSenalError] = useState({});
@@ -5227,6 +5232,28 @@ export default function App() {
     }
   };
 
+  // Consulta el servicio SNMP propio (piloto), solo para comparar al lado
+  // del valor que ya trae SmartOLT -- no reemplaza nada todavia, no guarda
+  // en Supabase, es puramente informativo mientras se valida.
+  const consultarSenalHuaweiPropia = async (cli) => {
+    const sn = String(cli?.snOnu || "").trim();
+    if (!sn) return;
+    if (!HUAWEI_OLT_SNMP_API) { setClienteSenalPropiaError("Servicio propio no configurado (VITE_HUAWEI_OLT_SNMP_API)."); return; }
+    setClienteSenalPropiaLoading(true);
+    setClienteSenalPropiaError("");
+    setClienteSenalPropia(null);
+    try {
+      const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(sn)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setClienteSenalPropia({ rx: json.rxPower, tx: json.txPower, queried_at: new Date().toISOString() });
+    } catch (e) {
+      setClienteSenalPropiaError(String(e?.message || "Error al consultar el servicio propio."));
+    } finally {
+      setClienteSenalPropiaLoading(false);
+    }
+  };
+
   const consultarSenalClienteTabla = async (cli) => {
     const id = cli?.id;
     if (!id) return;
@@ -5260,6 +5287,10 @@ export default function App() {
   const HUAWEI_NODOS    = ["Nod_01", "Nod_02", "Nod_03"];
   const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "").trim().replace(/\/$/, "");
   const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "").trim().replace(/\/$/, "");
+  // Servicio propio por SNMP (piloto para reemplazar SmartOLT) -- se consulta
+  // aparte, solo para comparar, sin tocar el flujo normal que sigue usando
+  // SmartOLT hasta que se valide que ambos coinciden de forma consistente.
+  const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "").trim().replace(/\/$/, "");
   // Nodo usa SmartOLT/Huawei si esta en la lista fija de Americanet; cualquier
   // otro nodo con SN ONU (incluidos los de tenants nuevos, con nombres propios
   // como "Nodo_05") se asume VSOL/SSH si ese servidor esta configurado -- ya
@@ -24198,11 +24229,36 @@ export default function App() {
                       >
                         {clienteSenalLoading ? "⏳ Consultando..." : "📡 Consultar Señal"}
                       </button>
+                      {HUAWEI_OLT_SNMP_API && (
+                        <button
+                          onClick={() => consultarSenalHuaweiPropia(cli)}
+                          disabled={clienteSenalPropiaLoading}
+                          title="Piloto: consulta el servicio SNMP propio, solo para comparar contra SmartOLT"
+                          style={{ padding: "6px 14px", background: "#fff", color: "#166534", border: "1.5px solid #86efac", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: clienteSenalPropiaLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                        >
+                          {clienteSenalPropiaLoading ? "⏳..." : "🧪 Comparar con servicio propio"}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {clienteSenalError && (
                     <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", color: "#dc2626", fontSize: 12, marginBottom: 12 }}>
                       {clienteSenalError}
+                    </div>
+                  )}
+                  {clienteSenalPropiaError && (
+                    <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", color: "#dc2626", fontSize: 12, marginBottom: 12 }}>
+                      Servicio propio: {clienteSenalPropiaError}
+                    </div>
+                  )}
+                  {clienteSenalPropia && (
+                    <div style={{ background: "#eff6ff", border: "1.5px solid #93c5fd", borderRadius: 10, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#1e40af", textTransform: "uppercase" }}>🧪 Servicio propio (piloto)</span>
+                      <span style={{ fontSize: 13, color: "#1e3a8a" }}>Rx: <strong>{clienteSenalPropia.rx != null ? `${clienteSenalPropia.rx} dBm` : "-"}</strong></span>
+                      <span style={{ fontSize: 13, color: "#1e3a8a" }}>Tx: <strong>{clienteSenalPropia.tx != null ? `${clienteSenalPropia.tx} dBm` : "-"}</strong></span>
+                      {clienteSenal?.rx != null && clienteSenalPropia.rx != null && (
+                        <span style={{ fontSize: 11, color: "#64748b" }}>Diferencia vs SmartOLT: {(Math.abs(parseFloat(clienteSenal.rx) - clienteSenalPropia.rx)).toFixed(2)} dB</span>
+                      )}
                     </div>
                   )}
                   {cli.rxSignal != null && (
