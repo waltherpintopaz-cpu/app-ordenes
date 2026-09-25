@@ -168,8 +168,13 @@ const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
 // numero crudo de router ("5") en vez de la etiqueta "Nod_04" — normalizar
 // antes de comparar.
 const empresaPorNodo = (n) => DIM_NODOS.has(String(normalizarEtiquetaNodo(n) || "").trim().toLowerCase()) ? "DIM" : "Americanet";
-const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
-const NODOS_OLT_SSH = new Set(["Nod_04", "Nod_05", "Nod_06"]);
+const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "").trim().replace(/\/$/, "");
+// Nod_01/02/03 son Huawei/SmartOLT (fijo, especifico de Americanet). Cualquier
+// otro nodo con SN ONU -- incluidos nombres propios de tenants nuevos como
+// "Nodo_05" -- se asume VSOL/SSH si ese servidor esta configurado, sin
+// necesidad de listar cada nombre de nodo a mano por tenant.
+const NODOS_HUAWEI = new Set(["Nod_01", "Nod_02", "Nod_03"]);
+const esNodoOltSsh = (nodo) => !!OLT_SSH_API && !NODOS_HUAWEI.has(String(nodo || ""));
 const NODOS_BASE = ["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06","Nod_07"];
 // VLAN de OLT Huawei — solo aplica a Nod_01/02/03. Nod_03 usa el nuevo administrador (102).
 const VLAN_POR_NODO = { Nod_01: "100", Nod_02: "100", Nod_03: "102" };
@@ -2199,7 +2204,7 @@ export default function SidebarApp() {
     if (!snOnu) return notify("No se encontró SN de ONU para este cliente", false);
     setSenalLoad(true);
     try {
-      const esOltSsh = NODOS_OLT_SSH.has(String(nodoReal || ""));
+      const esOltSsh = esNodoOltSsh(nodoReal);
       if (esOltSsh) {
         // Nod_04/05/06 — SSH OLT API
         const params = new URLSearchParams({ sn: snOnu });

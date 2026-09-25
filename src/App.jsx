@@ -5244,8 +5244,14 @@ export default function App() {
   const SMART_OLT_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
   const OLT_SSH_NODOS   = ["Nod_06", "Nod_04"];
   const HUAWEI_NODOS    = ["Nod_01", "Nod_02", "Nod_03"];
-  const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
-  const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "https://amnet-huawei-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+  const OLT_SSH_API     = String(import.meta.env.VITE_OLT_SSH_API || "").trim().replace(/\/$/, "");
+  const HUAWEI_API      = String(import.meta.env.VITE_HUAWEI_SIGNAL_API || "").trim().replace(/\/$/, "");
+  // Nodo usa SmartOLT/Huawei si esta en la lista fija de Americanet; cualquier
+  // otro nodo con SN ONU (incluidos los de tenants nuevos, con nombres propios
+  // como "Nodo_05") se asume VSOL/SSH si ese servidor esta configurado -- ya
+  // no hace falta listar cada nombre de nodo a mano por tenant.
+  const nodoUsaHuawei  = (nodo) => SMART_OLT_NODOS.includes(String(nodo || ""));
+  const nodoUsaOltSsh  = (nodo) => !!OLT_SSH_API && !nodoUsaHuawei(nodo);
 
   // Consulta señal via SSH API (Nod_06) — desde ficha de cliente
   const consultarSenalOltSsh = async (cli) => {
@@ -5329,7 +5335,7 @@ export default function App() {
 
   const refrescarTodosNod6 = async (listaClientes) => {
     const base = listaClientes || clientesPorNodo || [];
-    const targets = base.filter(c => OLT_SSH_NODOS.includes(String(c.nodo || "")) && c.snOnu);
+    const targets = base.filter(c => nodoUsaOltSsh(c.nodo) && c.snOnu);
     if (!targets.length) return;
     setNod6Refreshing(true);
     for (const c of targets) {
@@ -5370,8 +5376,8 @@ export default function App() {
     const nodo = String(item?.nodo || "");
     const now = new Date().toISOString();
     try {
-      if (OLT_SSH_NODOS.includes(nodo)) {
-        // Nod_04 / 06 → SSH API
+      if (nodoUsaOltSsh(nodo)) {
+        // VSOL/SSH
         const params = new URLSearchParams({ sn });
         if (item.vlan) params.set("vlan", String(item.vlan));
         const res  = await fetch(`${OLT_SSH_API}/signal?${params}`, { cache: "no-store" });
@@ -17913,7 +17919,7 @@ export default function App() {
                           {/* Liquidar es tarea del tecnico, no del gestor -- se quita de esta
                               vista para gestores/admin y se deja Editar como accion visible. */}
                           {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 12px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
-                          {item?.snOnu && (HUAWEI_NODOS.includes(String(item?.nodo || "")) || OLT_SSH_NODOS.includes(String(item?.nodo || "")) || SMART_OLT_NODOS.includes(String(item?.nodo || ""))) && (
+                          {item?.snOnu && (nodoUsaHuawei(item?.nodo) || nodoUsaOltSsh(item?.nodo)) && (
                             <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} title="Actualizar señal" style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                               📡 {pendSenalLoading[item.id] ? "..." : "Actualizar"}
                             </button>
@@ -22640,8 +22646,8 @@ export default function App() {
                               )}
                               {/* ── Señal RX ── */}
                               {(() => {
-                                const isHuawei = HUAWEI_NODOS.includes(String(cliente.nodo || ""));
-                                const isOltSsh = OLT_SSH_NODOS.includes(String(cliente.nodo || ""));
+                                const isHuawei = nodoUsaHuawei(cliente.nodo);
+                                const isOltSsh = nodoUsaOltSsh(cliente.nodo);
                                 const hasSignal = (isHuawei || isOltSsh) && cliente.snOnu;
                                 if (!hasSignal) return <td style={{ padding: "8px 14px" }}><span style={{ color: "#e2e8f0", fontSize: 11 }}>—</span></td>;
                                 const sd      = cliSenalData[cliente.id];
@@ -22686,11 +22692,11 @@ export default function App() {
                                     </button>
                                     {/* + Orden */}
                                     <button onClick={() => crearOrdenDesdeCliente(cliente)}
-                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: (SMART_OLT_NODOS.includes(String(cliente.nodo || "")) || OLT_SSH_NODOS.includes(String(cliente.nodo || ""))) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: (SMART_OLT_NODOS.includes(String(cliente.nodo || "")) || OLT_SSH_NODOS.includes(String(cliente.nodo || ""))) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: (nodoUsaHuawei(cliente.nodo) || nodoUsaOltSsh(cliente.nodo)) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: (nodoUsaHuawei(cliente.nodo) || nodoUsaOltSsh(cliente.nodo)) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       + Orden
                                     </button>
                                     {/* Señal OLT SSH — ↺ actualizar individual */}
-                                    {OLT_SSH_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (
+                                    {nodoUsaOltSsh(cliente.nodo) && cliente.snOnu && (
                                       <button
                                         onClick={() => void consultarSenalOltSshTabla(cliente)}
                                         disabled={!!cliSenalLoading[cliente.id]}
@@ -22701,7 +22707,7 @@ export default function App() {
                                       </button>
                                     )}
                                     {/* SN — señal ONU, solo nodos SmartOLT con serial */}
-                                    {SMART_OLT_NODOS.includes(String(cliente.nodo || "")) && cliente.snOnu && (() => {
+                                    {nodoUsaHuawei(cliente.nodo) && cliente.snOnu && (() => {
                                       const sd = cliSenalData[cliente.id];
                                       const hasData = !!sd;
                                       const isLoading = !!cliSenalLoading[cliente.id];
@@ -24096,8 +24102,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* ── Señal ONU — Nod_06 SSH ── */}
-              {cli.snOnu && OLT_SSH_NODOS.includes(String(cli.nodo || "")) && (
+              {/* ── Señal ONU — VSOL/SSH ── */}
+              {cli.snOnu && nodoUsaOltSsh(cli.nodo) && (
                 <div style={{ background: "linear-gradient(135deg,#f0f9ff,#e0f2fe)", border: "1.5px solid #7dd3fc", borderRadius: 16, padding: "18px 24px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#075985", textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -24160,8 +24166,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* ── Señal ONU ── */}
-              {cli.snOnu && SMART_OLT_NODOS.includes(String(cli.nodo || "")) && (
+              {/* ── Señal ONU — SmartOLT/Huawei ── */}
+              {cli.snOnu && nodoUsaHuawei(cli.nodo) && (
                 <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.08em" }}>📶 Señal ONU — {cli.snOnu}</span>
