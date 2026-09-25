@@ -132,20 +132,20 @@ export default function OnuInventarioPanel({ theme }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                {["", "Nombre", "Zona", "SN", "Puerto", "RX (dBm)", "TX (dBm)"].map((h, i) => (
+                {["", "Nombre", "Zona", "SN", "Board/Port", "RX (dBm)", "TX (dBm)", "Fecha alta"].map((h, i) => (
                   <th key={i} style={s.th}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {cargando && onus.length === 0 ? (
-                <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Cargando…</td></tr>
+                <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Cargando…</td></tr>
               ) : total === 0 && !error ? (
-                <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>
+                <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>
                   Generando el primer inventario completo desde la OLT — puede tardar unos minutos. Se actualiza solo, no hace falta recargar la página.
                 </td></tr>
               ) : onus.length === 0 ? (
-                <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin resultados.</td></tr>
+                <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin resultados.</td></tr>
               ) : onus.map((o, i) => {
                 const cfg = ESTADO[o.estado] || ESTADO_DESCONOCIDO;
                 return (
@@ -156,9 +156,12 @@ export default function OnuInventarioPanel({ theme }) {
                     <td style={s.td}>{o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}</td>
                     <td style={s.td}>{o.zona || "—"}</td>
                     <td style={{ ...s.td, fontFamily: "monospace", fontSize: 12 }}>{o.sn}</td>
-                    <td style={{ ...s.td, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{o.composite}/{o.onuId}</td>
+                    <td style={{ ...s.td, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
+                      {o.board != null ? `0/${o.board}/${o.port}` : <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}
+                    </td>
                     <td style={s.td}>{o.rxPower != null ? `${o.rxPower.toFixed(2)}` : "—"}</td>
                     <td style={s.td}>{o.txPower != null ? `${o.txPower.toFixed(2)}` : "—"}</td>
+                    <td style={{ ...s.td, fontSize: 12, whiteSpace: "nowrap" }}>{o.fechaAutorizacion || "—"}</td>
                   </tr>
                 );
               })}
