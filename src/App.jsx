@@ -5504,14 +5504,24 @@ export default function App() {
     }
   };
 
+  // Consulta en paralelo con concurrencia limitada (no todas juntas para no
+  // saturar el OLT real con cientos de consultas SNMP de golpe, pero
+  // tampoco una por una -- con SNMP cada consulta es rápida, 10 a la vez es
+  // un numero razonable para este tipo de equipo).
+  const CONCURRENCIA_REFRESH_SENAL = 10;
   const refrescarTodosNod6 = async (listaClientes) => {
     const base = listaClientes || clientesPorNodo || [];
     const targets = base.filter(c => nodoUsaOltSsh(c.nodo) && c.snOnu);
     if (!targets.length) return;
     setNod6Refreshing(true);
-    for (const c of targets) {
-      await consultarSenalOltSshTabla(c);
+    let i = 0;
+    async function worker() {
+      while (i < targets.length) {
+        const c = targets[i++];
+        await consultarSenalOltSshTabla(c);
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCIA_REFRESH_SENAL, targets.length) }, worker));
     setNod6Refreshing(false);
   };
 
