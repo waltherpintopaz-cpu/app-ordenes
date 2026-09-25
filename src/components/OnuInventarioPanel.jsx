@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
 
@@ -23,6 +23,7 @@ export default function OnuInventarioPanel({ theme }) {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [generadoEn, setGeneradoEn] = useState(null);
+  const [conteoEstados, setConteoEstados] = useState({ online: 0, power_fail: 0, los: 0, admin_disabled: 0 });
 
   const cargar = useCallback(async ({ refresh = false } = {}) => {
     setCargando(true);
@@ -44,6 +45,7 @@ export default function OnuInventarioPanel({ theme }) {
       setOnus(Array.isArray(json.onus) ? json.onus : []);
       setTotal(Number(json.total) || 0);
       setGeneradoEn(json.generadoEn || null);
+      if (json.conteoEstados) setConteoEstados(json.conteoEstados);
     } catch (e) {
       setError(String(e?.message || "Error consultando el servicio SNMP."));
       setOnus([]);
@@ -64,12 +66,6 @@ export default function OnuInventarioPanel({ theme }) {
   }, [total, cargando, cargar]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  const conteoEstados = useMemo(() => {
-    const c = { online: 0, power_fail: 0, los: 0, admin_disabled: 0 };
-    for (const o of onus) if (c[o.estado] != null) c[o.estado]++;
-    return c;
-  }, [onus]);
 
   const fmtGenerado = generadoEn ? new Date(generadoEn).toLocaleString("es-PE") : "—";
 
