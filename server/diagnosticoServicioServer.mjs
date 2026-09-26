@@ -1347,12 +1347,20 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Proxy de acciones reales sobre ONUs Huawei (reiniciar/eliminar/cambiar
-    // velocidad) -- el frontend le pega ACA, no directo a huawei-olt-signal,
-    // para que el token de accion nunca viaje al navegador.
-    if (req.method === "POST" && (req.url === "/api/huawei-onu/reiniciar" || req.url === "/api/huawei-onu/eliminar" || req.url === "/api/huawei-onu/velocidad")) {
+    // velocidad/autorizar/wan-pppoe/acceso-remoto/autofind) -- el frontend
+    // le pega ACA, no directo a huawei-olt-signal, para que el token de
+    // accion nunca viaje al navegador.
+    const HUAWEI_ONU_RUTAS = {
+      reiniciar: "/onu-reiniciar",
+      eliminar: "/onu-eliminar",
+      velocidad: "/onu-velocidad",
+      autorizar: "/onu-autorizar",
+      wan: "/onu-wan",
+      "acceso-remoto": "/onu-acceso-remoto",
+    };
+    if (req.method === "POST" && String(req.url || "").startsWith("/api/huawei-onu/") && HUAWEI_ONU_RUTAS[req.url.split("/").pop()]) {
       if (!HUAWEI_ACCION_TOKEN) return writeJson(res, 500, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado en el servidor." });
-      const accion = req.url.split("/").pop();
-      const rutaDestino = { reiniciar: "/onu-reiniciar", eliminar: "/onu-eliminar", velocidad: "/onu-velocidad" }[accion];
+      const rutaDestino = HUAWEI_ONU_RUTAS[req.url.split("/").pop()];
       try {
         const body = await readJsonBody(req);
         const upstream = await fetch(`${HUAWEI_OLT_SNMP_API}${rutaDestino}`, {
@@ -1360,6 +1368,18 @@ const server = http.createServer(async (req, res) => {
           headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
           body: JSON.stringify(body || {}),
         });
+        const data = await upstream.json().catch(() => ({ ok: false, error: "Respuesta invalida del servicio Huawei." }));
+        return writeJson(res, upstream.status, data);
+      } catch (e) {
+        return writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
+    }
+
+    // GET /api/huawei-onu/autofind -- lista ONUs detectadas sin autorizar.
+    if (req.method === "GET" && req.url === "/api/huawei-onu/autofind") {
+      if (!HUAWEI_ACCION_TOKEN) return writeJson(res, 500, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado en el servidor." });
+      try {
+        const upstream = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-autofind`, { headers: { "x-debug-token": HUAWEI_ACCION_TOKEN } });
         const data = await upstream.json().catch(() => ({ ok: false, error: "Respuesta invalida del servicio Huawei." }));
         return writeJson(res, upstream.status, data);
       } catch (e) {

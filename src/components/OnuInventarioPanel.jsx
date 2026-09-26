@@ -455,6 +455,185 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   );
 }
 
+// ── ONUs sin configurar (autofind) + autorizar ──────────────────────────────
+function OnusSinConfigurar({ isDark, col }) {
+  const [lista, setLista] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+  const [seleccionada, setSeleccionada] = useState(null);
+  const borderStyle = { border: `1px solid ${isDark ? "#2c3c58" : "#dbe4ef"}` };
+
+  const buscar = useCallback(async () => {
+    setCargando(true);
+    setError("");
+    try {
+      const json = await fetch(`${DIAGNO_BASE}/api/huawei-onu/autofind`).then(r => r.json());
+      if (!json.ok) throw new Error(json.error || "No se pudo obtener el listado.");
+      setLista(json.onus || []);
+    } catch (e) {
+      setError(e.message || "Error de red.");
+      setLista([]);
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ background: col.card, ...borderStyle, borderRadius: 14, padding: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: col.text }}>ONUs detectadas sin autorizar</div>
+            <div style={{ fontSize: 12.5, color: col.sub, marginTop: 2 }}>Recorre las 4 tarjetas del OLT buscando equipos nuevos conectados — puede tardar hasta 2 minutos.</div>
+          </div>
+          <button onClick={buscar} disabled={cargando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 10, cursor: cargando ? "not-allowed" : "pointer", border: "none", background: "#ea580c", color: "#fff", opacity: cargando ? 0.6 : 1 }}>
+            {cargando ? "Buscando…" : "Buscar ONUs nuevas"}
+          </button>
+        </div>
+      </div>
+
+      {error && <div style={{ color: "#dc2626", fontSize: 13 }}>{error}</div>}
+      {lista === null && !cargando && !error && (
+        <div style={{ color: col.sub, fontSize: 13, textAlign: "center", padding: 30 }}>Tocá "Buscar ONUs nuevas" para recorrer el OLT.</div>
+      )}
+      {lista && lista.length === 0 && (
+        <div style={{ color: col.sub, fontSize: 13, textAlign: "center", padding: 30 }}>No se detectó ninguna ONU nueva sin autorizar.</div>
+      )}
+      {lista && lista.length > 0 && (
+        <div style={{ background: col.card, ...borderStyle, borderRadius: 14, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["Board", "Puerto", "SN", "Modelo", "Detectado", ""].map((h) => (
+                  <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, color: col.sub, textTransform: "uppercase" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((o, i) => (
+                <tr key={i} style={borderStyle}>
+                  <td style={{ padding: "9px 12px", fontSize: 13, color: col.text }}>{o.board}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 13, color: col.text }}>{o.port}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 13, color: col.text, fontFamily: "monospace" }}>{o.sn}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 12.5, color: col.sub }}>{o.equipmentId || "—"}</td>
+                  <td style={{ padding: "9px 12px", fontSize: 12, color: col.sub }}>{o.detectadoEn || "—"}</td>
+                  <td style={{ padding: "9px 12px" }}>
+                    <button onClick={() => setSeleccionada(o)} style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>Autorizar</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {seleccionada && (
+        <AutorizarOnuModal onu={seleccionada} isDark={isDark} col={col} onClose={() => setSeleccionada(null)}
+          onAutorizada={() => { setSeleccionada(null); buscar(); }} />
+      )}
+    </div>
+  );
+}
+
+// ── Modal de autorizacion (ont add + service-port + WAN/PPPoE opcional) ─────
+function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
+  const hoy = new Date();
+  const yyyymmdd = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, "0")}${String(hoy.getDate()).padStart(2, "0")}`;
+  const [ontId, setOntId] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [zona, setZona] = useState("");
+  const [comentario, setComentario] = useState("");
+  const [vlan, setVlan] = useState(100);
+  const [plan, setPlan] = useState(PLANES_VELOCIDAD[0].mbps);
+  const [configurarWan, setConfigurarWan] = useState(true);
+  const [pppoeUser, setPppoeUser] = useState("");
+  const [pppoePass, setPppoePass] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [mensaje, setMensaje] = useState(null);
+
+  const inputStyle = { border: isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", background: isDark ? "#0d172a" : "#fff", color: col.text, fontSize: 13, width: "100%", boxSizing: "border-box" };
+  const labelStyle = { fontSize: 11, fontWeight: 700, color: col.sub, textTransform: "uppercase", marginBottom: 4, display: "block" };
+  const campo = (label, children) => <div><span style={labelStyle}>{label}</span>{children}</div>;
+
+  const enviar = async () => {
+    if (!ontId || Number(ontId) < 0 || Number(ontId) > 127) { setMensaje({ ok: false, texto: "ONT-ID inválido (0-127)." }); return; }
+    if (!nombre.trim()) { setMensaje({ ok: false, texto: "Falta el nombre del cliente." }); return; }
+    if (configurarWan && (!pppoeUser.trim() || !pppoePass.trim())) { setMensaje({ ok: false, texto: "Falta usuario o contraseña PPPoE." }); return; }
+    setEnviando(true);
+    setMensaje(null);
+    const planObj = PLANES_VELOCIDAD.find((p) => p.mbps === plan);
+    const descripcion = `${nombre.trim()}_zone_${zona.trim() || "Sin zona"}_descr_${comentario.trim()}_authd_${yyyymmdd}`;
+    try {
+      const rAuth = await fetch(`${DIAGNO_BASE}/api/huawei-onu/autorizar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ board: onu.board, port: onu.port, ontId, snHex: onu.snHex, vlan, descripcion, planNombre: planObj.nombre, cirKbps: planObj.cirKbps }),
+      }).then(r => r.json());
+      if (!rAuth.ok) { setMensaje({ ok: false, texto: rAuth.error || "No se pudo autorizar la ONU." }); setEnviando(false); return; }
+
+      if (configurarWan) {
+        const rWan = await fetch(`${DIAGNO_BASE}/api/huawei-onu/wan`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ board: onu.board, port: onu.port, ontId, vlan, pppoeUser: pppoeUser.trim(), pppoePass: pppoePass.trim() }),
+        }).then(r => r.json());
+        if (!rWan.ok) { setMensaje({ ok: false, texto: `ONU autorizada, pero falló la config de WAN/PPPoE: ${rWan.error || "error desconocido"}` }); setEnviando(false); return; }
+      }
+      setMensaje({ ok: true, texto: "ONU autorizada" + (configurarWan ? " y configurada con Routing/PPPoE." : ".") });
+      setTimeout(() => onAutorizada(), 1200);
+    } catch (e) {
+      setMensaje({ ok: false, texto: e.message || "Error de red." });
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.55)" }} />
+      <div style={{ position: "relative", width: "min(480px, 100%)", maxHeight: "90vh", overflowY: "auto", background: col.bg, borderRadius: 14, padding: 20, boxShadow: "0 12px 36px rgba(0,0,0,.25)" }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: col.text, marginBottom: 4 }}>Autorizar ONU</div>
+        <div style={{ fontSize: 12.5, color: col.sub, marginBottom: 16, fontFamily: "monospace" }}>{onu.sn} · gpon 0/{onu.board}/{onu.port} · {onu.equipmentId || "modelo desconocido"}</div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          {campo("ONT-ID (0-127, libre en ese puerto)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder="ej. 50" />)}
+          {campo("VLAN", <input type="number" value={vlan} onChange={e => setVlan(Number(e.target.value))} style={inputStyle} />)}
+        </div>
+
+        <div style={{ marginBottom: 10 }}>{campo("Nombre del cliente", <input value={nombre} onChange={e => setNombre(e.target.value)} style={inputStyle} placeholder="Juan Pérez" />)}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          {campo("Zona", <input value={zona} onChange={e => setZona(e.target.value)} style={inputStyle} placeholder="Cural" />)}
+          {campo("Plan de velocidad", (
+            <select value={plan} onChange={e => setPlan(Number(e.target.value))} style={inputStyle}>
+              {PLANES_VELOCIDAD.map(p => <option key={p.mbps} value={p.mbps}>{p.nombre} ({p.mbps} Mbps)</option>)}
+            </select>
+          ))}
+        </div>
+        <div style={{ marginBottom: 14 }}>{campo("Dirección / comentario", <input value={comentario} onChange={e => setComentario(e.target.value)} style={inputStyle} placeholder="Dirección, DNI, celular…" />)}</div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={configurarWan} onChange={e => setConfigurarWan(e.target.checked)} />
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: col.text }}>Configurar Routing + PPPoE ahora (si no, la ONU queda en modo "configurar desde su propia página web")</span>
+        </label>
+
+        {configurarWan && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            {campo("Usuario PPPoE", <input value={pppoeUser} onChange={e => setPppoeUser(e.target.value)} style={inputStyle} />)}
+            {campo("Contraseña PPPoE", <input value={pppoePass} onChange={e => setPppoePass(e.target.value)} style={inputStyle} />)}
+          </div>
+        )}
+
+        {mensaje && <div style={{ fontSize: 12.5, fontWeight: 600, color: mensaje.ok ? "#166534" : "#991b1b", marginBottom: 10 }}>{mensaje.ok ? "✓ " : "✗ "}{mensaje.texto}</div>}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={onClose} disabled={enviando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: "pointer", border: `1px solid ${isDark ? "#2c3c58" : "#cbd5e1"}`, background: "transparent", color: col.text }}>Cancelar</button>
+          <button onClick={enviar} disabled={enviando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: enviando ? "not-allowed" : "pointer", border: "none", background: "#16a34a", color: "#fff", opacity: enviando ? 0.6 : 1 }}>
+            {enviando ? "Autorizando…" : "Autorizar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Panel principal ──────────────────────────────────────────────────────────
 export default function OnuInventarioPanel({ theme }) {
   const isDark = theme === "dark";
@@ -473,6 +652,7 @@ export default function OnuInventarioPanel({ theme }) {
   const [conteoEstados, setConteoEstados] = useState({ online: 0, power_fail: 0, los: 0, admin_disabled: 0 });
   const [facetas, setFacetas] = useState({ boards: [], ports: [], zonas: [] });
   const [snSeleccionado, setSnSeleccionado] = useState(null);
+  const [tab, setTab] = useState("configuradas");
 
   const cargar = useCallback(async ({ refresh = false } = {}) => {
     setCargando(true);
@@ -540,6 +720,21 @@ export default function OnuInventarioPanel({ theme }) {
         </p>
       </div>
 
+      <div style={{ display: "flex", gap: 6 }}>
+        {[["configuradas", "ONUs configuradas"], ["sinconfigurar", "ONUs sin configurar"]].map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setTab(key)}
+            style={{
+              padding: "9px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+              border: tab === key ? "none" : (isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb"),
+              background: tab === key ? "#1d4ed8" : (isDark ? "#16213a" : "#f9fafb"),
+              color: tab === key ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
+            }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "sinconfigurar" && <OnusSinConfigurar isDark={isDark} col={{ card: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", text: isDark ? "#e6ecf7" : "#111827", sub: isDark ? "#93a2bd" : "#6b7280", bg: isDark ? "#111c33" : "#fff" }} />}
+
+      {tab === "configuradas" && (<>
       {/* Filtros */}
       <div style={{ ...s.card, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -674,6 +869,7 @@ export default function OnuInventarioPanel({ theme }) {
             style={{ ...s.input, cursor: page >= totalPages ? "default" : "pointer", opacity: page >= totalPages ? 0.5 : 1 }}>Siguiente →</button>
         </div>
       </div>
+      </>)}
 
       {snSeleccionado && <FichaOnuDrawer sn={snSeleccionado} onClose={() => setSnSeleccionado(null)} isDark={isDark} />}
     </div>
