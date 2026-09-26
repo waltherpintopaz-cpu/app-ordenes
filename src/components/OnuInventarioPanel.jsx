@@ -72,6 +72,7 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [zonaEdit, setZonaEdit] = useState("");
   const [comentarioEdit, setComentarioEdit] = useState("");
   const [editandoPppoe, setEditandoPppoe] = useState(false);
+  const [accesoRemotoEdit, setAccesoRemotoEdit] = useState("on");
   const [pppoeUserEdit, setPppoeUserEdit] = useState("");
   const [pppoePassEdit, setPppoePassEdit] = useState("");
 
@@ -306,30 +307,46 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
               <div style={{ fontSize: 11, fontWeight: 800, color: col.text, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
                 Acciones sobre la ONU
               </div>
+
+              {/* 1. Lo mas usado: plan de velocidad, destacado arriba */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${col.border}` }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase" }}>Plan</span>
+                <select
+                  value={planSeleccionado}
+                  onChange={(e) => setPlanSeleccionado(Number(e.target.value))}
+                  disabled={!!accionando}
+                  style={{ padding: "7px 10px", fontSize: 12.5, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }}
+                >
+                  {PLANES_VELOCIDAD.map((p) => <option key={p.mbps} value={p.mbps}>{p.nombre} ({p.mbps} Mbps)</option>)}
+                </select>
+                <button
+                  disabled={!!accionando}
+                  onClick={() => {
+                    const plan = PLANES_VELOCIDAD.find((p) => p.mbps === planSeleccionado);
+                    ejecutarAccion("velocidad", "velocidad", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, planNombre: plan.nombre, cirKbps: plan.cirKbps },
+                      `¿Cambiar el plan de esta ONU a ${plan.nombre} (${plan.mbps} Mbps)?`);
+                  }}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #2563eb", background: "#dbeafe", color: "#1e40af" }}
+                >{accionando === "velocidad" ? "Aplicando…" : "⚡ Cambiar velocidad"}</button>
+              </div>
+
+              {/* 2. Configuracion (mismo peso visual, neutro) */}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                 <button
                   disabled={!!accionando}
-                  onClick={() => ejecutarAccion("reiniciar", "reiniciar", { board: ficha.board, port: ficha.port, ontId: ficha.onuId },
-                    "¿Reiniciar esta ONU?\n\nEl cliente se queda sin internet unos 30-60 segundos mientras vuelve a conectar.")}
-                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #f59e0b", background: "#fef3c7", color: "#92400e" }}
-                >{accionando === "reiniciar" ? "Reiniciando…" : "↻ Reiniciar"}</button>
+                  onClick={() => { setEditando((v) => !v); setEditandoPppoe(false); }}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: editando ? col.card : "transparent", color: col.text }}
+                >✎ {editando ? "Cancelar edición" : "Editar nombre/zona"}</button>
 
                 <button
                   disabled={!!accionando}
-                  onClick={() => ejecutarAccion("eliminar", "eliminar", { board: ficha.board, port: ficha.port, ontId: ficha.onuId },
-                    "¿ELIMINAR esta ONU del OLT?\n\nEl cliente queda SIN SERVICIO hasta que alguien la autorice de nuevo. Esta acción no se deshace automáticamente.")}
-                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #dc2626", background: "#fee2e2", color: "#991b1b" }}
-                >{accionando === "eliminar" ? "Eliminando…" : "✕ Eliminar"}</button>
-
-                <button
-                  disabled={!!accionando}
-                  onClick={() => setEditando((v) => !v)}
-                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
-                >{editando ? "Cancelar edición" : "✎ Editar nombre/zona"}</button>
+                  onClick={() => { setEditandoPppoe((v) => !v); setEditando(false); }}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: editandoPppoe ? col.card : "transparent", color: col.text }}
+                >🔑 {editandoPppoe ? "Cancelar" : "Configurar Routing/PPPoE"}</button>
               </div>
 
               {editando && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
                   <input value={nombreEdit} onChange={(e) => setNombreEdit(e.target.value)} placeholder="Nombre del cliente"
                     style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text, gridColumn: "1 / -1" }} />
                   <input value={zonaEdit} onChange={(e) => setZonaEdit(e.target.value)} placeholder="Zona"
@@ -351,28 +368,8 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                 </div>
               )}
 
-              <button
-                disabled={!!accionando}
-                onClick={() => setEditandoPppoe((v) => !v)}
-                style={{ marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
-              >{editandoPppoe ? "Cancelar" : "🔑 Configurar Routing/PPPoE"}</button>
-
-              <button
-                disabled={!!accionando}
-                onClick={() => ejecutarAccion("acceso-remoto-on", "acceso-remoto", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, habilitar: true },
-                  "¿Habilitar el acceso remoto a la página web de esta ONU desde internet?")}
-                style={{ marginLeft: 8, marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}
-              >{accionando === "acceso-remoto-on" ? "Habilitando…" : "🌐 Habilitar acceso remoto"}</button>
-
-              <button
-                disabled={!!accionando}
-                onClick={() => ejecutarAccion("acceso-remoto-off", "acceso-remoto", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, habilitar: false },
-                  "¿Deshabilitar el acceso remoto a la página web de esta ONU?")}
-                style={{ marginLeft: 8, marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
-              >{accionando === "acceso-remoto-off" ? "Deshabilitando…" : "Deshabilitar acceso remoto"}</button>
-
               {editandoPppoe && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
                   <input value={pppoeUserEdit} onChange={(e) => setPppoeUserEdit(e.target.value)} placeholder="Usuario PPPoE"
                     style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
                   <input value={pppoePassEdit} onChange={(e) => setPppoePassEdit(e.target.value)} placeholder="Contraseña PPPoE"
@@ -392,28 +389,48 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                 </div>
               )}
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {/* Acceso remoto: un solo selector, no dos botones ambiguos --
+                  no hay forma confiable de leer el estado actual del equipo,
+                  asi que se pide elegir en vez de mostrar "Habilitar"/
+                  "Deshabilitar" como si fueran informativos. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${col.border}` }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase" }}>Acceso remoto WAN</span>
                 <select
-                  value={planSeleccionado}
-                  onChange={(e) => setPlanSeleccionado(Number(e.target.value))}
+                  value={accesoRemotoEdit}
+                  onChange={(e) => setAccesoRemotoEdit(e.target.value)}
                   disabled={!!accionando}
                   style={{ padding: "7px 10px", fontSize: 12.5, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }}
                 >
-                  {PLANES_VELOCIDAD.map((p) => <option key={p.mbps} value={p.mbps}>{p.nombre} ({p.mbps} Mbps)</option>)}
+                  <option value="on">Habilitado</option>
+                  <option value="off">Deshabilitado</option>
                 </select>
                 <button
                   disabled={!!accionando}
-                  onClick={() => {
-                    const plan = PLANES_VELOCIDAD.find((p) => p.mbps === planSeleccionado);
-                    ejecutarAccion("velocidad", "velocidad", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, planNombre: plan.nombre, cirKbps: plan.cirKbps },
-                      `¿Cambiar el plan de esta ONU a ${plan.nombre} (${plan.mbps} Mbps)?`);
-                  }}
-                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #2563eb", background: "#dbeafe", color: "#1e40af" }}
-                >{accionando === "velocidad" ? "Aplicando…" : "⚡ Cambiar velocidad"}</button>
+                  onClick={() => ejecutarAccion("acceso-remoto", "acceso-remoto", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, habilitar: accesoRemotoEdit === "on" },
+                    `¿${accesoRemotoEdit === "on" ? "Habilitar" : "Deshabilitar"} el acceso remoto a la página web de esta ONU?`)}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
+                >{accionando === "acceso-remoto" ? "Aplicando…" : "Aplicar"}</button>
+              </div>
+
+              {/* 3. Acciones de riesgo, separadas visualmente al final */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button
+                  disabled={!!accionando}
+                  onClick={() => ejecutarAccion("reiniciar", "reiniciar", { board: ficha.board, port: ficha.port, ontId: ficha.onuId },
+                    "¿Reiniciar esta ONU?\n\nEl cliente se queda sin internet unos 30-60 segundos mientras vuelve a conectar.")}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #f59e0b", background: "#fef3c7", color: "#92400e" }}
+                >{accionando === "reiniciar" ? "Reiniciando…" : "↻ Reiniciar"}</button>
+
+                <button
+                  disabled={!!accionando}
+                  onClick={() => ejecutarAccion("eliminar", "eliminar", { board: ficha.board, port: ficha.port, ontId: ficha.onuId },
+                    "¿ELIMINAR esta ONU del OLT?\n\nEl cliente queda SIN SERVICIO hasta que alguien la autorice de nuevo. Esta acción no se deshace automáticamente.")}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #dc2626", background: "#fee2e2", color: "#991b1b" }}
+                >{accionando === "eliminar" ? "Eliminando…" : "✕ Eliminar"}</button>
               </div>
 
               {mensajeAccion && (
-                <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: mensajeAccion.ok ? "#166534" : "#991b1b" }}>
+                <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: mensajeAccion.ok ? "#166534" : "#991b1b" }}>
                   {mensajeAccion.ok ? "✓ " : "✗ "}{mensajeAccion.texto}
                 </div>
               )}
