@@ -66,7 +66,7 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [loadingTrafico, setLoadingTrafico] = useState(false);
   const [accionando, setAccionando] = useState("");
   const [mensajeAccion, setMensajeAccion] = useState(null);
-  const [planSeleccionado, setPlanSeleccionado] = useState(PLANES_VELOCIDAD[0].mbps);
+  const [planSeleccionado, setPlanSeleccionado] = useState(1000);
 
   const ejecutarAccion = useCallback(async (accion, ruta, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
@@ -540,11 +540,22 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
   const hoy = new Date();
   const yyyymmdd = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, "0")}${String(hoy.getDate()).padStart(2, "0")}`;
   const [ontId, setOntId] = useState("");
+  const [buscandoOntId, setBuscandoOntId] = useState(true);
+  useEffect(() => {
+    let cancelado = false;
+    setBuscandoOntId(true);
+    fetch(`${HUAWEI_OLT_SNMP_API}/onu-siguiente-id?board=${onu.board}&port=${onu.port}`)
+      .then(r => r.json())
+      .then(json => { if (!cancelado && json.ok && json.ontId != null) setOntId(String(json.ontId)); })
+      .catch(() => {})
+      .finally(() => { if (!cancelado) setBuscandoOntId(false); });
+    return () => { cancelado = true; };
+  }, [onu.board, onu.port]);
   const [nombre, setNombre] = useState("");
   const [zona, setZona] = useState("");
   const [comentario, setComentario] = useState("");
   const [vlan, setVlan] = useState(100);
-  const [plan, setPlan] = useState(PLANES_VELOCIDAD[0].mbps);
+  const [plan, setPlan] = useState(1000);
   const [configurarWan, setConfigurarWan] = useState(true);
   const [pppoeUser, setPppoeUser] = useState("");
   const [pppoePass, setPppoePass] = useState("");
@@ -594,7 +605,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         <div style={{ fontSize: 12.5, color: col.sub, marginBottom: 16, fontFamily: "monospace" }}>{onu.sn} · gpon 0/{onu.board}/{onu.port} · {onu.equipmentId || "modelo desconocido"}</div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          {campo("ONT-ID (0-127, libre en ese puerto)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder="ej. 50" />)}
+          {campo(buscandoOntId ? "ONT-ID (buscando uno libre…)" : "ONT-ID (sugerido automáticamente, se puede cambiar)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder={buscandoOntId ? "…" : "ej. 50"} />)}
           {campo("VLAN", <input type="number" value={vlan} onChange={e => setVlan(Number(e.target.value))} style={inputStyle} />)}
         </div>
 
