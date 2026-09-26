@@ -1357,6 +1357,7 @@ const server = http.createServer(async (req, res) => {
       autorizar: "/onu-autorizar",
       wan: "/onu-wan",
       "acceso-remoto": "/onu-acceso-remoto",
+      editar: "/onu-editar",
     };
     if (req.method === "POST" && String(req.url || "").startsWith("/api/huawei-onu/") && HUAWEI_ONU_RUTAS[req.url.split("/").pop()]) {
       if (!HUAWEI_ACCION_TOKEN) return writeJson(res, 500, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado en el servidor." });

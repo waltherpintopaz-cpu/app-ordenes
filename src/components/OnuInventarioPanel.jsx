@@ -67,6 +67,10 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [accionando, setAccionando] = useState("");
   const [mensajeAccion, setMensajeAccion] = useState(null);
   const [planSeleccionado, setPlanSeleccionado] = useState(1000);
+  const [editando, setEditando] = useState(false);
+  const [nombreEdit, setNombreEdit] = useState("");
+  const [zonaEdit, setZonaEdit] = useState("");
+  const [comentarioEdit, setComentarioEdit] = useState("");
 
   const ejecutarAccion = useCallback(async (accion, ruta, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
@@ -97,7 +101,12 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
       .then(json => {
         if (cancelado) return;
         if (!json.ok) { setError(json.error || "No se pudo obtener la ficha."); setFicha(null); }
-        else setFicha(json);
+        else {
+          setFicha(json);
+          setNombreEdit(json.nombre || "");
+          setZonaEdit(json.zona || "");
+          setComentarioEdit(json.comentario || "");
+        }
       })
       .catch(e => { if (!cancelado) setError(e.message || "Error de red."); })
       .finally(() => { if (!cancelado) setLoading(false); });
@@ -308,7 +317,36 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                     "¿ELIMINAR esta ONU del OLT?\n\nEl cliente queda SIN SERVICIO hasta que alguien la autorice de nuevo. Esta acción no se deshace automáticamente.")}
                   style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #dc2626", background: "#fee2e2", color: "#991b1b" }}
                 >{accionando === "eliminar" ? "Eliminando…" : "✕ Eliminar"}</button>
+
+                <button
+                  disabled={!!accionando}
+                  onClick={() => setEditando((v) => !v)}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
+                >{editando ? "Cancelar edición" : "✎ Editar nombre/zona"}</button>
               </div>
+
+              {editando && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
+                  <input value={nombreEdit} onChange={(e) => setNombreEdit(e.target.value)} placeholder="Nombre del cliente"
+                    style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text, gridColumn: "1 / -1" }} />
+                  <input value={zonaEdit} onChange={(e) => setZonaEdit(e.target.value)} placeholder="Zona"
+                    style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+                  <input value={comentarioEdit} onChange={(e) => setComentarioEdit(e.target.value)} placeholder="Dirección/comentario"
+                    style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+                  <button
+                    disabled={!!accionando}
+                    onClick={async () => {
+                      await ejecutarAccion("editar", "editar", {
+                        board: ficha.board, port: ficha.port, ontId: ficha.onuId,
+                        nombre: nombreEdit, zona: zonaEdit, comentario: comentarioEdit,
+                        fechaAutorizacionISO: ficha.fechaAutorizacionISO,
+                      });
+                      setEditando(false);
+                    }}
+                    style={{ gridColumn: "1 / -1", padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "none", background: "#16a34a", color: "#fff" }}
+                  >{accionando === "editar" ? "Guardando…" : "Guardar cambios"}</button>
+                </div>
+              )}
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <select
