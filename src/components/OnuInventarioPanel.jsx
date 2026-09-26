@@ -71,6 +71,9 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [nombreEdit, setNombreEdit] = useState("");
   const [zonaEdit, setZonaEdit] = useState("");
   const [comentarioEdit, setComentarioEdit] = useState("");
+  const [editandoPppoe, setEditandoPppoe] = useState(false);
+  const [pppoeUserEdit, setPppoeUserEdit] = useState("");
+  const [pppoePassEdit, setPppoePassEdit] = useState("");
 
   const ejecutarAccion = useCallback(async (accion, ruta, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
@@ -345,6 +348,33 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                     }}
                     style={{ gridColumn: "1 / -1", padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "none", background: "#16a34a", color: "#fff" }}
                   >{accionando === "editar" ? "Guardando…" : "Guardar cambios"}</button>
+                </div>
+              )}
+
+              <button
+                disabled={!!accionando}
+                onClick={() => setEditandoPppoe((v) => !v)}
+                style={{ marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
+              >{editandoPppoe ? "Cancelar" : "🔑 Configurar Routing/PPPoE"}</button>
+
+              {editandoPppoe && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
+                  <input value={pppoeUserEdit} onChange={(e) => setPppoeUserEdit(e.target.value)} placeholder="Usuario PPPoE"
+                    style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+                  <input value={pppoePassEdit} onChange={(e) => setPppoePassEdit(e.target.value)} placeholder="Contraseña PPPoE"
+                    style={{ padding: "7px 10px", fontSize: 12.5, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+                  <button
+                    disabled={!!accionando || !pppoeUserEdit.trim() || !pppoePassEdit.trim()}
+                    onClick={async () => {
+                      if (!window.confirm("¿Configurar/cambiar el usuario y contraseña PPPoE de esta ONU?\n\nSi el cliente ya tenía otro usuario cargado en su router, va a dejar de funcionar hasta que se lo actualicen ahí también.")) return;
+                      await ejecutarAccion("wan", "wan", {
+                        board: ficha.board, port: ficha.port, ontId: ficha.onuId,
+                        pppoeUser: pppoeUserEdit.trim(), pppoePass: pppoePassEdit.trim(),
+                      });
+                      setEditandoPppoe(false);
+                    }}
+                    style={{ gridColumn: "1 / -1", padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: (accionando || !pppoeUserEdit.trim() || !pppoePassEdit.trim()) ? 0.6 : 1, border: "none", background: "#2563eb", color: "#fff" }}
+                  >{accionando === "wan" ? "Aplicando…" : "Guardar PPPoE"}</button>
                 </div>
               )}
 
