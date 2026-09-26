@@ -296,6 +296,7 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                 [Ico.chip, "Modelo", ficha.modelo || "—"],
                 [Ico.chip, "Firmware", ficha.firmware || "—"],
                 [Ico.server, "IP WAN (PPPoE)", ficha.wanIp || "—"],
+                [Ico.signal, "Distancia a la OLT", ficha.distanciaMetros != null ? `${ficha.distanciaMetros} m (aprox.)` : "—"],
               ].map(([Icon, label, value], i) => (
                 <div key={i} style={{ background: col.card, borderRadius: 10, padding: "9px 11px", border: `1px solid ${col.border}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: col.sub, fontWeight: 700, textTransform: "uppercase", marginBottom: 3 }}>
