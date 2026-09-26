@@ -463,11 +463,11 @@ function OnusSinConfigurar({ isDark, col }) {
   const [seleccionada, setSeleccionada] = useState(null);
   const borderStyle = { border: `1px solid ${isDark ? "#2c3c58" : "#dbe4ef"}` };
 
-  const buscar = useCallback(async () => {
+  const buscar = useCallback(async (forzar) => {
     setCargando(true);
     setError("");
     try {
-      const json = await fetch(`${DIAGNO_BASE}/api/huawei-onu/autofind`).then(r => r.json());
+      const json = await fetch(`${DIAGNO_BASE}/api/huawei-onu/autofind${forzar ? "?refresh=1" : ""}`).then(r => r.json());
       if (!json.ok) throw new Error(json.error || "No se pudo obtener el listado.");
       setLista(json.onus || []);
     } catch (e) {
@@ -529,7 +529,18 @@ function OnusSinConfigurar({ isDark, col }) {
 
       {seleccionada && (
         <AutorizarOnuModal onu={seleccionada} isDark={isDark} col={col} onClose={() => setSeleccionada(null)}
-          onAutorizada={() => { setSeleccionada(null); buscar(); }} />
+          onAutorizada={() => {
+            // Saca la ONU de la lista al instante (no esperar el cache de
+            // fondo, que puede tardar hasta 5 min en refrescarse solo).
+            // OJO: no volver a llamar buscar() aca -- el endpoint devuelve
+            // el cache VIEJO al toque (solo dispara el refresco atras), asi
+            // que pisaria este quite optimista con la misma lista vieja.
+            // El refresh=1 solo sirve para que la PROXIMA carga ya venga
+            // actualizada, se ignora la respuesta de esta llamada.
+            setLista((prev) => (prev || []).filter((o) => !(o.board === seleccionada.board && o.port === seleccionada.port && o.sn === seleccionada.sn)));
+            setSeleccionada(null);
+            fetch(`${DIAGNO_BASE}/api/huawei-onu/autofind?refresh=1`).catch(() => {});
+          }} />
       )}
     </div>
   );
