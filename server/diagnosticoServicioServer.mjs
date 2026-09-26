@@ -1375,11 +1375,14 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // GET /api/huawei-onu/autofind -- lista ONUs detectadas sin autorizar.
-    if (req.method === "GET" && req.url === "/api/huawei-onu/autofind") {
+    // GET /api/huawei-onu/autofind[?refresh=1] -- lista ONUs detectadas sin
+    // autorizar. OJO: comparar req.url exacto rompe con el query string del
+    // refresh -- hay que matchear solo el pathname.
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/huawei-onu/autofind") {
       if (!HUAWEI_ACCION_TOKEN) return writeJson(res, 500, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado en el servidor." });
+      const qs = String(req.url || "").split("?")[1] || "";
       try {
-        const upstream = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-autofind`, { headers: { "x-debug-token": HUAWEI_ACCION_TOKEN } });
+        const upstream = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-autofind${qs ? "?" + qs : ""}`, { headers: { "x-debug-token": HUAWEI_ACCION_TOKEN } });
         const data = await upstream.json().catch(() => ({ ok: false, error: "Respuesta invalida del servicio Huawei." }));
         return writeJson(res, upstream.status, data);
       } catch (e) {
