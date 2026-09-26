@@ -2,6 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
+// Las acciones reales (reiniciar/eliminar/cambiar velocidad) NO le pegan
+// directo a HUAWEI_OLT_SNMP_API -- pasan por el proxy del servidor "diagno"
+// (que guarda el token de accion server-side, nunca expuesto al navegador).
+const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").trim().replace(/\/$/, "");
+// Planes de velocidad conocidos -- cirKbps = Mbps * 1048, misma proporcion
+// que usa SmartOLT (confirmado: 500M -> 524032 kbps, 1G -> 1048000 kbps).
+// La traffic-table se crea sola en el OLT si todavia no existe.
+const PLANES_VELOCIDAD = [100, 200, 300, 400, 500, 600, 700, 1000].map((mbps) => ({
+  mbps,
+  nombre: mbps === 1000 ? "1G" : `${mbps}M`,
+  cirKbps: Math.round(mbps * 1048),
+}));
 
 const ESTADO = {
   online:         { label: "Online",          dot: "#22c55e", text: "#15803d", bg: "#dcfce7" },
@@ -52,6 +64,28 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [loadingHist, setLoadingHist] = useState(false);
   const [filasTrafico, setFilasTrafico] = useState([]);
   const [loadingTrafico, setLoadingTrafico] = useState(false);
+  const [accionando, setAccionando] = useState("");
+  const [mensajeAccion, setMensajeAccion] = useState(null);
+  const [planSeleccionado, setPlanSeleccionado] = useState(PLANES_VELOCIDAD[0].mbps);
+
+  const ejecutarAccion = useCallback(async (accion, ruta, body, confirmMsg) => {
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    setAccionando(accion);
+    setMensajeAccion(null);
+    try {
+      const r = await fetch(`${DIAGNO_BASE}/api/huawei-onu/${ruta}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await r.json().catch(() => ({ ok: false, error: "Respuesta inválida del servidor." }));
+      setMensajeAccion({ ok: !!json.ok, texto: json.ok ? "Listo." : (json.error || "No se pudo completar la acción.") });
+    } catch (e) {
+      setMensajeAccion({ ok: false, texto: e.message || "Error de red." });
+    } finally {
+      setAccionando("");
+    }
+  }, []);
 
   useEffect(() => {
     if (!sn) return undefined;
@@ -253,6 +287,53 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                   <div style={{ fontSize: 12.5, color: col.text, fontWeight: 600, wordBreak: "break-word" }}>{value}</div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ background: col.card, border: `1px solid ${col.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: col.text, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                Acciones sobre la ONU
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                <button
+                  disabled={!!accionando}
+                  onClick={() => ejecutarAccion("reiniciar", "reiniciar", { board: ficha.board, port: ficha.port, ontId: ficha.onuId },
+                    "¿Reiniciar esta ONU?\n\nEl cliente se queda sin internet unos 30-60 segundos mientras vuelve a conectar.")}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #f59e0b", background: "#fef3c7", color: "#92400e" }}
+                >{accionando === "reiniciar" ? "Reiniciando…" : "↻ Reiniciar"}</button>
+
+                <button
+                  disabled={!!accionando}
+                  onClick={() => ejecutarAccion("eliminar", "eliminar", { board: ficha.board, port: ficha.port, ontId: ficha.onuId },
+                    "¿ELIMINAR esta ONU del OLT?\n\nEl cliente queda SIN SERVICIO hasta que alguien la autorice de nuevo. Esta acción no se deshace automáticamente.")}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #dc2626", background: "#fee2e2", color: "#991b1b" }}
+                >{accionando === "eliminar" ? "Eliminando…" : "✕ Eliminar"}</button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <select
+                  value={planSeleccionado}
+                  onChange={(e) => setPlanSeleccionado(Number(e.target.value))}
+                  disabled={!!accionando}
+                  style={{ padding: "7px 10px", fontSize: 12.5, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }}
+                >
+                  {PLANES_VELOCIDAD.map((p) => <option key={p.mbps} value={p.mbps}>{p.nombre} ({p.mbps} Mbps)</option>)}
+                </select>
+                <button
+                  disabled={!!accionando}
+                  onClick={() => {
+                    const plan = PLANES_VELOCIDAD.find((p) => p.mbps === planSeleccionado);
+                    ejecutarAccion("velocidad", "velocidad", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, planNombre: plan.nombre, cirKbps: plan.cirKbps },
+                      `¿Cambiar el plan de esta ONU a ${plan.nombre} (${plan.mbps} Mbps)?`);
+                  }}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #2563eb", background: "#dbeafe", color: "#1e40af" }}
+                >{accionando === "velocidad" ? "Aplicando…" : "⚡ Cambiar velocidad"}</button>
+              </div>
+
+              {mensajeAccion && (
+                <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: mensajeAccion.ok ? "#166534" : "#991b1b" }}>
+                  {mensajeAccion.ok ? "✓ " : "✗ "}{mensajeAccion.texto}
+                </div>
+              )}
             </div>
           </>
         )}

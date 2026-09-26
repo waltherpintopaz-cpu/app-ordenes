@@ -29,6 +29,12 @@ const SMARTOLT_API_BASE =
 const SMARTOLT_TOKEN = String(process.env.SMARTOLT_TOKEN || process.env.VITE_SMART_OLT_TOKEN || DEFAULT_SMARTOLT_TOKEN).trim();
 const CHATWOOT_BASE = String(process.env.CHATWOOT_BASE || DEFAULT_CHATWOOT_BASE).trim().replace(/\/+$/, "") || DEFAULT_CHATWOOT_BASE;
 const CHATWOOT_TOKEN = String(process.env.CHATWOOT_TOKEN || DEFAULT_CHATWOOT_TOKEN).trim();
+// Proxy hacia las acciones reales de huawei-olt-signal (reiniciar/eliminar/
+// velocidad) -- el token NUNCA va en una VITE_* (esas quedan visibles en el
+// bundle publico del navegador, ver historial). Se queda solo server-side
+// aca, el frontend le pega a este proxy sin conocer el token.
+const HUAWEI_OLT_SNMP_API = String(process.env.HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/+$/, "");
+const HUAWEI_ACCION_TOKEN = String(process.env.HUAWEI_ACCION_TOKEN || "").trim();
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
@@ -1338,6 +1344,27 @@ const server = http.createServer(async (req, res) => {
       const result = await activarRouter({ nodo, userPppoe, ip });
       writeJson(res, 200, { ok: true, action: "activar", nodo, userPppoe, result });
       return;
+    }
+
+    // Proxy de acciones reales sobre ONUs Huawei (reiniciar/eliminar/cambiar
+    // velocidad) -- el frontend le pega ACA, no directo a huawei-olt-signal,
+    // para que el token de accion nunca viaje al navegador.
+    if (req.method === "POST" && (req.url === "/api/huawei-onu/reiniciar" || req.url === "/api/huawei-onu/eliminar" || req.url === "/api/huawei-onu/velocidad")) {
+      if (!HUAWEI_ACCION_TOKEN) return writeJson(res, 500, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado en el servidor." });
+      const accion = req.url.split("/").pop();
+      const rutaDestino = { reiniciar: "/onu-reiniciar", eliminar: "/onu-eliminar", velocidad: "/onu-velocidad" }[accion];
+      try {
+        const body = await readJsonBody(req);
+        const upstream = await fetch(`${HUAWEI_OLT_SNMP_API}${rutaDestino}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
+          body: JSON.stringify(body || {}),
+        });
+        const data = await upstream.json().catch(() => ({ ok: false, error: "Respuesta invalida del servicio Huawei." }));
+        return writeJson(res, upstream.status, data);
+      } catch (e) {
+        return writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
     }
 
     if (req.method === "POST" && req.url === "/api/mikrowisp/test") {
