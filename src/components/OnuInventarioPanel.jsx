@@ -357,6 +357,20 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                 style={{ marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
               >{editandoPppoe ? "Cancelar" : "🔑 Configurar Routing/PPPoE"}</button>
 
+              <button
+                disabled={!!accionando}
+                onClick={() => ejecutarAccion("acceso-remoto-on", "acceso-remoto", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, habilitar: true },
+                  "¿Habilitar el acceso remoto a la página web de esta ONU desde internet?")}
+                style={{ marginLeft: 8, marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}
+              >{accionando === "acceso-remoto-on" ? "Habilitando…" : "🌐 Habilitar acceso remoto"}</button>
+
+              <button
+                disabled={!!accionando}
+                onClick={() => ejecutarAccion("acceso-remoto-off", "acceso-remoto", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, habilitar: false },
+                  "¿Deshabilitar el acceso remoto a la página web de esta ONU?")}
+                style={{ marginLeft: 8, marginBottom: 10, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
+              >{accionando === "acceso-remoto-off" ? "Deshabilitando…" : "Deshabilitar acceso remoto"}</button>
+
               {editandoPppoe && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10, padding: 10, borderRadius: 8, background: isDark ? "#0d172a" : "#f8fafc" }}>
                   <input value={pppoeUserEdit} onChange={(e) => setPppoeUserEdit(e.target.value)} placeholder="Usuario PPPoE"
