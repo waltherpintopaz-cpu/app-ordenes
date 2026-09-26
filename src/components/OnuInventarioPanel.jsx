@@ -110,6 +110,9 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
           setNombreEdit(json.nombre || "");
           setZonaEdit(json.zona || "");
           setComentarioEdit(json.comentario || "");
+          setAccesoRemotoEdit(
+            json.accesoRemotoAplicado ? (json.accesoRemotoAplicado.habilitado ? "on" : "off") : ""
+          );
         }
       })
       .catch(e => { if (!cancelado) setError(e.message || "Error de red."); })
@@ -391,10 +394,17 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
 
               {/* Acceso remoto: un solo selector, no dos botones ambiguos --
                   no hay forma confiable de leer el estado actual del equipo,
-                  asi que se pide elegir en vez de mostrar "Habilitar"/
-                  "Deshabilitar" como si fueran informativos. */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${col.border}` }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase" }}>Acceso remoto WAN (acción, no muestra el estado actual)</span>
+                  asi que se muestra lo ULTIMO que se aplico desde este panel
+                  (persistido en Supabase) en vez de mostrar "Habilitar"/
+                  "Deshabilitar" como si fueran informativos del OLT. */}
+              <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${col.border}` }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase", marginBottom: 4 }}>Acceso remoto WAN</div>
+                <div style={{ fontSize: 11, color: col.sub, marginBottom: 8 }}>
+                  {ficha.accesoRemotoAplicado
+                    ? `Último aplicado desde este panel: ${ficha.accesoRemotoAplicado.habilitado ? "Habilitado" : "Deshabilitado"} (${new Date(ficha.accesoRemotoAplicado.actualizadoEn).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" })}). El OLT no permite leer el estado real.`
+                    : "Sin registro de acciones previas desde este panel. El OLT no permite leer el estado real."}
+                </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <select
                   value={accesoRemotoEdit}
                   onChange={(e) => setAccesoRemotoEdit(e.target.value)}
@@ -411,6 +421,7 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                     `¿${accesoRemotoEdit === "on" ? "Habilitar" : "Deshabilitar"} el acceso remoto a la página web de esta ONU?\n\nNo se puede leer el estado actual desde el equipo, así que confirmá según lo que necesites dejar.`)}
                   style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: (accionando || !accesoRemotoEdit) ? "not-allowed" : "pointer", opacity: (accionando || !accesoRemotoEdit) ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
                 >{accionando === "acceso-remoto" ? "Aplicando…" : "Aplicar"}</button>
+              </div>
               </div>
 
               {/* 3. Acciones de riesgo, separadas visualmente al final */}
