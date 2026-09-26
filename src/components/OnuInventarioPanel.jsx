@@ -72,7 +72,7 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [zonaEdit, setZonaEdit] = useState("");
   const [comentarioEdit, setComentarioEdit] = useState("");
   const [editandoPppoe, setEditandoPppoe] = useState(false);
-  const [accesoRemotoEdit, setAccesoRemotoEdit] = useState("on");
+  const [accesoRemotoEdit, setAccesoRemotoEdit] = useState("");
   const [pppoeUserEdit, setPppoeUserEdit] = useState("");
   const [pppoePassEdit, setPppoePassEdit] = useState("");
 
@@ -394,21 +394,22 @@ function FichaOnuDrawer({ sn, onClose, isDark }) {
                   asi que se pide elegir en vez de mostrar "Habilitar"/
                   "Deshabilitar" como si fueran informativos. */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${col.border}` }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase" }}>Acceso remoto WAN</span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase" }}>Acceso remoto WAN (acción, no muestra el estado actual)</span>
                 <select
                   value={accesoRemotoEdit}
                   onChange={(e) => setAccesoRemotoEdit(e.target.value)}
                   disabled={!!accionando}
                   style={{ padding: "7px 10px", fontSize: 12.5, fontWeight: 600, borderRadius: 8, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }}
                 >
-                  <option value="on">Habilitado</option>
-                  <option value="off">Deshabilitado</option>
+                  <option value="" disabled>Elegir acción…</option>
+                  <option value="on">Habilitar</option>
+                  <option value="off">Deshabilitar</option>
                 </select>
                 <button
-                  disabled={!!accionando}
+                  disabled={!!accionando || !accesoRemotoEdit}
                   onClick={() => ejecutarAccion("acceso-remoto", "acceso-remoto", { board: ficha.board, port: ficha.port, ontId: ficha.onuId, habilitar: accesoRemotoEdit === "on" },
-                    `¿${accesoRemotoEdit === "on" ? "Habilitar" : "Deshabilitar"} el acceso remoto a la página web de esta ONU?`)}
-                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: accionando ? "not-allowed" : "pointer", opacity: accionando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
+                    `¿${accesoRemotoEdit === "on" ? "Habilitar" : "Deshabilitar"} el acceso remoto a la página web de esta ONU?\n\nNo se puede leer el estado actual desde el equipo, así que confirmá según lo que necesites dejar.`)}
+                  style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: (accionando || !accesoRemotoEdit) ? "not-allowed" : "pointer", opacity: (accionando || !accesoRemotoEdit) ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
                 >{accionando === "acceso-remoto" ? "Aplicando…" : "Aplicar"}</button>
               </div>
 
