@@ -98,7 +98,24 @@ export default function OnuAveriasPanel({ theme }) {
     }
   }, []);
 
-  const eventos = eventosTodos.filter((ev) => {
+  // "LOS sin recuperar": de los ultimos 150 eventos, agrupar por ONU (sn) y
+  // quedarse con el mas reciente de cada una -- si ese mas reciente es
+  // "los_down" (sin señal), significa que todavia no le llego su "los_up"
+  // (recupero) despues, o sea sigue caida ahora mismo.
+  const losSinRecuperar = (() => {
+    const masRecientePorOnu = new Map();
+    for (const ev of eventosTodos) {
+      if (ev.tipo !== "los_down" && ev.tipo !== "los_up") continue;
+      const key = ev.sn || `${ev.board}-${ev.port}`;
+      const actual = masRecientePorOnu.get(key);
+      if (!actual || new Date(ev.ocurrido_en) > new Date(actual.ocurrido_en)) masRecientePorOnu.set(key, ev);
+    }
+    return [...masRecientePorOnu.values()]
+      .filter((ev) => ev.tipo === "los_down")
+      .sort((a, b) => new Date(b.ocurrido_en) - new Date(a.ocurrido_en));
+  })();
+
+  const eventos = categoriaFiltro === "los_sin_recuperar" ? losSinRecuperar : eventosTodos.filter((ev) => {
     if (categoriaFiltro === "los") return ev.tipo === "los_down" || ev.tipo === "los_up";
     if (categoriaFiltro === "luz") return ev.tipo === "power_down" || ev.tipo === "power_up";
     return true;
@@ -283,6 +300,7 @@ export default function OnuAveriasPanel({ theme }) {
             style={{ padding: "5px 8px", fontSize: 12, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
           >
             <option value="los">LOS (sin señal / recupera)</option>
+            <option value="los_sin_recuperar">LOS sin recuperar (activas)</option>
             <option value="luz">Luz (corte / vuelve)</option>
             <option value="todos">Todos</option>
           </select>
