@@ -1355,6 +1355,7 @@ const server = http.createServer(async (req, res) => {
       eliminar: "/onu-eliminar",
       velocidad: "/onu-velocidad",
       autorizar: "/onu-autorizar",
+      mover: "/onu-mover",
       wan: "/onu-wan",
       "acceso-remoto": "/onu-acceso-remoto",
       editar: "/onu-editar",

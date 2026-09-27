@@ -606,13 +606,22 @@ function OnusSinConfigurar({ isDark, col }) {
     }
   }, []);
 
+  // Autofind es SNMP directo (~1s), no el barrido Telnet viejo -- se puede
+  // refrescar solo cada 20s sin problema, sin esperar a que alguien
+  // apriete el boton.
+  useEffect(() => {
+    buscar(false);
+    const id = setInterval(() => buscar(false), 20000);
+    return () => clearInterval(id);
+  }, [buscar]);
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ background: col.card, ...borderStyle, borderRadius: 14, padding: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: col.text }}>ONUs detectadas sin autorizar</div>
-            <div style={{ fontSize: 12.5, color: col.sub, marginTop: 2 }}>Recorre las 4 tarjetas del OLT buscando equipos nuevos conectados — puede tardar hasta 2 minutos.</div>
+            <div style={{ fontSize: 12.5, color: col.sub, marginTop: 2 }}>Se actualiza solo cada 20s (consulta directa por SNMP, instantánea).</div>
           </div>
           <button onClick={buscar} disabled={cargando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 10, cursor: cargando ? "not-allowed" : "pointer", border: "none", background: "#ea580c", color: "#fff", opacity: cargando ? 0.6 : 1 }}>
             {cargando ? "Buscando…" : "Buscar ONUs nuevas"}
@@ -646,7 +655,14 @@ function OnusSinConfigurar({ isDark, col }) {
                   <td style={{ padding: "9px 12px", fontSize: 12.5, color: col.sub }}>{o.equipmentId || "—"}</td>
                   <td style={{ padding: "9px 12px", fontSize: 12, color: col.sub }}>{o.detectadoEn || "—"}</td>
                   <td style={{ padding: "9px 12px" }}>
-                    <button onClick={() => setSeleccionada(o)} style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>Autorizar</button>
+                    {o.accion === "mover" ? (
+                      <button onClick={() => setSeleccionada(o)} title={`Ya estaba autorizada en board ${o.previa.board}/puerto ${o.previa.port} como "${o.previa.nombre || "sin nombre"}"`}
+                        style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #d97706", background: "#fef3c7", color: "#92400e" }}>
+                        ↔ Mover
+                      </button>
+                    ) : (
+                      <button onClick={() => setSeleccionada(o)} style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>Autorizar</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -690,8 +706,9 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
       .finally(() => { if (!cancelado) setBuscandoOntId(false); });
     return () => { cancelado = true; };
   }, [onu.board, onu.port]);
-  const [nombre, setNombre] = useState("");
-  const [zona, setZona] = useState("");
+  const esMover = onu.accion === "mover";
+  const [nombre, setNombre] = useState(esMover ? (onu.previa.nombre || "") : "");
+  const [zona, setZona] = useState(esMover ? (onu.previa.zona || "") : "");
   const [comentario, setComentario] = useState("");
   const [vlan, setVlan] = useState(100);
   const [plan, setPlan] = useState(1000);
@@ -714,11 +731,14 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
     const planObj = PLANES_VELOCIDAD.find((p) => p.mbps === plan);
     const descripcion = `${nombre.trim()}_zone_${zona.trim() || "Sin zona"}_descr_${comentario.trim()}_authd_${yyyymmdd}`;
     try {
-      const rAuth = await fetch(`${DIAGNO_BASE}/api/huawei-onu/autorizar`, {
+      const ruta = esMover ? "mover" : "autorizar";
+      const cuerpo = { board: onu.board, port: onu.port, ontId, snHex: onu.snHex, vlan, descripcion, planNombre: planObj.nombre, cirKbps: planObj.cirKbps };
+      if (esMover) Object.assign(cuerpo, { previaBoard: onu.previa.board, previaPort: onu.previa.port, previaOnuId: onu.previa.onuId });
+      const rAuth = await fetch(`${DIAGNO_BASE}/api/huawei-onu/${ruta}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ board: onu.board, port: onu.port, ontId, snHex: onu.snHex, vlan, descripcion, planNombre: planObj.nombre, cirKbps: planObj.cirKbps }),
+        body: JSON.stringify(cuerpo),
       }).then(r => r.json());
-      if (!rAuth.ok) { setMensaje({ ok: false, texto: rAuth.error || "No se pudo autorizar la ONU." }); setEnviando(false); return; }
+      if (!rAuth.ok) { setMensaje({ ok: false, texto: rAuth.error || `No se pudo ${esMover ? "mover" : "autorizar"} la ONU.` }); setEnviando(false); return; }
 
       if (configurarWan) {
         const rWan = await fetch(`${DIAGNO_BASE}/api/huawei-onu/wan`, {
@@ -727,7 +747,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         }).then(r => r.json());
         if (!rWan.ok) { setMensaje({ ok: false, texto: `ONU autorizada, pero falló la config de WAN/PPPoE: ${rWan.error || "error desconocido"}` }); setEnviando(false); return; }
       }
-      setMensaje({ ok: true, texto: "ONU autorizada" + (configurarWan ? " y configurada con Routing/PPPoE." : ".") });
+      setMensaje({ ok: true, texto: (esMover ? "ONU movida" : "ONU autorizada") + (configurarWan ? " y configurada con Routing/PPPoE." : ".") });
       setTimeout(() => onAutorizada(), 1200);
     } catch (e) {
       setMensaje({ ok: false, texto: e.message || "Error de red." });
@@ -740,8 +760,13 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
     <div style={{ position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.55)" }} />
       <div style={{ position: "relative", width: "min(480px, 100%)", maxHeight: "90vh", overflowY: "auto", background: col.bg, borderRadius: 14, padding: 20, boxShadow: "0 12px 36px rgba(0,0,0,.25)" }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: col.text, marginBottom: 4 }}>Autorizar ONU</div>
-        <div style={{ fontSize: 12.5, color: col.sub, marginBottom: 16, fontFamily: "monospace" }}>{onu.sn} · gpon 0/{onu.board}/{onu.port} · {onu.equipmentId || "modelo desconocido"}</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: col.text, marginBottom: 4 }}>{esMover ? "Mover ONU" : "Autorizar ONU"}</div>
+        <div style={{ fontSize: 12.5, color: col.sub, marginBottom: esMover ? 4 : 16, fontFamily: "monospace" }}>{onu.sn} · gpon 0/{onu.board}/{onu.port} · {onu.equipmentId || "modelo desconocido"}</div>
+        {esMover && (
+          <div style={{ fontSize: 12, color: "#92400e", background: "#fef3c7", borderRadius: 8, padding: "8px 10px", marginBottom: 16 }}>
+            Ya estaba autorizada en <strong>board {onu.previa.board} / puerto {onu.previa.port}</strong> como "{onu.previa.nombre || "sin nombre"}". Al confirmar se borra ese registro viejo y se crea uno nuevo acá.
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           {campo(buscandoOntId ? "ONT-ID (buscando uno libre…)" : "ONT-ID (sugerido automáticamente, se puede cambiar)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder={buscandoOntId ? "…" : "ej. 50"} />)}
@@ -776,7 +801,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button onClick={onClose} disabled={enviando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: "pointer", border: `1px solid ${isDark ? "#2c3c58" : "#cbd5e1"}`, background: "transparent", color: col.text }}>Cancelar</button>
           <button onClick={enviar} disabled={enviando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: enviando ? "not-allowed" : "pointer", border: "none", background: "#16a34a", color: "#fff", opacity: enviando ? 0.6 : 1 }}>
-            {enviando ? "Autorizando…" : "Autorizar"}
+            {enviando ? (esMover ? "Moviendo…" : "Autorizando…") : (esMover ? "Mover" : "Autorizar")}
           </button>
         </div>
       </div>
