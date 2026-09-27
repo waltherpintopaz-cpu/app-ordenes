@@ -1188,10 +1188,31 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
+        // "Generico" = no es un nombre de persona real, es un id de sistema
+        // (nod_, pon N, usuario_N, o el propio username PPPoE tipo
+        // "0459@americanet" / "user132@fiber" / un DNI/numero puro) -- en
+        // estos casos NO tiene sentido pegar el usuario de Mikrotik al
+        // final (quedaria "0459@americanet — 0459@americanet", duplicado
+        // inutil, encontrado en 132/891 casos de la primera vista previa).
         const esGenerico = (nombre) => {
           const n = String(nombre || "").trim();
           if (!n) return true;
-          return /^(nod_|pon\s*0*\d|usuario_?\d*$)/i.test(n);
+          if (/^(nod_|pon\s*0*\d|usuario_?\d*$)/i.test(n)) return true;
+          if (/^user\d+(@|$)/i.test(n)) return true;
+          if (/@(americanet|fiber)$/i.test(n)) return true;
+          if (/^\d+$/.test(n)) return true;
+          return false;
+        };
+
+        // Comentarios placeholder tipo "-----", "----", "n/a" no traen
+        // info real -- encontrados en 209/891 casos, producian nombres
+        // basura como "usuario_554 — -----".
+        const comentarioUtil = (c) => {
+          const s = String(c || "").trim();
+          if (!s) return false;
+          if (/^[-_.\s]+$/.test(s)) return false;
+          if (/^n\/?a$/i.test(s)) return false;
+          return true;
         };
 
         const resultados = [];
@@ -1204,11 +1225,13 @@ const server = http.createServer(async (req, res) => {
           const comentarioMk = String(secret.comment || "").trim();
           if (!usuarioMk) continue;
 
+          const nombreEsIgualUsuario = String(o.nombre || "").trim().toLowerCase() === usuarioMk.toLowerCase();
+
           let nombreNuevo;
-          if (!esGenerico(o.nombre)) {
+          if (!esGenerico(o.nombre) && !nombreEsIgualUsuario) {
             nombreNuevo = `${o.nombre} — ${usuarioMk}`;
           } else {
-            if (!comentarioMk) continue; // MikroTik tampoco trae info util, no reemplazar por solo el usuario
+            if (!comentarioUtil(comentarioMk)) continue; // MikroTik tampoco trae info util, no reemplazar
             nombreNuevo = `${usuarioMk} — ${comentarioMk}`;
           }
           if (nombreNuevo === o.nombre) continue;
