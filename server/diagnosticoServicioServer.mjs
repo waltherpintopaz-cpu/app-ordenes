@@ -1174,6 +1174,25 @@ async function calcularCruceMacInterno() {
       }
     }
 
+    // Guardar TODO lo recien descubierto por Telnet, atado al SN, para
+    // que la proxima corrida de este mismo cruce (o la ficha individual
+    // de esa ONU) no tenga que volver a leer el puerto entero por Telnet.
+    if (macDesdeTelnet.size && HUAWEI_ACCION_TOKEN) {
+      const pares = [];
+      for (const o of todasOnus) {
+        if (normMac(o.wanMac)) continue;
+        const mac = macDesdeTelnet.get(`${o.board}-${o.port}-${o.onuId}`);
+        if (mac) pares.push({ sn: o.sn, mac });
+      }
+      if (pares.length) {
+        fetch(`${HUAWEI_OLT_SNMP_API}/onu-mac-guardar-lote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
+          body: JSON.stringify({ pares }),
+        }).catch(() => {}); // fire-and-forget
+      }
+    }
+
     // "Generico" = no es un nombre de persona real, es un id de sistema
     // (nod_, pon N, usuario_N, o el propio username PPPoE tipo
     // "0459@americanet" / "user132@fiber" / un DNI/numero puro) -- en
@@ -1314,11 +1333,25 @@ const server = http.createServer(async (req, res) => {
         if (!ficha?.ok) { writeJson(res, 200, { ok: false, error: ficha?.error || "No se encontró la ONU en la OLT." }); return; }
 
         const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
+        // ficha.wanMac ya viene con respaldo del propio huawei-olt-signal
+        // (SNMP, o lo ya guardado antes en onu_mac_wan) -- si sigue sin
+        // nada, es una ONU que nunca se resolvio, hay que ir a Telnet-por-
+        // puerto (lento) como ultimo recurso, y GUARDARLA para que esto no
+        // se repita.
         let mac = normMac(ficha.wanMac);
         if (!mac && ficha.board != null && ficha.port != null) {
           const puerto = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-macs-puerto?board=${ficha.board}&port=${ficha.port}`).then((r) => r.json()).catch(() => null);
           const entrada = puerto?.ok ? (puerto.entradas || []).find((e) => String(e.ontId) === String(ficha.onuId)) : null;
-          if (entrada) mac = normMac(entrada.mac);
+          if (entrada) {
+            mac = normMac(entrada.mac);
+            if (HUAWEI_ACCION_TOKEN) {
+              fetch(`${HUAWEI_OLT_SNMP_API}/onu-mac-guardar-lote`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
+                body: JSON.stringify({ pares: [{ sn, mac }] }),
+              }).catch(() => {}); // fire-and-forget
+            }
+          }
         }
 
         let mikrotik = null;
