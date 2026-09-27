@@ -18,7 +18,7 @@ const PLANES_VELOCIDAD = [100, 200, 300, 400, 500, 600, 700, 1000].map((mbps) =>
 const ESTADO = {
   online:         { label: "Online",          dot: "#22c55e", text: "#15803d", bg: "#dcfce7" },
   power_fail:     { label: "Power Fail",      dot: "#f59e0b", text: "#92400e", bg: "#fef3c7" },
-  los:            { label: "Sin señal (LOS)", dot: "#ef4444", text: "#991b1b", bg: "#fee2e2" },
+  los:            { label: "Sin señal (LOS)", dot: "#dc0000", text: "#991b1b", bg: "#fee2e2" },
   admin_disabled: { label: "Deshabilitado",   dot: "#6b7280", text: "#374151", bg: "#e5e7eb" },
 };
 const ESTADO_DESCONOCIDO = { label: "Desconocido", dot: "#d1d5db", text: "#6b7280", bg: "#f3f4f6" };
@@ -31,6 +31,17 @@ const RANGOS_SENAL_HISTORIAL = [
 ];
 
 const PAGE_SIZE = 100;
+
+// Umbrales tipicos de sensibilidad Rx en GPON -- >= -22 excelente, -22 a -25
+// buena, -25 a -27 al limite (atencion), peor que -27 debil/cerca del
+// minimo del receptor.
+function colorSenalRx(rx) {
+  if (rx == null) return "#9ca3af";
+  if (rx >= -22) return "#16a34a";
+  if (rx >= -25) return "#65a30d";
+  if (rx >= -27) return "#eab308";
+  return "#dc2626";
+}
 
 // ── Iconos SVG (linea, estilo feather) ──────────────────────────────────────
 const Ico = {
@@ -50,9 +61,11 @@ const Ico = {
   alertTriangle: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
   wifiOff: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" /><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" /><path d="M10.71 5.05A16 16 0 0 1 22.58 9" /><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>,
   slash: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>,
+  globe: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>,
+  linkOff: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17H7.5a4.5 4.5 0 0 1 0-9H9" /><path d="M15 8h1.5a4.5 4.5 0 0 1 3.16 7.71" /><line x1="8" y1="12.5" x2="10.5" y2="12.5" /><line x1="13.5" y1="12.5" x2="16" y2="12.5" /><line x1="4" y1="20" x2="20" y2="4" /></svg>,
 };
 
-const ESTADO_ICONO = { online: Ico.checkCircle, power_fail: Ico.plug, los: Ico.wifiOff, admin_disabled: Ico.slash };
+const ESTADO_ICONO = { online: Ico.globe, power_fail: Ico.plug, los: Ico.linkOff, admin_disabled: Ico.slash };
 
 // ── Ficha detallada (drawer lateral) ────────────────────────────────────────
 function FichaOnuDrawer({ sn, onClose, isDark }) {
@@ -877,9 +890,9 @@ export default function OnuInventarioPanel({ theme }) {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {[
             { key: "", label: "Todos", Icon: Ico.filter },
-            { key: "online", label: "Online", Icon: Ico.checkCircle },
-            { key: "power_fail", label: "Power Fail", Icon: Ico.alertTriangle },
-            { key: "los", label: "LOS", Icon: Ico.wifiOff },
+            { key: "online", label: "Online", Icon: Ico.globe },
+            { key: "power_fail", label: "Power Fail", Icon: Ico.plug },
+            { key: "los", label: "LOS", Icon: Ico.linkOff },
             { key: "admin_disabled", label: "Deshabilitado", Icon: Ico.slash },
           ].map(t => (
             <button key={t.key} type="button" onClick={() => { setPage(1); setEstadoFiltro(t.key); }}
@@ -988,7 +1001,14 @@ export default function OnuInventarioPanel({ theme }) {
                     <td style={{ ...s.td, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
                       {o.board != null ? `0/${o.board}/${o.port}` : <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}
                     </td>
-                    <td style={s.td}>{o.rxPower != null ? `${o.rxPower.toFixed(2)}` : "—"}</td>
+                    <td style={s.td}>
+                      {o.rxPower != null ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <Ico.signal width={13} height={13} style={{ color: colorSenalRx(o.rxPower) }} />
+                          {o.rxPower.toFixed(2)}
+                        </span>
+                      ) : "—"}
+                    </td>
                     <td style={s.td}>{o.txPower != null ? `${o.txPower.toFixed(2)}` : "—"}</td>
                     <td style={{ ...s.td, fontSize: 12, whiteSpace: "nowrap" }}>{o.fechaAutorizacion || "—"}</td>
                     <td style={{ ...s.td, width: 24, color: isDark ? "#5b6b8a" : "#d1d5db" }}><Ico.chevronRight width={14} height={14} /></td>
