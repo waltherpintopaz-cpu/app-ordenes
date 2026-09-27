@@ -1226,12 +1226,16 @@ async function calcularCruceMacInterno() {
         String(o.nombre || "").trim().toLowerCase() === usuarioMk.toLowerCase() ||
         soloAlfanum(o.nombre).includes(soloAlfanum(usuarioMk));
 
+      // Separador " - " (guion ASCII), NO em-dash "—" -- confirmado en
+      // vivo 2026-09-27 que el em-dash se pierde al pasar por el "ont
+      // modify ... desc" via Telnet (queda como doble espacio, sin
+      // separador visible: "dd  usuario_643" en vez de "dd — usuario_643").
       let nombreNuevo;
       if (!esGenerico(o.nombre) && !nombreYaTraeUsuario) {
-        nombreNuevo = `${o.nombre} — ${usuarioMk}`;
+        nombreNuevo = `${o.nombre} - ${usuarioMk}`;
       } else {
         if (!comentarioUtil(comentarioMk)) continue; // MikroTik tampoco trae info util, no reemplazar
-        nombreNuevo = `${usuarioMk} — ${comentarioMk}`;
+        nombreNuevo = `${usuarioMk} - ${comentarioMk}`;
       }
       if (nombreNuevo === o.nombre) continue;
 
