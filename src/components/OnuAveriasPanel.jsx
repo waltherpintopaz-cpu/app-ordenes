@@ -178,6 +178,17 @@ export default function OnuAveriasPanel({ theme }) {
                 placeholder="-5535234862"
                 style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
             </label>
+            <label style={{ fontSize: 12, color: col.sub, gridColumn: "1 / -1" }}>
+              Telegram — qué avisar (WhatsApp siempre se queda solo en avería de zona, para no arriesgar baneo)
+              <select value={configEdit.telegram_modo || "averia_zona"}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, telegram_modo: e.target.value }))}
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }}>
+                <option value="averia_zona">Solo avería de zona (igual que WhatsApp)</option>
+                <option value="todos">Cada evento individual (LOS y corte de luz)</option>
+                <option value="los">Cada evento de LOS individual</option>
+                <option value="power">Cada corte de luz individual</option>
+              </select>
+            </label>
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: col.text, marginBottom: 8, cursor: "pointer" }}>
             <input type="checkbox" checked={configEdit.whatsapp_habilitado}
