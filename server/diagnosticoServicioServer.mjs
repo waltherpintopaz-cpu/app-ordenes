@@ -1093,6 +1093,143 @@ const proxySmartOltRequest = async (req) => {
   return { status: response.status, json };
 };
 
+// Cruce de nombres: MAC WAN de cada ONU Huawei (SNMP + fallback Telnet por
+// puerto) contra los PPP secrets de MikroTik Tiabaya (last-caller-id).
+// Usado tanto por la vista previa (/api/cruce-mac-preview, solo lectura)
+// como por la aplicacion real (/api/cruce-mac-aplicar, escribe en la OLT).
+async function calcularCruceMac() {
+  let connection = null;
+  try {
+    // 1. Traer TODAS las ONUs del Huawei (paginado, hasta 20 paginas de
+    // 200 = 4000, mas que de sobra para las 1684 actuales).
+    let todasOnus = [];
+    for (let page = 1; page <= 20; page++) {
+      const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-list?pageSize=200&page=${page}`).then((r) => r.json());
+      if (!r.ok || !Array.isArray(r.onus) || r.onus.length === 0) break;
+      todasOnus = todasOnus.concat(r.onus);
+      if (todasOnus.length >= (r.total || 0)) break;
+    }
+
+    // 2. Traer los secrets de MikroTik Tiabaya (name, caller-id, comment).
+    connection = await connectRouterByKey("tiabaya");
+    const secrets = await withTimeout(connection.api.write("/ppp/secret/print", []), 25000, "Listar PPP Secret en Tiabaya");
+    await closeRouterApiSafe(connection.api);
+    connection = null;
+
+    const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
+    const secretPorMac = new Map();
+    for (const s of secrets) {
+      // last-caller-id (auto-registrado por RouterOS en cada conexion)
+      // esta poblado en 1689 de 2106 secrets -- caller-id (candado
+      // manual) casi nunca se usa (confirmado: solo 1 de 2106).
+      const mac = normMac(s["last-caller-id"] || s["caller-id"] || s.callerid);
+      if (mac && mac.length === 12) secretPorMac.set(mac, s);
+    }
+
+    // 3. Para las ONUs SIN wanMac por SNMP (PPPoE configurado manual en
+    // el equipo, no via OMCI), rellenar el MAC con la tabla L2 completa
+    // del puerto PON (1 llamada Telnet por puerto, no por ONU -- ver
+    // obtenerMacsPorPuerto en huawei-olt-signal). Solo 49 puertos unicos
+    // en todo el inventario vs. ~1170 ONUs sin wanMac, ~24x menos
+    // llamadas. Se hace secuencial (no en paralelo) para no saturar el
+    // limite de conexiones Telnet/SSH del OLT.
+    const macDesdeTelnet = new Map(); // "board-port-ontId" -> mac
+    const puertosPendientes = new Set();
+    for (const o of todasOnus) {
+      if (normMac(o.wanMac)) continue;
+      if (o.board == null || o.port == null) continue;
+      puertosPendientes.add(`${o.board}-${o.port}`);
+    }
+    for (const clave of puertosPendientes) {
+      const [board, port] = clave.split("-");
+      try {
+        const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-macs-puerto?board=${board}&port=${port}`).then((r) => r.json());
+        if (r.ok && Array.isArray(r.entradas)) {
+          for (const e of r.entradas) {
+            macDesdeTelnet.set(`${e.board}-${e.port}-${e.ontId}`, e.mac);
+          }
+        }
+      } catch (_) {
+        // si un puerto falla (ej. bloqueo temporal del OLT), seguir con los demas
+      }
+    }
+
+    // "Generico" = no es un nombre de persona real, es un id de sistema
+    // (nod_, pon N, usuario_N, o el propio username PPPoE tipo
+    // "0459@americanet" / "user132@fiber" / un DNI/numero puro) -- en
+    // estos casos NO tiene sentido pegar el usuario de Mikrotik al
+    // final (quedaria "0459@americanet — 0459@americanet", duplicado
+    // inutil, encontrado en 132/891 casos de la primera vista previa).
+    const esGenerico = (nombre) => {
+      const n = String(nombre || "").trim();
+      if (!n) return true;
+      if (/^(nod_|pon\s*0*\d|usuario_?\d*$)/i.test(n)) return true;
+      if (/^user\d+(@|$)/i.test(n)) return true;
+      if (/@(americanet|fiber)$/i.test(n)) return true;
+      if (/^\d+$/.test(n)) return true;
+      return false;
+    };
+
+    // Comentarios placeholder tipo "-----", "----", "n/a" no traen info
+    // real -- encontrados en 209/891 casos, producian nombres basura como
+    // "usuario_554 — -----". Y comentarios que son NOTAS OPERATIVAS del
+    // staff (no un nombre de cliente) -- encontrados 3 casos reales
+    // ("... verificar ya q se encontro con el user667...", "antes user
+    // 667- ..._ACTIVO") -- se excluyen por completo, no hay forma segura
+    // de "limpiarlos", solo de detectarlos y saltarlos.
+    const comentarioUtil = (c) => {
+      const s = String(c || "").trim();
+      if (!s) return false;
+      if (/^[-_.\s]+$/.test(s)) return false;
+      if (/^n\/?a$/i.test(s)) return false;
+      if (/verificar|_activo$|antes user|duplicado|revisar|pendiente|encontro con/i.test(s)) return false;
+      return true;
+    };
+
+    const soloAlfanum = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    const resultados = [];
+    for (const o of todasOnus) {
+      const mac = normMac(o.wanMac) || normMac(macDesdeTelnet.get(`${o.board}-${o.port}-${o.onuId}`));
+      if (!mac) continue;
+      const secret = secretPorMac.get(mac);
+      if (!secret) continue;
+      const usuarioMk = String(secret.name || "").trim();
+      const comentarioMk = String(secret.comment || "").trim();
+      if (!usuarioMk) continue;
+
+      // Cubre tanto "nombreActual === usuarioMk" exacto como el caso de
+      // "0443@americanet - SALDANA CHUQUIRUNA, PASCUAL" (ya trae el
+      // usuario pegado a mano con otro separador) -- comparando solo
+      // alfanumerico para no fallar por espacios/guiones/mayusculas.
+      const nombreYaTraeUsuario =
+        String(o.nombre || "").trim().toLowerCase() === usuarioMk.toLowerCase() ||
+        soloAlfanum(o.nombre).includes(soloAlfanum(usuarioMk));
+
+      let nombreNuevo;
+      if (!esGenerico(o.nombre) && !nombreYaTraeUsuario) {
+        nombreNuevo = `${o.nombre} — ${usuarioMk}`;
+      } else {
+        if (!comentarioUtil(comentarioMk)) continue; // MikroTik tampoco trae info util, no reemplazar
+        nombreNuevo = `${usuarioMk} — ${comentarioMk}`;
+      }
+      if (nombreNuevo === o.nombre) continue;
+
+      resultados.push({
+        sn: o.sn, board: o.board, port: o.port, mac,
+        nombreActual: o.nombre || null,
+        usuarioMikrotik: usuarioMk,
+        comentarioMikrotik: comentarioMk || null,
+        nombreNuevo,
+      });
+    }
+
+    return { todasOnus, secrets, resultados };
+  } finally {
+    if (connection?.api) await closeRouterApiSafe(connection.api);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "OPTIONS") {
@@ -1132,124 +1269,69 @@ const server = http.createServer(async (req, res) => {
     // PPP secrets de MikroTik Tiabaya. Sirve para revisar los nombres
     // propuestos antes de aplicar nada al OLT.
     if (req.method === "GET" && req.url === "/api/cruce-mac-preview") {
-      let connection = null;
       try {
-        // 1. Traer TODAS las ONUs del Huawei (paginado, hasta 20 paginas de
-        // 200 = 4000, mas que de sobra para las 1684 actuales).
-        let todasOnus = [];
-        for (let page = 1; page <= 20; page++) {
-          const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-list?pageSize=200&page=${page}`).then((r) => r.json());
-          if (!r.ok || !Array.isArray(r.onus) || r.onus.length === 0) break;
-          todasOnus = todasOnus.concat(r.onus);
-          if (todasOnus.length >= (r.total || 0)) break;
-        }
-
-        // 2. Traer los secrets de MikroTik Tiabaya (name, caller-id, comment).
-        connection = await connectRouterByKey("tiabaya");
-        const secrets = await withTimeout(connection.api.write("/ppp/secret/print", []), 25000, "Listar PPP Secret en Tiabaya");
-        await closeRouterApiSafe(connection.api);
-        connection = null;
-
-        const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
-        const secretPorMac = new Map();
-        for (const s of secrets) {
-          // last-caller-id (auto-registrado por RouterOS en cada conexion)
-          // esta poblado en 1689 de 2106 secrets -- caller-id (candado
-          // manual) casi nunca se usa (confirmado: solo 1 de 2106).
-          const mac = normMac(s["last-caller-id"] || s["caller-id"] || s.callerid);
-          if (mac && mac.length === 12) secretPorMac.set(mac, s);
-        }
-
-        // 3. Para las ONUs SIN wanMac por SNMP (PPPoE configurado manual en
-        // el equipo, no via OMCI), rellenar el MAC con la tabla L2 completa
-        // del puerto PON (1 llamada Telnet por puerto, no por ONU -- ver
-        // obtenerMacsPorPuerto en huawei-olt-signal). Solo 49 puertos unicos
-        // en todo el inventario vs. ~1170 ONUs sin wanMac, ~24x menos
-        // llamadas. Se hace secuencial (no en paralelo) para no saturar el
-        // limite de conexiones Telnet/SSH del OLT.
-        const macDesdeTelnet = new Map(); // "board-port-ontId" -> mac
-        const puertosPendientes = new Set();
-        for (const o of todasOnus) {
-          if (normMac(o.wanMac)) continue;
-          if (o.board == null || o.port == null) continue;
-          puertosPendientes.add(`${o.board}-${o.port}`);
-        }
-        for (const clave of puertosPendientes) {
-          const [board, port] = clave.split("-");
-          try {
-            const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-macs-puerto?board=${board}&port=${port}`).then((r) => r.json());
-            if (r.ok && Array.isArray(r.entradas)) {
-              for (const e of r.entradas) {
-                macDesdeTelnet.set(`${e.board}-${e.port}-${e.ontId}`, e.mac);
-              }
-            }
-          } catch (_) {
-            // si un puerto falla (ej. bloqueo temporal del OLT), seguir con los demas
-          }
-        }
-
-        // "Generico" = no es un nombre de persona real, es un id de sistema
-        // (nod_, pon N, usuario_N, o el propio username PPPoE tipo
-        // "0459@americanet" / "user132@fiber" / un DNI/numero puro) -- en
-        // estos casos NO tiene sentido pegar el usuario de Mikrotik al
-        // final (quedaria "0459@americanet — 0459@americanet", duplicado
-        // inutil, encontrado en 132/891 casos de la primera vista previa).
-        const esGenerico = (nombre) => {
-          const n = String(nombre || "").trim();
-          if (!n) return true;
-          if (/^(nod_|pon\s*0*\d|usuario_?\d*$)/i.test(n)) return true;
-          if (/^user\d+(@|$)/i.test(n)) return true;
-          if (/@(americanet|fiber)$/i.test(n)) return true;
-          if (/^\d+$/.test(n)) return true;
-          return false;
-        };
-
-        // Comentarios placeholder tipo "-----", "----", "n/a" no traen
-        // info real -- encontrados en 209/891 casos, producian nombres
-        // basura como "usuario_554 — -----".
-        const comentarioUtil = (c) => {
-          const s = String(c || "").trim();
-          if (!s) return false;
-          if (/^[-_.\s]+$/.test(s)) return false;
-          if (/^n\/?a$/i.test(s)) return false;
-          return true;
-        };
-
-        const resultados = [];
-        for (const o of todasOnus) {
-          const mac = normMac(o.wanMac) || normMac(macDesdeTelnet.get(`${o.board}-${o.port}-${o.onuId}`));
-          if (!mac) continue;
-          const secret = secretPorMac.get(mac);
-          if (!secret) continue;
-          const usuarioMk = String(secret.name || "").trim();
-          const comentarioMk = String(secret.comment || "").trim();
-          if (!usuarioMk) continue;
-
-          const nombreEsIgualUsuario = String(o.nombre || "").trim().toLowerCase() === usuarioMk.toLowerCase();
-
-          let nombreNuevo;
-          if (!esGenerico(o.nombre) && !nombreEsIgualUsuario) {
-            nombreNuevo = `${o.nombre} — ${usuarioMk}`;
-          } else {
-            if (!comentarioUtil(comentarioMk)) continue; // MikroTik tampoco trae info util, no reemplazar
-            nombreNuevo = `${usuarioMk} — ${comentarioMk}`;
-          }
-          if (nombreNuevo === o.nombre) continue;
-
-          resultados.push({
-            sn: o.sn, board: o.board, port: o.port, mac,
-            nombreActual: o.nombre || null,
-            usuarioMikrotik: usuarioMk,
-            comentarioMikrotik: comentarioMk || null,
-            nombreNuevo,
-          });
-        }
-
+        const { todasOnus, secrets, resultados } = await calcularCruceMac();
         writeJson(res, 200, { ok: true, totalOnus: todasOnus.length, totalSecrets: secrets.length, coincidencias: resultados.length, resultados });
       } catch (e) {
         writeJson(res, 200, { ok: false, error: e.message || String(e) });
-      } finally {
-        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
+    // POST /api/cruce-mac-aplicar { confirmar: true, limite?, sns? } --
+    // aplica de verdad los nombres propuestos por el cruce a la OLT (ont
+    // modify ... desc), preservando zona/comentario/fecha ya existentes de
+    // cada ONU (editarDatosOnu reescribe el campo desc completo, por eso
+    // hay que leerlos primero via /onu-info antes de editar). Secuencial,
+    // no en paralelo -- 1 sesion SSH por ONU, mismo limite de conexiones
+    // del OLT que el resto de acciones reales.
+    if (req.method === "POST" && req.url === "/api/cruce-mac-aplicar") {
+      const body = await readJsonBody(req).catch(() => ({}));
+      if (body?.confirmar !== true) {
+        writeJson(res, 400, { ok: false, error: "Falta confirmar:true en el body -- esto escribe de verdad en la OLT." });
+        return;
+      }
+      if (!HUAWEI_ACCION_TOKEN) {
+        writeJson(res, 500, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado en el servidor." });
+        return;
+      }
+      try {
+        const { resultados } = await calcularCruceMac();
+        let pendientes = resultados;
+        if (Array.isArray(body.sns) && body.sns.length) {
+          const set = new Set(body.sns.map((s) => String(s).toUpperCase()));
+          pendientes = pendientes.filter((r) => set.has(String(r.sn).toUpperCase()));
+        }
+        if (Number.isFinite(body.limite) && body.limite > 0) {
+          pendientes = pendientes.slice(0, body.limite);
+        }
+
+        const aplicados = [];
+        for (const r of pendientes) {
+          try {
+            const ficha = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(r.sn)}`).then((x) => x.json());
+            if (!ficha?.ok) { aplicados.push({ sn: r.sn, ok: false, error: ficha?.error || "No se pudo leer la ficha actual." }); continue; }
+            const editResp = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-editar`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
+              body: JSON.stringify({
+                board: r.board, port: r.port, ontId: ficha.onuId,
+                nombre: r.nombreNuevo,
+                zona: ficha.zona,
+                comentario: ficha.comentario,
+                fechaAutorizacionISO: ficha.fechaAutorizacionISO,
+              }),
+            }).then((x) => x.json());
+            aplicados.push({ sn: r.sn, ok: !!editResp?.ok, error: editResp?.ok ? undefined : (editResp?.error || "Fallo desconocido") });
+          } catch (e) {
+            aplicados.push({ sn: r.sn, ok: false, error: e.message || String(e) });
+          }
+        }
+
+        const exitos = aplicados.filter((a) => a.ok).length;
+        writeJson(res, 200, { ok: true, total: aplicados.length, exitos, fallos: aplicados.length - exitos, detalle: aplicados });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
       }
       return;
     }
