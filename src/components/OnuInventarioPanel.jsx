@@ -655,14 +655,18 @@ function OnusSinConfigurar({ isDark, col }) {
                   <td style={{ padding: "9px 12px", fontSize: 12.5, color: col.sub }}>{o.equipmentId || "—"}</td>
                   <td style={{ padding: "9px 12px", fontSize: 12, color: col.sub }}>{o.detectadoEn || "—"}</td>
                   <td style={{ padding: "9px 12px" }}>
-                    {o.accion === "mover" ? (
-                      <button onClick={() => setSeleccionada(o)} title={`Ya estaba autorizada en board ${o.previa.board}/puerto ${o.previa.port} como "${o.previa.nombre || "sin nombre"}"`}
-                        style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #d97706", background: "#fef3c7", color: "#92400e" }}>
-                        ↔ Mover
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button onClick={() => setSeleccionada({ ...o, modoForzado: "autorizar" })}
+                        style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>
+                        Autorizar
                       </button>
-                    ) : (
-                      <button onClick={() => setSeleccionada(o)} style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>Autorizar</button>
-                    )}
+                      {o.accion === "mover" && (
+                        <button onClick={() => setSeleccionada({ ...o, modoForzado: "mover" })} title={`Ya estaba autorizada en board ${o.previa.board}/puerto ${o.previa.port} como "${o.previa.nombre || "sin nombre"}"`}
+                          style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #d97706", background: "#fef3c7", color: "#92400e" }}>
+                          ↔ Mover
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -706,7 +710,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
       .finally(() => { if (!cancelado) setBuscandoOntId(false); });
     return () => { cancelado = true; };
   }, [onu.board, onu.port]);
-  const esMover = onu.accion === "mover";
+  const esMover = onu.modoForzado === "mover";
   const [nombre, setNombre] = useState(esMover ? (onu.previa.nombre || "") : "");
   const [zona, setZona] = useState(esMover ? (onu.previa.zona || "") : "");
   const [comentario, setComentario] = useState("");
