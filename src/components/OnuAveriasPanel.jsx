@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
+const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").trim().replace(/\/$/, "");
 
 // Se arma con lo que ya guarda huawei-olt-signal via traps SNMP reales
 // (LOS/dying-gasp ocurre-recupera) -- ver onu_eventos / onu_averias_zona
@@ -42,6 +43,41 @@ export default function OnuAveriasPanel({ theme }) {
   const [error, setError] = useState("");
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
 
+  const [mostrarConfig, setMostrarConfig] = useState(false);
+  const [config, setConfig] = useState(null);
+  const [configEdit, setConfigEdit] = useState(null);
+  const [guardandoConfig, setGuardandoConfig] = useState(false);
+  const [mensajeConfig, setMensajeConfig] = useState(null);
+
+  const cargarConfig = useCallback(async () => {
+    try {
+      const r = await fetch(`${HUAWEI_OLT_SNMP_API}/averia-config`).then((r) => r.json());
+      if (r.ok && r.config) {
+        setConfig(r.config);
+        setConfigEdit(r.config);
+      }
+    } catch { /* silencioso -- se ve el error si intenta guardar */ }
+  }, []);
+
+  const guardarConfig = async () => {
+    setGuardandoConfig(true);
+    setMensajeConfig(null);
+    try {
+      const r = await fetch(`${DIAGNO_BASE}/api/huawei-onu/averia-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(configEdit),
+      }).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo guardar.");
+      setConfig(r.config);
+      setMensajeConfig({ ok: true, texto: "Guardado." });
+    } catch (e) {
+      setMensajeConfig({ ok: false, texto: e.message || "Error de red." });
+    } finally {
+      setGuardandoConfig(false);
+    }
+  };
+
   const cargar = useCallback(async () => {
     setCargando(true);
     setError("");
@@ -74,6 +110,8 @@ export default function OnuAveriasPanel({ theme }) {
     return () => clearInterval(id);
   }, [cargar]);
 
+  useEffect(() => { cargarConfig(); }, [cargarConfig]);
+
   return (
     <div style={{ padding: 20, background: col.bg, minHeight: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
@@ -84,12 +122,68 @@ export default function OnuAveriasPanel({ theme }) {
             {ultimaActualizacion ? ` · Última actualización ${ultimaActualizacion.toLocaleTimeString("es-PE")}` : ""}
           </div>
         </div>
-        <button
-          onClick={cargar}
-          disabled={cargando}
-          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: cargando ? "not-allowed" : "pointer", opacity: cargando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
-        ><Ico.refresh width={14} height={14} />{cargando ? "Actualizando…" : "Actualizar"}</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => setMostrarConfig((v) => !v)}
+            style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: `1.5px solid ${col.border}`, background: mostrarConfig ? col.border : col.card, color: col.text }}
+          >⚙ Configurar</button>
+          <button
+            onClick={cargar}
+            disabled={cargando}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: cargando ? "not-allowed" : "pointer", opacity: cargando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+          ><Ico.refresh width={14} height={14} />{cargando ? "Actualizando…" : "Actualizar"}</button>
+        </div>
       </div>
+
+      {mostrarConfig && configEdit && (
+        <div style={{ marginBottom: 16, padding: 16, borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}` }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: col.text, marginBottom: 12 }}>Configuración de detección y aviso</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 12 }}>
+            <label style={{ fontSize: 12, color: col.sub }}>
+              Umbral LOS (ONUs)
+              <input type="number" min={1} value={configEdit.umbral_los}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, umbral_los: Number(e.target.value) }))}
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+            </label>
+            <label style={{ fontSize: 12, color: col.sub }}>
+              Umbral corte de luz (ONUs)
+              <input type="number" min={1} value={configEdit.umbral_power}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, umbral_power: Number(e.target.value) }))}
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+            </label>
+            <label style={{ fontSize: 12, color: col.sub }}>
+              Ventana de tiempo (minutos)
+              <input type="number" min={1} value={configEdit.ventana_minutos}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, ventana_minutos: Number(e.target.value) }))}
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+            </label>
+            <label style={{ fontSize: 12, color: col.sub, gridColumn: "1 / -1" }}>
+              Grupo de WhatsApp destino (JID)
+              <input type="text" value={configEdit.whatsapp_grupo_jid}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, whatsapp_grupo_jid: e.target.value }))}
+                placeholder="120363xxxxxxxxx@g.us"
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+            </label>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: col.text, marginBottom: 14, cursor: "pointer" }}>
+            <input type="checkbox" checked={configEdit.whatsapp_habilitado}
+              onChange={(e) => setConfigEdit((c) => ({ ...c, whatsapp_habilitado: e.target.checked }))} />
+            Avisar por WhatsApp cuando se detecte una avería de zona nueva
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={guardarConfig}
+              disabled={guardandoConfig}
+              style={{ padding: "8px 16px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: guardandoConfig ? "not-allowed" : "pointer", opacity: guardandoConfig ? 0.6 : 1, border: "none", background: "#2563eb", color: "#fff" }}
+            >{guardandoConfig ? "Guardando…" : "Guardar cambios"}</button>
+            {mensajeConfig && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: mensajeConfig.ok ? "#15803d" : "#991b1b" }}>
+                {mensajeConfig.ok ? "✓ " : "✗ "}{mensajeConfig.texto}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#fee2e2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
