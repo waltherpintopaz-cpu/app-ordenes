@@ -190,6 +190,25 @@ export default function OnuAveriasPanel({ theme }) {
               </select>
             </label>
           </div>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: col.sub, textTransform: "uppercase", marginBottom: 6 }}>
+            Texto de los mensajes de Telegram (placeholders: {"{nombre} {sn} {board} {puerto} {senal} {rx_onu} {rx_olt}"})
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 10, marginBottom: 14 }}>
+            {[
+              ["telegram_tpl_los_down", "Sin señal (LOS)"],
+              ["telegram_tpl_los_up", "Recupera señal"],
+              ["telegram_tpl_power_down", "Apagado (sin luz)"],
+              ["telegram_tpl_power_up", "Encendido (vuelve la luz)"],
+            ].map(([campo, etiqueta]) => (
+              <label key={campo} style={{ fontSize: 12, color: col.sub }}>
+                {etiqueta}
+                <textarea rows={4} value={configEdit[campo] || ""}
+                  onChange={(e) => setConfigEdit((c) => ({ ...c, [campo]: e.target.value }))}
+                  style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 12, fontFamily: "monospace", borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text, resize: "vertical" }} />
+              </label>
+            ))}
+          </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: col.text, marginBottom: 8, cursor: "pointer" }}>
             <input type="checkbox" checked={configEdit.whatsapp_habilitado}
               onChange={(e) => setConfigEdit((c) => ({ ...c, whatsapp_habilitado: e.target.checked }))} />
