@@ -440,9 +440,11 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
             )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 16 }}>
               {[
+                [Ico.chip, "SN", sn],
                 [Ico.signal, "Rx ONU (dBm)", ficha.rxPower ?? "—"],
                 [Ico.signal, "Tx ONU (dBm)", ficha.txPower ?? "—"],
                 [Ico.signal, "Rx OLT (dBm)", ficha.rxPowerOlt ?? "—"],
+                [Ico.server, "MAC WAN (router cliente)", ficha.wanMac ? formatoMac(ficha.wanMac) : "—"],
                 [Ico.card, "Nombre (en la OLT)", ficha.nombre || "—"],
                 [Ico.pin, "Zona", ficha.zona || "—"],
                 [Ico.card, "Comentario/Dirección", ficha.comentario || "—"],
