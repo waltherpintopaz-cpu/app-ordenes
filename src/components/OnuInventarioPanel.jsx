@@ -65,7 +65,7 @@ const Ico = {
   linkOff: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17H7.5a4.5 4.5 0 0 1 0-9H9" /><path d="M15 8h1.5a4.5 4.5 0 0 1 3.16 7.71" /><line x1="8" y1="12.5" x2="10.5" y2="12.5" /><line x1="13.5" y1="12.5" x2="16" y2="12.5" /><line x1="4" y1="20" x2="20" y2="4" /></svg>,
 };
 
-const ESTADO_ICONO = { online: Ico.checkCircle, power_fail: Ico.plug, los: Ico.linkOff, admin_disabled: Ico.slash };
+const ESTADO_ICONO = { online: Ico.globe, power_fail: Ico.plug, los: Ico.linkOff, admin_disabled: Ico.slash };
 
 // ── Ficha detallada (drawer lateral) ────────────────────────────────────────
 function FichaOnuDrawer({ sn, onClose, isDark }) {
