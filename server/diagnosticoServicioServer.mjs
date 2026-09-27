@@ -1347,7 +1347,7 @@ const server = http.createServer(async (req, res) => {
             };
 
             if (usuario) {
-              const filas = await fetchSupabaseRows("clientes", `usuario_nodo=eq.${encodeURIComponent(usuario)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap`);
+              const filas = await fetchSupabaseRows("clientes", `usuario_nodo=eq.${encodeURIComponent(usuario)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap,ubicacion,foto_fachada,fotos_liquidacion`);
               cliente = filas?.[0] || null;
             }
           }

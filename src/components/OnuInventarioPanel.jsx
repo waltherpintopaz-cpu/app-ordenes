@@ -35,6 +35,12 @@ const PAGE_SIZE = 100;
 // Umbrales tipicos de sensibilidad Rx en GPON -- >= -22 excelente, -22 a -25
 // buena, -25 a -27 al limite (atencion), peor que -27 debil/cerca del
 // minimo del receptor.
+function formatoMac(mac) {
+  const limpio = String(mac || "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  if (limpio.length !== 12) return mac || "—";
+  return limpio.match(/.{2}/g).join(":");
+}
+
 function colorSenalRx(rx) {
   if (rx == null) return "#9ca3af";
   if (rx >= -22) return "#16a34a";
@@ -333,7 +339,7 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
                 {!diagCargando && !diagError && diagCompleto && (
                   <>
                     <div style={{ fontSize: 11.5, color: col.sub, marginBottom: 10 }}>
-                      MAC: <span style={{ fontFamily: "monospace", color: col.text }}>{diagCompleto.mac || "no encontrada"}</span>
+                      MAC: <span style={{ fontFamily: "monospace", color: col.text }}>{diagCompleto.mac ? formatoMac(diagCompleto.mac) : "no encontrada"}</span>
                     </div>
 
                     {!diagCompleto.mikrotik && (
@@ -366,8 +372,22 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
                     )}
                     {diagCompleto.cliente && (
                       <div>
-                        <div style={{ fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase", marginBottom: 6 }}>Cliente (Supabase)</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase" }}>Cliente (Supabase)</div>
+                          <button
+                            onClick={() => {
+                              const usuarioMk = diagCompleto.mikrotik?.usuario || "";
+                              const nombreCliente = diagCompleto.cliente.nombre || "";
+                              const sugerido = usuarioMk && nombreCliente ? `${nombreCliente} - ${usuarioMk}` : (nombreCliente || usuarioMk);
+                              setNombreEdit(sugerido);
+                              setEditando(true);
+                              setEditandoPppoe(false);
+                              setMostrarDiag(false);
+                            }}
+                            style={{ padding: "5px 10px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid #16a34a", background: "transparent", color: "#16a34a" }}
+                          >✎ Usar este nombre en la OLT</button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8, marginBottom: 10 }}>
                           {[
                             ["Nombre", diagCompleto.cliente.nombre],
                             ["DNI", diagCompleto.cliente.dni],
@@ -384,6 +404,34 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
                             </div>
                           ))}
                         </div>
+
+                        {diagCompleto.cliente.ubicacion && (() => {
+                          const partes = String(diagCompleto.cliente.ubicacion).split(",").map((p) => p.trim());
+                          const url = partes.length === 2 ? `https://www.google.com/maps?q=${partes[0]},${partes[1]}` : null;
+                          return url ? (
+                            <a href={url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#2563eb", textDecoration: "none", marginBottom: 10 }}>
+                              <Ico.pin width={13} height={13} /> Ver ubicación en el mapa
+                            </a>
+                          ) : null;
+                        })()}
+
+                        {(diagCompleto.cliente.foto_fachada || (diagCompleto.cliente.fotos_liquidacion || []).length > 0) && (
+                          <div>
+                            <div style={{ fontSize: 9, color: col.sub, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>Fotos</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                              {diagCompleto.cliente.foto_fachada && (
+                                <a href={diagCompleto.cliente.foto_fachada} target="_blank" rel="noreferrer">
+                                  <img src={diagCompleto.cliente.foto_fachada} alt="Fachada" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${col.border}` }} />
+                                </a>
+                              )}
+                              {(diagCompleto.cliente.fotos_liquidacion || []).map((url, i) => (
+                                <a key={i} href={url} target="_blank" rel="noreferrer">
+                                  <img src={url} alt={`Liquidación ${i + 1}`} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${col.border}` }} />
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
