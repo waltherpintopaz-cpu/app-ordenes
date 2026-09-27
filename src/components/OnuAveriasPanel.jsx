@@ -259,8 +259,11 @@ export default function OnuAveriasPanel({ theme }) {
                 <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 90px", gap: 0, padding: "9px 14px", borderTop: `1px solid ${col.border}`, fontSize: 12.5, color: col.text, alignItems: "center" }}>
                   <div style={{ color: col.sub, fontSize: 11.5 }}>{formatoFecha(ev.ocurrido_en)}</div>
                   <div>
-                    <div style={{ fontWeight: 600 }}>{ev.nombre || ev.sn || "—"}</div>
-                    {ev.zona && <div style={{ fontSize: 11, color: col.sub }}>{ev.zona}</div>}
+                    <div style={{ fontWeight: 600 }}>{ev.nombre || "—"}</div>
+                    <div style={{ fontSize: 11, color: col.sub, display: "flex", gap: 6 }}>
+                      {ev.sn && <span style={{ fontFamily: "monospace" }}>{ev.sn}</span>}
+                      {ev.zona && <span>{ev.zona}</span>}
+                    </div>
                   </div>
                   <div style={{ color: col.sub, fontSize: 11.5 }}>{ev.board != null ? `${ev.board}/${ev.port}` : "—"}</div>
                   <div>
