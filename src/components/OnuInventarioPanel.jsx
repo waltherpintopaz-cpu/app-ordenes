@@ -89,6 +89,26 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [pppoeUserEdit, setPppoeUserEdit] = useState("");
   const [pppoePassEdit, setPppoePassEdit] = useState("");
 
+  const [diagCompleto, setDiagCompleto] = useState(null);
+  const [diagCargando, setDiagCargando] = useState(false);
+  const [diagError, setDiagError] = useState("");
+  const [mostrarDiag, setMostrarDiag] = useState(false);
+
+  const consultarDiagnosticoCompleto = useCallback(async () => {
+    setMostrarDiag(true);
+    setDiagCargando(true);
+    setDiagError("");
+    try {
+      const r = await fetch(`${DIAGNO_BASE}/api/onu-diagnostico-completo?sn=${encodeURIComponent(sn)}`).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo armar el diagnóstico.");
+      setDiagCompleto(r);
+    } catch (e) {
+      setDiagError(e.message || "Error de red.");
+    } finally {
+      setDiagCargando(false);
+    }
+  }, [sn]);
+
   const ejecutarAccion = useCallback(async (accion, ruta, body, confirmMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
     setAccionando(accion);
@@ -289,10 +309,85 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
         {!loading && error && <div style={{ fontSize: 13, color: "#dc2626" }}>{error}</div>}
         {!loading && !error && ficha && (
           <>
-            {cfg && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14, padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, background: cfg.bg, color: cfg.text }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: cfg.dot }} />
-                {cfg.label}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+              {cfg && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, background: cfg.bg, color: cfg.text }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: cfg.dot }} />
+                  {cfg.label}
+                </div>
+              )}
+              <button
+                onClick={consultarDiagnosticoCompleto}
+                style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "none", background: "#7c3aed", color: "#fff" }}
+              >🔎 Diagnóstico completo</button>
+            </div>
+
+            {mostrarDiag && (
+              <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: col.card, border: "1.5px solid #7c3aed" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: col.text }}>Diagnóstico completo (OLT + MikroTik + cliente)</div>
+                  <button onClick={() => setMostrarDiag(false)} style={{ background: "none", border: "none", cursor: "pointer", color: col.sub }}><Ico.x width={16} height={16} /></button>
+                </div>
+                {diagCargando && <div style={{ fontSize: 12.5, color: col.sub }}>Consultando OLT, MikroTik y Supabase…</div>}
+                {!diagCargando && diagError && <div style={{ fontSize: 12.5, color: "#dc2626" }}>{diagError}</div>}
+                {!diagCargando && !diagError && diagCompleto && (
+                  <>
+                    <div style={{ fontSize: 11.5, color: col.sub, marginBottom: 10 }}>
+                      MAC: <span style={{ fontFamily: "monospace", color: col.text }}>{diagCompleto.mac || "no encontrada"}</span>
+                    </div>
+
+                    {!diagCompleto.mikrotik && (
+                      <div style={{ fontSize: 12, color: col.sub, marginBottom: 8 }}>No se encontró un secret de MikroTik (Tiabaya) con esta MAC.</div>
+                    )}
+                    {diagCompleto.mikrotik && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase", marginBottom: 6 }}>MikroTik (Tiabaya)</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+                          {[
+                            ["Usuario", diagCompleto.mikrotik.usuario],
+                            ["Comentario", diagCompleto.mikrotik.comentario],
+                            ["Estado", diagCompleto.mikrotik.conectadoAhora ? "Conectado ahora" : "No conectado"],
+                            ["IP", diagCompleto.mikrotik.ip],
+                            ["Uptime", diagCompleto.mikrotik.uptime],
+                            ["Última desconexión", diagCompleto.mikrotik.ultimaDesconexion],
+                            ["Perfil", diagCompleto.mikrotik.perfil],
+                          ].map(([label, value], i) => (
+                            <div key={i} style={{ background: col.bg, borderRadius: 8, padding: "7px 9px", border: `1px solid ${col.border}` }}>
+                              <div style={{ fontSize: 9, color: col.sub, fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
+                              <div style={{ fontSize: 12, color: col.text, fontWeight: 600 }}>{value || "—"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!diagCompleto.cliente && diagCompleto.mikrotik && (
+                      <div style={{ fontSize: 12, color: col.sub }}>No se encontró cliente en Supabase con usuario_nodo = "{diagCompleto.mikrotik.usuario}".</div>
+                    )}
+                    {diagCompleto.cliente && (
+                      <div>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase", marginBottom: 6 }}>Cliente (Supabase)</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 8 }}>
+                          {[
+                            ["Nombre", diagCompleto.cliente.nombre],
+                            ["DNI", diagCompleto.cliente.dni],
+                            ["Celular", diagCompleto.cliente.celular],
+                            ["Dirección", diagCompleto.cliente.direccion],
+                            ["Nodo", diagCompleto.cliente.nodo],
+                            ["Código abonado", diagCompleto.cliente.codigo_abonado],
+                            ["Estado servicio", diagCompleto.cliente.estado_servicio],
+                            ["Caja NAP", diagCompleto.cliente.caja_nap],
+                          ].map(([label, value], i) => (
+                            <div key={i} style={{ background: col.bg, borderRadius: 8, padding: "7px 9px", border: `1px solid ${col.border}` }}>
+                              <div style={{ fontSize: 9, color: col.sub, fontWeight: 700, textTransform: "uppercase" }}>{label}</div>
+                              <div style={{ fontSize: 12, color: col.text, fontWeight: 600 }}>{value || "—"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 10, marginBottom: 16 }}>

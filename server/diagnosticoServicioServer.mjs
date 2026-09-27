@@ -1297,6 +1297,71 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // GET /api/onu-diagnostico-completo?sn=XXXX -- cadena completa pedida
+    // por el usuario: SN de ONU -> MAC (SNMP, con fallback a Telnet-por-
+    // puerto si esa ONU no tiene wanMac por SNMP) -> secret de MikroTik
+    // Tiabaya que tenga esa MAC en last-caller-id (da usuario+comentario)
+    // -> estado real ppp/active (conectado ahora + uptime, o last-logged-
+    // out si no) -> cliente en Supabase (tabla "clientes", columna
+    // usuario_nodo) con todos sus datos -- todo junto con la ficha de la
+    // ONU (señal/estado/etc, ya disponible via huawei-olt-snmp).
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/onu-diagnostico-completo") {
+      const sn = new URL(req.url, "http://localhost").searchParams.get("sn");
+      if (!sn) { writeJson(res, 400, { ok: false, error: "Falta sn" }); return; }
+      let connection = null;
+      try {
+        const ficha = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(sn)}`).then((r) => r.json());
+        if (!ficha?.ok) { writeJson(res, 200, { ok: false, error: ficha?.error || "No se encontró la ONU en la OLT." }); return; }
+
+        const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
+        let mac = normMac(ficha.wanMac);
+        if (!mac && ficha.board != null && ficha.port != null) {
+          const puerto = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-macs-puerto?board=${ficha.board}&port=${ficha.port}`).then((r) => r.json()).catch(() => null);
+          const entrada = puerto?.ok ? (puerto.entradas || []).find((e) => String(e.ontId) === String(ficha.onuId)) : null;
+          if (entrada) mac = normMac(entrada.mac);
+        }
+
+        let mikrotik = null;
+        let cliente = null;
+        if (mac) {
+          connection = await connectRouterByKey("tiabaya");
+          const [secrets, activos] = await Promise.all([
+            withTimeout(connection.api.write("/ppp/secret/print", []), 20000, "Listar PPP Secret en Tiabaya"),
+            withTimeout(connection.api.write("/ppp/active/print", []), 15000, "Listar PPP Active en Tiabaya").catch(() => []),
+          ]);
+          await closeRouterApiSafe(connection.api);
+          connection = null;
+
+          const secret = secrets.find((s) => normMac(s["last-caller-id"] || s["caller-id"] || s.callerid) === mac);
+          if (secret) {
+            const usuario = String(secret.name || "").trim();
+            const activo = activos.find((a) => String(a.name || "").trim() === usuario);
+            mikrotik = {
+              usuario,
+              comentario: secret.comment || null,
+              conectadoAhora: !!activo,
+              ip: activo ? activo.address : (secret["remote-address"] || null),
+              uptime: activo ? activo.uptime : null,
+              ultimaDesconexion: secret["last-logged-out"] || null,
+              perfil: (activo ? activo.profile : secret.profile) || null,
+            };
+
+            if (usuario) {
+              const filas = await fetchSupabaseRows("clientes", `usuario_nodo=eq.${encodeURIComponent(usuario)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap`);
+              cliente = filas?.[0] || null;
+            }
+          }
+        }
+
+        writeJson(res, 200, { ok: true, sn, mac: mac || null, ficha, mikrotik, cliente });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
     // GET /api/cruce-mac-preview -- vista previa (NO escribe nada) del cruce
     // entre el MAC WAN de cada ONU (Huawei, via SNMP) y el caller-id de los
     // PPP secrets de MikroTik Tiabaya. Sirve para revisar los nombres
