@@ -1340,25 +1340,49 @@ const server = http.createServer(async (req, res) => {
           pendientes = pendientes.slice(0, body.limite);
         }
 
-        const aplicados = [];
-        for (const r of pendientes) {
+        // 1. Leer la ficha actual de cada ONU (SNMP, rapido -- en paralelo
+        // de a 20 para no saturar el equipo) para preservar zona/
+        // comentario/fecha ya existentes (editarDatosOnuLote reescribe el
+        // campo desc completo).
+        const fichas = new Map(); // sn -> ficha
+        const erroresFicha = [];
+        for (let i = 0; i < pendientes.length; i += 20) {
+          const grupo = pendientes.slice(i, i + 20);
+          const respuestas = await Promise.all(grupo.map((r) =>
+            fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(r.sn)}`).then((x) => x.json()).catch((e) => ({ ok: false, error: e.message }))
+          ));
+          grupo.forEach((r, j) => {
+            if (respuestas[j]?.ok) fichas.set(r.sn, respuestas[j]);
+            else erroresFicha.push({ sn: r.sn, ok: false, error: respuestas[j]?.error || "No se pudo leer la ficha actual." });
+          });
+        }
+
+        // 2. Editar en LOTES de 25 (1 sola sesion SSH por lote, no 1 por
+        // ONU) -- el login/config de cada sesion es lo mas lento, agrupar
+        // baja el tiempo total varias veces (ver editarDatosOnuLote en
+        // huawei-olt-signal).
+        const conFicha = pendientes.filter((r) => fichas.has(r.sn));
+        const TAMANO_LOTE = 25;
+        const aplicados = [...erroresFicha];
+        for (let i = 0; i < conFicha.length; i += TAMANO_LOTE) {
+          const lote = conFicha.slice(i, i + TAMANO_LOTE);
+          const cambios = lote.map((r) => {
+            const ficha = fichas.get(r.sn);
+            return { board: r.board, port: r.port, ontId: ficha.onuId, nombre: r.nombreNuevo, zona: ficha.zona, comentario: ficha.comentario, fechaAutorizacionISO: ficha.fechaAutorizacionISO };
+          });
           try {
-            const ficha = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(r.sn)}`).then((x) => x.json());
-            if (!ficha?.ok) { aplicados.push({ sn: r.sn, ok: false, error: ficha?.error || "No se pudo leer la ficha actual." }); continue; }
-            const editResp = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-editar`, {
+            const resp = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-editar-lote`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
-              body: JSON.stringify({
-                board: r.board, port: r.port, ontId: ficha.onuId,
-                nombre: r.nombreNuevo,
-                zona: ficha.zona,
-                comentario: ficha.comentario,
-                fechaAutorizacionISO: ficha.fechaAutorizacionISO,
-              }),
+              body: JSON.stringify({ cambios }),
             }).then((x) => x.json());
-            aplicados.push({ sn: r.sn, ok: !!editResp?.ok, error: editResp?.ok ? undefined : (editResp?.error || "Fallo desconocido") });
+            if (resp?.ok && Array.isArray(resp.resultados)) {
+              lote.forEach((r, j) => aplicados.push({ sn: r.sn, ok: !!resp.resultados[j]?.ok, error: resp.resultados[j]?.ok ? undefined : (resp.resultados[j]?.error || "Fallo desconocido") }));
+            } else {
+              lote.forEach((r) => aplicados.push({ sn: r.sn, ok: false, error: resp?.error || "Fallo desconocido en el lote" }));
+            }
           } catch (e) {
-            aplicados.push({ sn: r.sn, ok: false, error: e.message || String(e) });
+            lote.forEach((r) => aplicados.push({ sn: r.sn, ok: false, error: e.message || String(e) }));
           }
         }
 
