@@ -36,6 +36,12 @@ export default function OnuAveriasPanel({ theme }) {
 
   const [averias, setAverias] = useState([]);
   const [eventosTodos, setEventosTodos] = useState([]);
+  // El "nombre" guardado en cada evento es una foto del momento en que
+  // ocurrio el trap -- si despues se corrigio el nombre de esa ONU (ej.
+  // via el cruce MAC-MikroTik), el evento viejo se queda con el nombre
+  // de antes. Este mapa trae el nombre ACTUAL de la OLT por SN, para
+  // mostrar siempre el mas reciente en la tabla.
+  const [nombresActualesPorSn, setNombresActualesPorSn] = useState({});
   // Categoria, no tipo exacto -- "los" agrupa los_down+los_up, "luz" agrupa
   // power_down+power_up. Por defecto "los_sin_recuperar" (solo las que
   // siguen caidas ahora mismo, pedido explicito -- es lo mas urgente de
@@ -95,6 +101,24 @@ export default function OnuAveriasPanel({ theme }) {
       setAverias(Array.isArray(rAverias.averias) ? rAverias.averias : []);
       setEventosTodos(Array.isArray(rEventos.eventos) ? rEventos.eventos : []);
       setUltimaActualizacion(new Date());
+
+      // Nombres actuales por SN (sirve por 3 min gracias al cache propio
+      // de huawei-olt-snmp -- no pega directo al OLT en cada refresh de 20s).
+      try {
+        const snsDeEventos = new Set((rEventos.eventos || []).map((e) => e.sn).filter(Boolean));
+        if (snsDeEventos.size) {
+          let todas = [];
+          for (let page = 1; page <= 9; page++) {
+            const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-list?pageSize=200&page=${page}`).then((r) => r.json());
+            if (!r.ok || !Array.isArray(r.onus) || r.onus.length === 0) break;
+            todas = todas.concat(r.onus);
+            if (todas.length >= (r.total || 0)) break;
+          }
+          const mapa = {};
+          for (const o of todas) if (snsDeEventos.has(o.sn)) mapa[o.sn] = o.nombre;
+          setNombresActualesPorSn(mapa);
+        }
+      } catch { /* si falla, se sigue mostrando el nombre historico del evento */ }
     } catch (e) {
       setError(e.message || "Error de red.");
     } finally {
@@ -331,7 +355,7 @@ export default function OnuAveriasPanel({ theme }) {
                 <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 90px 90px", gap: 0, padding: "9px 14px", borderTop: `1px solid ${col.border}`, fontSize: 12.5, color: col.text, alignItems: "center" }}>
                   <div style={{ color: col.sub, fontSize: 11.5 }}>{formatoFecha(ev.ocurrido_en)}</div>
                   <div>
-                    <div style={{ fontWeight: 600 }}>{ev.nombre || "—"}</div>
+                    <div style={{ fontWeight: 600 }}>{(ev.sn && nombresActualesPorSn[ev.sn]) || ev.nombre || "—"}</div>
                     <div style={{ fontSize: 11, color: col.sub, display: "flex", gap: 6 }}>
                       {ev.sn && <span style={{ fontFamily: "monospace" }}>{ev.sn}</span>}
                       {ev.zona && <span>{ev.zona}</span>}
