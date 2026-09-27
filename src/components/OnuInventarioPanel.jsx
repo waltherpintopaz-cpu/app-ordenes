@@ -65,7 +65,7 @@ const Ico = {
   linkOff: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17H7.5a4.5 4.5 0 0 1 0-9H9" /><path d="M15 8h1.5a4.5 4.5 0 0 1 3.16 7.71" /><line x1="8" y1="12.5" x2="10.5" y2="12.5" /><line x1="13.5" y1="12.5" x2="16" y2="12.5" /><line x1="4" y1="20" x2="20" y2="4" /></svg>,
 };
 
-const ESTADO_ICONO = { online: Ico.globe, power_fail: Ico.plug, los: Ico.linkOff, admin_disabled: Ico.slash };
+const ESTADO_ICONO = { online: Ico.checkCircle, power_fail: Ico.plug, los: Ico.linkOff, admin_disabled: Ico.slash };
 
 // ── Ficha detallada (drawer lateral) ────────────────────────────────────────
 function FichaOnuDrawer({ sn, onClose, isDark }) {
@@ -903,7 +903,7 @@ export default function OnuInventarioPanel({ theme }) {
                 background: estadoFiltro === t.key ? "#1d4ed8" : (isDark ? "#16213a" : "#f9fafb"),
                 color: estadoFiltro === t.key ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
               }}>
-              <t.Icon width={11} height={11} />{t.label}
+              <t.Icon width={14} height={14} />{t.label}
             </button>
           ))}
         </div>
@@ -955,7 +955,7 @@ export default function OnuInventarioPanel({ theme }) {
           const IconoEstado = ESTADO_ICONO[k] || Ico.signal;
           return (
             <div key={k} style={{ ...s.card, padding: "10px 16px", display: "flex", alignItems: "center", gap: 9, flex: "1 1 140px" }}>
-              <IconoEstado width={16} height={16} style={{ color: ESTADO[k]?.dot, flexShrink: 0 }} />
+              <IconoEstado width={19} height={19} style={{ color: ESTADO[k]?.dot, flexShrink: 0 }} />
               <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{ESTADO[k]?.label}</span>
               <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 14, color: isDark ? "#e6ecf7" : "#111827" }}>{v}</span>
             </div>
@@ -991,8 +991,8 @@ export default function OnuInventarioPanel({ theme }) {
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ ...s.td, width: 28 }}>
-                      <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: cfg.dot }}>
-                        <IconoFila width={12} height={12} style={{ color: "#fff" }} strokeWidth={2.5} />
+                      <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25, borderRadius: "50%", background: cfg.dot }}>
+                        <IconoFila width={15} height={15} style={{ color: "#fff" }} strokeWidth={2.5} />
                       </span>
                     </td>
                     <td style={s.td}>{o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}</td>
