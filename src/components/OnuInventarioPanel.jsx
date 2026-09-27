@@ -991,9 +991,15 @@ export default function OnuInventarioPanel({ theme }) {
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ ...s.td, width: 28 }}>
-                      <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25, borderRadius: "50%", background: cfg.dot }}>
-                        <IconoFila width={15} height={15} style={{ color: "#fff" }} strokeWidth={2.5} />
-                      </span>
+                      {o.estado === "online" ? (
+                        <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25 }}>
+                          <IconoFila width={25} height={25} style={{ color: cfg.dot }} />
+                        </span>
+                      ) : (
+                        <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25, borderRadius: "50%", background: cfg.dot }}>
+                          <IconoFila width={15} height={15} style={{ color: "#fff" }} strokeWidth={2.5} />
+                        </span>
+                      )}
                     </td>
                     <td style={s.td}>{o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}</td>
                     <td style={s.td}>{o.zona || "—"}</td>
