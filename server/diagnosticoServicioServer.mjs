@@ -1160,6 +1160,34 @@ const server = http.createServer(async (req, res) => {
           if (mac && mac.length === 12) secretPorMac.set(mac, s);
         }
 
+        // 3. Para las ONUs SIN wanMac por SNMP (PPPoE configurado manual en
+        // el equipo, no via OMCI), rellenar el MAC con la tabla L2 completa
+        // del puerto PON (1 llamada Telnet por puerto, no por ONU -- ver
+        // obtenerMacsPorPuerto en huawei-olt-signal). Solo 49 puertos unicos
+        // en todo el inventario vs. ~1170 ONUs sin wanMac, ~24x menos
+        // llamadas. Se hace secuencial (no en paralelo) para no saturar el
+        // limite de conexiones Telnet/SSH del OLT.
+        const macDesdeTelnet = new Map(); // "board-port-ontId" -> mac
+        const puertosPendientes = new Set();
+        for (const o of todasOnus) {
+          if (normMac(o.wanMac)) continue;
+          if (o.board == null || o.port == null) continue;
+          puertosPendientes.add(`${o.board}-${o.port}`);
+        }
+        for (const clave of puertosPendientes) {
+          const [board, port] = clave.split("-");
+          try {
+            const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-macs-puerto?board=${board}&port=${port}`).then((r) => r.json());
+            if (r.ok && Array.isArray(r.entradas)) {
+              for (const e of r.entradas) {
+                macDesdeTelnet.set(`${e.board}-${e.port}-${e.ontId}`, e.mac);
+              }
+            }
+          } catch (_) {
+            // si un puerto falla (ej. bloqueo temporal del OLT), seguir con los demas
+          }
+        }
+
         const esGenerico = (nombre) => {
           const n = String(nombre || "").trim();
           if (!n) return true;
@@ -1168,7 +1196,7 @@ const server = http.createServer(async (req, res) => {
 
         const resultados = [];
         for (const o of todasOnus) {
-          const mac = normMac(o.wanMac);
+          const mac = normMac(o.wanMac) || normMac(macDesdeTelnet.get(`${o.board}-${o.port}-${o.onuId}`));
           if (!mac) continue;
           const secret = secretPorMac.get(mac);
           if (!secret) continue;
