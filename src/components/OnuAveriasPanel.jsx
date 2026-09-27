@@ -164,11 +164,30 @@ export default function OnuAveriasPanel({ theme }) {
                 placeholder="120363xxxxxxxxx@g.us"
                 style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
             </label>
+            <label style={{ fontSize: 12, color: col.sub }}>
+              Telegram — bot token
+              <input type="text" value={configEdit.telegram_bot_token || ""}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, telegram_bot_token: e.target.value }))}
+                placeholder="123456789:ABC..."
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+            </label>
+            <label style={{ fontSize: 12, color: col.sub }}>
+              Telegram — chat_id del grupo
+              <input type="text" value={configEdit.telegram_chat_id || ""}
+                onChange={(e) => setConfigEdit((c) => ({ ...c, telegram_chat_id: e.target.value }))}
+                placeholder="-5535234862"
+                style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.bg, color: col.text }} />
+            </label>
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: col.text, marginBottom: 14, cursor: "pointer" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: col.text, marginBottom: 8, cursor: "pointer" }}>
             <input type="checkbox" checked={configEdit.whatsapp_habilitado}
               onChange={(e) => setConfigEdit((c) => ({ ...c, whatsapp_habilitado: e.target.checked }))} />
             Avisar por WhatsApp cuando se detecte una avería de zona nueva
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: col.text, marginBottom: 14, cursor: "pointer" }}>
+            <input type="checkbox" checked={!!configEdit.telegram_habilitado}
+              onChange={(e) => setConfigEdit((c) => ({ ...c, telegram_habilitado: e.target.checked }))} />
+            Avisar por Telegram cuando se detecte una avería de zona nueva
           </label>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
