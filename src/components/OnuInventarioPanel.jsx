@@ -52,7 +52,7 @@ const Ico = {
   slash: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>,
 };
 
-const ESTADO_ICONO = { online: Ico.checkCircle, power_fail: Ico.alertTriangle, los: Ico.wifiOff, admin_disabled: Ico.slash };
+const ESTADO_ICONO = { online: Ico.checkCircle, power_fail: Ico.plug, los: Ico.wifiOff, admin_disabled: Ico.slash };
 
 // ── Ficha detallada (drawer lateral) ────────────────────────────────────────
 function FichaOnuDrawer({ sn, onClose, isDark }) {
@@ -971,13 +971,16 @@ export default function OnuInventarioPanel({ theme }) {
                 <tr><td colSpan={9} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin resultados.</td></tr>
               ) : onus.map((o, i) => {
                 const cfg = ESTADO[o.estado] || ESTADO_DESCONOCIDO;
+                const IconoFila = ESTADO_ICONO[o.estado] || Ico.signal;
                 return (
                   <tr key={`${o.sn}-${i}`} onClick={() => setSnSeleccionado(o.sn)}
                     style={{ borderTop: isDark ? "1px solid #24324c" : "1px solid #f3f4f6", cursor: "pointer" }}
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <td style={{ ...s.td, width: 28 }}>
-                      <span title={cfg.label} style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: cfg.dot }} />
+                      <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: "50%", background: cfg.dot }}>
+                        <IconoFila width={12} height={12} style={{ color: "#fff" }} strokeWidth={2.5} />
+                      </span>
                     </td>
                     <td style={s.td}>{o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}</td>
                     <td style={s.td}>{o.zona || "—"}</td>
