@@ -1153,7 +1153,10 @@ const server = http.createServer(async (req, res) => {
         const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
         const secretPorMac = new Map();
         for (const s of secrets) {
-          const mac = normMac(s["caller-id"] || s.callerid);
+          // last-caller-id (auto-registrado por RouterOS en cada conexion)
+          // esta poblado en 1689 de 2106 secrets -- caller-id (candado
+          // manual) casi nunca se usa (confirmado: solo 1 de 2106).
+          const mac = normMac(s["last-caller-id"] || s["caller-id"] || s.callerid);
           if (mac && mac.length === 12) secretPorMac.set(mac, s);
         }
 
