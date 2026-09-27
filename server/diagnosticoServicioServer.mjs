@@ -1210,6 +1210,15 @@ async function calcularCruceMacInterno() {
 
     const resultados = [];
     for (const o of todasOnus) {
+      // Algunas ONUs (encontradas 69/459 en la primera corrida real,
+      // 2026-09-27) ya tienen el campo "desc" de la OLT TRUNCADO por el
+      // limite de longitud del propio equipo -- el parseo de zona/
+      // comentario/fecha falla y "nombre" termina siendo el string crudo
+      // completo (con "_zone_", "_descr_", "_authd_" todavia adentro).
+      // Pegarle algo mas a ese string ya roto solo lo empeora -- se
+      // excluyen del cruce por completo, quedan para revision manual
+      // aparte (acortar la descripcion original antes de tocarlas).
+      if (/_zone_|_descr_|_authd_/.test(o.nombre || "")) continue;
       const mac = normMac(o.wanMac) || normMac(macDesdeTelnet.get(`${o.board}-${o.port}-${o.onuId}`));
       if (!mac) continue;
       const secret = secretPorMac.get(mac);
