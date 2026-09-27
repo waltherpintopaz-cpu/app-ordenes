@@ -36,9 +36,10 @@ export default function OnuAveriasPanel({ theme }) {
   const [averias, setAverias] = useState([]);
   const [eventosTodos, setEventosTodos] = useState([]);
   // Categoria, no tipo exacto -- "los" agrupa los_down+los_up, "luz" agrupa
-  // power_down+power_up. Por defecto solo LOS (pedido explicito: la avería
-  // de luz es menos urgente de mirar a cada rato que la de señal).
-  const [categoriaFiltro, setCategoriaFiltro] = useState("los");
+  // power_down+power_up. Por defecto "los_sin_recuperar" (solo las que
+  // siguen caidas ahora mismo, pedido explicito -- es lo mas urgente de
+  // mirar al abrir el panel, mas que el historial completo de LOS).
+  const [categoriaFiltro, setCategoriaFiltro] = useState("los_sin_recuperar");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
