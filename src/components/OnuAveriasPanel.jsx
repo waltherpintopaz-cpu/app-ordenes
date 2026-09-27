@@ -33,8 +33,11 @@ export default function OnuAveriasPanel({ theme }) {
     : { bg: "#f4f6fb", card: "#ffffff", border: "#e2e8f4", text: "#1a2740", sub: "#5b6b8c" };
 
   const [averias, setAverias] = useState([]);
-  const [eventos, setEventos] = useState([]);
-  const [tipoFiltro, setTipoFiltro] = useState("");
+  const [eventosTodos, setEventosTodos] = useState([]);
+  // Categoria, no tipo exacto -- "los" agrupa los_down+los_up, "luz" agrupa
+  // power_down+power_up. Por defecto solo LOS (pedido explicito: la avería
+  // de luz es menos urgente de mirar a cada rato que la de señal).
+  const [categoriaFiltro, setCategoriaFiltro] = useState("los");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
@@ -45,19 +48,25 @@ export default function OnuAveriasPanel({ theme }) {
     try {
       const [rAverias, rEventos] = await Promise.all([
         fetch(`${HUAWEI_OLT_SNMP_API}/onu-averias-zona?activa=1`).then((r) => r.json()),
-        fetch(`${HUAWEI_OLT_SNMP_API}/onu-eventos?limit=100${tipoFiltro ? `&tipo=${tipoFiltro}` : ""}`).then((r) => r.json()),
+        fetch(`${HUAWEI_OLT_SNMP_API}/onu-eventos?limit=150`).then((r) => r.json()),
       ]);
       if (!rAverias.ok) throw new Error(rAverias.error || "Error consultando averías de zona.");
       if (!rEventos.ok) throw new Error(rEventos.error || "Error consultando eventos.");
       setAverias(Array.isArray(rAverias.averias) ? rAverias.averias : []);
-      setEventos(Array.isArray(rEventos.eventos) ? rEventos.eventos : []);
+      setEventosTodos(Array.isArray(rEventos.eventos) ? rEventos.eventos : []);
       setUltimaActualizacion(new Date());
     } catch (e) {
       setError(e.message || "Error de red.");
     } finally {
       setCargando(false);
     }
-  }, [tipoFiltro]);
+  }, []);
+
+  const eventos = eventosTodos.filter((ev) => {
+    if (categoriaFiltro === "los") return ev.tipo === "los_down" || ev.tipo === "los_up";
+    if (categoriaFiltro === "luz") return ev.tipo === "power_down" || ev.tipo === "power_up";
+    return true;
+  });
 
   useEffect(() => {
     cargar();
@@ -126,15 +135,13 @@ export default function OnuAveriasPanel({ theme }) {
             Eventos recientes
           </div>
           <select
-            value={tipoFiltro}
-            onChange={(e) => setTipoFiltro(e.target.value)}
+            value={categoriaFiltro}
+            onChange={(e) => setCategoriaFiltro(e.target.value)}
             style={{ padding: "5px 8px", fontSize: 12, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
           >
-            <option value="">Todos</option>
-            <option value="los_down">Sin señal (LOS)</option>
-            <option value="los_up">Recuperó señal</option>
-            <option value="power_down">Corte de luz</option>
-            <option value="power_up">Volvió la luz</option>
+            <option value="los">LOS (sin señal / recupera)</option>
+            <option value="luz">Luz (corte / vuelve)</option>
+            <option value="todos">Todos</option>
           </select>
         </div>
 
