@@ -1111,11 +1111,13 @@ const server = http.createServer(async (req, res) => {
         await closeRouterApiSafe(connection.api);
         connection = null;
         const conCallerId = secrets.filter((s) => (s["caller-id"] || s.callerid || "").trim()).length;
+        const conLastCallerId = secrets.filter((s) => (s["last-caller-id"] || "").trim()).length;
         writeJson(res, 200, {
           ok: true,
           total: secrets.length,
           conCallerId,
-          muestra: secrets.slice(0, 10).map((s) => ({ name: s.name, callerId: s["caller-id"], callerid: s.callerid, comment: s.comment, keys: Object.keys(s) })),
+          conLastCallerId,
+          muestra: secrets.slice(0, 10).map((s) => ({ name: s.name, callerId: s["caller-id"], lastCallerId: s["last-caller-id"], comment: s.comment })),
         });
       } catch (e) {
         writeJson(res, 200, { ok: false, error: e.message || String(e) });
