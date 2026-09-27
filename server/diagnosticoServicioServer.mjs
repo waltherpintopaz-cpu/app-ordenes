@@ -1100,6 +1100,79 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // GET /api/cruce-mac-preview -- vista previa (NO escribe nada) del cruce
+    // entre el MAC WAN de cada ONU (Huawei, via SNMP) y el caller-id de los
+    // PPP secrets de MikroTik Tiabaya. Sirve para revisar los nombres
+    // propuestos antes de aplicar nada al OLT.
+    if (req.method === "GET" && req.url === "/api/cruce-mac-preview") {
+      let connection = null;
+      try {
+        // 1. Traer TODAS las ONUs del Huawei (paginado, hasta 20 paginas de
+        // 200 = 4000, mas que de sobra para las 1684 actuales).
+        let todasOnus = [];
+        for (let page = 1; page <= 20; page++) {
+          const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-list?pageSize=200&page=${page}`).then((r) => r.json());
+          if (!r.ok || !Array.isArray(r.onus) || r.onus.length === 0) break;
+          todasOnus = todasOnus.concat(r.onus);
+          if (todasOnus.length >= (r.total || 0)) break;
+        }
+
+        // 2. Traer los secrets de MikroTik Tiabaya (name, caller-id, comment).
+        connection = await connectRouterByKey("tiabaya");
+        const secrets = await withTimeout(connection.api.write("/ppp/secret/print", []), 25000, "Listar PPP Secret en Tiabaya");
+        await closeRouterApiSafe(connection.api);
+        connection = null;
+
+        const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
+        const secretPorMac = new Map();
+        for (const s of secrets) {
+          const mac = normMac(s["caller-id"] || s.callerid);
+          if (mac && mac.length === 12) secretPorMac.set(mac, s);
+        }
+
+        const esGenerico = (nombre) => {
+          const n = String(nombre || "").trim();
+          if (!n) return true;
+          return /^(nod_|pon\s*0*\d|usuario_?\d*$)/i.test(n);
+        };
+
+        const resultados = [];
+        for (const o of todasOnus) {
+          const mac = normMac(o.wanMac);
+          if (!mac) continue;
+          const secret = secretPorMac.get(mac);
+          if (!secret) continue;
+          const usuarioMk = String(secret.name || "").trim();
+          const comentarioMk = String(secret.comment || "").trim();
+          if (!usuarioMk) continue;
+
+          let nombreNuevo;
+          if (!esGenerico(o.nombre)) {
+            nombreNuevo = `${o.nombre} — ${usuarioMk}`;
+          } else {
+            if (!comentarioMk) continue; // MikroTik tampoco trae info util, no reemplazar por solo el usuario
+            nombreNuevo = `${usuarioMk} — ${comentarioMk}`;
+          }
+          if (nombreNuevo === o.nombre) continue;
+
+          resultados.push({
+            sn: o.sn, board: o.board, port: o.port, mac,
+            nombreActual: o.nombre || null,
+            usuarioMikrotik: usuarioMk,
+            comentarioMikrotik: comentarioMk || null,
+            nombreNuevo,
+          });
+        }
+
+        writeJson(res, 200, { ok: true, totalOnus: todasOnus.length, totalSecrets: secrets.length, coincidencias: resultados.length, resultados });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/api/diagnostico-servicio/health") {
       const supabaseRouters = await loadRoutersConfigFromSupabase();
       const currentRouters = supabaseRouters || buildEnvRouters();
