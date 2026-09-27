@@ -1100,6 +1100,31 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // GET /api/cruce-mac-debug -- DEBUG TEMPORAL: muestra una muestra cruda
+    // de secrets (name/caller-id/comment) para confirmar si el campo
+    // caller-id realmente esta poblado. Quitar cuando se confirme.
+    if (req.method === "GET" && req.url === "/api/cruce-mac-debug") {
+      let connection = null;
+      try {
+        connection = await connectRouterByKey("tiabaya");
+        const secrets = await withTimeout(connection.api.write("/ppp/secret/print", []), 25000, "Listar PPP Secret en Tiabaya (debug)");
+        await closeRouterApiSafe(connection.api);
+        connection = null;
+        const conCallerId = secrets.filter((s) => (s["caller-id"] || s.callerid || "").trim()).length;
+        writeJson(res, 200, {
+          ok: true,
+          total: secrets.length,
+          conCallerId,
+          muestra: secrets.slice(0, 10).map((s) => ({ name: s.name, callerId: s["caller-id"], callerid: s.callerid, comment: s.comment, keys: Object.keys(s) })),
+        });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
     // GET /api/cruce-mac-preview -- vista previa (NO escribe nada) del cruce
     // entre el MAC WAN de cada ONU (Huawei, via SNMP) y el caller-id de los
     // PPP secrets de MikroTik Tiabaya. Sirve para revisar los nombres
