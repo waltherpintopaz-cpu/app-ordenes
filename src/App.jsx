@@ -391,7 +391,7 @@ const MENU_VISTAS_WEB = [
 const MENU_GRUPOS_ORDEN_WEB = ["Operación", "Red y Diagnóstico", "Clientes", "Seguimiento", "Comunicación", "Inventario", "Reportes", "IPTV", "Finanzas", "Administración", "Otros"];
 const MENU_GRUPO_POR_KEY_WEB = {
   dashboard: "Operación", crear: "Operación", pendientes: "Operación", historial: "Operación", recuperaciones: "Operación", historialAppsheet: "Operación",
-  diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", onuInventario: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
+  diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", onuInventario: "Red y Diagnóstico", onuAverias: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
   clientes: "Clientes", consultaCliente: "Clientes",
   seguimientoTecnicos: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
   whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
