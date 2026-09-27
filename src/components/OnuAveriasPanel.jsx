@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { FichaOnuDrawer } from "./OnuInventarioPanel";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
 const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").trim().replace(/\/$/, "");
@@ -43,6 +44,8 @@ export default function OnuAveriasPanel({ theme }) {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+
+  const [snFicha, setSnFicha] = useState(null);
 
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [config, setConfig] = useState(null);
@@ -308,13 +311,14 @@ export default function OnuAveriasPanel({ theme }) {
         </div>
 
         <div style={{ borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}`, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 90px", gap: 0, padding: "8px 14px", background: isDark ? "#0d172a" : "#f8fafc", fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 90px 90px", gap: 0, padding: "8px 14px", background: isDark ? "#0d172a" : "#f8fafc", fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase" }}>
             <div>Cuándo</div>
             <div>Cliente</div>
             <div>Board/Puerto</div>
             <div>Tipo</div>
             <div>Rx ONU</div>
             <div>Rx OLT</div>
+            <div></div>
           </div>
           {eventos.length === 0 ? (
             <div style={{ padding: 20, textAlign: "center", color: col.sub, fontSize: 13 }}>
@@ -324,7 +328,7 @@ export default function OnuAveriasPanel({ theme }) {
             eventos.map((ev) => {
               const info = TIPO_INFO[ev.tipo] || TIPO_DESCONOCIDO;
               return (
-                <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 90px", gap: 0, padding: "9px 14px", borderTop: `1px solid ${col.border}`, fontSize: 12.5, color: col.text, alignItems: "center" }}>
+                <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 90px 90px", gap: 0, padding: "9px 14px", borderTop: `1px solid ${col.border}`, fontSize: 12.5, color: col.text, alignItems: "center" }}>
                   <div style={{ color: col.sub, fontSize: 11.5 }}>{formatoFecha(ev.ocurrido_en)}</div>
                   <div>
                     <div style={{ fontWeight: 600 }}>{ev.nombre || "—"}</div>
@@ -341,12 +345,22 @@ export default function OnuAveriasPanel({ theme }) {
                   </div>
                   <div style={{ fontSize: 11.5 }}>{ev.rx_power != null ? `${ev.rx_power} dBm` : "—"}</div>
                   <div style={{ fontSize: 11.5 }}>{ev.rx_power_olt != null ? `${ev.rx_power_olt} dBm` : "—"}</div>
+                  <div>
+                    {ev.sn && (
+                      <button
+                        onClick={() => setSnFicha(ev.sn)}
+                        style={{ padding: "5px 10px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: "#2563eb" }}
+                      >Ver ficha</button>
+                    )}
+                  </div>
                 </div>
               );
             })
           )}
         </div>
       </div>
+
+      {snFicha && <FichaOnuDrawer sn={snFicha} onClose={() => setSnFicha(null)} isDark={isDark} />}
     </div>
   );
 }

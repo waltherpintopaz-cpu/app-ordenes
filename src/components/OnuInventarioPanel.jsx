@@ -68,7 +68,7 @@ const Ico = {
 const ESTADO_ICONO = { online: Ico.globe, power_fail: Ico.plug, los: Ico.linkOff, admin_disabled: Ico.slash };
 
 // ── Ficha detallada (drawer lateral) ────────────────────────────────────────
-function FichaOnuDrawer({ sn, onClose, isDark }) {
+export function FichaOnuDrawer({ sn, onClose, isDark }) {
   const [ficha, setFicha] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
