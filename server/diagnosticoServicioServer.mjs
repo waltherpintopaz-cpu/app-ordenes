@@ -1097,7 +1097,27 @@ const proxySmartOltRequest = async (req) => {
 // puerto) contra los PPP secrets de MikroTik Tiabaya (last-caller-id).
 // Usado tanto por la vista previa (/api/cruce-mac-preview, solo lectura)
 // como por la aplicacion real (/api/cruce-mac-aplicar, escribe en la OLT).
-async function calcularCruceMac() {
+// Cache en memoria del resultado completo (incluye las ~49 llamadas Telnet
+// por puerto PON, cada una puede tardar hasta 30s si el OLT esta en
+// bloqueo temporal) -- sin esto, cada llamada a preview/aplicar (incluso
+// para aplicar 1 sola ONU) recalculaba TODO de nuevo, llegando a tardar
+// 10+ minutos y arriesgando otro bloqueo por exceso de conexiones Telnet
+// seguidas. TTL 15 min: suficiente para poder correr preview y luego
+// aplicar sobre el mismo calculo sin recalcular, sin quedar demasiado
+// desactualizado si alguien cambia algo en el medio.
+let cruceMacCache = { datos: null, generadoEn: 0 };
+const CRUCE_MAC_CACHE_MS = 15 * 60 * 1000;
+
+async function calcularCruceMac({ forzar = false } = {}) {
+  if (!forzar && cruceMacCache.datos && (Date.now() - cruceMacCache.generadoEn) < CRUCE_MAC_CACHE_MS) {
+    return cruceMacCache.datos;
+  }
+  const datos = await calcularCruceMacInterno();
+  cruceMacCache = { datos, generadoEn: Date.now() };
+  return datos;
+}
+
+async function calcularCruceMacInterno() {
   let connection = null;
   try {
     // 1. Traer TODAS las ONUs del Huawei (paginado, hasta 20 paginas de
@@ -1268,9 +1288,10 @@ const server = http.createServer(async (req, res) => {
     // entre el MAC WAN de cada ONU (Huawei, via SNMP) y el caller-id de los
     // PPP secrets de MikroTik Tiabaya. Sirve para revisar los nombres
     // propuestos antes de aplicar nada al OLT.
-    if (req.method === "GET" && req.url === "/api/cruce-mac-preview") {
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/cruce-mac-preview") {
       try {
-        const { todasOnus, secrets, resultados } = await calcularCruceMac();
+        const forzar = new URL(req.url, "http://localhost").searchParams.get("refresh") === "1";
+        const { todasOnus, secrets, resultados } = await calcularCruceMac({ forzar });
         writeJson(res, 200, { ok: true, totalOnus: todasOnus.length, totalSecrets: secrets.length, coincidencias: resultados.length, resultados });
       } catch (e) {
         writeJson(res, 200, { ok: false, error: e.message || String(e) });
@@ -1296,7 +1317,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       try {
-        const { resultados } = await calcularCruceMac();
+        const { resultados } = await calcularCruceMac({ forzar: body?.forzarRecalculo === true });
         let pendientes = resultados;
         if (Array.isArray(body.sns) && body.sns.length) {
           const set = new Set(body.sns.map((s) => String(s).toUpperCase()));
