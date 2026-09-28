@@ -53,6 +53,25 @@ export default function OnuAveriasPanel({ theme }) {
 
   const [snFicha, setSnFicha] = useState(null);
 
+  // Señal en vivo pedida a mano por evento (id de evento -> {rxPower,
+  // rxPowerOlt} | "cargando") -- util cuando el evento se guardo sin
+  // señal (ej. "Volvió la luz" justo antes de que el equipo termine de
+  // re-sincronizar opticamente con la OLT) y se quiere ver el valor
+  // actual sin abrir toda la ficha.
+  const [senalEnVivoPorEvento, setSenalEnVivoPorEvento] = useState({});
+
+  const refrescarSenal = useCallback(async (ev) => {
+    if (!ev.sn) return;
+    setSenalEnVivoPorEvento((m) => ({ ...m, [ev.id]: "cargando" }));
+    try {
+      const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(ev.sn)}`).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo consultar.");
+      setSenalEnVivoPorEvento((m) => ({ ...m, [ev.id]: { rxPower: r.rxPower, rxPowerOlt: r.rxPowerOlt } }));
+    } catch {
+      setSenalEnVivoPorEvento((m) => ({ ...m, [ev.id]: "error" }));
+    }
+  }, []);
+
   const [mostrarConfig, setMostrarConfig] = useState(false);
   const [config, setConfig] = useState(null);
   const [configEdit, setConfigEdit] = useState(null);
@@ -367,9 +386,32 @@ export default function OnuAveriasPanel({ theme }) {
                       {info.label}
                     </span>
                   </div>
-                  <div style={{ fontSize: 11.5 }}>{ev.rx_power != null ? `${ev.rx_power} dBm` : "—"}</div>
-                  <div style={{ fontSize: 11.5 }}>{ev.rx_power_olt != null ? `${ev.rx_power_olt} dBm` : "—"}</div>
-                  <div>
+                  {(() => {
+                    const senalViva = senalEnVivoPorEvento[ev.id];
+                    if (senalViva && senalViva !== "cargando" && senalViva !== "error") {
+                      return (
+                        <>
+                          <div style={{ fontSize: 11.5 }} title="Señal en vivo, no la del momento del evento">{senalViva.rxPower != null ? `${senalViva.rxPower} dBm ⚡` : "—"}</div>
+                          <div style={{ fontSize: 11.5 }} title="Señal en vivo, no la del momento del evento">{senalViva.rxPowerOlt != null ? `${senalViva.rxPowerOlt} dBm ⚡` : "—"}</div>
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <div style={{ fontSize: 11.5 }}>{ev.rx_power != null ? `${ev.rx_power} dBm` : "—"}</div>
+                        <div style={{ fontSize: 11.5 }}>{ev.rx_power_olt != null ? `${ev.rx_power_olt} dBm` : "—"}</div>
+                      </>
+                    );
+                  })()}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {ev.sn && ev.rx_power == null && (
+                      <button
+                        onClick={() => refrescarSenal(ev)}
+                        disabled={senalEnVivoPorEvento[ev.id] === "cargando"}
+                        title="Consultar la señal actual (en vivo) de esta ONU"
+                        style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid #2563eb", background: "transparent", color: "#2563eb" }}
+                      >{senalEnVivoPorEvento[ev.id] === "cargando" ? "…" : "🔄"}</button>
+                    )}
                     {ev.sn && (
                       <button
                         onClick={() => setSnFicha(ev.sn)}
