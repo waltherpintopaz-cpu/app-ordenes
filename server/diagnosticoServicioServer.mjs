@@ -97,8 +97,14 @@ const buildEnvRouters = () =>
     ])
   );
 
+// Excepciones confirmadas por el usuario (2026-09-28): estos 2 numeros
+// pelados NO siguen el patron "N -> Nod_0N" normal -- son codigos legacy
+// de una numeracion vieja que ya no corresponde al nodo del mismo numero.
+const NODO_NUMERO_LEGACY_EXCEPCIONES = { "9": "NOD_01", "10": "NOD_03" };
+
 const normalizeNodo = (value = "") => {
   const base = String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  if (NODO_NUMERO_LEGACY_EXCEPCIONES[base]) return NODO_NUMERO_LEGACY_EXCEPCIONES[base];
   // Datos legacy: 156 ordenes en Supabase (confirmado 2026-09-28) tienen
   // "nodo" guardado como numero pelado ("1", "5"...) en vez de "Nod_01" --
   // vienen de una importacion vieja. Sin esto, resolveRouterByNodo no
