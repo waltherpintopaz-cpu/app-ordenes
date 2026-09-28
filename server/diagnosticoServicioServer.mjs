@@ -97,11 +97,16 @@ const buildEnvRouters = () =>
     ])
   );
 
-const normalizeNodo = (value = "") =>
-  String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "_");
+const normalizeNodo = (value = "") => {
+  const base = String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  // Datos legacy: 156 ordenes en Supabase (confirmado 2026-09-28) tienen
+  // "nodo" guardado como numero pelado ("1", "5"...) en vez de "Nod_01" --
+  // vienen de una importacion vieja. Sin esto, resolveRouterByNodo no
+  // encontraba router para esas ordenes ("No hay router configurado para
+  // el nodo 1."), aunque el nodo real SI esta configurado.
+  if (/^\d+$/.test(base)) return `NOD_${base.padStart(2, "0")}`;
+  return base;
+};
 
 const normalizeRouterKey = (value = "") =>
   String(value || "")
