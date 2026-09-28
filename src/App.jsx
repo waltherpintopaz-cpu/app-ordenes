@@ -5184,7 +5184,10 @@ export default function App() {
     window.alert(`Actualización completada. ${actualizados.length} clientes con estado actualizado.`);
   };
 
-  const obtenerFotosLiquidacionClienteSupabase = async (cliente = {}) => {
+  // Un DNI puede tener varios servicios (otra dirección): solo se devuelven fotos del
+  // servicio indicado (mismo usuario PPPoE o misma dirección) y de la propia orden.
+  // opts.estricto fuerza el filtro aunque el DNI tenga un solo servicio (instalación nueva).
+  const obtenerFotosLiquidacionClienteSupabase = async (cliente = {}, opts = {}) => {
     if (!isSupabaseConfigured || !cliente) return [];
     const fotosSet = new Set(
       (Array.isArray(cliente?.fotosLiquidacion) ? cliente.fotosLiquidacion : [])
@@ -5195,7 +5198,24 @@ export default function App() {
     let clienteId = Number(cliente?.id);
     const dni = String(cliente?.dni || "").replace(/\D/g, "");
 
-    if (!Number.isFinite(clienteId) && dni) {
+    let filtrarPorServicio = Boolean(opts.estricto);
+    if (!filtrarPorServicio && dni) {
+      const { count } = await supabase.from(CLIENTES_TABLE).select("id", { count: "exact", head: true }).eq("dni", dni);
+      filtrarPorServicio = (count || 0) > 1;
+    }
+    const normTxt = (v) => String(v || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    const usuarioSrv = normTxt(cliente?.usuarioNodo);
+    const direccionSrv = normTxt(cliente?.direccion);
+    const codigoOrdenSrv = String(opts.codigoOrden || "").trim();
+    const liqEsDelServicio = (row) => {
+      if (!filtrarPorServicio) return true;
+      if (codigoOrdenSrv && (String(row?.codigo || "").trim() === codigoOrdenSrv || String(row?.codigo_orden || "").trim() === codigoOrdenSrv)) return true;
+      if (usuarioSrv && normTxt(row?.usuario_nodo) === usuarioSrv) return true;
+      if (direccionSrv && normTxt(row?.direccion) === direccionSrv) return true;
+      return false;
+    };
+
+    if (!Number.isFinite(clienteId) && dni && !filtrarPorServicio) {
       const cliRes = await supabase
         .from(CLIENTES_TABLE)
         .select("id")
@@ -5226,12 +5246,12 @@ export default function App() {
     if (dni) {
       const liqRes = await supabase
         .from("liquidaciones")
-        .select("id,fotos,payload")
+        .select("*")
         .eq("dni", dni)
         .order("id", { ascending: false })
         .limit(200);
 
-      const liqRows = !liqRes.error && Array.isArray(liqRes.data) ? liqRes.data : [];
+      const liqRows = (!liqRes.error && Array.isArray(liqRes.data) ? liqRes.data : []).filter(liqEsDelServicio);
       const liqIds = [];
       liqRows.forEach((row) => {
         const idNum = Number(row?.id);
@@ -5377,11 +5397,14 @@ export default function App() {
       // Fetch fresco con campos pesados que no se cargan en el listado
       const dniCliente = String(cliente.dni || "").trim();
       if (dniCliente) {
-        const { data: fresh } = await supabase
+        // Un DNI puede tener varios servicios: buscar por id del servicio abierto
+        const idCliente = Number(cliente.id);
+        const queryFresh = supabase
           .from("clientes")
-          .select("caja_nap,puerto_nap,payload,fotos_liquidacion,historial_instalaciones,equipos_historial")
-          .eq("dni", dniCliente)
-          .maybeSingle();
+          .select("caja_nap,puerto_nap,payload,fotos_liquidacion,historial_instalaciones,equipos_historial");
+        const { data: fresh } = Number.isFinite(idCliente) && idCliente > 0
+          ? await queryFresh.eq("id", idCliente).maybeSingle()
+          : await queryFresh.eq("dni", dniCliente).order("id", { ascending: false }).limit(1).maybeSingle();
         if (fresh) {
           const p = fresh.payload && typeof fresh.payload === "object" ? fresh.payload : null;
           const patch = {
@@ -10278,7 +10301,14 @@ export default function App() {
       setSelManualPrincipal(false); setSelManualContacto(false);
       setModalSelCelular({ cliente: clienteInterno, numeros: numsSel, updateOnly: true });
     }
-    const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni, fotosLiquidacion: clienteInterno.fotos_liquidacion || [] });
+    // Solo fotos del servicio elegido (el DNI puede tener otros servicios en otra dirección)
+    const fotos = await obtenerFotosLiquidacionClienteSupabase({
+      id: clienteInterno.id,
+      dni,
+      fotosLiquidacion: clienteInterno.fotos_liquidacion || [],
+      usuarioNodo: clienteInterno.usuario_nodo || "",
+      direccion: clienteInterno.direccion || "",
+    });
     const todasFotos = [...new Set([clienteInterno.foto_fachada, ...fotos].filter(Boolean))];
     setFotosClienteDni(todasFotos);
   };
@@ -10286,6 +10316,8 @@ export default function App() {
   const usarComoServicioNuevo = () => {
     const nombreExistente = modalSelectorServicio?.servicios?.[0]?.nombre || modalSelectorServicio?.nombreReniec || "";
     setOrden((prev) => ({ ...prev, nombre: nombreExistente || prev.nombre }));
+    // Servicio nuevo (otra dirección): no mostrar fotos de los otros servicios
+    setFotosClienteDni([]);
     setModalSelectorServicio(null);
   };
 
@@ -11157,12 +11189,24 @@ export default function App() {
     );
   };
 
-  const registrarFotosClienteRelacionSupabase = async (dni = "", fotos = [], liquidacionId = null, ordenId = null) => {
+  const registrarFotosClienteRelacionSupabase = async (dni = "", fotos = [], liquidacionId = null, ordenId = null, clienteIdPreferido = null) => {
     const dniClean = String(dni || "").trim();
     const fotosClean = Array.from(new Set((Array.isArray(fotos) ? fotos : []).map((x) => String(x || "").trim()).filter(Boolean)));
     if (!isSupabaseConfigured || !dniClean || !fotosClean.length) return;
     try {
-      const cliRes = await supabase
+      // Un DNI puede tener varios servicios: si se conoce el servicio exacto, usarlo;
+      // si no, el más reciente.
+      let cliRes = { data: null, error: null };
+      const idPref = Number(clienteIdPreferido);
+      if (Number.isFinite(idPref) && idPref > 0) {
+        cliRes = await supabase
+          .from(CLIENTES_TABLE)
+          .select("id")
+          .eq("dni", dniClean)
+          .eq("id", idPref)
+          .maybeSingle();
+      }
+      if (cliRes.error || !cliRes.data?.id) cliRes = await supabase
         .from(CLIENTES_TABLE)
         .select("id")
         .eq("dni", dniClean)
@@ -11196,22 +11240,36 @@ export default function App() {
     }
   };
 
-  // Fotos del cliente de una orden. Un DNI puede tener varios servicios (varias filas),
-  // así que se elige el que coincide en usuario PPPoE, luego en nodo, luego el más reciente.
+  // Fotos del cliente de una orden. Un DNI puede tener varios servicios (otra dirección):
+  // el técnico solo ve fotos del servicio de la orden (mismo usuario PPPoE o misma
+  // dirección). Si es una instalación de un servicio nuevo en otra dirección, no ve
+  // fotos de los otros servicios, solo las de la propia orden.
   const obtenerFotosClienteDeOrden = async (item) => {
     const { data: filas } = await supabase
       .from("clientes")
-      .select("foto_fachada,fotos_liquidacion,usuario_nodo,nodo")
+      .select("id,foto_fachada,fotos_liquidacion,usuario_nodo,direccion")
       .eq("dni", item.dni)
       .order("id", { ascending: false });
     const lista = Array.isArray(filas) ? filas : [];
-    const usuarioOrden = String(item.usuarioNodo || "").trim();
-    const nodoOrden = String(item.nodo || "").trim();
+    const normTxt = (v) => String(v || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    const usuarioOrden = normTxt(item.usuarioNodo);
+    const direccionOrden = normTxt(item.direccion);
+    const esInstalacion = esActuacionInstalacion(item.tipoActuacion);
     const cli =
-      (usuarioOrden && lista.find((c) => String(c.usuario_nodo || "").trim() === usuarioOrden)) ||
-      (nodoOrden && lista.find((c) => String(c.nodo || "").trim() === nodoOrden)) ||
-      lista[0] || null;
-    const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
+      (usuarioOrden && lista.find((c) => normTxt(c.usuario_nodo) === usuarioOrden)) ||
+      (direccionOrden && lista.find((c) => normTxt(c.direccion) === direccionOrden)) ||
+      // Avería/traslado de un cliente con un solo servicio: es ese servicio
+      (!esInstalacion && lista.length === 1 ? lista[0] : null);
+    const fotos = await obtenerFotosLiquidacionClienteSupabase(
+      {
+        id: cli?.id,
+        dni: item.dni,
+        fotosLiquidacion: cli?.fotos_liquidacion || [],
+        usuarioNodo: item.usuarioNodo || cli?.usuario_nodo || "",
+        direccion: item.direccion || cli?.direccion || "",
+      },
+      { estricto: esInstalacion || lista.length > 1, codigoOrden: item.codigo }
+    );
     return [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
   };
 
@@ -11348,7 +11406,7 @@ export default function App() {
         const fotosLiq = registroLiquidado.liquidacion?.fotos || [];
         const liquidacionIdWEB = registroLiquidado.liquidacion?.id || registroLiquidado.id || null;
         if (fotosLiq.length > 0 && liquidacionIdWEB) {
-          void registrarFotosClienteRelacionSupabase(dni, fotosLiq, liquidacionIdWEB, registroLiquidado.id);
+          void registrarFotosClienteRelacionSupabase(dni, fotosLiq, liquidacionIdWEB, registroLiquidado.id, esNuevo ? null : clienteResultado.id);
         }
         // Traslado: dejar en observacion_final un registro de la dirección/nodo/usuario anterior
         if (String(registroLiquidado.tipoActuacion || "") === "Traslado" && clienteAnteriorTraslado) {
