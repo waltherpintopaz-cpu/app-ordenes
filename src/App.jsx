@@ -48,6 +48,7 @@ import StreetViewThumb from "./components/StreetViewThumb";
 import GastosPersonalesPanel from "./components/GastosPersonalesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
+import KardexInventarioPanel from "./components/KardexInventarioPanel";
 import EquiposTecnicoReportesPanel from "./components/EquiposTecnicoReportesPanel";
 import MaterialesTecnicoReportesPanel from "./components/MaterialesTecnicoReportesPanel";
 import AgentesDashboard from "./components/AgentesDashboard";
@@ -514,6 +515,7 @@ const REPORTES_SUBMENU_ITEMS = [
   { key: "mikrowisp",      label: "MikroWisp",      sideLabel: "MikroWisp"      },
   { key: "agentes",        label: "Agentes",        sideLabel: "Agentes"        },
   { key: "inventario",     label: "Inventario",     sideLabel: "Inventario Catálogo" },
+  { key: "kardex",         label: "Kardex",         sideLabel: "Kardex de Inventario" },
   { key: "equiposTecnico", label: "Equipos x Técnico", sideLabel: "Equipos por Técnico" },
   { key: "materialesTecnico", label: "Materiales x Técnico", sideLabel: "Materiales por Técnico" },
 ];
@@ -528,6 +530,7 @@ const REPORTES_LUCIDE_ICONS = {
   mikrowisp:     Activity,
   agentes:       Users2,
   inventario:    Package,
+  kardex:        ScrollText,
   equiposTecnico: Package,
   materialesTecnico: Package,
 };
@@ -10595,6 +10598,7 @@ export default function App() {
             .eq("dni", dniLimpio)
             .not("iptv_usuario", "is", null)
             .neq("iptv_usuario", "")
+            .limit(1)
             .maybeSingle();
           iptvClienteExistente = clienteRow?.iptv_usuario ? { iptv_usuario: clienteRow.iptv_usuario, iptv_password: null } : null;
         }
@@ -11192,6 +11196,25 @@ export default function App() {
     }
   };
 
+  // Fotos del cliente de una orden. Un DNI puede tener varios servicios (varias filas),
+  // así que se elige el que coincide en usuario PPPoE, luego en nodo, luego el más reciente.
+  const obtenerFotosClienteDeOrden = async (item) => {
+    const { data: filas } = await supabase
+      .from("clientes")
+      .select("foto_fachada,fotos_liquidacion,usuario_nodo,nodo")
+      .eq("dni", item.dni)
+      .order("id", { ascending: false });
+    const lista = Array.isArray(filas) ? filas : [];
+    const usuarioOrden = String(item.usuarioNodo || "").trim();
+    const nodoOrden = String(item.nodo || "").trim();
+    const cli =
+      (usuarioOrden && lista.find((c) => String(c.usuario_nodo || "").trim() === usuarioOrden)) ||
+      (nodoOrden && lista.find((c) => String(c.nodo || "").trim() === nodoOrden)) ||
+      lista[0] || null;
+    const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
+    return [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
+  };
+
   const guardarClienteDesdeLiquidacion = async (registroLiquidado, { isEditing = false } = {}) => {
     if (!registroLiquidado) return;
 
@@ -11209,6 +11232,12 @@ export default function App() {
         .maybeSingle();
       iptvUsuarioLiq = iptvRow?.iptv_usuario || "";
     }
+    // La cuenta IPTV es por DNI: si el cliente tiene varios servicios, solo se asigna
+    // al servicio cuya orden la incluyó (marca en la descripción al crear la orden).
+    const ordenTraeIptv = String(registroLiquidado.descripcion || "").includes("Cuenta IPTV MaxPlayer");
+    const dniTieneOtroServicio = (Array.isArray(clientes) ? clientes : []).some(
+      (c) => String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
+    );
 
     const esInstalacion = esActuacionInstalacion(registroLiquidado.tipoActuacion);
 
@@ -11243,14 +11272,12 @@ export default function App() {
             usuarioNodo: registroLiquidado.usuarioNodo || existente.usuarioNodo || "",
             cajaNap: cajaNapLiq || existente.cajaNap || "",
             ubicacion: ubicacionLiq || existente.ubicacion || "",
-            iptv_usuario: iptvUsuarioLiq || existente.iptv_usuario || "",
+            iptv_usuario: ((ordenTraeIptv || candidatos.length <= 1) ? iptvUsuarioLiq : "") || existente.iptv_usuario || "",
             ultimaActualizacion: new Date().toLocaleString(),
           };
           clienteResultado = actualizado;
-          return prev.map((c) =>
-            String(c.dni || "").trim() === dni || String(c.codigoCliente || "").trim() === dni
-              ? actualizado : c
-          );
+          // Solo reemplazar el servicio elegido; los demás servicios del mismo DNI quedan intactos
+          return prev.map((c) => (c === existente ? actualizado : c));
         }
         // Cliente no existe → crear registro básico sin codigoAbonado ni historial instalación
         const nuevo = {
@@ -11397,7 +11424,7 @@ export default function App() {
       tecnico: registroLiquidado.tecnico || "",
       autorOrden: registroLiquidado.autorOrden || "",
       cajaNap: registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "",
-      iptv_usuario: iptvUsuarioLiq || "",
+      iptv_usuario: (ordenTraeIptv || !dniTieneOtroServicio) ? (iptvUsuarioLiq || "") : "",
       fechaRegistro: new Date().toLocaleString(),
       ultimaActualizacion: new Date().toLocaleString(),
       historialInstalaciones: [historialItem],
@@ -11431,7 +11458,7 @@ export default function App() {
           fotoFachada: registroLiquidado.fotoFachada || existenteMismaOrden.fotoFachada || "",
           codigoEtiqueta: registroLiquidado.liquidacion?.codigoEtiqueta || existenteMismaOrden.codigoEtiqueta || "",
           cajaNap: registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || existenteMismaOrden.cajaNap || "",
-          iptv_usuario: iptvUsuarioLiq || existenteMismaOrden.iptv_usuario || "",
+          iptv_usuario: (ordenTraeIptv ? iptvUsuarioLiq : "") || existenteMismaOrden.iptv_usuario || "",
           ultimaActualizacion: new Date().toLocaleString(),
         };
         clienteResultado = actualizado;
@@ -18159,10 +18186,7 @@ export default function App() {
                   setOrdenDetalle(item); setFotosOrdenDetalle([]);
                   if (item.dni) {
                     try {
-                      const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle();
-                      const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
-                      const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
-                      setFotosOrdenDetalle(todas);
+                      setFotosOrdenDetalle(await obtenerFotosClienteDeOrden(item));
                     } catch (_) {}
                   }
                 };
@@ -18283,10 +18307,7 @@ export default function App() {
                     setOrdenDetalle(item); setFotosOrdenDetalle([]);
                     if (item.dni) {
                       try {
-                        const { data: cli } = await supabase.from("clientes").select("foto_fachada,fotos_liquidacion").eq("dni", item.dni).maybeSingle();
-                        const fotos = await obtenerFotosLiquidacionClienteSupabase({ dni: item.dni, fotosLiquidacion: cli?.fotos_liquidacion || [] });
-                        const todas = [...new Set([cli?.foto_fachada, item.fotoFachada, ...fotos].filter(Boolean))];
-                        setFotosOrdenDetalle(todas);
+                        setFotosOrdenDetalle(await obtenerFotosClienteDeOrden(item));
                       } catch (_) {}
                     }
                   };
@@ -23431,6 +23452,10 @@ export default function App() {
 
         {vistaActiva === "reportes" && reportesSubmenu === "inventario" && esAdminSesion && (
           <InventarioCatalogoPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
+        )}
+
+        {vistaActiva === "reportes" && reportesSubmenu === "kardex" && esAdminSesion && (
+          <KardexInventarioPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
         )}
 
         {vistaActiva === "reportes" && reportesSubmenu === "equiposTecnico" && esAdminSesion && (
