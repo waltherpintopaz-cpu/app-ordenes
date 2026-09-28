@@ -134,12 +134,6 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
 
   const totalEntradas = filtrados.filter((m) => movimientoInfo(m.movimiento).label === "Entrada").length;
   const totalSalidas = filtrados.filter((m) => movimientoInfo(m.movimiento).label === "Salida").length;
-  const cantidadTotal = filtrados.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
-  // La unidad solo se muestra junto a la cantidad cuando todos los
-  // movimientos filtrados comparten la misma (ej. al filtrar por un solo
-  // material) -- mezclar "mt" con "und" en una sola suma no tendria sentido.
-  const unidadesUnicas = new Set(filtrados.map((m) => m.unidad).filter(Boolean));
-  const unidadComun = unidadesUnicas.size === 1 ? [...unidadesUnicas][0] : "";
 
   const hayFiltrosActivos = materialesSeleccionados.length > 0 || filtroTecnico !== "todos" || filtroNodo !== "todos" || filtroFechaDesde || filtroFechaHasta || buscar.trim();
 
@@ -182,7 +176,8 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
         <div class="material-section">
           <div class="material-header">
             <span class="material-title">${esc(material)}</span>
-            <span class="material-sub">${filas.length} movimiento(s) · ${cantidadMaterial} ${esc(unidadMaterial)}</span>
+            <span class="material-sub">${filas.length} movimiento(s)</span>
+            <span class="material-total">Total: ${cantidadMaterial} ${esc(unidadMaterial)}</span>
           </div>
           <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Técnico</th><th>Nodo</th><th>Motivo</th><th>Referencia</th></tr></thead>
           <tbody>${filasHtml}</tbody></table>
@@ -207,6 +202,7 @@ body{font-family:Arial,sans-serif;font-size:11px;color:#1E293B;padding:24px}
 .material-header{display:flex;justify-content:space-between;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0}
 .material-title{font-size:12px;font-weight:800}
 .material-sub{font-size:10px;color:#64748B}
+.material-total{font-size:12px;font-weight:800;color:#1E4F9C;background:#EFF6FF;border-radius:6px;padding:3px 10px}
 table{width:100%;border-collapse:collapse}
 th{background:#1E4F9C;color:#fff;font-size:9px;padding:5px 8px;text-align:left}
 td{padding:4px 8px;font-size:10px;border-bottom:1px solid #F1F5F9}
@@ -222,7 +218,6 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
   <div class="stat-card"><div class="stat-num">${filtrados.length}</div><div class="stat-label">Movimientos</div></div>
   <div class="stat-card"><div class="stat-num">${totalEntradas}</div><div class="stat-label">Entradas</div></div>
   <div class="stat-card"><div class="stat-num">${totalSalidas}</div><div class="stat-label">Salidas</div></div>
-  <div class="stat-card"><div class="stat-num">${cantidadTotal}${unidadComun ? ` ${esc(unidadComun)}` : ""}</div><div class="stat-label">Cantidad total</div></div>
 </div>
 ${secciones}
 </body></html>`;
@@ -257,10 +252,6 @@ ${secciones}
           <div style={{ ...cardStyle, flex: 1, minWidth: 110, textAlign: "center", padding: "14px 10px" }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#dc2626" }}>{totalSalidas}</div>
             <div style={{ fontSize: 12, color: "#64748b" }}>Salidas</div>
-          </div>
-          <div style={{ ...cardStyle, flex: 1, minWidth: 110, textAlign: "center", padding: "14px 10px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{cantidadTotal}{unidadComun ? ` ${unidadComun}` : ""}</div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>Cantidad total</div>
           </div>
         </div>
 
@@ -355,9 +346,14 @@ ${secciones}
           const unidadMaterial = filas.find((m) => m.unidad)?.unidad || "";
           return (
             <div key={material} style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{material}</span>
-                <span style={{ fontSize: 12, color: "#64748b" }}>{filas.length} movimiento(s) · {cantidadMaterial} {unidadMaterial}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>{filas.length} movimiento(s)</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: "#1E4F9C", background: "#EFF6FF", borderRadius: 8, padding: "5px 12px" }}>
+                    Total: {cantidadMaterial} {unidadMaterial}
+                  </span>
+                </div>
               </div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
