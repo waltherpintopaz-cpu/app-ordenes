@@ -112,7 +112,12 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
 
   const totalEntradas = filtrados.filter((m) => movimientoInfo(m.movimiento).label === "Entrada").length;
   const totalSalidas = filtrados.filter((m) => movimientoInfo(m.movimiento).label === "Salida").length;
-  const valorTotal = filtrados.reduce((s, m) => s + (Number(m.cantidad) || 0) * (Number(m.costo_unitario) || 0), 0);
+  const cantidadTotal = filtrados.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+  // La unidad solo se muestra junto a la cantidad cuando todos los
+  // movimientos filtrados comparten la misma (ej. al filtrar por un solo
+  // material) -- mezclar "mt" con "und" en una sola suma no tendria sentido.
+  const unidadesUnicas = new Set(filtrados.map((m) => m.unidad).filter(Boolean));
+  const unidadComun = unidadesUnicas.size === 1 ? [...unidadesUnicas][0] : "";
 
   const hayFiltrosActivos = filtroMaterial !== "todos" || filtroTecnico !== "todos" || filtroNodo !== "todos" || filtroFechaDesde || filtroFechaHasta || buscar.trim();
 
@@ -179,7 +184,7 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
   <div class="stat-card"><div class="stat-num">${filtrados.length}</div><div class="stat-label">Movimientos</div></div>
   <div class="stat-card"><div class="stat-num">${totalEntradas}</div><div class="stat-label">Entradas</div></div>
   <div class="stat-card"><div class="stat-num">${totalSalidas}</div><div class="stat-label">Salidas</div></div>
-  <div class="stat-card"><div class="stat-num">S/ ${valorTotal.toFixed(2)}</div><div class="stat-label">Valor movido</div></div>
+  <div class="stat-card"><div class="stat-num">${cantidadTotal}${unidadComun ? ` ${esc(unidadComun)}` : ""}</div><div class="stat-label">Cantidad total</div></div>
 </div>
 <table>
   <thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th>Cantidad</th><th>Técnico</th><th>Nodo</th><th>Motivo</th><th>Referencia</th></tr></thead>
@@ -219,8 +224,8 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
             <div style={{ fontSize: 12, color: "#64748b" }}>Salidas</div>
           </div>
           <div style={{ ...cardStyle, flex: 1, minWidth: 110, textAlign: "center", padding: "14px 10px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>S/ {valorTotal.toFixed(2)}</div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>Valor movido</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#1e293b" }}>{cantidadTotal}{unidadComun ? ` ${unidadComun}` : ""}</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>Cantidad total</div>
           </div>
         </div>
 
