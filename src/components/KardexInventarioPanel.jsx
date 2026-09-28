@@ -38,7 +38,10 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [filtroMaterial, setFiltroMaterial] = useState("todos");
+  // Array vacio = "todos los materiales" -- selecciona varios con checkboxes
+  // en el desplegable (pedido explicito: "seleccionar varios materiales").
+  const [materialesSeleccionados, setMaterialesSeleccionados] = useState([]);
+  const [menuMaterialAbierto, setMenuMaterialAbierto] = useState(false);
   const [filtroTecnico, setFiltroTecnico] = useState("todos");
   const [filtroNodo, setFiltroNodo] = useState("todos");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
@@ -74,7 +77,7 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
   }, []);
 
   const materiales = useMemo(
-    () => ["todos", ...new Set(movimientos.map((m) => m.item_nombre).filter(Boolean))].sort(),
+    () => [...new Set(movimientos.map((m) => m.item_nombre).filter(Boolean))].sort(),
     [movimientos]
   );
   const tecnicos = useMemo(
@@ -85,6 +88,10 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
     () => ["todos", ...new Set(movimientos.map((m) => m.nodo).filter(Boolean))].sort(),
     [movimientos]
   );
+
+  const toggleMaterial = (m) => {
+    setMaterialesSeleccionados((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]);
+  };
 
   const fechaEnRango = (fecha) => {
     if (!filtroFechaDesde && !filtroFechaHasta) return true;
@@ -98,7 +105,7 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
   const filtrados = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return movimientos.filter((m) => {
-      if (filtroMaterial !== "todos" && m.item_nombre !== filtroMaterial) return false;
+      if (materialesSeleccionados.length && !materialesSeleccionados.includes(m.item_nombre)) return false;
       if (filtroTecnico !== "todos" && m.tecnico !== filtroTecnico) return false;
       if (filtroNodo !== "todos" && m.nodo !== filtroNodo) return false;
       if (!fechaEnRango(m.created_at)) return false;
@@ -108,7 +115,22 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
       }
       return true;
     });
-  }, [movimientos, filtroMaterial, filtroTecnico, filtroNodo, filtroFechaDesde, filtroFechaHasta, buscar]);
+  }, [movimientos, materialesSeleccionados, filtroTecnico, filtroNodo, filtroFechaDesde, filtroFechaHasta, buscar]);
+
+  // Agrupado por material, cada grupo ordenado por fecha (mas reciente
+  // primero) -- pedido explicito: "que en el reporte se ordene por material".
+  const porMaterial = useMemo(() => {
+    const grupos = new Map();
+    for (const m of filtrados) {
+      const key = m.item_nombre || "Sin material";
+      if (!grupos.has(key)) grupos.set(key, []);
+      grupos.get(key).push(m);
+    }
+    for (const filas of grupos.values()) {
+      filas.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+    return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [filtrados]);
 
   const totalEntradas = filtrados.filter((m) => movimientoInfo(m.movimiento).label === "Entrada").length;
   const totalSalidas = filtrados.filter((m) => movimientoInfo(m.movimiento).label === "Salida").length;
@@ -119,10 +141,10 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
   const unidadesUnicas = new Set(filtrados.map((m) => m.unidad).filter(Boolean));
   const unidadComun = unidadesUnicas.size === 1 ? [...unidadesUnicas][0] : "";
 
-  const hayFiltrosActivos = filtroMaterial !== "todos" || filtroTecnico !== "todos" || filtroNodo !== "todos" || filtroFechaDesde || filtroFechaHasta || buscar.trim();
+  const hayFiltrosActivos = materialesSeleccionados.length > 0 || filtroTecnico !== "todos" || filtroNodo !== "todos" || filtroFechaDesde || filtroFechaHasta || buscar.trim();
 
   const limpiarFiltros = () => {
-    setFiltroMaterial("todos"); setFiltroTecnico("todos"); setFiltroNodo("todos");
+    setMaterialesSeleccionados([]); setFiltroTecnico("todos"); setFiltroNodo("todos");
     setFiltroFechaDesde(""); setFiltroFechaHasta(""); setBuscar("");
   };
 
@@ -133,26 +155,38 @@ export default function KardexInventarioPanel({ cardStyle, sectionTitleStyle }) 
     const fmtFechaHora = (iso) => iso ? new Date(iso).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "—";
 
     const chips = [];
-    if (filtroMaterial !== "todos") chips.push(`Material: ${filtroMaterial}`);
+    if (materialesSeleccionados.length) chips.push(`Material: ${materialesSeleccionados.join(", ")}`);
     if (filtroTecnico !== "todos") chips.push(`Técnico: ${filtroTecnico}`);
     if (filtroNodo !== "todos") chips.push(`Nodo: ${filtroNodo}`);
     if (filtroFechaDesde) chips.push(`Desde: ${filtroFechaDesde}`);
     if (filtroFechaHasta) chips.push(`Hasta: ${filtroFechaHasta}`);
     if (buscar.trim()) chips.push(`Búsqueda: "${buscar.trim()}"`);
 
-    const filas = filtrados.map((m) => {
-      const info = movimientoInfo(m.movimiento);
+    const secciones = porMaterial.map(([material, filas]) => {
+      const cantidadMaterial = filas.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+      const unidadMaterial = filas.find((m) => m.unidad)?.unidad || "";
+      const filasHtml = filas.map((m) => {
+        const info = movimientoInfo(m.movimiento);
+        return `
+          <tr>
+            <td>${esc(fmtFechaHora(m.created_at))}</td>
+            <td><span class="badge" style="background:${info.bg};color:${info.text}">${esc(info.label)}</span></td>
+            <td style="text-align:right">${esc(m.cantidad ?? "-")} ${esc(m.unidad || "")}</td>
+            <td>${esc(m.tecnico || "—")}</td>
+            <td>${esc(m.nodo || "—")}</td>
+            <td>${esc(m.motivo || "—")}</td>
+            <td>${esc(m.referencia || "—")}</td>
+          </tr>`;
+      }).join("");
       return `
-        <tr>
-          <td>${esc(fmtFechaHora(m.created_at))}</td>
-          <td><span class="badge" style="background:${info.bg};color:${info.text}">${esc(info.label)}</span></td>
-          <td>${esc(m.item_nombre || "-")}</td>
-          <td style="text-align:right">${esc(m.cantidad ?? "-")} ${esc(m.unidad || "")}</td>
-          <td>${esc(m.tecnico || "—")}</td>
-          <td>${esc(m.nodo || "—")}</td>
-          <td>${esc(m.motivo || "—")}</td>
-          <td>${esc(m.referencia || "—")}</td>
-        </tr>`;
+        <div class="material-section">
+          <div class="material-header">
+            <span class="material-title">${esc(material)}</span>
+            <span class="material-sub">${filas.length} movimiento(s) · ${cantidadMaterial} ${esc(unidadMaterial)}</span>
+          </div>
+          <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Técnico</th><th>Nodo</th><th>Motivo</th><th>Referencia</th></tr></thead>
+          <tbody>${filasHtml}</tbody></table>
+        </div>`;
     }).join("");
 
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/>
@@ -169,6 +203,10 @@ body{font-family:Arial,sans-serif;font-size:11px;color:#1E293B;padding:24px}
 .stat-card{flex:1;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px;text-align:center}
 .stat-num{font-size:20px;font-weight:900;color:#1E4F9C}
 .stat-label{font-size:9px;color:#94A3B8;font-weight:600}
+.material-section{margin-bottom:18px;border:1px solid #E2E8F0;border-radius:8px;overflow:hidden;page-break-inside:avoid}
+.material-header{display:flex;justify-content:space-between;padding:8px 12px;background:#F8FAFC;border-bottom:1px solid #E2E8F0}
+.material-title{font-size:12px;font-weight:800}
+.material-sub{font-size:10px;color:#64748B}
 table{width:100%;border-collapse:collapse}
 th{background:#1E4F9C;color:#fff;font-size:9px;padding:5px 8px;text-align:left}
 td{padding:4px 8px;font-size:10px;border-bottom:1px solid #F1F5F9}
@@ -176,7 +214,7 @@ td{padding:4px 8px;font-size:10px;border-bottom:1px solid #F1F5F9}
 @media print{body{padding:12px}}
 </style></head><body>
 <div class="header">
-  <div><div class="company">Americanet</div><div class="report-title">Kardex de Inventario</div></div>
+  <div><div class="company">Americanet</div><div class="report-title">Kardex de Inventario — Ordenado por Material</div></div>
   <div style="text-align:right;color:#64748B;font-size:10px"><div><strong>Generado:</strong> ${fmtDate(ahora)}</div></div>
 </div>
 ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div>` : ""}
@@ -186,10 +224,7 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
   <div class="stat-card"><div class="stat-num">${totalSalidas}</div><div class="stat-label">Salidas</div></div>
   <div class="stat-card"><div class="stat-num">${cantidadTotal}${unidadComun ? ` ${esc(unidadComun)}` : ""}</div><div class="stat-label">Cantidad total</div></div>
 </div>
-<table>
-  <thead><tr><th>Fecha</th><th>Tipo</th><th>Material</th><th>Cantidad</th><th>Técnico</th><th>Nodo</th><th>Motivo</th><th>Referencia</th></tr></thead>
-  <tbody>${filas}</tbody>
-</table>
+${secciones}
 </body></html>`;
     const win = window.open("", "_blank", "width=1000,height=700");
     if (!win) { window.alert("Permite ventanas emergentes para generar el PDF."); return; }
@@ -207,7 +242,7 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
       <div style={cardStyle}>
         <h2 style={sectionTitleStyle}>Kardex de Inventario</h2>
         <p style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
-          Historial completo de entradas y salidas de materiales — filtrable por material, técnico, nodo y fecha.
+          Historial completo de entradas y salidas de materiales, ordenado por material — filtrable por material(es), técnico, nodo y fecha.
         </p>
 
         <div style={{ display: "flex", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
@@ -230,12 +265,37 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
         </div>
 
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-            Material<br />
-            <select value={filtroMaterial} onChange={(e) => setFiltroMaterial(e.target.value)} style={{ marginTop: 4, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", minWidth: 160 }}>
-              {materiales.map((m) => <option key={m} value={m}>{m === "todos" ? "Todos" : m}</option>)}
-            </select>
-          </label>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", position: "relative" }}>
+            Material(es)<br />
+            <button
+              type="button"
+              onClick={() => setMenuMaterialAbierto((v) => !v)}
+              style={{ marginTop: 4, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", minWidth: 180, textAlign: "left", cursor: "pointer", fontSize: 13, color: "#374151" }}
+            >
+              {materialesSeleccionados.length === 0 ? "Todos" : `${materialesSeleccionados.length} seleccionado(s)`} ▾
+            </button>
+            {menuMaterialAbierto && (
+              <>
+                <div onClick={() => setMenuMaterialAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 90 }} />
+                <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 100, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", maxHeight: 260, overflowY: "auto", minWidth: 240, padding: 6 }}>
+                  {materialesSeleccionados.length > 0 && (
+                    <button type="button" onClick={() => setMaterialesSeleccionados([])} style={{ width: "100%", textAlign: "left", padding: "6px 8px", fontSize: 12, color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
+                      ✕ Quitar todos
+                    </button>
+                  )}
+                  {materiales.length === 0 ? (
+                    <div style={{ padding: 8, fontSize: 12, color: "#94a3b8" }}>Sin materiales registrados.</div>
+                  ) : materiales.map((m) => (
+                    <label key={m} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", fontSize: 12.5, color: "#374151", cursor: "pointer", borderRadius: 6 }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+                      <input type="checkbox" checked={materialesSeleccionados.includes(m)} onChange={() => toggleMaterial(m)} />
+                      {m}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
             Técnico<br />
             <select value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} style={{ marginTop: 4, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", minWidth: 140 }}>
@@ -274,47 +334,66 @@ ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${es
             📄 Exportar PDF
           </button>
         </div>
-      </div>
 
-      <div style={cardStyle}>
-        {filtrados.length === 0 ? (
-          <div style={{ padding: 32, textAlign: "center", color: "#64748b" }}>Sin movimientos con estos filtros.</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "1px solid #e2e8f0" }}>
-                  <th style={{ padding: "8px 10px" }}>Fecha</th>
-                  <th style={{ padding: "8px 10px" }}>Tipo</th>
-                  <th style={{ padding: "8px 10px" }}>Material</th>
-                  <th style={{ padding: "8px 10px" }}>Cantidad</th>
-                  <th style={{ padding: "8px 10px" }}>Técnico</th>
-                  <th style={{ padding: "8px 10px" }}>Nodo</th>
-                  <th style={{ padding: "8px 10px" }}>Motivo</th>
-                  <th style={{ padding: "8px 10px" }}>Referencia</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtrados.map((m) => {
-                  const info = movimientoInfo(m.movimiento);
-                  return (
-                    <tr key={m.id} style={{ borderTop: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "7px 10px", color: "#64748b" }}>{m.created_at ? new Date(m.created_at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
-                      <td style={{ padding: "7px 10px" }}><span style={{ background: info.bg, color: info.text, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{info.label}</span></td>
-                      <td style={{ padding: "7px 10px", fontWeight: 600 }}>{m.item_nombre || "-"}</td>
-                      <td style={{ padding: "7px 10px" }}>{m.cantidad ?? "-"} {m.unidad || ""}</td>
-                      <td style={{ padding: "7px 10px" }}>{m.tecnico || "—"}</td>
-                      <td style={{ padding: "7px 10px" }}>{m.nodo || "—"}</td>
-                      <td style={{ padding: "7px 10px" }}>{m.motivo || "—"}</td>
-                      <td style={{ padding: "7px 10px", fontFamily: "monospace" }}>{m.referencia || "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {materialesSeleccionados.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {materialesSeleccionados.map((m) => (
+              <span key={m} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#eff6ff", color: "#1d4ed8", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>
+                {m}
+                <button type="button" onClick={() => toggleMaterial(m)} style={{ background: "none", border: "none", cursor: "pointer", color: "#1d4ed8", fontWeight: 800, padding: 0, lineHeight: 1 }}>✕</button>
+              </span>
+            ))}
           </div>
         )}
       </div>
+
+      {porMaterial.length === 0 ? (
+        <div style={{ ...cardStyle, padding: 32, textAlign: "center", color: "#64748b" }}>Sin movimientos con estos filtros.</div>
+      ) : (
+        porMaterial.map(([material, filas]) => {
+          const cantidadMaterial = filas.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+          const unidadMaterial = filas.find((m) => m.unidad)?.unidad || "";
+          return (
+            <div key={material} style={cardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#1e293b" }}>{material}</span>
+                <span style={{ fontSize: 12, color: "#64748b" }}>{filas.length} movimiento(s) · {cantidadMaterial} {unidadMaterial}</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#64748b", borderBottom: "1px solid #e2e8f0" }}>
+                      <th style={{ padding: "8px 10px" }}>Fecha</th>
+                      <th style={{ padding: "8px 10px" }}>Tipo</th>
+                      <th style={{ padding: "8px 10px" }}>Cantidad</th>
+                      <th style={{ padding: "8px 10px" }}>Técnico</th>
+                      <th style={{ padding: "8px 10px" }}>Nodo</th>
+                      <th style={{ padding: "8px 10px" }}>Motivo</th>
+                      <th style={{ padding: "8px 10px" }}>Referencia</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filas.map((m) => {
+                      const info = movimientoInfo(m.movimiento);
+                      return (
+                        <tr key={m.id} style={{ borderTop: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "7px 10px", color: "#64748b" }}>{m.created_at ? new Date(m.created_at).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" }) : "—"}</td>
+                          <td style={{ padding: "7px 10px" }}><span style={{ background: info.bg, color: info.text, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{info.label}</span></td>
+                          <td style={{ padding: "7px 10px" }}>{m.cantidad ?? "-"} {m.unidad || ""}</td>
+                          <td style={{ padding: "7px 10px" }}>{m.tecnico || "—"}</td>
+                          <td style={{ padding: "7px 10px" }}>{m.nodo || "—"}</td>
+                          <td style={{ padding: "7px 10px" }}>{m.motivo || "—"}</td>
+                          <td style={{ padding: "7px 10px", fontFamily: "monospace" }}>{m.referencia || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
