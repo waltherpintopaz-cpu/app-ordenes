@@ -213,8 +213,9 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
       : new Date();
     base.setDate(base.getDate() + Number(diasRenovar));
     const nuevaFecha = base.toISOString().slice(0, 10);
-    await supabase.from("iptv_clients").update({ fecha_expiracion: nuevaFecha, activo: true, updated_at: new Date().toISOString() }).eq("id", modalRenovar.id);
+    const { error } = await supabase.from("iptv_clients").update({ fecha_expiracion: nuevaFecha, activo: true, updated_at: new Date().toISOString() }).eq("id", modalRenovar.id);
     setSaving(false);
+    if (error) { alert("Error al renovar: " + error.message); return; }
     setModalRenovar(null);
     showToast(`✅ Renovado hasta ${new Date(nuevaFecha).toLocaleDateString("es-PE")}`);
     cargar();
@@ -237,12 +238,12 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
     }
     setSaving(true);
     const payload = { ...formCliente, fecha_expiracion: formCliente.fecha_expiracion || null, updated_at: new Date().toISOString() };
-    if (modalCliente === "nuevo") {
-      await supabase.from("iptv_clients").insert([payload]);
-    } else {
-      await supabase.from("iptv_clients").update(payload).eq("id", modalCliente.id);
-    }
-    setSaving(false); setModalCliente(null);
+    const { error } = modalCliente === "nuevo"
+      ? await supabase.from("iptv_clients").insert([payload])
+      : await supabase.from("iptv_clients").update(payload).eq("id", modalCliente.id);
+    setSaving(false);
+    if (error) { alert("Error al guardar el cliente: " + error.message); return; }
+    setModalCliente(null);
     showToast(modalCliente === "nuevo" ? "✅ Cliente creado" : "✅ Cliente actualizado");
     if (clienteDetalle && modalCliente !== "nuevo" && modalCliente.id === clienteDetalle.id) {
       setClienteDetalle({ ...clienteDetalle, ...payload });
@@ -252,13 +253,15 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
 
   const eliminarCliente = async (id) => {
     if (!confirm("¿Eliminar este cliente IPTV?")) return;
-    await supabase.from("iptv_clients").delete().eq("id", id);
+    const { error } = await supabase.from("iptv_clients").delete().eq("id", id);
+    if (error) { alert("Error al eliminar: " + error.message); return; }
     showToast("Cliente eliminado");
     cargar();
   };
 
   const toggleActivo = async (c) => {
-    await supabase.from("iptv_clients").update({ activo: !c.activo, updated_at: new Date().toISOString() }).eq("id", c.id);
+    const { error } = await supabase.from("iptv_clients").update({ activo: !c.activo, updated_at: new Date().toISOString() }).eq("id", c.id);
+    if (error) { alert("Error: " + error.message); return; }
     showToast(c.activo ? "Cliente suspendido" : "✅ Cliente activado");
     cargar();
   };
@@ -284,23 +287,27 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
       alert("El PIN debe ser exactamente 4 dígitos numéricos."); return;
     }
     const esNuevo = modalPerfil === "nuevo";
-    if (esNuevo) {
-      const clientePerfiles = perfiles.filter(p => p.client_id === formPerfil.client_id);
-      if (clientePerfiles.length >= 5) { alert("Este cliente ya tiene 5 perfiles (límite máximo)."); return; }
-    }
     setSaving(true);
+    if (esNuevo) {
+      // Contar contra la BD en el momento, no el estado local (que puede
+      // estar desactualizado) -- dos administradores creando perfiles para
+      // el mismo cliente casi a la vez podian pasar ambos la validacion
+      // local y terminar con mas de 5 perfiles.
+      const { count, error: countErr } = await supabase.from("profiles").select("id", { count: "exact", head: true }).eq("client_id", formPerfil.client_id);
+      if (countErr) { alert("Error al verificar límite de perfiles: " + countErr.message); setSaving(false); return; }
+      if ((count || 0) >= 5) { alert("Este cliente ya tiene 5 perfiles (límite máximo)."); setSaving(false); return; }
+    }
     const payload = {
       client_id: formPerfil.client_id,
       nombre: formPerfil.nombre.trim(),
       avatar_color: formPerfil.avatar_color,
       pin: formPerfil.pin || null,
     };
-    if (esNuevo) {
-      await supabase.from("profiles").insert([{ ...payload, favoritos: [] }]);
-    } else {
-      await supabase.from("profiles").update(payload).eq("id", modalPerfil.id);
-    }
+    const { error } = esNuevo
+      ? await supabase.from("profiles").insert([{ ...payload, favoritos: [] }])
+      : await supabase.from("profiles").update(payload).eq("id", modalPerfil.id);
     setSaving(false);
+    if (error) { alert("Error al guardar el perfil: " + error.message); return; }
     setModalPerfil(null);
     showToast(esNuevo ? "✅ Perfil creado" : "✅ Perfil actualizado");
     cargar();
@@ -308,7 +315,8 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
 
   const eliminarPerfil = async (id, nombre) => {
     if (!confirm(`¿Eliminar el perfil "${nombre}"?`)) return;
-    await supabase.from("profiles").delete().eq("id", id);
+    const { error } = await supabase.from("profiles").delete().eq("id", id);
+    if (error) { alert("Error al eliminar el perfil: " + error.message); return; }
     showToast("Perfil eliminado");
     cargar();
   };
@@ -335,19 +343,23 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
     let url = formServidor.url.trim().replace(/\/+$/, "");
     if (!/^https?:\/\//i.test(url)) url = "http://" + url;
     const payload = { ...formServidor, url, updated_at: new Date().toISOString() };
-    if (modalServidor === "nuevo") {
-      await supabase.from("iptv_servers").insert([payload]);
-    } else {
-      await supabase.from("iptv_servers").update(payload).eq("id", modalServidor.id);
-    }
-    setSaving(false); setModalServidor(null);
+    const { error } = modalServidor === "nuevo"
+      ? await supabase.from("iptv_servers").insert([payload])
+      : await supabase.from("iptv_servers").update(payload).eq("id", modalServidor.id);
+    setSaving(false);
+    if (error) { alert("Error al guardar el servidor: " + error.message); return; }
+    setModalServidor(null);
     showToast("✅ Servidor guardado");
     cargar();
   };
 
   const eliminarServidor = async (id) => {
     if (!confirm("¿Eliminar este servidor?")) return;
-    await supabase.from("iptv_servers").delete().eq("id", id);
+    const { error } = await supabase.from("iptv_servers").delete().eq("id", id);
+    // Si hay clientes que aun apuntan a este servidor, el error real de
+    // Supabase (FK) ahora se muestra en vez de tragarse silenciosamente --
+    // antes el toast decia "eliminado" aunque la fila siguiera existiendo.
+    if (error) { alert("Error al eliminar: " + error.message); return; }
     showToast("Servidor eliminado");
     cargar();
   };
@@ -360,19 +372,20 @@ export default function IptvPanel({ esAdmin, sessionUser, theme }) {
     if (!formPaquete.nombre) { alert("Ingresa el nombre del paquete."); return; }
     setSaving(true);
     const payload = { ...formPaquete, updated_at: new Date().toISOString() };
-    if (modalPaquete === "nuevo") {
-      await supabase.from("iptv_packages").insert([payload]);
-    } else {
-      await supabase.from("iptv_packages").update(payload).eq("id", modalPaquete.id);
-    }
-    setSaving(false); setModalPaquete(null);
+    const { error } = modalPaquete === "nuevo"
+      ? await supabase.from("iptv_packages").insert([payload])
+      : await supabase.from("iptv_packages").update(payload).eq("id", modalPaquete.id);
+    setSaving(false);
+    if (error) { alert("Error al guardar el paquete: " + error.message); return; }
+    setModalPaquete(null);
     showToast("✅ Paquete guardado");
     cargar();
   };
 
   const eliminarPaquete = async (id) => {
     if (!confirm("¿Eliminar este paquete?")) return;
-    await supabase.from("iptv_packages").delete().eq("id", id);
+    const { error } = await supabase.from("iptv_packages").delete().eq("id", id);
+    if (error) { alert("Error al eliminar: " + error.message); return; }
     showToast("Paquete eliminado");
     cargar();
   };

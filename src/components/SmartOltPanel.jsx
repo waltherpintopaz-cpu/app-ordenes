@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || "").trim();
-const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "0cb1ad391ea4458cab6efe97769c761d").trim();
+// Sin fallback hardcodeado: el token real de Smart OLT solo debe vivir en
+// la variable de entorno de build, nunca en el codigo fuente (queda 100%
+// extraible del bundle publico igual, pero ya no queda expuesto en el
+// repositorio git para quien no tenga acceso al panel desplegado).
+const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "").trim();
 
 const buildApiUrl = (path = "") => {
   const p = String(path || "");
@@ -372,6 +376,7 @@ export default function SmartOltPanel({ theme }) {
       setOnuSeleccionada(null);
       setOrdenSeleccionadaId("");
       let snOrdenMensaje = "";
+      let snOrdenGuardadoFallo = false;
       if (ordenIdActual && isSupabaseConfigured) {
         let updSnErr = null;
         const updById = await supabase.from("ordenes").update({ sn_onu: sn }).eq("id", ordenIdActual);
@@ -383,6 +388,7 @@ export default function SmartOltPanel({ theme }) {
         }
 
         if (updSnErr) {
+          snOrdenGuardadoFallo = true;
           snOrdenMensaje = ` No se pudo guardar SN en la orden: ${updSnErr.message || "error"}.`;
           setError(snOrdenMensaje.trim());
         } else {
@@ -405,7 +411,12 @@ export default function SmartOltPanel({ theme }) {
       } else {
         setSignalInfo(`ONU ${sn} autorizada. Aún sin lectura de señal, intenta refrescar luego.`);
       }
-      window.alert("ONU autorizada correctamente.");
+      // Si el guardado del SN en la orden fallo, antes esto se avisaba solo
+      // en el panel de error mientras este alert seguia diciendo
+      // "correctamente" sin condicion, y el tecnico podia no notar el fallo.
+      window.alert(snOrdenGuardadoFallo
+        ? `ONU autorizada en el OLT, pero no se pudo guardar el SN en la orden.${snOrdenMensaje} Guardalo manualmente.`
+        : "ONU autorizada correctamente.");
     } catch (e) {
       setError(String(e?.message || "Error autorizando ONU."));
     } finally {

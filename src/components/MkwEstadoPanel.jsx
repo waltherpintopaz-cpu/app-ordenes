@@ -1,12 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
 const DIAGNO_BASE = import.meta.env.PROD
   ? "https://amnet-diagno.0lthka.easypanel.host"
   : "";
 
-const MKW_TOKEN     = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-const MKW_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
+// Los tokens de Mikrowisp ya no viven en el navegador -- el backend inyecta
+// su propio token server-side para estas 2 rutas.
 
 const NODOS = [
   { key: "Nod_01", label: "Nod_01", color: "#0369a1", api: "americanet" },
@@ -52,7 +52,7 @@ const mkFetchAmericanet = async (cedula) => {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: MKW_TOKEN, cedula }),
+    body: JSON.stringify({ cedula }),
   });
   return res.json().catch(() => ({}));
 };
@@ -62,7 +62,7 @@ const mkFetchDimfiber = async (cedula) => {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: MKW_NOD04_TOKEN, cedula }),
+    body: JSON.stringify({ cedula }),
   });
   return res.json().catch(() => ({}));
 };
@@ -102,15 +102,22 @@ export default function MkwEstadoPanel({ theme }) {
   const [progreso, setProgreso]     = useState("");
 
   const nodoInfo = NODOS.find(n => n.key === nodoActivo);
+  // Token de la ultima peticion disparada: sin esto, hacer clic rapido en
+  // "Nod_01" y luego en "Nod_03" podia dejar la tabla mostrando los
+  // clientes de Nod_01 (si esa respuesta llegaba despues) mientras el
+  // selector ya mostraba "Nod_03" seleccionado.
+  const cargaActualRef = useRef(0);
 
   /* ── cargar clientes del nodo desde Supabase ── */
   const cargarClientes = useCallback(async () => {
+    const miToken = ++cargaActualRef.current;
     setLoading(true);
     const { data, error } = await supabase
       .from("clientes")
       .select("id,nombre,dni,nodo,estado_servicio,estado_mikrowisp,estado_actualizado_at,celular,contacto,usuario_nodo")
       .eq("nodo", nodoActivo)
       .order("nombre", { ascending: true });
+    if (miToken !== cargaActualRef.current) return;
     setLoading(false);
     if (!error) setClientes(data || []);
   }, [nodoActivo]);

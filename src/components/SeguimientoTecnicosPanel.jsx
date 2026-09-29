@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 
 const GOOGLE_MAPS_API_KEY = String(
-  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
 ).trim();
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const TRAIL_COLORS = ["#1E4F9C", "#F47A20", "#00C853", "#EC4899", "#0EA5E9", "#7C3AED"];
@@ -245,6 +245,16 @@ export default function SeguimientoTecnicosPanel({
     polylinesRef.current = [];
   }, []);
 
+  // Los intervals de "pedir ubicacion" (hasta 20s cada uno) no se limpiaban
+  // al desmontar el panel -- si el admin pedia ubicacion y salia del panel
+  // antes de esos 20s, el interval seguia vivo, pegandole a Supabase cada
+  // 1.5s y llamando setPingStates sobre un componente ya desmontado.
+  const pingIntervalsRef = useRef({});
+  useEffect(() => () => {
+    Object.values(pingIntervalsRef.current).forEach((id) => clearInterval(id));
+    pingIntervalsRef.current = {};
+  }, []);
+
   const pedirUbicacion = useCallback(async (tecnicoId) => {
     if (!tecnicoId || !isSupabaseConfigured) return;
     setPingStates((p) => ({ ...p, [tecnicoId]: "waiting" }));
@@ -262,6 +272,7 @@ export default function SeguimientoTecnicosPanel({
     }
     // Esperar respuesta hasta 20s leyendo tecnico_ubicacion_actual
     const antes = new Date();
+    if (pingIntervalsRef.current[tecnicoId]) clearInterval(pingIntervalsRef.current[tecnicoId]);
     const interval = setInterval(async () => {
       const { data } = await supabase
         .from("tecnico_ubicacion_actual")
@@ -271,15 +282,18 @@ export default function SeguimientoTecnicosPanel({
       const updatedAt = data?.updated_at ? new Date(data.updated_at) : null;
       if (updatedAt && updatedAt > antes) {
         clearInterval(interval);
+        delete pingIntervalsRef.current[tecnicoId];
         setPingStates((p) => ({ ...p, [tecnicoId]: "ok" }));
         await cargarUbicacionActual();
         setTimeout(() => setPingStates((p) => ({ ...p, [tecnicoId]: "idle" })), 3000);
       } else if (Date.now() - antes.getTime() > 20000) {
         clearInterval(interval);
+        delete pingIntervalsRef.current[tecnicoId];
         setPingStates((p) => ({ ...p, [tecnicoId]: "timeout" }));
         setTimeout(() => setPingStates((p) => ({ ...p, [tecnicoId]: "idle" })), 4000);
       }
     }, 1500);
+    pingIntervalsRef.current[tecnicoId] = interval;
   }, []);  // eslint-disable-line
 
   const cargarUbicacionActual = useCallback(async () => {

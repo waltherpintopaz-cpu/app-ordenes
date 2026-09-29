@@ -252,10 +252,18 @@ export default function EquiposTecnicoReportesPanel({ cardStyle, sectionTitleSty
   // id_inventario (equipos_catalogo.id) -> liquidación enriquecida
   const liquidacionPorEquipo = useMemo(() => {
     const liqPorId = new Map(liquidaciones.map((l) => [l.id, l]));
+    // Sin ordenar por fecha, si un mismo equipo tiene mas de una fila en
+    // liqEquipos (reliquidacion, correccion), la que "ganaba" en el mapa era
+    // la que aparecia ultimo en el array tal como vino de la BD -- no
+    // necesariamente la mas reciente.
     const map = new Map();
     for (const le of liqEquipos) {
       const liq = liqPorId.get(le.liquidacion_id);
-      if (liq) map.set(le.id_inventario, liq);
+      if (!liq) continue;
+      const actual = map.get(le.id_inventario);
+      if (!actual || new Date(liq.fecha_liquidacion || 0) > new Date(actual.fecha_liquidacion || 0)) {
+        map.set(le.id_inventario, liq);
+      }
     }
     return map;
   }, [liqEquipos, liquidaciones]);

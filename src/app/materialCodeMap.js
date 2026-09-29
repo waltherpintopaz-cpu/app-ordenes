@@ -10,7 +10,12 @@ export const MATERIAL_CODE_NAME_MAP = Object.freeze({
   "ART-PVE-2032": "Patch Cord Verde-Verde",
   "ART-PIG-2033": "Pigtail Huawei Pack 8 Unidades",
   "ART-SPLI-2034": "Spliter TV 1x2",
+  // "ART-CON2035" (sin guion) es inconsistente con el patron ART-XXX-NNNN de
+  // sus vecinos (ART-SPLI-2034, ART-GR6-2036, etc.) -- probable error de
+  // tipeo. Se agregan ambas variantes para que resuelva sea cual sea el
+  // codigo real impreso en la etiqueta fisica, sin quitar la que ya existia.
   "ART-CON2035": "Conector RG6",
+  "ART-CON-2035": "Conector RG6",
   "ART-GR6-2036": "Grapas 6mm",
   "ART-COA-2037": "Conectores Azul",
   "ART-VER-2038": "Conectores Verdes",

@@ -2,7 +2,7 @@
 // nadie haya "subido" una foto, Google ya tiene el panorama mas cercano al
 // punto. Usa la misma API key que Maps/Geocoding (ya habilitada en el
 // proyecto). Gratis hasta 10,000 vistas/mes; ver Street View Static API.
-const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
+const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
 
 /** Extrae {lat,lng} de un string "lat, lng" o similar. Devuelve null si no matchea. */
 export function parseCoordsStr(coordStr) {

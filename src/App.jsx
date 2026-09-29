@@ -62,7 +62,7 @@ import { normalizarEtiquetaNodo, cargarNodosConfig, nodosActivosOrdenados, mwNod
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
 const HISTORIAL_PAGE_SIZE = 25;
-const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "0cb1ad391ea4458cab6efe97769c761d").trim();
+const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "").trim();
 const SMART_OLT_API = (path) => {
   const p = String(path || "");
   const base = String(import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
@@ -85,6 +85,7 @@ const MP_NODO_SUFFIX = { 1: 1, 2: 2, 3: 3, 5: 4, 11: 6 };
 // en EasyPanel), nunca directo desde el navegador: evita mixed-content (panel en
 // HTTPS -> Xtream en HTTP) y evita exponer la API key de Xtream en el bundle JS.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
+const XTREAM_INTERNAL_TOKEN = String(import.meta.env.VITE_XTREAM_INTERNAL_TOKEN || "").trim();
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 // Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN
 // 3=PELICULAS 4=SERIES 5=TV_DIGITAL 6=Privado 7=Free.
@@ -102,7 +103,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = n
   const rXPass = Math.random().toString(36).slice(2, 12);
   const rRes = await fetch(`${XTREAM_PROXY_URL}/api/xtream/create-user`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
     body: JSON.stringify({
       username: rXUser,
       password: rXPass,
@@ -124,7 +125,7 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
   try {
     await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
       body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
     });
   } catch (_) { /* limpieza best-effort */ }
@@ -2796,6 +2797,12 @@ export default function App() {
   const [svcFactF2PrecPlan,  setSvcFactF2PrecPlan]  = useState("");
   const [svcFactF2FechaInst, setSvcFactF2FechaInst] = useState("");
   const [svcFactCreando,     setSvcFactCreando]     = useState(false);
+  // Guardia sincronica contra doble clic: el estado de React (svcFactCreando)
+  // se actualiza async, asi que un doble clic muy rapido puede disparar el
+  // handler 2 veces antes de que el boton se repinte disabled -- esto genera
+  // 2 facturas reales en Mikrowisp. El ref se lee/escribe de forma sincronica
+  // en el mismo tick del click, sin esa ventana.
+  const svcFactCreandoRef = useRef(false);
   // Panel facturas independiente (clientes con servicio existente)
   const [factPanelOpen,     setFactPanelOpen]     = useState(null); // cli.id
   const [factPanelCliId,    setFactPanelCliId]    = useState(null); // id Mikrowisp
@@ -2878,6 +2885,12 @@ export default function App() {
   const [etiquetaFiltroEdit, setEtiquetaFiltroEdit] = useState("");
   const [showEtiquetaDropdownEdit, setShowEtiquetaDropdownEdit] = useState(false);
   const [liquidacionGuardando, setLiquidacionGuardando] = useState(false);
+  // Guardia sincronica: setLiquidacionGuardando(true) tarda un tick en
+  // repintar el boton disabled, asi que un doble clic muy rapido (o el
+  // mismo envio disparado dos veces) podia pasar el guard de React y crear
+  // dos liquidaciones para la misma orden via _upsertLiquidacion (su SELECT
+  // de "ya existe" no es atomico contra un INSERT concurrente).
+  const liquidacionGuardandoRef = useRef(false);
   const [busquedaEqInv, setBusquedaEqInv] = useState("");
   const [liquidacionRecojo, setLiquidacionRecojo] = useState(initialLiquidacionRecojo);
   const [historialRecuperaciones, setHistorialRecuperaciones] = useState([]);
@@ -3936,15 +3949,24 @@ export default function App() {
     return counts;
   }, [clientesPorNodo, filtroNodoCliente]);
 
-  const diagnosticoServicioCliente = useMemo(() => {
-    if (diagnosticoServicioModo !== "dni") return null;
+  const diagnosticoServicioCandidatos = useMemo(() => {
+    if (diagnosticoServicioModo !== "dni") return [];
     const dni = String(diagnosticoServicioConsulta || "").replace(/\D/g, "");
-    if (!dni) return null;
-    return (
-      clientesPorNodo.find((cliente) => String(cliente?.dni || "").replace(/\D/g, "") === dni) ||
-      null
-    );
+    if (!dni) return [];
+    return clientesPorNodo.filter((cliente) => String(cliente?.dni || "").replace(/\D/g, "") === dni);
   }, [clientesPorNodo, diagnosticoServicioConsulta, diagnosticoServicioModo]);
+  const diagnosticoServicioCliente = useMemo(() => {
+    // Antes usaba .find() (siempre el primero del array) sin desambiguar --
+    // con un DNI de varios servicios, el diagnostico podia correr contra el
+    // nodo/usuario equivocado sin ningun aviso. Se prioriza el servicio
+    // ACTIVO (igual que ya se hace en la app movil para el mismo caso); si
+    // hay mas de un candidato se avisa en el render de abajo.
+    if (!diagnosticoServicioCandidatos.length) return null;
+    return (
+      diagnosticoServicioCandidatos.find((c) => normalizarEstadoServicioCliente(c.estadoServicio || c.estado || "") === "ACTIVO") ||
+      diagnosticoServicioCandidatos[0]
+    );
+  }, [diagnosticoServicioCandidatos]);
   const diagnosticoServicioNodo = useMemo(
     () =>
       diagnosticoServicioModo === "manual"
@@ -4144,18 +4166,21 @@ export default function App() {
   };
 
   const MIKROWISP_NODOS = ["Nod_01", "Nod_03", "Nod_04", "Nod_05", "Nod_06"];
-  const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-  const MIKROWISP_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
-  const MIKROWISP_NOD04_URL = "https://app.dimfiber.com/api/v1/GetClientsDetails";
   const DIAGNO_BASE = (import.meta.env.DEV ? "" : "https://amnet-diagno.0lthka.easypanel.host");
+  // Header requerido por las rutas de diagnosticoServicioServer.mjs que
+  // escriben en la red real (suspender/activar clientes, crear secrets en
+  // el Mikrotik). Ver DIAGNOSTICO_INTERNAL_TOKEN en el backend.
+  const DIAGNOSTICO_INTERNAL_TOKEN = String(import.meta.env.VITE_DIAGNOSTICO_INTERNAL_TOKEN || "").trim();
 
-  // mkFetch para Nod_01/Nod_03 (americanet) — proxy diagno
+  // El token de Mikrowisp ya no se manda desde el navegador -- el backend
+  // (diagnosticoServicioServer.mjs) inyecta su propio token server-side para
+  // estas 2 rutas, sea cual sea el body que reciba.
   const mkFetch = async (endpoint, body) => {
     const url = DIAGNO_BASE ? `${DIAGNO_BASE}/api/mikrowisp/${endpoint}` : `/api/mikrowisp/${endpoint}`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: MIKROWISP_TOKEN, ...body }),
+      body: JSON.stringify({ ...body }),
     });
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
@@ -4169,7 +4194,7 @@ export default function App() {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: MIKROWISP_NOD04_TOKEN, ...body }),
+      body: JSON.stringify({ ...body }),
     });
     const json = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, json };
@@ -4879,6 +4904,16 @@ export default function App() {
     if (!nombreNuevo) { window.alert("Ingresa el nombre del nuevo titular."); return; }
 
     const dniAnterior = String(cli.dni || "");
+    // Sin esto, dos clientes podian terminar con el mismo DNI (error de
+    // tipeo, DNI de familiar ya usado) y cualquier busqueda posterior por
+    // DNI (diagnostico, IPTV, etc.) podia resolver al cliente equivocado.
+    if (dniNuevo !== dniAnterior && isSupabaseConfigured) {
+      const { data: dupCliente } = await supabase.from(CLIENTES_TABLE).select("id,nombre").eq("dni", dniNuevo).neq("id", cli.id || -1).maybeSingle();
+      if (dupCliente) {
+        window.alert(`El DNI ${dniNuevo} ya está en uso por otro cliente ("${dupCliente.nombre || "sin nombre"}"). No se puede asignar duplicado.`);
+        return;
+      }
+    }
     const nombreAnterior = String(cli.nombre || "");
     let iptvExistente = null;
     if (isSupabaseConfigured) {
@@ -4913,13 +4948,17 @@ export default function App() {
 
       // 2) Actualizar nuestra copia interna del cliente
       if (isSupabaseConfigured && cli.id) {
-        await supabase.from(CLIENTES_TABLE).update({
+        const updCliente = await supabase.from(CLIENTES_TABLE).update({
           dni: dniNuevo,
           nombre: nombreNuevo,
           celular: titularForm.celular.trim() || cli.celular || "",
           email: titularForm.correo.trim() || cli.email || "",
           ultima_actualizacion: new Date().toISOString(),
         }).eq("id", cli.id);
+        // Sin revisar esto, la UI ya mostraba el titular nuevo (mas abajo,
+        // setClientes/setClienteSeleccionado) aunque la fila real en la BD
+        // se hubiera quedado con el DNI/nombre viejo.
+        if (updCliente.error) throw new Error("Se actualizó Mikrowisp pero no la base local: " + updCliente.error.message);
       }
       setClientes((prev) => prev.map((c) => c.id === cli.id ? { ...c, dni: dniNuevo, nombre: nombreNuevo, celular: titularForm.celular.trim() || c.celular, email: titularForm.correo.trim() || c.email } : c));
       setClienteSeleccionado((prev) => prev ? { ...prev, dni: dniNuevo, nombre: nombreNuevo, celular: titularForm.celular.trim() || prev.celular, email: titularForm.correo.trim() || prev.email } : prev);
@@ -4976,7 +5015,20 @@ export default function App() {
           tecnico: usuarioSesion?.nombre || "",
           fecha_creacion: new Date().toISOString(),
         };
-        const ordenIns = await supabase.from(ORDENES_TABLE).insert([ordenPayload]).select("id").single();
+        let ordenIns = await supabase.from(ORDENES_TABLE).insert([ordenPayload]).select("id").single();
+        if (ordenIns.error?.code === "23505" && isSupabaseConfigured) {
+          const { data: newCod } = await supabase.rpc("generar_codigo_orden");
+          if (newCod) {
+            ordenPayload.codigo = String(newCod);
+            codigo = ordenPayload.codigo;
+            ordenIns = await supabase.from(ORDENES_TABLE).insert([ordenPayload]).select("id").single();
+          }
+        }
+        // Sin revisar esto, si el insert de la orden fallaba, ordenIns.data
+        // quedaba undefined y la liquidacion de abajo se guardaba con
+        // orden_original_id: null -- una liquidacion "huerfana" sin la orden
+        // que la respalda, sin ningun aviso mas alla del catch generico.
+        if (ordenIns.error) throw new Error("No se pudo registrar el historial de la orden: " + ordenIns.error.message);
         const notaTitular = `Cambio de titularidad: de "${nombreAnterior}" (DNI ${dniAnterior || "-"}) a "${nombreNuevo}" (DNI ${dniNuevo}).`;
         await supabase.from("liquidaciones").insert([{
           orden_original_id: ordenIns.data?.id || null,
@@ -5112,29 +5164,28 @@ export default function App() {
     const ok = window.confirm(`Se consultará Mikrowisp para ${clientesConDni.length} clientes. Puede tardar varios minutos. ¿Continuar?`);
     if (!ok) return;
 
-    const MIKROWISP_TOKEN_LOCAL = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-    const endpoints = import.meta.env.DEV
-      ? ["/api/mikrowisp/GetClientsDetails", "https://americanet.club/api/v1/GetClientsDetails"]
-      : ["https://americanet.club/api/v1/GetClientsDetails", "/api/mikrowisp/GetClientsDetails"];
+    // Antes llamaba directo a Mikrowisp con un token hardcodeado (en
+    // produccion incluso ANTES de intentar el proxy). El token real de
+    // Mikrowisp no debe salir del navegador -- ahora siempre pasa por el
+    // proxy del backend, que lo inyecta server-side.
+    const endpointProxy = DIAGNO_BASE ? `${DIAGNO_BASE}/api/mikrowisp/GetClientsDetails` : "/api/mikrowisp/GetClientsDetails";
 
     const consultarDni = async (dniLimpio) => {
-      for (const endpoint of endpoints) {
-        try {
-          const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", token: MIKROWISP_TOKEN_LOCAL },
-            body: JSON.stringify({ token: MIKROWISP_TOKEN_LOCAL, cedula: dniLimpio }),
-          });
-          const body = await res.json();
-          if (res.ok && body && body.success !== false) {
-            const dataBase = body?.data || body?.datos || body?.client || body?.cliente || body || {};
-            const data = Array.isArray(dataBase) && dataBase.length > 0 ? dataBase[0] : dataBase;
-            const estadoRaw = data?.estado || data?.status || data?.service_status || data?.state || "";
-            return normalizarEstadoServicioCliente(estadoRaw);
-          }
-        } catch {
-          // try next endpoint
+      try {
+        const res = await fetch(endpointProxy, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cedula: dniLimpio }),
+        });
+        const body = await res.json();
+        if (res.ok && body && body.success !== false) {
+          const dataBase = body?.data || body?.datos || body?.client || body?.cliente || body || {};
+          const data = Array.isArray(dataBase) && dataBase.length > 0 ? dataBase[0] : dataBase;
+          const estadoRaw = data?.estado || data?.status || data?.service_status || data?.state || "";
+          return normalizarEstadoServicioCliente(estadoRaw);
         }
+      } catch {
+        // sin conexion al proxy
       }
       return null;
     };
@@ -5479,7 +5530,10 @@ export default function App() {
         setDiagnosticoServicioError("Ingresa un DNI válido de 8 dígitos.");
         return;
       }
-      cliente = clientesPorNodo.find((item) => String(item?.dni || "").replace(/\D/g, "") === dni) || null;
+      {
+        const candidatosDni = clientesPorNodo.filter((item) => String(item?.dni || "").replace(/\D/g, "") === dni);
+        cliente = candidatosDni.find((c) => normalizarEstadoServicioCliente(c.estadoServicio || c.estado || "") === "ACTIVO") || candidatosDni[0] || null;
+      }
       if (!cliente) {
         setDiagnosticoServicioError("No se encontró un abonado visible para ese DNI dentro de la base y nodos permitidos.");
         return;
@@ -6491,14 +6545,38 @@ export default function App() {
       if (error && (error?.code === "428C9" || /non-DEFAULT value into column "id"/i.test(String(error?.message || "")))) {
         if (replaceAllOnIdentity) {
           // Modo importación completa desde Sheet: reemplaza todo para mantener conteo 1:1.
+          // Antes: delete() de toda la tabla y despues insert() en chunks de 500 --
+          // si un chunk fallaba a mitad de camino (timeout, fila invalida), la
+          // tabla quedaba con solo una fraccion de los clientes reales, sin
+          // backup ni forma de recuperar los que ya se habian borrado.
+          // Ahora se respalda todo antes de borrar, y si el insert falla se
+          // intenta restaurar ese respaldo antes de avisar del error.
+          const backupRes = await supabase.from(CLIENTES_TABLE).select("*");
+          if (backupRes.error) throw backupRes.error;
+          const backup = backupRes.data || [];
+
           const del = await supabase.from(CLIENTES_TABLE).delete().not("id", "is", null);
           if (del.error) throw del.error;
+
           const rowsNoId = payload.map(rowNoIdOf);
           const insChunks = [];
           for (let i = 0; i < rowsNoId.length; i += 500) insChunks.push(rowsNoId.slice(i, i + 500));
-          for (const insChunk of insChunks) {
-            const ins = await supabase.from(CLIENTES_TABLE).insert(insChunk);
-            if (ins.error) throw ins.error;
+          try {
+            for (const insChunk of insChunks) {
+              const ins = await supabase.from(CLIENTES_TABLE).insert(insChunk);
+              if (ins.error) throw ins.error;
+            }
+          } catch (insertError) {
+            console.error("[guardarClientesEnSupabase] fallo el insert masivo, restaurando respaldo:", insertError?.message);
+            if (backup.length) {
+              const restoreChunks = [];
+              for (let i = 0; i < backup.length; i += 500) restoreChunks.push(backup.slice(i, i + 500));
+              for (const restoreChunk of restoreChunks) {
+                const restore = await supabase.from(CLIENTES_TABLE).insert(restoreChunk);
+                if (restore.error) console.error("[guardarClientesEnSupabase] fallo restaurar respaldo:", restore.error?.message);
+              }
+            }
+            throw new Error("No se pudo completar la sincronizacion, se restauro la lista de clientes anterior: " + (insertError?.message || insertError));
           }
           return;
         }
@@ -10509,12 +10587,20 @@ export default function App() {
       headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
       body: JSON.stringify({ user_id: userId, password: iptvPass }),
     });
-    await upsertIptvClienteConFallback({
-      dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
-      nodo: normalizarEtiquetaNodo(nodoRaw) || null, creado_por: usuarioSesion?.nombre || null,
-      xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
-      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, plan,
-    });
+    try {
+      await upsertIptvClienteConFallback({
+        dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
+        nodo: normalizarEtiquetaNodo(nodoRaw) || null, creado_por: usuarioSesion?.nombre || null,
+        xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
+        max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, plan,
+      });
+    } catch (e) {
+      // Si esto falla, la cuenta ya existe activa (y facturable) en
+      // MaxPlayer/Xtream pero quedaria invisible para el panel -- se revierte.
+      await fetch("https://api.maxplayer.tv/v3/api/public/users/" + userId, { method: "DELETE", headers: { "Api-Token": MP_TOKEN } }).catch(() => {});
+      await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
+      throw e;
+    }
     return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   };
 
@@ -10547,11 +10633,16 @@ export default function App() {
     // actualizo via Realtime. Ultimo seguro antes de duplicar un usuario de nodo.
     if (mostrarCamposUsuario && orden.usuarioNodo.trim() && isSupabaseConfigured) {
       const usuarioChequear = orden.usuarioNodo.trim();
+      // Sin escapar, un "%" o "_" literal en el usuario de nodo (tipeo, o un
+      // formato de usuario que los use) se interpretaba como comodin de
+      // ilike en vez de buscar coincidencia exacta -- podia dejar pasar una
+      // colision real o bloquear un guardado legitimo por un falso positivo.
+      const usuarioChequearEscapado = usuarioChequear.replace(/[%_\\]/g, (m) => `\\${m}`);
       const dniOrdenActual = String(orden.dni || "").trim();
       try {
         const [{ data: clienteVivo }, { data: ordenesVivas }] = await Promise.all([
-          supabase.from(CLIENTES_TABLE).select("nombre,dni").ilike("usuario_nodo", usuarioChequear).limit(1).maybeSingle(),
-          supabase.from(ORDENES_TABLE).select("id,codigo,nombre,dni,usuario_nodo_liberado").ilike("usuario_nodo", usuarioChequear).neq("id", ordenEditandoId ?? -1),
+          supabase.from(CLIENTES_TABLE).select("nombre,dni").ilike("usuario_nodo", usuarioChequearEscapado).limit(1).maybeSingle(),
+          supabase.from(ORDENES_TABLE).select("id,codigo,nombre,dni,usuario_nodo_liberado").ilike("usuario_nodo", usuarioChequearEscapado).neq("id", ordenEditandoId ?? -1),
         ]);
         // No es una colision real si el "ya en uso" es el mismo cliente para el
         // que se esta guardando (ej. una incidencia sobre su propio usuario ya
@@ -10615,16 +10706,20 @@ export default function App() {
     if (ordenIncluirIptv && !descripcionFinal.includes("Cuenta IPTV MaxPlayer")) {
       try {
         const dniLimpio = String(orden.dni || "").replace(/\D/g, "");
-        const { data: iptvExistente } = await supabase
+        const { data: iptvExistente, error: iptvExistenteErr } = await supabase
           .from("iptv_clientes")
           .select("iptv_usuario,iptv_password")
           .eq("dni", dniLimpio)
           .maybeSingle();
+        // Si esta consulta falla (red, timeout), no se puede saber si el
+        // cliente ya tiene cuenta -- antes se seguia igual a crear una
+        // nueva, arriesgando una segunda cuenta IPTV duplicada (cobro real).
+        if (iptvExistenteErr) throw new Error("No se pudo verificar si el cliente ya tiene cuenta IPTV: " + iptvExistenteErr.message);
 
         // También puede existir asignada manualmente desde el listado de clientes (sin registro en iptv_clientes)
         let iptvClienteExistente = null;
         if (!iptvExistente) {
-          const { data: clienteRow } = await supabase
+          const { data: clienteRow, error: clienteRowErr } = await supabase
             .from("clientes")
             .select("iptv_usuario")
             .eq("dni", dniLimpio)
@@ -10632,6 +10727,7 @@ export default function App() {
             .neq("iptv_usuario", "")
             .limit(1)
             .maybeSingle();
+          if (clienteRowErr) throw new Error("No se pudo verificar si el cliente ya tiene cuenta IPTV: " + clienteRowErr.message);
           iptvClienteExistente = clienteRow?.iptv_usuario ? { iptv_usuario: clienteRow.iptv_usuario, iptv_password: null } : null;
         }
 
@@ -10683,7 +10779,8 @@ export default function App() {
             return supabase.from(ORDENES_TABLE).insert([p]).select("*").single();
           }
         };
-        let res = await doSave(payload);
+        let payloadActual = payload; // sigue el payload realmente vigente a traves de los reintentos
+        let res = await doSave(payloadActual);
         if (res.error) {
           // Si hay colisión de código en INSERT, regenerar desde la DB y reintentar
           const isDuplicateCode = !isEdit && (res.error?.code === "23505" || /duplicate key/i.test(String(res.error?.message || "")));
@@ -10691,14 +10788,18 @@ export default function App() {
             const { data: newCodigoData } = await supabase.rpc("generar_codigo_orden");
             const newCodigo = String(newCodigoData || "");
             if (newCodigo) {
-              const payloadFixed = { ...payload, codigo: newCodigo };
-              res = await supabase.from(ORDENES_TABLE).insert([payloadFixed]).select("*").single();
+              payloadActual = { ...payloadActual, codigo: newCodigo };
+              res = await supabase.from(ORDENES_TABLE).insert([payloadActual]).select("*").single();
               if (!res.error) handleChange("codigo", newCodigo);
             }
           }
+          // Antes usaba "payload" (el original, sin el codigo regenerado
+          // arriba) para este reintento -- si ademas faltaba una columna, el
+          // segundo insert volvia a chocar con el codigo duplicado y la
+          // orden nunca se guardaba.
           const missingCol = getMissingColumnWeb(res.error);
-          if (missingCol && missingCol in payload) {
-            const payloadSin = { ...payload };
+          if (missingCol && missingCol in payloadActual) {
+            const payloadSin = { ...payloadActual };
             delete payloadSin[missingCol];
             res = await doSave(payloadSin);
           }
@@ -10858,12 +10959,23 @@ export default function App() {
         if (String(target?.estado || "") === "Liquidada") {
           const cajaCodigo = String(target?.cajaNap || target?.caja_nap || "").trim();
           if (cajaCodigo) {
-            const cajaData = napCajasMapData.find(c => c.codigo === cajaCodigo);
-            if (cajaData && (cajaData.puertos_ocupados || 0) > 0) {
-              const nuevosOcupados = (cajaData.puertos_ocupados || 0) - 1;
-              const { error: napErr } = await supabase.from("nap_cajas").update({ puertos_ocupados: nuevosOcupados }).eq("id", cajaData.id);
-              if (!napErr) {
-                setNapCajasMapData(prev => prev.map(c => c.id === cajaData.id ? { ...c, puertos_ocupados: nuevosOcupados } : c));
+            const cajaLocal = napCajasMapData.find(c => c.codigo === cajaCodigo);
+            if (cajaLocal) {
+              // Lectura-modificacion-escritura contra el valor real en la BD
+              // (no el cacheado en React) + guardia .eq(puertos_ocupados,...):
+              // si otra cancelacion/liquidacion de la misma caja escribio
+              // entremedio, esta escritura no pisa esa otra, sino que reintenta
+              // una vez con el valor fresco.
+              for (let intento = 0; intento < 2; intento++) {
+                const fresh = await supabase.from("nap_cajas").select("id,puertos_ocupados").eq("id", cajaLocal.id).maybeSingle();
+                const actual = Number(fresh?.data?.puertos_ocupados || 0);
+                if (actual <= 0) break;
+                const nuevosOcupados = actual - 1;
+                const upd = await supabase.from("nap_cajas").update({ puertos_ocupados: nuevosOcupados }).eq("id", cajaLocal.id).eq("puertos_ocupados", actual).select("id");
+                if (!upd.error && upd.data?.length) {
+                  setNapCajasMapData(prev => prev.map(c => c.id === cajaLocal.id ? { ...c, puertos_ocupados: nuevosOcupados } : c));
+                  break;
+                }
               }
             }
           }
@@ -11312,10 +11424,20 @@ export default function App() {
         );
         const usuarioOrden = String(registroLiquidado.usuarioNodo || "").trim();
         const nodoOrden = String(registroLiquidado.nodo || "").trim();
+        // Si hay un solo candidato no hay ambiguedad. Si hay varios (DNI con
+        // varios servicios) y ninguno matchea por usuario_nodo/nodo, antes se
+        // tomaba candidatos[0] sin mas criterio -- podia sobrescribir
+        // nombre/direccion/caja NAP de un servicio que no tuvo nada que ver
+        // con esta liquidacion. Mejor no tocar ninguno que corromper el
+        // equivocado.
         const existente =
           (usuarioOrden && candidatos.find((c) => String(c.usuarioNodo || "").trim() === usuarioOrden)) ||
           (nodoOrden && candidatos.find((c) => String(c.nodo || "").trim() === nodoOrden)) ||
-          candidatos[0];
+          (candidatos.length === 1 ? candidatos[0] : null);
+        if (candidatos.length > 1 && !existente) {
+          console.warn(`[guardarClienteDesdeLiquidacion] DNI ${dni} tiene ${candidatos.length} servicios y ninguno matchea usuario_nodo/nodo de la liquidación; no se actualizó ningún cliente para evitar sobrescribir el servicio equivocado.`);
+          return prev;
+        }
         if (existente) {
           clienteAnteriorTraslado = existente;
           const cajaNapLiq = String(registroLiquidado.liquidacion?.cajaNap || registroLiquidado.cajaNap || "").trim();
@@ -11617,6 +11739,8 @@ export default function App() {
       return;
     }
 
+    if (liquidacionGuardandoRef.current) return;
+    liquidacionGuardandoRef.current = true;
     setLiquidacionGuardando(true);
     const avisos = [];
     try {
@@ -11732,7 +11856,7 @@ export default function App() {
           const stockMap = new Map();
           asigRows.forEach(row => {
             const key = `${String(row.material_nombre || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
-            stockMap.set(key, { id: row.id, disponible: Number(row.cantidad_disponible || 0) });
+            stockMap.set(key, { id: row.id, disponible: Number(row.cantidad_disponible || 0), disponibleOriginal: Number(row.cantidad_disponible || 0) });
           });
           (prevMats || []).forEach(row => {
             const key = `${String(row.material || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
@@ -11745,7 +11869,20 @@ export default function App() {
             else avisos.push(`Material "${row.material}" no asignado al técnico`);
           });
           for (const slot of stockMap.values()) {
-            await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: slot.disponible }).eq("id", slot.id);
+            if (slot.disponible === slot.disponibleOriginal) continue;
+            // Guardia .eq(cantidad_disponible, valor leido): si otra liquidacion
+            // del mismo tecnico escribio este material entremedio (lectura-
+            // modificacion-escritura no atomica), esta escritura no lo pisa
+            // silenciosamente -- avisa en vez de aplicar un delta calculado
+            // sobre un valor ya desactualizado.
+            const upd = await supabase.from("materiales_asignados_tecnicos")
+              .update({ cantidad_disponible: slot.disponible })
+              .eq("id", slot.id)
+              .eq("cantidad_disponible", slot.disponibleOriginal)
+              .select("id");
+            if (upd.error || !upd.data?.length) {
+              avisos.push(`No se pudo actualizar el stock de un material del técnico (otro movimiento lo cambió al mismo tiempo); revisa su stock manualmente.`);
+            }
           }
         }
       }
@@ -11784,23 +11921,36 @@ export default function App() {
       if (String(liquidacion.cajaNap || "").trim()) {
         ordenUpdate.caja_nap = String(liquidacion.cajaNap).trim();
       }
-      await supabase.from(ORDENES_TABLE).update(ordenUpdate).eq("id", Number(ordenEnLiquidacion.id));
+      const ordenUpdRes = await supabase.from(ORDENES_TABLE).update(ordenUpdate).eq("id", Number(ordenEnLiquidacion.id));
+      if (ordenUpdRes.error) {
+        // Sin esto, la liquidacion ya quedaba guardada completa (equipos,
+        // materiales, fotos) pero la orden original seguia "Pendiente" sin
+        // ningun aviso -- quedaba duplicable y sin cerrar en la bandeja.
+        avisos.push(`No se pudo marcar la orden como Liquidada: ${ordenUpdRes.error.message || "error desconocido"}`);
+      }
 
       // Actualizar puertos_ocupados en la caja NAP si la orden se completó
       const cajaNapCodigo = String(liquidacion.cajaNap || "").trim();
       if (cajaNapCodigo && liquidacion.resultadoFinal === "Completada" && !liquidacionEditandoId) {
-        const cajaData = napCajasMapData.find(c => c.codigo === cajaNapCodigo);
-        if (cajaData) {
-          const nuevosOcupados = Math.min((cajaData.puertos_ocupados || 0) + 1, cajaData.capacidad || 8);
-          const { error: napErr } = await supabase
-            .from("nap_cajas")
-            .update({ puertos_ocupados: nuevosOcupados })
-            .eq("id", cajaData.id);
-          if (!napErr) {
-            setNapCajasMapData(prev => prev.map(c => c.id === cajaData.id ? { ...c, puertos_ocupados: nuevosOcupados } : c));
-          } else {
-            avisos.push(`No se pudo actualizar puertos de ${cajaNapCodigo}`);
+        const cajaLocal = napCajasMapData.find(c => c.codigo === cajaNapCodigo);
+        if (cajaLocal) {
+          // Mismo guardado de concurrencia que al cancelar: leer el valor
+          // real de la BD (no el cacheado) y escribir con guardia
+          // .eq(puertos_ocupados,...), con un reintento si alguien mas
+          // escribio la misma caja entremedio.
+          let actualizado = false;
+          for (let intento = 0; intento < 2 && !actualizado; intento++) {
+            const fresh = await supabase.from("nap_cajas").select("id,puertos_ocupados,capacidad").eq("id", cajaLocal.id).maybeSingle();
+            const actual = Number(fresh?.data?.puertos_ocupados || 0);
+            const capacidad = Number(fresh?.data?.capacidad || cajaLocal.capacidad || 8);
+            const nuevosOcupados = Math.min(actual + 1, capacidad);
+            const upd = await supabase.from("nap_cajas").update({ puertos_ocupados: nuevosOcupados }).eq("id", cajaLocal.id).eq("puertos_ocupados", actual).select("id");
+            if (!upd.error && upd.data?.length) {
+              setNapCajasMapData(prev => prev.map(c => c.id === cajaLocal.id ? { ...c, puertos_ocupados: nuevosOcupados } : c));
+              actualizado = true;
+            }
           }
+          if (!actualizado) avisos.push(`No se pudo actualizar puertos de ${cajaNapCodigo}`);
         }
       }
 
@@ -11839,6 +11989,7 @@ export default function App() {
     } catch (e) {
       alert("Error al guardar: " + (e?.message || String(e)));
     } finally {
+      liquidacionGuardandoRef.current = false;
       setLiquidacionGuardando(false);
     }
   };
@@ -12589,7 +12740,7 @@ export default function App() {
     setIpCacheSyncInfo("");
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/sync-router`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN },
         body: JSON.stringify({ routerKey }),
       });
       const json = await res.json().catch(() => ({}));
@@ -12605,7 +12756,7 @@ export default function App() {
     setIpCacheSyncLoading("all");
     setIpCacheSyncInfo("");
     try {
-      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/sync-all`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/sync-all`, { method: "POST", headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN } });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
       const resumen = (json?.resultados || []).map((r) => r.ok ? `${r.router?.id}: ${r.total}` : `${r.router?.id || "?"}: ${r.error || "error"}`).join(" · ");
@@ -12629,7 +12780,7 @@ export default function App() {
     setLoteEstado("previsualizando");
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/crear-secrets-lote`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN },
         body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, localAddress: localAddress.trim() || undefined, dryRun: true }),
       });
       const json = await res.json().catch(() => ({}));
@@ -12649,11 +12800,20 @@ export default function App() {
     setLoteEstado("creando"); setLoteError("");
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/crear-secrets-lote`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN },
         body: JSON.stringify({ routerKey, nodo, ipInicio: ipInicio.trim(), ipFin: ipFin.trim(), numeroInicio: Number(numeroInicio), profile: profile.trim(), password: password.trim() || undefined, localAddress: localAddress.trim() || undefined, dryRun: false }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+      if (!res.ok || json?.ok === false) {
+        // Si el lote se corto a mitad de camino (socket caido), el backend
+        // ahora adjunta lo que ya se alcanzo a procesar -- mostrarlo para no
+        // tener que ir a revisar el router a mano para saber que quedo hecho.
+        if (Array.isArray(json?.resultadosParciales) && json.resultadosParciales.length) {
+          setLoteResultados(json.resultadosParciales);
+          setLoteRouterInfo({ router: null, creados: json.resultadosParciales.filter((r) => r.ok).length, omitidos: json.resultadosParciales.filter((r) => !r.ok).length });
+        }
+        throw new Error(json?.error || `HTTP ${res.status}`);
+      }
       setLoteResultados(json.resultados || []);
       setLoteRouterInfo({ router: json.router, creados: json.creados, omitidos: json.omitidos });
       setLotePreview(null);
@@ -21532,6 +21692,11 @@ export default function App() {
                         <div style={{ fontSize: "13px", color: "#475569", marginTop: "4px" }}>
                           DNI consultado: <strong>{diagnosticoServicioConsulta}</strong>
                         </div>
+                        {diagnosticoServicioCandidatos.length > 1 && (
+                          <div style={{ fontSize: "12px", color: "#9a3412", marginTop: "6px", fontWeight: 700 }}>
+                            ⚠ Este DNI tiene {diagnosticoServicioCandidatos.length} servicios (nodos: {diagnosticoServicioCandidatos.map(c => c.nodo || "-").join(", ")}). Mostrando el activo; si no es el correcto usa "Consulta manual" con el usuario PPPoE exacto.
+                          </div>
+                        )}
                       </div>
                       <span
                         style={
@@ -23991,18 +24156,18 @@ export default function App() {
                                   <div style={{ display:"flex", gap:8 }}>
                                     <button disabled={svcFactCreando||!svcFactF1Vence||!svcFactF1Monto||(svcFactF1Modo==="libre"&&!svcFactF1Desc)}
                                       onClick={async()=>{
-                                        setSvcFactCreando(true);
+                                        if(svcFactCreandoRef.current)return;svcFactCreandoRef.current=true;setSvcFactCreando(true);
                                         try {
                                           const mkN8n=async(accion,payload)=>{ const r=await fetch(N8N_PROXY_SVC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nodo:factPanelNodo,accion,payload})}); const j=await r.json().catch(()=>({})); return j?.data??j; };
                                           let idfactura;
                                           if (svcFactF1Modo==="libre") {
                                             const d=await mkN8n("CreateInvoiceLibre",{id_cliente:factPanelCliId,fecha_vencimiento:svcFactF1Vence,items:[{descripcion:svcFactF1Desc,cantidad:1,precio:parseFloat(svcFactF1Monto),impuesto:18}]});
-                                            if (!(d?.code==="200"||d?.factura_id)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));setSvcFactCreando(false);return;}
+                                            if (!(d?.code==="200"||d?.factura_id)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));(svcFactCreandoRef.current=false,setSvcFactCreando(false));return;}
                                             idfactura=d?.factura_id;
                                             if(svcFactF1Pagada&&idfactura) await mkN8n("PaidInvoice",{idcliente:factPanelCliId,idfactura:parseInt(idfactura,10),pasarela:svcFactF1Pasarela,cantidad:parseFloat(svcFactF1Monto)});
                                           } else {
                                             const d=await mkN8n("CreateInvoice",{idcliente:factPanelCliId,vencimiento:svcFactF1Vence});
-                                            if(!(d?.estado==="exito"||d?.idfactura)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));setSvcFactCreando(false);return;}
+                                            if(!(d?.estado==="exito"||d?.idfactura)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));(svcFactCreandoRef.current=false,setSvcFactCreando(false));return;}
                                             idfactura=d?.idfactura;
                                             if(svcFactF1Pagada&&idfactura) await mkN8n("PaidInvoice",{idcliente:factPanelCliId,idfactura:parseInt(idfactura,10),pasarela:svcFactF1Pasarela,cantidad:parseFloat(svcFactF1Monto)});
                                           }
@@ -24011,7 +24176,7 @@ export default function App() {
                                           setSvcFactStep(2);
                                           if(!svcFactF2PrecPlan&&cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
                                         } catch(e){window.alert("Error: "+e.message);}
-                                        setSvcFactCreando(false);
+                                        (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                       }}
                                       style={{ flex:1, padding:"10px 16px", background:svcFactCreando||!svcFactF1Vence||!svcFactF1Monto||(svcFactF1Modo==="libre"&&!svcFactF1Desc)?"#9ca3af":c, color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                       {svcFactCreando?"Creando...":"✓ Crear y continuar →"}
@@ -24046,7 +24211,7 @@ export default function App() {
                                     <div style={{ display:"flex", gap:8 }}>
                                       <button disabled={svcFactCreando||!svcFactF2Vence||!(parseFloat(svcFactMonto||montoAuto)>0)}
                                         onClick={async()=>{
-                                          setSvcFactCreando(true);
+                                          if(svcFactCreandoRef.current)return;svcFactCreandoRef.current=true;setSvcFactCreando(true);
                                           try{
                                             const mkN8n=async(accion,payload)=>{const r=await fetch(N8N_PROXY_SVC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nodo:factPanelNodo,accion,payload})});const j=await r.json().catch(()=>({}));return j?.data??j;};
                                             const montoFinal=parseFloat(svcFactMonto||montoAuto)||0;
@@ -24056,7 +24221,7 @@ export default function App() {
                                             if(ok){window.alert(`✅ Prorrateo #${d?.factura_id} creado por S/${montoFinal}`);setMkwWizardStep(4);}
                                             else window.alert("Error: "+(d?.mensaje||d?.message||"No se pudo crear"));
                                           }catch(e){window.alert("Error: "+e.message);}
-                                          setSvcFactCreando(false);
+                                          (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                         }}
                                         style={{ flex:1, padding:"10px 16px", background:svcFactCreando||!svcFactF2Vence||!(parseFloat(svcFactMonto||montoAuto)>0)?"#9ca3af":c, color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                         {svcFactCreando?"Creando...":"✓ Crear factura prorrateo"}
@@ -24193,7 +24358,7 @@ export default function App() {
                             <div style={{ display:"flex", gap:8 }}>
                               <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc)}
                                 onClick={async () => {
-                                  setSvcFactCreando(true);
+                                  if(svcFactCreandoRef.current)return;svcFactCreandoRef.current=true;setSvcFactCreando(true);
                                   try {
                                     const mkN8n = async (accion, payload) => {
                                       const r = await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nodo: factPanelNodo, accion, payload }) });
@@ -24207,7 +24372,7 @@ export default function App() {
                                         items: [{ descripcion: svcFactF1Desc, cantidad: 1, precio: parseFloat(svcFactF1Monto), impuesto: 18 }]
                                       });
                                       const invOk = invData?.code === "200" || invData?.factura_id;
-                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = invData?.factura_id;
                                       if (svcFactF1Pagada && idfactura) {
                                         await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
@@ -24215,7 +24380,7 @@ export default function App() {
                                     } else {
                                       invData = await mkN8n("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
                                       const invOk = invData?.estado === "exito" || invData?.idfactura;
-                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = invData?.idfactura;
                                       if (svcFactF1Pagada && idfactura) {
                                         await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
@@ -24225,7 +24390,7 @@ export default function App() {
                                     setSvcFactStep(2);
                                     if (!svcFactF2PrecPlan && cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
                                   } catch(e) { window.alert("Error: " + e.message); }
-                                  setSvcFactCreando(false);
+                                  (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                 }}
                                 style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc) ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
@@ -24286,7 +24451,7 @@ export default function App() {
                               <div style={{ display:"flex", gap:8 }}>
                                 <button disabled={svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0)}
                                   onClick={async () => {
-                                    setSvcFactCreando(true);
+                                    if(svcFactCreandoRef.current)return;svcFactCreandoRef.current=true;setSvcFactCreando(true);
                                     try {
                                       const mkN8n2 = async (accion, payload) => {
                                         const r = await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nodo: factPanelNodo, accion, payload }) });
@@ -24303,7 +24468,7 @@ export default function App() {
                                       if (invOk) { window.alert(`✅ Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`); setFactPanelOpen(null); }
                                       else window.alert("Error: " + (invData2?.mensaje || invData2?.message || "No se pudo crear"));
                                     } catch(e) { window.alert("Error: " + e.message); }
-                                    setSvcFactCreando(false);
+                                    (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                   }}
                                   style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0) ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                   {svcFactCreando ? "Creando..." : "✓ Crear factura prorrateo"}
@@ -24404,7 +24569,7 @@ export default function App() {
                             <div style={{ display:"flex", gap:8 }}>
                               <button disabled={svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc)}
                                 onClick={async () => {
-                                  setSvcFactCreando(true);
+                                  if(svcFactCreandoRef.current)return;svcFactCreandoRef.current=true;setSvcFactCreando(true);
                                   try {
                                     const { id_cliente, esDim } = svcNuevoCreado;
                                     let idfactura;
@@ -24412,7 +24577,7 @@ export default function App() {
                                       const p = { id_cliente, fecha_vencimiento: svcFactF1Vence, items: [{ descripcion: svcFactF1Desc, cantidad: 1, precio: parseFloat(svcFactF1Monto), impuesto: 18 }] };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
                                       const invOk = inv.json?.code === "200" || inv.json?.factura_id;
-                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = inv.json?.factura_id;
                                       if (svcFactF1Pagada && idfactura) {
                                         await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
@@ -24421,7 +24586,7 @@ export default function App() {
                                       const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
                                       const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); setSvcFactCreando(false); return; }
+                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = inv.json?.idfactura;
                                       if (svcFactF1Pagada && idfactura) {
                                         await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
@@ -24431,7 +24596,7 @@ export default function App() {
                                     setSvcFactStep(2);
                                     if (!svcFactF2PrecPlan && svcNuevoCreado?.precioPlan) setSvcFactF2PrecPlan(String(svcNuevoCreado.precioPlan));
                                   } catch(e) { window.alert("Error: " + e.message); }
-                                  setSvcFactCreando(false);
+                                  (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                 }}
                                 style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc) ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                 {svcFactCreando ? "Creando..." : "✓ Crear y continuar →"}
@@ -24496,7 +24661,7 @@ export default function App() {
                               <div style={{ display:"flex", gap:8 }}>
                                 <button disabled={svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0)}
                                   onClick={async () => {
-                                    setSvcFactCreando(true);
+                                    if(svcFactCreandoRef.current)return;svcFactCreandoRef.current=true;setSvcFactCreando(true);
                                     try {
                                       const { id_cliente, esDim } = svcNuevoCreado;
                                       const montoFinal = parseFloat(svcFactMonto || montoAuto) || 0;
@@ -24511,7 +24676,7 @@ export default function App() {
                                       if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.factura_id} creada por S/${montoFinal}`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
                                       else window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear"));
                                     } catch(e) { window.alert("Error: " + e.message); }
-                                    setSvcFactCreando(false);
+                                    (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                   }}
                                   style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0) ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
                                   {svcFactCreando ? "Creando..." : "✓ Crear factura prorrateo"}
@@ -27713,9 +27878,18 @@ export default function App() {
                                           .from("equipos_catalogo")
                                           .select("id, estado")
                                           .or(`codigo_qr.eq.${serial},serial_mac.eq.${serial}`)
-                                          .limit(1);
+                                          .limit(2);
                                         if (!encontrados || encontrados.length === 0) {
                                           alert(`No se encontró el equipo S/N "${serial}" en el catálogo.`);
+                                          setLiberandoCatalogoId(null);
+                                          return;
+                                        }
+                                        // Sin esto, un serial/QR duplicado en catalogo (reciclado) hacia
+                                        // que se tomara "el primero que sea" sin desempate, arriesgando
+                                        // desasignar (limpiar tecnico/cliente) un equipo distinto al
+                                        // que realmente se esta liberando desde stock tecnico.
+                                        if (encontrados.length > 1) {
+                                          alert(`El código "${serial}" coincide con ${encontrados.length} equipos en el catálogo. Revisa manualmente cuál es el correcto antes de continuar.`);
                                           setLiberandoCatalogoId(null);
                                           return;
                                         }

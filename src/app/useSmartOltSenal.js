@@ -1,9 +1,7 @@
 import { useCallback, useState } from "react";
 
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || "").trim();
-export const SMART_OLT_TOKEN = String(
-  import.meta.env.VITE_SMART_OLT_TOKEN || "0cb1ad391ea4458cab6efe97769c761d"
-).trim();
+export const SMART_OLT_TOKEN = String(import.meta.env.VITE_SMART_OLT_TOKEN || "").trim();
 
 const buildApiUrl = (path = "") => {
   const p = String(path || "");

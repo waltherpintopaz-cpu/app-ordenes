@@ -212,8 +212,12 @@ export default function WisproPanel({ esAdmin = false, sessionUser, theme }) {
         updated_at:    new Date().toISOString(),
       })).filter(r => r.cliente_nombre || r.telefono);
       if (upsertRows.length > 0) {
-        await supabase.from("wispro_clientes_config")
+        // Sin revisar esto, si el upsert fallaba (RLS, columna faltante) el
+        // cacheo de nombre/telefono/estado se perdia en silencio -- el
+        // proximo fetchAll mostraba datos desactualizados sin ningun aviso.
+        const { error: cacheErr } = await supabase.from("wispro_clientes_config")
           .upsert(upsertRows, { onConflict: "contrato_id", ignoreDuplicates: false });
+        if (cacheErr) console.error("[WisproPanel] no se pudo cachear la lista de contratos:", cacheErr.message);
       }
 
       // cargar config local de cada uno
@@ -232,9 +236,13 @@ export default function WisproPanel({ esAdmin = false, sessionUser, theme }) {
     setSavingCli(p => ({...p, [contratoId]: true}));
     const existing = clientesCfg[contratoId];
     const row = { ...(existing||{}), contrato_id: contratoId, ...patch, updated_at: new Date().toISOString() };
-    const { error } = existing
-      ? await supabase.from("wispro_clientes_config").update(patch).eq("contrato_id", contratoId)
-      : await supabase.from("wispro_clientes_config").insert(row);
+    // Antes el "existing" (estado local) decidia insert vs update: si dos
+    // checkboxes se tocaban muy rapido para el mismo contrato antes de que
+    // el estado se actualizara, ambas llamadas veian existing=undefined y
+    // ambas insertaban, duplicando la fila. Un upsert por contrato_id es
+    // seguro sea cual sea el estado local.
+    const { error } = await supabase.from("wispro_clientes_config").upsert(row, { onConflict: "contrato_id" });
+    if (error) console.error("[WisproPanel] no se pudo guardar config de cliente:", error.message);
     if (!error) setClientesCfg(p => ({...p, [contratoId]: {...(p[contratoId]||{contrato_id:contratoId}), ...patch}}));
     setSavingCli(p => ({...p, [contratoId]: false}));
   };
@@ -263,10 +271,14 @@ export default function WisproPanel({ esAdmin = false, sessionUser, theme }) {
       const json = await res.json();
       if (json.error) throw new Error(json.error.message);
       // registrar en log
-      await supabase.from("wispro_notificaciones_log").insert({
+      const { error: logErr } = await supabase.from("wispro_notificaciones_log").insert({
         contrato_id: String(contrato.id), cliente_nombre: nombreCliente,
         telefono: tel, tipo:"bienvenida", resultado:"enviado",
       });
+      // El mensaje ya se envio; si el log falla no se debe bloquear el
+      // flujo, pero antes no quedaba ningun rastro de que fallo -- la
+      // pestaña "Historial" quedaba incompleta sin que nadie lo notara.
+      if (logErr) console.error("[WisproPanel] no se pudo registrar en el log de notificaciones:", logErr.message);
       // marcar bienvenida enviada
       await guardarClienteCfg(String(contrato.id), { bienvenida_enviada:true, cliente_nombre: nombreCliente });
       setBienMsg("✓ Bienvenida enviada a +"+tel);

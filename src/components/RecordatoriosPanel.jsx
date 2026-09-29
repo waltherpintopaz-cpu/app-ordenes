@@ -160,25 +160,34 @@ export default function RecordatoriosPanel({ sessionUser, theme }) {
       const fechaIso = form.fecha_vencimiento ? new Date(form.fecha_vencimiento).toISOString() : null;
       const payload = { usuario_id: userId, titulo: form.titulo.trim(), descripcion: form.descripcion.trim(), prioridad: form.prioridad, fecha_vencimiento: fechaIso, foto_url: form.foto_url || "" };
       if (editId) {
-        await supabase.from("recordatorios").update(payload).eq("id", editId);
+        const { error } = await supabase.from("recordatorios").update(payload).eq("id", editId);
+        if (error) throw new Error(error.message);
         setRecs((prev) => prev.map((r) => r.id === editId ? { ...r, ...payload } : r));
       } else {
-        const { data: nd } = await supabase.from("recordatorios").insert({ ...payload, completado: false }).select().maybeSingle();
+        const { data: nd, error } = await supabase.from("recordatorios").insert({ ...payload, completado: false }).select().maybeSingle();
+        if (error) throw new Error(error.message);
         if (nd) setRecs((prev) => [nd, ...prev]);
       }
       setModal(false);
+    } catch (e) {
+      alert("Error al guardar recordatorio: " + (e?.message || "desconocido"));
     } finally { setSaving(false); }
   };
 
   const toggleRec  = async (r) => {
     const nuevo = !r.completado;
     setRecs((prev) => prev.map((x) => x.id === r.id ? { ...x, completado: nuevo } : x));
-    await supabase.from("recordatorios").update({ completado: nuevo }).eq("id", r.id);
+    const { error } = await supabase.from("recordatorios").update({ completado: nuevo }).eq("id", r.id);
+    if (error) {
+      setRecs((prev) => prev.map((x) => x.id === r.id ? { ...x, completado: r.completado } : x));
+      alert("No se pudo actualizar: " + error.message);
+    }
   };
 
   const eliminarRec = async (r) => {
     if (!window.confirm(`¿Eliminar "${r.titulo}"?`)) return;
-    await supabase.from("recordatorios").delete().eq("id", r.id);
+    const { error } = await supabase.from("recordatorios").delete().eq("id", r.id);
+    if (error) { alert("No se pudo eliminar: " + error.message); return; }
     setRecs((prev) => prev.filter((x) => x.id !== r.id));
   };
 
@@ -242,7 +251,8 @@ export default function RecordatoriosPanel({ sessionUser, theme }) {
 
   const eliminarNota = async (n) => {
     if (!window.confirm(`¿Eliminar nota "${n.titulo}"?`)) return;
-    await supabase.from("notas").delete().eq("id", n.id).eq("autor_id", userId);
+    const { error } = await supabase.from("notas").delete().eq("id", n.id).eq("autor_id", userId);
+    if (error) { alert("No se pudo eliminar: " + error.message); return; }
     setNotas((prev) => prev.filter((x) => x.id !== n.id));
   };
 

@@ -228,7 +228,11 @@ export default function AgentesDashboard({ cardStyle, sectionTitleStyle }) {
     const now = Math.floor(Date.now() / 1000);
     return openConvs
       .filter(c => c.waiting_since != null && c.waiting_since > 0)
-      .filter(c => nodoIds.length === 0 || nodoIds.includes(c.nodo))
+      // nodoIds son ids de inbox de Chatwoot (ver NODOS arriba), no el string
+      // "Nod_0N" -- comparar contra c.nodo (que ademas nunca se copiaba en el
+      // map de arriba) siempre daba false y dejaba esta lista vacia para
+      // cualquier filtro que no fuera "Todos".
+      .filter(c => nodoIds.length === 0 || nodoIds.includes(Number(c.inbox_id)))
       .map(c => ({ ...c, waitSec: now - c.waiting_since }))
       .sort((a, b) => b.waitSec - a.waitSec)
       .slice(0, 10);

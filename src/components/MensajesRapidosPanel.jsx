@@ -71,10 +71,16 @@ export default function MensajesRapidosPanel({ theme, sessionUser }) {
     const otro = misMensajes[otroIdx];
     const ordenM = m.orden ?? idx;
     const ordenOtro = otro.orden ?? otroIdx;
-    await Promise.all([
-      supabase.from("mensajes_rapidos").update({ orden: ordenOtro }).eq("id", m.id),
-      supabase.from("mensajes_rapidos").update({ orden: ordenM }).eq("id", otro.id),
-    ]);
+    // Mismo motivo que en PromocionesPanel.jsx: en paralelo, si uno de los
+    // dos updates fallaba, el swap quedaba a medias sin ningun aviso.
+    const r1 = await supabase.from("mensajes_rapidos").update({ orden: ordenOtro }).eq("id", m.id);
+    if (r1.error) { alert("No se pudo reordenar: " + r1.error.message); return; }
+    const r2 = await supabase.from("mensajes_rapidos").update({ orden: ordenM }).eq("id", otro.id);
+    if (r2.error) {
+      await supabase.from("mensajes_rapidos").update({ orden: ordenM }).eq("id", m.id).catch(() => {});
+      alert("No se pudo reordenar: " + r2.error.message);
+      return;
+    }
     await cargar();
   };
 

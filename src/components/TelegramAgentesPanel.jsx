@@ -80,13 +80,15 @@ export default function TelegramAgentesPanel() {
   }
 
   async function toggleActivo(ag) {
-    await supabase.from("telegram_agents").update({ activo: !ag.activo }).eq("id", ag.id);
+    const { error } = await supabase.from("telegram_agents").update({ activo: !ag.activo }).eq("id", ag.id);
+    if (error) return notify("Error: " + error.message, false);
     fetchAll();
   }
 
   async function handleDelete(ag) {
     if (!confirm(`¿Eliminar a ${ag.chatwoot_name}?`)) return;
-    await supabase.from("telegram_agents").delete().eq("id", ag.id);
+    const { error } = await supabase.from("telegram_agents").delete().eq("id", ag.id);
+    if (error) return notify("Error: " + error.message, false);
     fetchAll();
   }
 

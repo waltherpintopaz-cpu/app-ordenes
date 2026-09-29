@@ -234,6 +234,7 @@ export default function MetaPlantillasPanel() {
       });
       components.push({ type: "BUTTONS", buttons });
     }
+    let plantillaAnteriorBorrada = false;
     try {
       if (plantillaEditando) {
         const delRes = await fetch(
@@ -241,6 +242,7 @@ export default function MetaPlantillasPanel() {
           { method: "DELETE" });
         const delJson = await delRes.json();
         if (delJson.error) throw new Error("Error al eliminar la anterior: " + delJson.error.message);
+        plantillaAnteriorBorrada = true;
       }
       const res = await fetch(`${META_BASE}/${wabaActivoP.waba_id}/message_templates`, {
         method: "POST",
@@ -248,7 +250,15 @@ export default function MetaPlantillasPanel() {
         body: JSON.stringify({ name: nombreFinal, language: form.idioma, category: form.categoria, components }),
       });
       const json = await res.json();
-      if (json.error) throw new Error(json.error.message);
+      if (json.error) {
+        // Si ya se borro la anterior (aprobada, en uso por el bot de pagos u
+        // otras notificaciones) y esta creacion falla, no quedar en silencio:
+        // avisar explicitamente que la plantilla vieja ya NO existe.
+        if (plantillaAnteriorBorrada) {
+          throw new Error(`La plantilla anterior "${plantillaEditando?.name}" ya fue ELIMINADA y la nueva no se pudo crear: ${json.error.message}. No se puede enviar ese mensaje hasta recrearla.`);
+        }
+        throw new Error(json.error.message);
+      }
       setFormMsg(plantillaEditando ? "✓ Plantilla actualizada." : "✓ Plantilla enviada a revisión (PENDIENTE).");
       setShowForm(false); setForm(FORM_VACIO); setPlantillaEditando(null);
       cargarPlantillas();

@@ -201,7 +201,11 @@ export default function ConciliacionOnusPanel({ isMobile = false, theme }) {
           pendiente_revision: false,
           observacion: `Resuelto manualmente en web (${new Date().toISOString()})`,
         })
-        .eq("id_onu", row.id_onu);
+        // Antes filtraba por id_onu (clave de negocio, puede repetirse si hay
+        // mas de una fila historica para la misma ONU) en vez de la PK real
+        // "id" -- podia propagar la resolucion manual a filas que no
+        // correspondian.
+        .eq("id", row.id);
       if (upd.error) throw upd.error;
       setInfo(`ONU ${row.id_onu} relacionada con liquidacion ${code}.`);
       await loadBase();

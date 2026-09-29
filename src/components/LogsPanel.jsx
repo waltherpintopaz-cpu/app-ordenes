@@ -73,7 +73,11 @@ export default function LogsPanel({ cardStyle, inputStyle, sectionTitleStyle, th
     if (!window.confirm(`¿Eliminar logs ${soloNormales ? "normales " : ""}anteriores a ${dias} días?`)) return;
     let q = supabase.from("logs").delete().lt("fecha", new Date(Date.now() - dias * 86400000).toISOString());
     if (soloNormales) q = q.eq("criticidad", "normal");
-    await q;
+    const { error } = await q;
+    // Sin revisar esto, la lista se filtraba localmente como si el delete
+    // hubiera funcionado aunque hubiera fallado (permisos), dando una falsa
+    // sensacion de limpieza exitosa.
+    if (error) { alert("No se pudieron eliminar los logs: " + error.message); return; }
     setLogsData(prev => prev.filter(l => {
       const viejo = new Date(l.fecha) < new Date(Date.now() - dias * 86400000);
       return !(viejo && (soloNormales ? l.criticidad === "normal" : true));

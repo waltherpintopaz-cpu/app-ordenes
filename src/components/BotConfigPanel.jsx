@@ -214,6 +214,11 @@ export default function BotConfigPanel() {
   const [tab, setTab] = useState("estado");
   const [cfg, setCfg] = useState(DEFAULT);
   const [loading, setLoading] = useState(true);
+  // Si falla leer la config real, antes el formulario quedaba mostrando los
+  // valores DEFAULT como si fueran la config real, sin ningun aviso -- si el
+  // admin guardaba, sobrescribia la configuracion de produccion (mensajes,
+  // beneficiarios, IDs de equipo) con los valores por defecto.
+  const [loadError, setLoadError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -251,6 +256,7 @@ export default function BotConfigPanel() {
 
   async function load() {
     setLoading(true);
+    setLoadError(null);
     const { data, error } = await supabase
       .from("bot_config")
       .select("*")
@@ -266,11 +272,17 @@ export default function BotConfigPanel() {
         });
       }
       setCfg({ ...DEFAULT, ...clean });
+    } else if (error) {
+      setLoadError(error.message || "No se pudo cargar la configuración real del bot.");
     }
     setLoading(false);
   }
 
   async function save() {
+    if (loadError) {
+      setMsg({ type: "error", text: "No se guardó: falló cargar la configuración real antes de editar, esto habría sobrescrito producción con valores por defecto. Recarga la página e intenta de nuevo." });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     const cfgToSave = {
@@ -320,6 +332,15 @@ export default function BotConfigPanel() {
 
   if (loading)
     return <div style={{ padding: 60, textAlign: "center", color: "#6b7280", fontSize: 14 }}>Cargando configuración...</div>;
+
+  if (loadError)
+    return (
+      <div style={{ padding: 40, textAlign: "center" }}>
+        <div style={{ color: "#dc2626", fontWeight: 700, fontSize: 14, marginBottom: 10 }}>No se pudo cargar la configuración real del bot.</div>
+        <div style={{ color: "#6b7280", fontSize: 13, marginBottom: 16 }}>{loadError}</div>
+        <button onClick={load} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>Reintentar</button>
+      </div>
+    );
 
   // ── Layout ──────────────────────────────────────────────────────────────
   return (

@@ -40,7 +40,7 @@ import {
 } from "../utils/vehicleIcon";
 
 const GOOGLE_MAPS_API_KEY = String(
-  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
 ).trim();
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const TRAIL_COLORS = ["#1E4F9C", "#F47A20", "#00C853", "#EC4899", "#0EA5E9", "#7C3AED"];
@@ -488,7 +488,10 @@ export default function SeguimientoVehiculosPanel() {
       .select("nombre,rol,activo")
       .eq("rol", "Tecnico")
       .order("nombre", { ascending: true });
-    if (fetchError) { setTecnicos([]); return; }
+    // Un error transitorio de red no debe vaciar la lista ya cargada: antes
+    // esto dejaba el dropdown de "Tecnico asignado" vacio hasta el proximo
+    // poll exitoso.
+    if (fetchError) return;
     const nombres = (Array.isArray(data) ? data : [])
       .filter((u) => u.activo !== false)
       .map((u) => toText(u.nombre))
@@ -496,12 +499,18 @@ export default function SeguimientoVehiculosPanel() {
     setTecnicos(nombres);
   }, []);
 
+  // Token de la ultima carga de posiciones: el auto-refresh (cada 10-15s) y
+  // un refresco manual pueden solaparse; sin esto, si la respuesta mas
+  // vieja llega despues, pisaba el mapa con una posicion GPS desactualizada.
+  const cargaUbicacionRef = useRef(0);
   const cargarUbicacionActual = useCallback(async () => {
+    const miToken = ++cargaUbicacionRef.current;
     const { data, error: fetchError } = await supabase
       .from("vehiculo_ubicacion_actual")
       .select("*")
       .order("updated_at", { ascending: false })
       .limit(500);
+    if (miToken !== cargaUbicacionRef.current) return;
     if (fetchError) {
       if (tableMissing(fetchError, "vehiculo_ubicacion_actual")) {
         setWarning("Tabla vehiculo_ubicacion_actual no existe todavia — ejecuta el SQL de configuracion.");
@@ -525,8 +534,9 @@ export default function SeguimientoVehiculosPanel() {
       .limit(2000);
     if (fetchError) {
       if (tableMissing(fetchError, "ordenes")) { setOrdenesHoy([]); return; }
-      // No bloquear el resto del panel si esto falla — es informativo, no critico.
-      setOrdenesHoy([]);
+      // No bloquear el resto del panel si esto falla -- es informativo, no
+      // critico. Pero un error transitorio tampoco debe vaciar el ultimo
+      // dato bueno (se pierde el ETA/"llego a sitio" hasta el proximo poll).
       return;
     }
     const rows = (Array.isArray(data) ? data : [])
@@ -657,15 +667,29 @@ export default function SeguimientoVehiculosPanel() {
         setCompartirError('Este vehiculo no tiene "Tecnico asignado" — configuralo en "Editar vehiculo" antes de compartir.');
         return;
       }
-      const { data: tecnicoRow, error: tecError } = await supabase
+      // .ilike sin comodines ya es un match exacto (solo insensible a
+      // mayusculas); el problema real es que .maybeSingle() falla con un
+      // error de "multiple rows" si hay 2 usuarios con el mismo nombre --
+      // antes ese caso se reportaba con el mismo mensaje generico de "no
+      // encontrado", ocultando que en realidad SI existe pero es ambiguo.
+      const { data: tecnicoRows, error: tecError } = await supabase
         .from("usuarios")
         .select("id")
         .ilike("nombre", tecnicoNombre)
-        .maybeSingle();
-      if (tecError || !tecnicoRow?.id) {
+        .limit(2);
+      if (tecError) {
+        setCompartirError(`Error buscando el usuario "${tecnicoNombre}": ${tecError.message}`);
+        return;
+      }
+      if (!tecnicoRows?.length) {
         setCompartirError(`No se encontro un usuario tecnico llamado "${tecnicoNombre}" — revisa el nombre en "Editar vehiculo".`);
         return;
       }
+      if (tecnicoRows.length > 1) {
+        setCompartirError(`Hay más de un usuario llamado "${tecnicoNombre}" — no se puede determinar cuál es. Usa un nombre más específico en "Editar vehiculo".`);
+        return;
+      }
+      const tecnicoRow = tecnicoRows[0];
 
       const expiraEn = new Date(Date.now() + horas * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
@@ -751,8 +775,14 @@ export default function SeguimientoVehiculosPanel() {
     if (!ok) return;
     setDeletingId(v.id);
     try {
-      await supabase.from("vehiculo_ubicaciones").delete().eq("vehiculo_id", v.id);
-      await supabase.from("vehiculo_ubicacion_actual").delete().eq("vehiculo_id", v.id);
+      // Antes estos 2 deletes no revisaban error (solo el de "vehiculos" si
+      // lo hacia): si el borrado del historial fallaba pero el de la fila
+      // "vehiculos" pasaba, quedaba historial GPS huerfano apuntando a un
+      // vehiculo_id que ya no existe -- riesgoso si ese id se reutiliza.
+      const delHist1 = await supabase.from("vehiculo_ubicaciones").delete().eq("vehiculo_id", v.id);
+      if (delHist1.error) throw delHist1.error;
+      const delHist2 = await supabase.from("vehiculo_ubicacion_actual").delete().eq("vehiculo_id", v.id);
+      if (delHist2.error) throw delHist2.error;
       const { error: delError } = await supabase.from("vehiculos").delete().eq("id", v.id);
       if (delError) throw delError;
       if (selectedId === v.id) setSelectedId(null);

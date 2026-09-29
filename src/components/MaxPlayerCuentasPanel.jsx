@@ -21,6 +21,7 @@ const PLANES_IPTV_NOMBRES = Object.keys(PLANES_IPTV);
 // Xtream propio — misma linea dedicada por cliente que crea SidebarApp.jsx,
 // via proxy (server/xtreamProxyServer.mjs) para no exponer la API key en el navegador.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
+const XTREAM_INTERNAL_TOKEN = String(import.meta.env.VITE_XTREAM_INTERNAL_TOKEN || "").trim();
 
 async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = null, bouquets = XTREAM_BOUQUETS_TODOS) {
   if (!XTREAM_PROXY_URL) throw new Error("Falta configurar VITE_XTREAM_PROXY_URL");
@@ -28,7 +29,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = n
   const rXPass = Math.random().toString(36).slice(2, 12);
   const rRes = await fetch(`${XTREAM_PROXY_URL}/api/xtream/create-user`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
     body: JSON.stringify({
       username: rXUser,
       password: rXPass,
@@ -49,7 +50,7 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
   try {
     await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
       body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
     });
   } catch (_) { /* limpieza best-effort */ }
@@ -59,6 +60,15 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
 async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections, creadoPor, expHoras = null, esDemo = false, plan = "Premium" }) {
   const dni = String(dniRaw || "").replace(/\D/g, "");
   if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
+  // Antes no se verificaba si el DNI ya tenia cuenta: un doble clic o un
+  // reintento creaba una segunda linea Xtream/MaxPlayer (cobro real
+  // duplicado) sin que el panel se enterara.
+  if (!esDemo) {
+    const existente = await supabase.from("iptv_clientes").select("iptv_usuario,xtream_user_id,iptv_user_id").eq("dni", dni).maybeSingle();
+    if (existente?.data?.xtream_user_id || existente?.data?.iptv_user_id) {
+      throw new Error(`Este DNI ya tiene una cuenta IPTV (${existente.data.iptv_usuario || dni}). Usa "Cambiar plan"/"Cambiar pantallas" en vez de crear una nueva.`);
+    }
+  }
   const nodoStr = String(nodoRaw || "").trim();
   const matchNod = nodoStr.match(/^Nod_0?(\d+)$/i);
   const nodoNum = matchNod ? parseInt(matchNod[1], 10) : (MP_NODO_SUFFIX[Number(nodoRaw)] ?? 1);
@@ -95,17 +105,27 @@ async function crearCuentaMaxPlayer({ dniRaw, nodoRaw, nombreRaw, maxConnections
     es_demo: esDemo, plan: esDemo ? "Premium" : plan,
     demo_exp_at: (esDemo && expHoras) ? new Date(Date.now() + Number(expHoras) * 3600000).toISOString() : null,
   };
-  let upsertRes = await supabase.from("iptv_clientes").upsert(payload, { onConflict: "dni" });
-  if (upsertRes.error) {
-    const msg = String(upsertRes.error.message || "");
-    const m = msg.match(/column ['"]?([a-z_]+)['"]? .*does not exist/i);
-    if (m && Object.prototype.hasOwnProperty.call(payload, m[1])) {
-      const retry = { ...payload };
-      delete retry[m[1]];
-      await supabase.from("iptv_clientes").upsert(retry, { onConflict: "dni" });
-    } else if (upsertRes.error) {
-      throw upsertRes.error;
+  try {
+    let upsertRes = await supabase.from("iptv_clientes").upsert(payload, { onConflict: "dni" });
+    if (upsertRes.error) {
+      const msg = String(upsertRes.error.message || "");
+      const m = msg.match(/column ['"]?([a-z_]+)['"]? .*does not exist/i);
+      if (m && Object.prototype.hasOwnProperty.call(payload, m[1])) {
+        const retry = { ...payload };
+        delete retry[m[1]];
+        const retryRes = await supabase.from("iptv_clientes").upsert(retry, { onConflict: "dni" });
+        if (retryRes.error) throw retryRes.error;
+      } else {
+        throw upsertRes.error;
+      }
     }
+  } catch (e) {
+    // Si esto falla, la cuenta ya existe activa (y facturable) en
+    // MaxPlayer/Xtream pero quedaria invisible para el panel -- se revierte
+    // ambas en vez de dejarla huerfana.
+    await fetch("https://api.maxplayer.tv/v3/api/public/users/" + userId, { method: "DELETE", headers: { "Api-Token": MP_TOKEN } }).catch(() => {});
+    await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
+    throw e;
   }
   return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id, nombre: payload.nombre, nodo: payload.nodo, max_connections: pantallas, es_demo: esDemo };
 }
@@ -428,7 +448,11 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false, 
         }
       }
       await eliminarLineaXtreamPropia(row.xtream_user_id);
-      await supabase.from("iptv_clientes").delete().eq("dni", row.dni);
+      const { error: delErr } = await supabase.from("iptv_clientes").delete().eq("dni", row.dni);
+      // Si esto falla, la cuenta ya no existe en MaxPlayer/Xtream (el
+      // cliente perdio el servicio) pero el registro "fantasma" seguia en
+      // la tabla mostrado como activo, con el toast confirmando "eliminada".
+      if (delErr) { showToast("⚠ Se eliminó en MaxPlayer/Xtream, pero no se pudo borrar el registro local: " + delErr.message); setEliminandoDni(""); return; }
       setCuentas((prev) => prev.filter((c) => c.dni !== row.dni));
       showToast(`✅ Cuenta de ${nombreRef} eliminada`);
     } catch (e) {
@@ -549,12 +573,16 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false, 
     try {
       const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
         body: JSON.stringify({ action: "update", user_id: row.xtream_user_id, max_connections: Number(nuevoValor) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
-      await supabase.from("iptv_clientes").update({ max_connections: Number(nuevoValor) }).eq("dni", row.dni);
+      // Si este update local falla, Xtream ya cambio el limite real pero el
+      // panel/BD seguian mostrando el valor viejo, con el toast diciendo
+      // "actualizado" igual.
+      const { error: updErr } = await supabase.from("iptv_clientes").update({ max_connections: Number(nuevoValor) }).eq("dni", row.dni);
+      if (updErr) throw new Error("Se actualizó en Xtream, pero no en el registro local: " + updErr.message);
       setCuentas((prev) => prev.map((c) => (c.dni === row.dni ? { ...c, max_connections: Number(nuevoValor) } : c)));
       showToast(`✅ Pantallas actualizadas a ${nuevoValor}`);
     } catch (e) {
@@ -577,12 +605,13 @@ export default function MaxPlayerCuentasPanel({ theme, soloBusquedaDni = false, 
       const bouquets = PLANES_IPTV[nuevoPlan] || PLANES_IPTV.Premium;
       const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
         body: JSON.stringify({ action: "update", user_id: row.xtream_user_id, bouquets }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.error || `Error ${res.status}`);
-      await supabase.from("iptv_clientes").update({ plan: nuevoPlan }).eq("dni", row.dni);
+      const { error: updErr } = await supabase.from("iptv_clientes").update({ plan: nuevoPlan }).eq("dni", row.dni);
+      if (updErr) throw new Error("Se actualizó en Xtream, pero no en el registro local: " + updErr.message);
       setCuentas((prev) => prev.map((c) => (c.dni === row.dni ? { ...c, plan: nuevoPlan } : c)));
       showToast(`✅ Plan actualizado a ${nuevoPlan}`);
     } catch (e) {

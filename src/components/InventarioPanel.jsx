@@ -799,19 +799,24 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
       const key = personaKey(valor);
       const code = normalizeTechCode(valor);
       if (!key) return null;
-      return (
-        tecnicos.find((t) => {
-          const aliases = [
-            t.id,
-            t.nombre,
-            t.username,
-            ...(Array.isArray(t.legacyCodes) ? t.legacyCodes : []),
-            ...(Array.isArray(t.legacyNames) ? t.legacyNames : []),
-          ].map((x) => personaKey(x));
-          if (code && Array.isArray(t.legacyCodes) && t.legacyCodes.some((c) => normalizeTechCode(c) === code)) return true;
-          return aliases.some((k) => k === key || (k.length >= 4 && key.length >= 4 && (k.includes(key) || key.includes(k))));
-        }) || null
-      );
+      const aliasesDe = (t) => [
+        t.id,
+        t.nombre,
+        t.username,
+        ...(Array.isArray(t.legacyCodes) ? t.legacyCodes : []),
+        ...(Array.isArray(t.legacyNames) ? t.legacyNames : []),
+      ].map((x) => personaKey(x));
+      const porCodigoLegacy = code && tecnicos.find((t) => Array.isArray(t.legacyCodes) && t.legacyCodes.some((c) => normalizeTechCode(c) === code));
+      if (porCodigoLegacy) return porCodigoLegacy;
+      // Match exacto primero. El match por substring (abajo) solo se usa si
+      // no hay ninguno exacto, y si resulta ambiguo (calza con mas de un
+      // tecnico -- ej. "Ana Flores" dentro de "Ana Flores Paredes") se
+      // descarta en vez de resolver al primero: eso podia asignar equipos/
+      // materiales al tecnico equivocado en una escritura real.
+      const exacto = tecnicos.find((t) => aliasesDe(t).some((k) => k === key));
+      if (exacto) return exacto;
+      const parciales = tecnicos.filter((t) => aliasesDe(t).some((k) => k.length >= 4 && key.length >= 4 && (k.includes(key) || key.includes(k))));
+      return parciales.length === 1 ? parciales[0] : null;
     },
     [tecnicos]
   );
@@ -2775,6 +2780,23 @@ ${filasNodos}
       if (!id) return;
       setSolicitudProcesandoId(id);
       try {
+        // Los cambios de inventario se aplican ANTES de marcar la solicitud
+        // como APROBADA mas abajo. Si ese ultimo write fallara y alguien
+        // reintenta esta misma aprobacion, sin este guard se volveria a
+        // descontar/mover el inventario una segunda vez. Se relee el estado
+        // actual en la BD (no el de la lista local) y se corta si ya no
+        // esta PENDIENTE.
+        const estadoActualRes = await supabase
+          .from(INVENTARIO_DEV_SOL_TABLE)
+          .select("estado")
+          .eq("id", id)
+          .maybeSingle();
+        const estadoActual = String(estadoActualRes.data?.estado || "").trim().toUpperCase();
+        if (estadoActual && estadoActual !== "PENDIENTE") {
+          window.alert("Esta solicitud ya fue procesada, se refresca la lista.");
+          void cargar();
+          return;
+        }
         const tipo = String(sol?.tipoItem || "").toLowerCase();
         const tipoSolicitud = String(sol?.tipoSolicitud || "DEVOLUCION").toUpperCase();
         const estadoRetorno = String(sol?.estadoRetorno || "BUENO").toUpperCase();
@@ -4132,6 +4154,18 @@ ${filasNodos}
                 className="secondary-btn"
                 onClick={async () => {
                   if (!eqPendReg.length) return window.alert("No hay equipos en lista temporal.");
+                  // Antes el upsert por codigo_qr no verificaba contra la BD
+                  // si ese codigo ya pertenecia a un equipo asignado/
+                  // liquidado -- podia sobrescribirlo silenciosamente y
+                  // desasignarlo. Se verifica primero contra la BD real (no
+                  // el estado local, que puede estar desactualizado).
+                  const codigosLote = eqPendReg.map((x) => String(x.codigo_qr || "").trim()).filter(Boolean);
+                  if (codigosLote.length) {
+                    const { data: yaExisten } = await supabase.from("equipos_catalogo").select("codigo_qr").in("codigo_qr", codigosLote);
+                    if (yaExisten?.length) {
+                      return window.alert(`Estos códigos QR ya existen en el inventario (posible equipo ya asignado/liquidado): ${yaExisten.map((e) => e.codigo_qr).join(", ")}. Quita esos equipos de la lista antes de guardar.`);
+                    }
+                  }
                   const payloadLote = eqPendReg.map((x) => ({
                     empresa: x.empresa,
                     tipo: x.tipo,
@@ -4295,8 +4329,8 @@ ${filasNodos}
               />
             </label>
             <div className="inv-actions">
-              <button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigEq.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn) || !asigEq.equipoId) return window.alert("Selecciona tecnico valido y equipo."); const target = equiposDispAsig.find((e) => String(e.id) === String(asigEq.equipoId)); if (!target) return window.alert("Equipo no disponible."); if (eqPendAsig.some((x) => String(x.id) === String(target.id))) return; setEqPendAsig((prev) => [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, id: target.id, tecnico: tec, codigo: target.codigo, tipo: target.tipo, marca: target.marca, modelo: target.modelo, precio: target.precio, foto: target.foto || "", almacenId: target.almacenId || "", almacenNombre: target.almacenNombre || "" }]); setAsigEq((p) => ({ ...p, equipoId: "", tecnico: tec })); setQrAsignacionMsg(`Equipo agregado: ${target.codigo || target.id}.`); }}>Agregar seleccionado</button>
-              <button type="button" className="secondary-btn" onClick={async () => { if (!eqPendAsig.length) return window.alert("No hay equipos en lista."); const fallidosMov = []; try { for (const item of eqPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.codigo || item.id}`); const { error: err } = await supabase.from("equipos_catalogo").update({ estado: "asignado", tecnico_asignado: tec }).eq("id", item.id); if (err) throw err; const rMov = await registrarMov({ tipoItem: "equipo", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`, referencia: item.codigo, cantidad: 1, unidad: "unidad", costoUnitario: item.precio, tecnico: tec, almacenId: item.almacenId || "", almacenNombre: item.almacenNombre || "" }); if (!rMov.ok) fallidosMov.push(`${item.codigo || item.id}: ${rMov.error}`); } const total = eqPendAsig.length; setEqPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} equipo(s) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} equipo(s) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({eqPendAsig.length})</button>
+              <button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigEq.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn) || !asigEq.equipoId) return window.alert("Selecciona tecnico valido y equipo."); const target = equiposDispAsig.find((e) => String(e.id) === String(asigEq.equipoId)); if (!target) return window.alert("Equipo no disponible."); if (eqPendAsig.some((x) => String(x.id) === String(target.id))) return; setEqPendAsig((prev) => [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, id: target.id, estado: target.estado || "almacen", tecnico: tec, codigo: target.codigo, tipo: target.tipo, marca: target.marca, modelo: target.modelo, precio: target.precio, foto: target.foto || "", almacenId: target.almacenId || "", almacenNombre: target.almacenNombre || "" }]); setAsigEq((p) => ({ ...p, equipoId: "", tecnico: tec })); setQrAsignacionMsg(`Equipo agregado: ${target.codigo || target.id}.`); }}>Agregar seleccionado</button>
+              <button type="button" className="secondary-btn" onClick={async () => { if (!eqPendAsig.length) return window.alert("No hay equipos en lista."); const fallidosMov = []; try { for (const item of eqPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.codigo || item.id}`); const { data: actualizados, error: err } = await supabase.from("equipos_catalogo").update({ estado: "asignado", tecnico_asignado: tec }).eq("id", item.id).eq("estado", item.estado || "almacen").select("id"); if (err) throw err; if (!actualizados?.length) throw new Error(`Equipo ${item.codigo || item.id} ya fue asignado/movido por otra persona`); const rMov = await registrarMov({ tipoItem: "equipo", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`, referencia: item.codigo, cantidad: 1, unidad: "unidad", costoUnitario: item.precio, tecnico: tec, almacenId: item.almacenId || "", almacenNombre: item.almacenNombre || "" }); if (!rMov.ok) fallidosMov.push(`${item.codigo || item.id}: ${rMov.error}`); } const total = eqPendAsig.length; setEqPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} equipo(s) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} equipo(s) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({eqPendAsig.length})</button>
             </div>
             <div className="inv-list">{eqPendAsig.length === 0 ? <p className="empty">Sin equipos en lista.</p> : eqPendAsig.map((item) => <div key={item.tempId} className="inv-row inv-row-eq"><div className="inv-row-eq-info"><div className="inv-row-head"><p className="inv-row-title">{item.codigo || "SIN-QR"} | {item.tipo} {item.marca} {item.modelo}</p><button type="button" className="secondary-btn small" onClick={() => setEqPendAsig((prev) => prev.filter((x) => x.tempId !== item.tempId))}>Quitar</button></div><p className="inv-row-meta">Tecnico: {item.tecnico || "-"}</p></div>{item.foto ? <img src={item.foto} alt={item.codigo || "equipo"} className="inv-thumb inv-thumb-mat" /> : null}</div>)}</div>
 	          </article>
@@ -4323,7 +4357,7 @@ ${filasNodos}
               </p>
             ) : null}
             <div className="inv-form-grid two"><label>Cantidad<input value={asigMat.cantidad} onChange={(e) => setAsigMat((p) => ({ ...p, cantidad: e.target.value }))} /></label><label>Unidad<select value={asigMat.unidad} onChange={(e) => setAsigMat((p) => ({ ...p, unidad: e.target.value }))}><option>unidad</option><option>metros</option><option>rollo</option><option>caja</option></select></label></div>
-            <div className="inv-actions"><button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigMat.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); const matId = String(asigMat.materialId || "").trim(); const cant = num(asigMat.cantidad, -1); if (!tec || !esTecnicoRegistrado(tecIn) || !matId || cant <= 0) return window.alert("Completa tecnico/material/cantidad valida."); const mat = materiales.find((m) => String(m.id) === matId); if (!mat) return; const disponible = stockMaterialDisponible(matId, asigMat.unidad); if (cant > disponible) return window.alert(`Stock insuficiente. Disponible: ${disponible.toFixed(2)} ${asigMat.unidad}.`); const key = `${personaKey(tec)}|${matId}|${norm(asigMat.unidad)}`; setMatPendAsig((prev) => { const idx = prev.findIndex((x) => x.key === key); if (idx >= 0) { const siguiente = num(prev[idx].cantidad) + cant; const dispValidado = stockMaterialDisponible(matId, asigMat.unidad, prev.filter((x) => x.key !== key)); if (siguiente > dispValidado) { window.alert(`Stock insuficiente para acumular. Disponible: ${dispValidado.toFixed(2)} ${asigMat.unidad}.`); return prev; } const next = [...prev]; next[idx] = { ...next[idx], cantidad: siguiente }; return next; } return [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, key, tecnico: tec, materialId: matId, materialNombre: mat.nombre, unidad: asigMat.unidad, cantidad: cant, costoUnitario: mat.costo, foto: mat.foto || "" }]; }); setAsigMat((p) => ({ ...p, materialId: "", cantidad: "", tecnico: tec })); }}>Agregar</button><button type="button" className="secondary-btn" onClick={async () => { if (!matPendAsig.length) return window.alert("No hay materiales en lista."); const fallidosMov = []; try { for (const item of matPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.materialNombre}`); const ex = materialesAsig.find((m) => personaKey(m.tecnico) === personaKey(tec) && String(m.materialId) === String(item.materialId) && norm(m.unidad) === norm(item.unidad)); if (ex) { const nuevo = num(ex.disponible) + num(item.cantidad); const { error: err } = await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: nuevo, cantidad_asignada: nuevo }).eq("id", ex.id); if (err) throw err; } else { const { error: err } = await supabase.from("materiales_asignados_tecnicos").insert([{ tecnico: tec, material_id: Number.isFinite(Number(item.materialId)) ? Number(item.materialId) : null, material_nombre: item.materialNombre, cantidad_asignada: num(item.cantidad), cantidad_disponible: num(item.cantidad), unidad: item.unidad, fecha_asignacion: new Date().toISOString() }]); if (err) throw err; } const rMov = await registrarMov({ tipoItem: "material", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: item.materialNombre, referencia: materialRef(item.materialId), cantidad: item.cantidad, unidad: item.unidad, costoUnitario: item.costoUnitario, tecnico: tec }); if (!rMov.ok) fallidosMov.push(`${item.materialNombre}: ${rMov.error}`); } const total = matPendAsig.length; setMatPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} material(es) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} material(es) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({matPendAsig.length})</button></div>
+            <div className="inv-actions"><button type="button" className="primary-btn" onClick={() => { const tecIn = String(asigMat.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); const matId = String(asigMat.materialId || "").trim(); const cant = num(asigMat.cantidad, -1); if (!tec || !esTecnicoRegistrado(tecIn) || !matId || cant <= 0) return window.alert("Completa tecnico/material/cantidad valida."); const mat = materiales.find((m) => String(m.id) === matId); if (!mat) return; const disponible = stockMaterialDisponible(matId, asigMat.unidad); if (cant > disponible) return window.alert(`Stock insuficiente. Disponible: ${disponible.toFixed(2)} ${asigMat.unidad}.`); const key = `${personaKey(tec)}|${matId}|${norm(asigMat.unidad)}`; setMatPendAsig((prev) => { const idx = prev.findIndex((x) => x.key === key); if (idx >= 0) { const siguiente = num(prev[idx].cantidad) + cant; const dispValidado = stockMaterialDisponible(matId, asigMat.unidad, prev.filter((x) => x.key !== key)); if (siguiente > dispValidado) { window.alert(`Stock insuficiente para acumular. Disponible: ${dispValidado.toFixed(2)} ${asigMat.unidad}.`); return prev; } const next = [...prev]; next[idx] = { ...next[idx], cantidad: siguiente }; return next; } return [...prev, { tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, key, tecnico: tec, materialId: matId, materialNombre: mat.nombre, unidad: asigMat.unidad, cantidad: cant, costoUnitario: mat.costo, foto: mat.foto || "" }]; }); setAsigMat((p) => ({ ...p, materialId: "", cantidad: "", tecnico: tec })); }}>Agregar</button><button type="button" className="secondary-btn" onClick={async () => { if (!matPendAsig.length) return window.alert("No hay materiales en lista."); const fallidosMov = []; try { for (const item of matPendAsig) { const tecIn = String(item.tecnico || "").trim(); const tec = resolverNombreTecnico(tecIn); if (!tec || !esTecnicoRegistrado(tecIn)) throw new Error(`Tecnico invalido en ${item.materialNombre}`); const ex = materialesAsig.find((m) => personaKey(m.tecnico) === personaKey(tec) && String(m.materialId) === String(item.materialId) && norm(m.unidad) === norm(item.unidad)); if (ex) { const nuevoDisponible = num(ex.disponible) + num(item.cantidad); const nuevoAsignado = num(ex.asignado, num(ex.disponible)) + num(item.cantidad); const { error: err } = await supabase.from("materiales_asignados_tecnicos").update({ cantidad_disponible: nuevoDisponible, cantidad_asignada: nuevoAsignado }).eq("id", ex.id); if (err) throw err; } else { const { error: err } = await supabase.from("materiales_asignados_tecnicos").insert([{ tecnico: tec, material_id: Number.isFinite(Number(item.materialId)) ? Number(item.materialId) : null, material_nombre: item.materialNombre, cantidad_asignada: num(item.cantidad), cantidad_disponible: num(item.cantidad), unidad: item.unidad, fecha_asignacion: new Date().toISOString() }]); if (err) throw err; } const rMov = await registrarMov({ tipoItem: "material", movimiento: "salida", motivo: "Asignacion a tecnico", itemNombre: item.materialNombre, referencia: materialRef(item.materialId), cantidad: item.cantidad, unidad: item.unidad, costoUnitario: item.costoUnitario, tecnico: tec }); if (!rMov.ok) fallidosMov.push(`${item.materialNombre}: ${rMov.error}`); } const total = matPendAsig.length; setMatPendAsig([]); await cargar(); window.alert(fallidosMov.length ? `${total} material(es) asignado(s), pero ${fallidosMov.length} no quedaron en el kardex:\n${fallidosMov.join("\n")}` : `${total} material(es) asignado(s).`); } catch (e) { window.alert(String(e?.message || "No se pudo asignar.")); } }}>Asignar todo ({matPendAsig.length})</button></div>
             <div className="inv-list">{matPendAsig.length === 0 ? <p className="empty">Sin materiales en lista.</p> : matPendAsig.map((item) => <div key={item.tempId} className="inv-row inv-row-eq"><div className="inv-row-eq-info"><div className="inv-row-head"><p className="inv-row-title">{item.materialNombre} | {item.unidad}</p><button type="button" className="secondary-btn small" onClick={() => setMatPendAsig((prev) => prev.filter((x) => x.tempId !== item.tempId))}>Quitar</button></div><p className="inv-row-meta">Tecnico: {item.tecnico}</p><p className="inv-row-meta">Cantidad: {num(item.cantidad).toFixed(2)} {item.unidad}</p></div>{item.foto ? <img src={item.foto} alt={item.materialNombre || "material"} className="inv-thumb inv-thumb-mat" /> : null}</div>)}</div>
           </article>
         </div>
@@ -4652,8 +4686,26 @@ ${filasNodos}
                           if (!codigo) return window.alert("El codigo QR no puede quedar vacio.");
                           const grupo = estadoGrupo(nuevoEstado);
                           const estadoDb = grupo === "almacen" ? "disponible" : grupo === "asignado" ? "asignado" : "liquidado";
-                          const tecnicoAsignado = grupo === "asignado" ? String(nuevoTec || "").trim() : "";
+                          // Antes se escribia el texto libre del prompt tal
+                          // cual, sin pasar por el catalogo de tecnicos --
+                          // podia dejar el equipo "asignado" a un texto que
+                          // no corresponde a ningun tecnico real, invisible
+                          // en reportes por tecnico.
+                          const tecInput = String(nuevoTec || "").trim();
+                          if (grupo === "asignado" && tecInput && !esTecnicoRegistrado(tecInput)) {
+                            return window.alert(`"${tecInput}" no es un técnico registrado. Verifica el nombre.`);
+                          }
+                          const tecnicoAsignado = grupo === "asignado" ? resolverNombreTecnico(tecInput) : "";
                           if (grupo === "asignado" && !tecnicoAsignado) return window.alert("Para asignado debes indicar tecnico.");
+                          // Antes tampoco se verificaba si el nuevo QR ya
+                          // pertenecia a OTRA fila -- podia crear un
+                          // duplicado de codigo_qr que despues el upsert por
+                          // codigo_qr del registro masivo fusiona/pisa de
+                          // forma impredecible.
+                          if (codigo !== String(e.codigo || "")) {
+                            const { data: dupCodigo } = await supabase.from("equipos_catalogo").select("id").eq("codigo_qr", codigo).neq("id", e.id).maybeSingle();
+                            if (dupCodigo) return window.alert(`El código QR "${codigo}" ya pertenece a otro equipo del catálogo.`);
+                          }
                           const { error: err } = await supabase
                             .from("equipos_catalogo")
                             .update({ estado: estadoDb, tecnico_asignado: tecnicoAsignado, codigo_qr: codigo })

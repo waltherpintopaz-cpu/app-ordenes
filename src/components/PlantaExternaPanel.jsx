@@ -743,27 +743,29 @@ export default function PlantaExternaPanel({ sessionUser }) {
       let mermaId = "";
       if (String(estadoMaterial || "").trim().toUpperCase() === "DANIADO") {
         const mermaRef = `${String(referenciaId || "").trim() || "DEV"}-DM`;
-        const merma = await supabase
-          .from("almacen_pe_movimientos")
-          .insert([{
-            item_id: itemId,
-            tipo: "MERMA",
-            cantidad,
-            unidad: String(unidad || "unidad"),
-            motivo: `Merma por devolucion daniada (${String(referenciaId || "").trim() || "-"})`,
-            referencia_tipo: "MERMA_DEV",
-            referencia_id: mermaRef,
-            responsable_entrega: String(responsableEntrega || "").trim(),
-            responsable_recepcion: String(responsableRecepcion || actorSesion).trim(),
-            actor: actorSesion,
-            observacion: `ORIGEN_DEV:${String(ins.data?.id || "")}`,
-            almacen_id: String(almacenSeleccionado?.id || "") || null,
-            almacen_nombre: String(almacenSeleccionado?.nombre || "") || null,
-          }])
-          .select("id")
-          .single();
+        const mermaPayload = {
+          item_id: itemId,
+          tipo: "MERMA",
+          cantidad,
+          unidad: String(unidad || "unidad"),
+          motivo: `Merma por devolucion daniada (${String(referenciaId || "").trim() || "-"})`,
+          referencia_tipo: "MERMA_DEV",
+          referencia_id: mermaRef,
+          responsable_entrega: String(responsableEntrega || "").trim(),
+          responsable_recepcion: String(responsableRecepcion || actorSesion).trim(),
+          actor: actorSesion,
+          observacion: `ORIGEN_DEV:${String(ins.data?.id || "")}`,
+          almacen_id: String(almacenSeleccionado?.id || "") || null,
+          almacen_nombre: String(almacenSeleccionado?.nombre || "") || null,
+        };
+        // La DEVOLUCION ya sumo stock "bueno"; si esta merma compensatoria
+        // (que lo resta) falla, el stock queda sobrestimado con material
+        // dañado contado como bueno. Un reintento cubre el caso mas comun
+        // (hipo de red transitorio) antes de resignarse a solo avisar.
+        let merma = await supabase.from("almacen_pe_movimientos").insert([mermaPayload]).select("id").single();
+        if (merma.error) merma = await supabase.from("almacen_pe_movimientos").insert([mermaPayload]).select("id").single();
         if (merma.error) {
-          mermaWarn = `Devolucion guardada, pero no se pudo registrar merma automatica (${String(merma.error?.message || "error")}).`;
+          mermaWarn = `Devolucion guardada, pero no se pudo registrar merma automatica (${String(merma.error?.message || "error")}). El stock quedó sobrestimado con este material dañado contado como bueno -- corrígelo manualmente.`;
         } else {
           mermaId = String(merma.data?.id || "");
         }
@@ -894,32 +896,55 @@ export default function PlantaExternaPanel({ sessionUser }) {
         throw new Error(`La solicitud excede saldo pendiente actual (${num(salida.saldoPendiente, 0).toFixed(2)}).`);
       }
       const referenciaId = String(solicitud?.referenciaId || "").trim() || sugDev;
-      const result = await aplicarDevolucionAStock({
-        salidaId,
-        itemId: String(solicitud?.itemId || ""),
-        unidad: String(solicitud?.unidad || salida.unidad || "unidad"),
-        cantidad,
-        estadoMaterial: String(solicitud?.estadoMaterial || "BUENO"),
-        motivo: String(solicitud?.motivo || "Devolucion aprobada"),
-        referenciaTipo: String(solicitud?.referenciaTipo || "DEV"),
-        referenciaId,
-        responsableEntrega: String(solicitud?.responsableEntrega || salida.responsableRecepcion || ""),
-        responsableRecepcion: actorSesion,
-        evidencias: Array.isArray(solicitud?.evidencias) ? solicitud.evidencias : [],
-        observacionExtra: `SOLICITUD:${id}`,
-      });
-      const upd = await supabase
+      // Antes se aplicaba el movimiento de stock ANTES de marcar la solicitud
+      // como aprobada: si ese ultimo update fallaba (red), el stock ya habia
+      // cambiado pero la solicitud seguia PENDIENTE, y un reintento volvia a
+      // aplicar el movimiento por segunda vez. Ahora se marca aprobada
+      // PRIMERO con guardia .eq(estado,"PENDIENTE") (evita doble-aprobacion
+      // concurrente), y si el movimiento de stock falla despues, se revierte
+      // el estado a PENDIENTE para que un reintento sea seguro.
+      const updPre = await supabase
         .from(DEV_SOL_TABLE)
         .update({
           estado: "APROBADA",
           aprobado_por: actorSesion,
           aprobado_at: new Date().toISOString(),
           responsable_recepcion: actorSesion,
+        })
+        .eq("id", id)
+        .eq("estado", "PENDIENTE")
+        .select("id");
+      if (updPre.error) throw updPre.error;
+      if (!updPre.data?.length) throw new Error("Esta solicitud ya fue procesada por otra persona.");
+
+      let result;
+      try {
+        result = await aplicarDevolucionAStock({
+          salidaId,
+          itemId: String(solicitud?.itemId || ""),
+          unidad: String(solicitud?.unidad || salida.unidad || "unidad"),
+          cantidad,
+          estadoMaterial: String(solicitud?.estadoMaterial || "BUENO"),
+          motivo: String(solicitud?.motivo || "Devolucion aprobada"),
+          referenciaTipo: String(solicitud?.referenciaTipo || "DEV"),
+          referenciaId,
+          responsableEntrega: String(solicitud?.responsableEntrega || salida.responsableRecepcion || ""),
+          responsableRecepcion: actorSesion,
+          evidencias: Array.isArray(solicitud?.evidencias) ? solicitud.evidencias : [],
+          observacionExtra: `SOLICITUD:${id}`,
+        });
+      } catch (e) {
+        await supabase.from(DEV_SOL_TABLE).update({ estado: "PENDIENTE", aprobado_por: null, aprobado_at: null }).eq("id", id).catch(() => {});
+        throw e;
+      }
+      const upd = await supabase
+        .from(DEV_SOL_TABLE)
+        .update({
           procesado_movimiento_id: result.movId || null,
           procesado_merma_id: result.mermaId || null,
         })
         .eq("id", id);
-      if (upd.error) throw upd.error;
+      if (upd.error) console.error("[aprobarSolicitudDevolucion] no se pudo guardar el id del movimiento:", upd.error.message);
       await cargar();
       window.alert(result.mermaWarn || `Solicitud aprobada (${referenciaId}).`);
     } catch (e) {
@@ -971,6 +996,18 @@ export default function PlantaExternaPanel({ sessionUser }) {
       if (tipo === "INGRESO") tipoContrario = "SALIDA";
       if (tipo === "SALIDA") tipoContrario = "INGRESO";
       if (tipo === "DEVOLUCION") tipoContrario = "SALIDA";
+      if (tipoContrario === "SALIDA") {
+        // A diferencia de "Registrar salida" (que si valida contra el stock
+        // actual), anular no revisaba esto: si parte del stock ya se
+        // consumio por otros movimientos posteriores al ingreso que se
+        // anula, el contramovimiento podia dejar el stock calculado en
+        // negativo sin aviso.
+        const itemRef = items.find((i) => String(i.id) === String(mov?.itemId || ""));
+        const stockDisponible = num(itemRef?.stockActual, 0);
+        if (cantidad > stockDisponible) {
+          throw new Error(`No se puede anular: el stock actual (${stockDisponible.toFixed(2)} ${itemRef?.unidadBase || "unidad"}) es menor a la cantidad del movimiento (${cantidad.toFixed(2)}). Parte de ese stock ya se usó en otro movimiento.`);
+        }
+      }
       const refAnul = `ANUL-${id.replace(/[^A-Za-z0-9]/g, "").slice(-8).toUpperCase()}`;
       const ins = await insertConFallback("almacen_pe_movimientos", { item_id: String(mov?.itemId || ""), tipo: tipoContrario, cantidad, unidad: String(mov?.unidad || "unidad"), motivo: `Anulacion de movimiento ${id}`, referencia_tipo: "ANUL", referencia_id: refAnul, responsable_entrega: actorSesion, responsable_recepcion: actorSesion, actor: actorSesion, observacion: `ANULA:${id}`, almacen_id: String(almacenSeleccionado?.id || "") || null, almacen_nombre: String(almacenSeleccionado?.nombre || "") || null }, true);
       if (ins.error) throw ins.error;

@@ -216,8 +216,11 @@ export default function MonitorSeñalesPanel({ onCrearOrden, nodosPermitidos = [
       }
       if(json.ok){
         const now=new Date().toISOString();
-        await supabase.from("clientes").update({rx_signal:json.rxPower,tx_signal:json.txPower,signal_updated_at:now}).eq("id",cli.id);
-        setClientes(prev=>prev.map(c=>c.id===cli.id?{...c,rx_signal:json.rxPower,tx_signal:json.txPower,signal_updated_at:now}:c));
+        // Si este update falla, antes igual se mostraba la señal nueva en
+        // pantalla como si estuviera guardada -- al recargar volvia
+        // silenciosamente al valor viejo.
+        const { error: updErr } = await supabase.from("clientes").update({rx_signal:json.rxPower,tx_signal:json.txPower,signal_updated_at:now}).eq("id",cli.id);
+        if(!updErr) setClientes(prev=>prev.map(c=>c.id===cli.id?{...c,rx_signal:json.rxPower,tx_signal:json.txPower,signal_updated_at:now}:c));
       }
     }catch(_){}
     setRefreshing(p=>({...p,[cli.id]:false}));

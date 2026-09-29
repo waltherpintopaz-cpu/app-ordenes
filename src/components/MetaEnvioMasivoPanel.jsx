@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../supabaseClient";
 
 const META_BASE = "https://graph.facebook.com/v19.0";
@@ -116,7 +116,13 @@ export default function MetaEnvioMasivoPanel({ cfg }) {
   }, [waba, prefix]);
 
   /* ── cargar clientes ── */
+  // Token de la ultima carga: si el usuario cambia nodo/estado rapido
+  // mientras hay un envio masivo armandose, sin esto una respuesta vieja
+  // podia llegar despues y reemplazar la lista/seleccion ya vista por el
+  // usuario con datos de un filtro anterior.
+  const cargaClientesRef = useRef(0);
   const cargarClientes = useCallback(async () => {
+    const miToken = ++cargaClientesRef.current;
     setLoadingCli(true);
     let q = supabase.from("clientes")
       .select("id,nombre,dni,celular,contacto,nodo,usuario_nodo,estado_servicio")
@@ -124,6 +130,7 @@ export default function MetaEnvioMasivoPanel({ cfg }) {
       .order("nombre", { ascending: true });
     if (filtroEstado !== "todos") q = q.eq("estado_servicio", filtroEstado);
     const { data } = await q;
+    if (miToken !== cargaClientesRef.current) return;
     setClientes(data || []);
     setSeleccionados(new Set((data || []).filter(c => c.celular || c.contacto).map(c => c.id)));
     setLoadingCli(false);

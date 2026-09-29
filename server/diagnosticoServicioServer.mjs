@@ -35,6 +35,10 @@ const CHATWOOT_TOKEN = String(process.env.CHATWOOT_TOKEN || DEFAULT_CHATWOOT_TOK
 // aca, el frontend le pega a este proxy sin conocer el token.
 const HUAWEI_OLT_SNMP_API = String(process.env.HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/+$/, "");
 const HUAWEI_ACCION_TOKEN = String(process.env.HUAWEI_ACCION_TOKEN || "").trim();
+// La key de OpenAI NUNCA debe vivir en el navegador (antes estaba en varios
+// paneles como VITE_OPENAI_KEY, 100% extraible del bundle publico -- ver
+// auditoria de seguridad, 2026-09-28). Ahora solo vive aca, server-side.
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
@@ -145,9 +149,33 @@ const writeJson = (res, status, data) => {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS,DELETE",
-    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Token, token, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, X-Token, token, Authorization, X-App-Token",
   });
   res.end(JSON.stringify(data));
+};
+
+// Antes cualquiera que conociera la URL de este servidor podia llamar estos
+// endpoints sin autenticarse y cortar/activar clientes reales o crear
+// credenciales PPPoE en el MikroTik de produccion (hallazgo de auditoria,
+// 2026-09-28). Ahora exigen un token compartido que solo conoce el panel,
+// enviado como header "X-App-Token" y configurado server-side via
+// DIAGNOSTICO_INTERNAL_TOKEN (nunca en una VITE_*, para que no termine en
+// el bundle publico -- el panel lo manda pero el valor real solo vive en
+// las variables de entorno del backend y del build del panel privado).
+const INTERNAL_API_TOKEN = String(process.env.DIAGNOSTICO_INTERNAL_TOKEN || "").trim();
+const RUTAS_PROTEGIDAS_INTERNAS = new Set([
+  "/api/diagnostico-servicio/suspender",
+  "/api/diagnostico-servicio/activar",
+  "/api/diagnostico-servicio/crear-secrets-lote",
+  "/api/diagnostico-servicio/sync-router",
+  "/api/diagnostico-servicio/sync-all",
+  "/api/cruce-mac-aplicar",
+]);
+const requiereAuthInterna = (req) => RUTAS_PROTEGIDAS_INTERNAS.has(String(req.url || "").split("?")[0]);
+const tieneTokenInternoValido = (req) => {
+  if (!INTERNAL_API_TOKEN) return false;
+  const recibido = String(req.headers["x-app-token"] || "").trim();
+  return recibido === INTERNAL_API_TOKEN;
 };
 
 const pickFirst = (...values) => {
@@ -477,7 +505,12 @@ const syncAllRoutersIpCache = async () => {
 const ipToInt = (ip) => {
   const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(String(ip || "").trim());
   if (!m) return null;
-  return (Number(m[1]) << 24) + (Number(m[2]) << 16) + (Number(m[3]) << 8) + Number(m[4]);
+  // "<<" en JS es de 32 bits CON signo: para el primer octeto >=128 el
+  // resultado se vuelve negativo, rompiendo el orden numerico justo en esa
+  // frontera (ej. 128.0.0.1 quedaba "menor" que 127.255.255.255). Se usa
+  // multiplicacion (sin signo, cabe entero en un Number normal) en vez de
+  // bit-shift para evitarlo.
+  return Number(m[1]) * 16777216 + Number(m[2]) * 65536 + Number(m[3]) * 256 + Number(m[4]);
 };
 const intToIp = (n) => [24, 16, 8, 0].map((shift) => (n >>> shift) & 0xff).join(".");
 
@@ -505,8 +538,16 @@ const buildLotePreview = ({ nodo, ipInicio, ipFin, numeroInicio, password, profi
   const pass = password || NODO_PASSWORD_RULES[normalizeNodo(nodo)] || "";
   if (!pass) throw new Error(`No hay clave por defecto configurada para el nodo ${nodo}; indica "password".`);
   if (!profile) throw new Error('Falta "profile" (perfil PPP de Mikrotik a asignar).');
+  // Sin esto, un numeroInicio no numerico (string vacio, texto) generaba
+  // Number(numeroInicio) = NaN para TODO el lote, y buildUsuario producia el
+  // mismo nombre "userNaN@..." para cada IP del rango sin que el dry-run lo
+  // bloqueara.
+  const inicioNum = Number(numeroInicio);
+  if (!Number.isFinite(inicioNum) || !Number.isInteger(inicioNum)) {
+    throw new Error(`"numeroInicio" debe ser un numero entero valido (recibido: ${JSON.stringify(numeroInicio)}).`);
+  }
   return ips.map((ip, i) => ({
-    usuario: buildUsuario(nodo, Number(numeroInicio) + i),
+    usuario: buildUsuario(nodo, inicioNum + i),
     ip,
     password: pass,
     profile,
@@ -514,7 +555,27 @@ const buildLotePreview = ({ nodo, ipInicio, ipFin, numeroInicio, password, profi
   }));
 };
 
-const crearSecretsLote = async ({ routerKey, lote }) => {
+// Mutex simple en memoria por router: dos llamadas a crearSecretsLote para
+// el MISMO router (dos operadores, o un doble clic) antes se dejaban correr
+// en paralelo -- ambas leian el mismo snapshot de secrets existentes y
+// podian crear el mismo usuario/IP duplicado en el Mikrotik real. Con esto,
+// la segunda llamada espera a que la primera termine (y vea sus secrets ya
+// creados) antes de leer su propio snapshot.
+const routerLocks = new Map();
+const withRouterLock = async (routerKey, fn) => {
+  const prev = routerLocks.get(routerKey) || Promise.resolve();
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  routerLocks.set(routerKey, prev.then(() => gate));
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+};
+
+const crearSecretsLote = ({ routerKey, lote }) => withRouterLock(routerKey, async () => {
   let connection = null;
   const resultados = [];
   try {
@@ -557,12 +618,18 @@ const crearSecretsLote = async ({ routerKey, lote }) => {
     }
     return { router: buildRouterInfo(router), resultados };
   } catch (error) {
+    // Si el socket se cae a mitad de lote, antes se perdia el detalle de
+    // cuales items ya se habian creado (resultados) al lanzar un error
+    // generico -- ahora se adjunta lo que ya se proceso, para no tener que
+    // volver a listar el router a mano para saber que quedo a medias.
     const detail = formatErrorDetail(connection?.getSocketError?.() || error);
-    throw new Error(`Creacion en lote fallo: ${detail}`);
+    const err = new Error(`Creacion en lote fallo: ${detail}`);
+    err.resultadosParciales = resultados;
+    throw err;
   } finally {
     if (connection?.api) await closeRouterApiSafe(connection.api);
   }
-};
+});
 
 // Se pide la lista COMPLETA (sin filtro "?name=") y se busca el usuario en
 // el servidor, en vez de dejar que el Mikrotik filtre. Se comprobo que en
@@ -833,49 +900,63 @@ const readProxyJsonResponse = async (response, context = "API proxy") => {
   }
 };
 
-const proxyMikrowispGetClientDetails = async (req) => {
+// El token real de Mikrowisp NUNCA debe venir del navegador (antes el
+// frontend lo traia hardcodeado y lo mandaba en el body) -- se sobreescribe
+// aca siempre con el token server-side, sea cual sea el que mande el panel.
+const inyectarTokenMikrowisp = async (req, token) => {
   const rawBody = await readRawBody(req);
+  let payload = {};
+  if (rawBody.length) {
+    try { payload = JSON.parse(rawBody.toString("utf8")); } catch { payload = {}; }
+  }
+  if (!payload || typeof payload !== "object") payload = {};
+  payload.token = token;
+  return JSON.stringify(payload);
+};
+
+const proxyMikrowispGetClientDetails = async (req) => {
+  const body = await inyectarTokenMikrowisp(req, MIKROWISP_TOKEN);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: rawBody.length ? rawBody : undefined,
+    body,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp GetClientsDetails");
   return { status: response.status, json };
 };
 
 const proxyMikrowispNod04GetClientDetails = async (req) => {
-  const rawBody = await readRawBody(req);
+  const body = await inyectarTokenMikrowisp(req, MIKROWISP_NOD04_TOKEN);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_NOD04_API_BASE, "/GetClientsDetails");
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: rawBody.length ? rawBody : JSON.stringify({ token: MIKROWISP_NOD04_TOKEN }),
+    body,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp Nod04 GetClientsDetails");
   return { status: response.status, json };
 };
 
 const proxyMikrowispNewUser = async (req) => {
-  const rawBody = await readRawBody(req);
+  const body = await inyectarTokenMikrowisp(req, MIKROWISP_TOKEN);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
-  const response = await fetch(endpoint, {
+  const response = await fetchConTimeout(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: rawBody.length ? rawBody : undefined,
+    body,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp NewUser");
   return { status: response.status, json };
 };
 
 const proxyMikrowispNod04NewUser = async (req) => {
-  const rawBody = await readRawBody(req);
+  const body = await inyectarTokenMikrowisp(req, MIKROWISP_NOD04_TOKEN);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_NOD04_API_BASE, "/NewUser");
-  const response = await fetch(endpoint, {
+  const response = await fetchConTimeout(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: rawBody.length ? rawBody : JSON.stringify({ token: MIKROWISP_NOD04_TOKEN }),
+    body,
   });
   const json = await readProxyJsonResponse(response, "Mikrowisp Nod04 NewUser");
   return { status: response.status, json };
@@ -1104,6 +1185,29 @@ const proxySmartOltRequest = async (req) => {
   return { status: response.status, json };
 };
 
+// Proxy hacia OpenAI para los paneles de "Analisis con IA" (Tecnicos,
+// Gestoras, Instalaciones, Ordenes) -- solo reenvia model/messages/max_tokens,
+// la Authorization real con la key de OpenAI se agrega aca, nunca en el
+// navegador.
+const proxyOpenAiChat = async (req) => {
+  if (!OPENAI_API_KEY) {
+    return { status: 500, json: { error: { message: "OPENAI_API_KEY no configurado en el servidor." } } };
+  }
+  const body = await readJsonBody(req);
+  const response = await fetchConTimeout("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: body?.model || "gpt-4o-mini",
+      messages: Array.isArray(body?.messages) ? body.messages : [],
+      max_tokens: Number(body?.max_tokens) || 900,
+      ...(Number.isFinite(Number(body?.temperature)) ? { temperature: Number(body.temperature) } : {}),
+    }),
+  }, 60000);
+  const json = await response.json().catch(() => ({}));
+  return { status: response.status, json };
+};
+
 // Cruce de nombres: MAC WAN de cada ONU Huawei (SNMP + fallback Telnet por
 // puerto) contra los PPP secrets de MikroTik Tiabaya (last-caller-id).
 // Usado tanto por la vista previa (/api/cruce-mac-preview, solo lectura)
@@ -1298,6 +1402,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "OPTIONS") {
       writeJson(res, 204, {});
       return;
+    }
+
+    if (requiereAuthInterna(req)) {
+      if (!INTERNAL_API_TOKEN) {
+        writeJson(res, 500, { ok: false, error: "DIAGNOSTICO_INTERNAL_TOKEN no configurado en el servidor." });
+        return;
+      }
+      if (!tieneTokenInternoValido(req)) {
+        writeJson(res, 401, { ok: false, error: "No autorizado." });
+        return;
+      }
     }
 
     // GET /api/cruce-mac-debug -- DEBUG TEMPORAL: muestra una muestra cruda
@@ -1555,6 +1670,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/openai/chat") {
+      const result = await proxyOpenAiChat(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/api/mikrowisp-proxy") {
       const result = await proxyMikrowispGenerico(req);
       writeJson(res, result.status, result.json);
@@ -1705,7 +1826,7 @@ const server = http.createServer(async (req, res) => {
         const omitidos = resultados.filter((r) => !r.ok).length;
         writeJson(res, 200, { ok: true, dryRun: false, router, creados, omitidos, resultados });
       } catch (error) {
-        writeJson(res, 400, { ok: false, error: formatErrorDetail(error) });
+        writeJson(res, 400, { ok: false, error: formatErrorDetail(error), resultadosParciales: error?.resultadosParciales || [] });
       }
       return;
     }
@@ -1795,23 +1916,6 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         return writeJson(res, 200, { ok: false, error: e.message || String(e) });
       }
-    }
-
-    if (req.method === "POST" && req.url === "/api/mikrowisp/test") {
-      try {
-        const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
-        const testBody = { token: MIKROWISP_TOKEN, nombre: "Test Usuario", cedula: "00000001", correo: "test@test.com", telefono: "", movil: "000000000", direccion_principal: "Test" };
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify(testBody),
-        });
-        const rawResp = await response.text();
-        writeJson(res, 200, { endpoint, httpStatus: response.status, rawResp, tokenUsed: MIKROWISP_TOKEN.slice(0, 8) + "..." });
-      } catch (e) {
-        writeJson(res, 200, { error: e.message });
-      }
-      return;
     }
 
     writeJson(res, 404, { ok: false, error: "Ruta no encontrada." });

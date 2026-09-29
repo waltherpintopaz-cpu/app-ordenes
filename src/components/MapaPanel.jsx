@@ -10,7 +10,7 @@ const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypane
 // Antes n8n.americanet.space/webhook/sidebar-proxy -- migrado a nuestro
 // propio backend (mismo contrato {nodo,accion,payload,token}).
 const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
-const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
+const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
 const APPSHEET_APP_NAME = String(import.meta.env.VITE_APPSHEET_APP_NAME || "Actuaciones02-637142196").trim();
 const APPSHEET_TABLE_NAME = String(import.meta.env.VITE_APPSHEET_TABLE_NAME || "Tabla_1").trim();
 const NODOS_BASE = ["Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
@@ -303,7 +303,13 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: lead.telefono, message: mensaje, account_id: lead.account_id || "1" } }),
       });
-      if (!res.ok) throw new Error("No se pudo enviar el mensaje");
+      // El proxy generico siempre responde HTTP 200 (exito o no) y mete el
+      // resultado real en el body -- validar solo res.ok dejaba pasar fallos
+      // reales (contacto no encontrado, sin conversacion activa) como si el
+      // mensaje se hubiera enviado, marcando "notificado" para siempre a un
+      // lead que nunca recibio nada.
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || "No se pudo enviar el mensaje");
       const { error } = await supabase.from("leads_sin_cobertura").update({ notificado: true, notificado_en: new Date().toISOString() }).eq("id", lead.id);
       if (error) throw error;
       setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, notificado: true } : l)));
@@ -681,13 +687,24 @@ export default function MapaPanel({ sessionUser, rolSesion, aplicaFiltroNodosGes
     setSavingCaja(true);
     try {
       if (cajaEditorMode === "edit" && editingCajaRef) {
-        const q = editingCajaRef.ctoid
-          ? supabase.from("nap_cajas").update(payload).eq("ctoid", editingCajaRef.ctoid)
+        payload.updated_at = new Date().toISOString();
+        const filtroBase = (q) => editingCajaRef.ctoid
+          ? q.eq("ctoid", editingCajaRef.ctoid)
           : editingCajaRef.id
-            ? supabase.from("nap_cajas").update(payload).eq("id", editingCajaRef.id)
-            : supabase.from("nap_cajas").update(payload).eq("codigo", editingCajaRef.codigo).eq("nodo", editingCajaRef.nodo);
-        const { error } = await q;
+            ? q.eq("id", editingCajaRef.id)
+            : q.eq("codigo", editingCajaRef.codigo).eq("nodo", editingCajaRef.nodo);
+        // Guardia de version simple: se relee updated_at justo antes de
+        // escribir y se exige que siga siendo el mismo -- sin esto, dos
+        // ediciones concurrentes de la misma caja (uno cambia el sector,
+        // otro sube una foto) podian pisarse sin ningun aviso.
+        const { data: filaActual } = await filtroBase(supabase.from("nap_cajas").select("updated_at")).maybeSingle();
+        let q = filtroBase(supabase.from("nap_cajas").update(payload));
+        if (filaActual?.updated_at) q = q.eq("updated_at", filaActual.updated_at);
+        const { data: filasActualizadas, error } = await q.select("ctoid,id,codigo");
         if (error) throw error;
+        if (filaActual?.updated_at && !filasActualizadas?.length) {
+          throw new Error("Esta caja fue editada por otra persona mientras la tenías abierta. Cierra y vuelve a abrirla para ver los cambios recientes antes de guardar.");
+        }
       } else {
         const { error } = await supabase.from("nap_cajas").insert([payload]);
         if (error) throw error;

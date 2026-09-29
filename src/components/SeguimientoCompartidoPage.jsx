@@ -4,7 +4,7 @@ import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { crearIconoVehiculoTipo, vehicleIconGeometry, paintForVehiculoId } from "../utils/vehicleIcon";
 
 const GOOGLE_MAPS_API_KEY = String(
-  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
 ).trim();
 const REFRESH_MS = 6_000;
 const ARRIVAL_KM = 0.08;
@@ -135,8 +135,12 @@ export default function SeguimientoCompartidoPage() {
   }, []);
 
   const marcarCompletado = useCallback(async (id) => {
-    await supabase.from("enlaces_seguimiento").update({ completado: true, completado_en: new Date().toISOString() }).eq("id", id);
-    setEstado("completado");
+    // Pagina publica sin autenticacion: si este update falla, antes igual se
+    // mostraba "completado" en pantalla aunque el enlace siguiera activo en
+    // la BD (podia seguir recibiendo ubicaciones en tiempo real de un
+    // servicio que el cliente ya cree terminado).
+    const { error } = await supabase.from("enlaces_seguimiento").update({ completado: true, completado_en: new Date().toISOString() }).eq("id", id);
+    if (!error) setEstado("completado");
   }, []);
 
   // Pide la ubicacion de quien esta viendo el enlace (el cliente o quien sea

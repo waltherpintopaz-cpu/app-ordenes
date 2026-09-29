@@ -108,10 +108,18 @@ export default function PromocionesPanel({ theme }) {
     const otro = promos[otroIdx];
     const ordenP = p.orden ?? idx;
     const ordenOtro = otro.orden ?? otroIdx;
-    await Promise.all([
-      supabase.from("promociones").update({ orden: ordenOtro }).eq("id", p.id),
-      supabase.from("promociones").update({ orden: ordenP }).eq("id", otro.id),
-    ]);
+    // Antes se disparaban ambos updates en paralelo: si uno fallaba y el
+    // otro no, las dos filas podian terminar con el mismo "orden" (o el
+    // swap a medias), dejando el listado desordenado hasta que alguien lo
+    // notara y lo corrigiera a mano.
+    const r1 = await supabase.from("promociones").update({ orden: ordenOtro }).eq("id", p.id);
+    if (r1.error) { alert("No se pudo reordenar: " + r1.error.message); return; }
+    const r2 = await supabase.from("promociones").update({ orden: ordenP }).eq("id", otro.id);
+    if (r2.error) {
+      await supabase.from("promociones").update({ orden: ordenP }).eq("id", p.id).catch(() => {});
+      alert("No se pudo reordenar: " + r2.error.message);
+      return;
+    }
     await cargar();
   };
 

@@ -27,7 +27,9 @@ if (typeof window !== "undefined") {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const CW_BASE    = "https://chat.americanet.club";
 const CW_TOKEN   = "Wm9K5UiCrfJPcgFJrWgxftYv";
-const OAI_KEY    = String(import.meta.env.VITE_OPENAI_KEY || "").trim();
+// La key de OpenAI ya no vive en el navegador -- el analisis de imagenes
+// pasa por el proxy del backend (diagnosticoServicioServer.mjs), que la
+// agrega server-side.
 const MP_LOGO_URL = "https://vgwbqbzpjlbkmxtfghdm.supabase.co/storage/v1/object/public/logo%20image/Captura%20de%20pantalla%202026-06-26%20145210.png";
 const MP_TOKEN   = "mNTO0Z5ynAIsPx7LWBzFX90N";
 const MP_DOMAIN  = "1777119384974866697";
@@ -38,6 +40,7 @@ const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
 // en EasyPanel), nunca directo desde el navegador: evita mixed-content (panel en
 // HTTPS -> Xtream en HTTP) y evita exponer la API key de Xtream en el bundle JS.
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
+const XTREAM_INTERNAL_TOKEN = String(import.meta.env.VITE_XTREAM_INTERNAL_TOKEN || "").trim();
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
 // Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN
 // 3=PELICULAS 4=SERIES 5=TV_DIGITAL 6=Privado 7=Free.
@@ -55,7 +58,7 @@ async function crearLineaXtreamPropia(usernameBase, maxConnections, expHoras = n
   const rXPass = Math.random().toString(36).slice(2, 12);
   const rRes = await fetch(`${XTREAM_PROXY_URL}/api/xtream/create-user`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
     body: JSON.stringify({
       username: rXUser,
       password: rXPass,
@@ -77,7 +80,7 @@ async function eliminarLineaXtreamPropia(xtreamUserId) {
   try {
     await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
       body: JSON.stringify({ action: "delete", user_id: xtreamUserId }),
     });
   } catch (_) { /* limpieza best-effort */ }
@@ -106,8 +109,9 @@ const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypane
 // salto extra de red y la contencion con otros workflows (bot de pagos) que
 // corren en esa misma instancia de n8n compartida.
 const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
-const MKW_TOKEN       = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-const MKW_NOD04_TOKEN = "THlaZzQ2UEQ2dHEyUjFBTkdIQ2UzUT09";
+// Los tokens de Mikrowisp ya no viven en el navegador -- el backend
+// (diagnosticoServicioServer.mjs) inyecta su propio token server-side para
+// /api/mikrowisp/* y /api/mikrowisp-nod04/*, sea cual sea el body recibido.
 // Sin timeout, un fetch que Mikrowisp/n8n nunca cierra deja el boton
 // "Guardando.../Activando..." colgado para siempre (confirmado en vivo: asi
 // paso con "Activar servicio" y "Actualizar tambien en Mikrowisp"). El
@@ -129,8 +133,7 @@ async function fetchConTimeout(url, opts, ms = MKW_TIMEOUT_MS) {
 async function mkwDirect(esDim, endpoint, body) {
   const base = DIAGNO_BASE || "";
   const url = esDim ? `${base}/api/mikrowisp-nod04/${endpoint}` : `${base}/api/mikrowisp/${endpoint}`;
-  const token = esDim ? MKW_NOD04_TOKEN : MKW_TOKEN;
-  const res = await fetchConTimeout(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token, ...body }) });
+  const res = await fetchConTimeout(url, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ...body }) });
   const json = await res.json().catch(()=>({}));
   return json;
 }
@@ -1455,9 +1458,9 @@ export default function SidebarApp() {
     setAnalisis(null);
     try {
       const b64 = await toBase64(file);
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(`${DIAGNO_BASE}/api/openai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + OAI_KEY },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "gpt-4o", max_tokens: 400,
           messages: [{ role: "user", content: [
@@ -2137,11 +2140,23 @@ export default function SidebarApp() {
           }
         } catch { /* coordenadas no críticas */ }
       }
-      await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillaId || 2 }).catch(()=>{});
+      // Antes se tragaba el error de esto con .catch(()=>{}): si fallaba, el
+      // servicio quedaba creado en Mikrowisp SIN plantilla de facturacion
+      // asignada (facturacion incorrecta o nula) y el wizard igual avanzaba
+      // a "Servicio creado" como si todo hubiera salido bien.
+      let facturacionMsg = "";
+      try {
+        const factRes = await mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, id_plantilla: mwPlantillaId || 2 });
+        const factOk = factRes?.estado === "exito" || String(factRes?.code) === "200";
+        if (!factOk) facturacionMsg = " ⚠ El servicio se creó, pero no se pudo asignar la plantilla de facturación: " + (factRes?.mensaje || factRes?.message || "error desconocido") + ". Configúrala manualmente en Mikrowisp.";
+      } catch (e) {
+        facturacionMsg = " ⚠ El servicio se creó, pero no se pudo asignar la plantilla de facturación: " + e.message + ". Configúrala manualmente en Mikrowisp.";
+      }
       // Pre-llenar facturas
       const fechaInst = mwForm.fecha_instalacion || new Date().toISOString().split("T")[0];
       setMwFactVence(fechaInst);
       setMwFactMonto(mwForm.costo || String(mwCliSupa?.precio_plan || ""));
+      if (facturacionMsg) setMwMsg(facturacionMsg.trim());
       setMwSvcOk(true); setMwStep(3);
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwCreandoSvc(false);
@@ -2249,7 +2264,14 @@ export default function SidebarApp() {
       const nodoServicio = d.servicios?.[0]?.nodo ?? null;
       const nodoFallback = MW_NODO_MAP[String(nodo).trim()] ?? null;
       const nodoNum = nodoServicio !== null ? Number(nodoServicio) : (nodoFallback !== null ? Number(nodoFallback) : null);
-      // 5. DELETE + INSERT (evita conflictos en índices funcionales, igual que App.jsx)
+      // 5. DELETE + INSERT (evita conflictos en índices funcionales, igual que App.jsx).
+      // Se respalda la fila antes de borrar: si el insert de abajo falla, se
+      // reinserta el respaldo en vez de dejar al cliente sin fila en
+      // mikrowisp_clientes (desaparece de busquedas por telefono en el
+      // sidebar hasta la proxima sincronizacion manual).
+      let selQ = supabase.from("mikrowisp_clientes").select("*").eq("mikrowisp_id", d.id);
+      selQ = nodoNum !== null ? selQ.eq("nodo", nodoNum) : selQ.is("nodo", null);
+      const { data: filaAnterior } = await selQ.maybeSingle();
       let delQ = supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", d.id);
       if (nodoNum !== null) delQ = delQ.eq("nodo", nodoNum); else delQ = delQ.is("nodo", null);
       await delQ;
@@ -2264,7 +2286,10 @@ export default function SidebarApp() {
         agregado_por: String(agente || "").trim() || null,
       };
       const { error } = await supabase.from("mikrowisp_clientes").insert(row);
-      if (error) throw new Error(error.message);
+      if (error) {
+        if (filaAnterior) await supabase.from("mikrowisp_clientes").insert(filaAnterior).catch(() => {});
+        throw new Error(error.message);
+      }
       if (mwCliSupa.id) await supabase.from("clientes").update({ en_mikrowisp: true, mikrowisp_sync_ok: true }).eq("id", mwCliSupa.id);
       setMwSyncDone(true);
     } catch(e) { setMwMsg("Error: " + e.message); }
@@ -2372,8 +2397,17 @@ export default function SidebarApp() {
         setAgregando(false); return;
       }
       const nuevoCel = celActual ? `${celActual},${rawPhone}` : rawPhone;
-      const { error } = await supabase.from("clientes").update({ celular: nuevoCel }).eq("id", row.id);
+      // Guardia .eq(celular, celActual): si dos agentes agregan un telefono
+      // distinto al mismo cliente casi a la vez (lectura-modificacion-
+      // escritura sobre el mismo campo), esto evita que el segundo pise
+      // silenciosamente el numero que agrego el primero.
+      const { data: updRows, error } = await supabase.from("clientes").update({ celular: nuevoCel }).eq("id", row.id).eq("celular", celActual).select("id");
       if (error) throw error;
+      if (!updRows?.length) {
+        notify("Otro agente ya modificó los teléfonos de este cliente casi al mismo tiempo, recarga e intenta de nuevo.", false);
+        setAgregando(false);
+        return;
+      }
       notify("✅ Número agregado");
       await verInfoClienteLocal({ ...row, celular: nuevoCel });
     } catch(e) { notify("Error al guardar: " + e.message, false); }
@@ -2386,14 +2420,18 @@ export default function SidebarApp() {
     const telActual = row.telefonos || "";
     if (telActual.includes(rawPhone)) return { nuevoTel: telActual, yaEstaba: true };
     const nuevoTel = telActual && telActual !== "EMPTY" ? `${telActual},${rawPhone}` : rawPhone;
+    // Mismo guardado de concurrencia que agregarTelefonoLocal: .eq(telefonos,
+    // telActual) evita pisar un numero agregado por otro agente entremedio.
     let updQ = supabase
       .from("mikrowisp_clientes")
       .update({ telefonos: nuevoTel })
-      .eq("mikrowisp_id", row.mikrowisp_id);
+      .eq("mikrowisp_id", row.mikrowisp_id)
+      .eq("telefonos", telActual);
     if (row.nodo !== null && row.nodo !== undefined) updQ = updQ.eq("nodo", row.nodo);
     else updQ = updQ.is("nodo", null);
-    const { error: updErr } = await updQ;
+    const { data: updRowsTel, error: updErr } = await updQ.select("mikrowisp_id");
     if (updErr) throw updErr;
+    if (!updRowsTel?.length) throw new Error("Otro agente ya modificó los teléfonos de este cliente casi al mismo tiempo, recarga e intenta de nuevo.");
 
     if (tambienMikrowisp && row.mikrowisp_id && row.nodo !== null && row.nodo !== undefined) {
       try {
@@ -2544,10 +2582,27 @@ export default function SidebarApp() {
         const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(snOnu)}`);
         const json = await res.json().catch(() => ({}));
         if (!json.ok) throw new Error(json.error || "No se pudo obtener señal SNMP.");
+        let desde = null, desdeTipo = null;
+        if (json.estado && json.estado !== "online" && json.estado !== "—") {
+          const tipoBuscado = json.estado === "power_fail" ? "power_down"
+            : json.estado === "los" ? "los_down" : null;
+          if (tipoBuscado) {
+            try {
+              const rEv = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-eventos?limit=200&sn=${encodeURIComponent(snOnu)}`);
+              const jEv = await rEv.json().catch(() => ({}));
+              const eventos = Array.isArray(jEv.eventos) ? jEv.eventos : [];
+              const match = eventos
+                .filter((ev) => ev.sn === snOnu && ev.tipo === tipoBuscado)
+                .sort((a, b) => new Date(b.ocurrido_en) - new Date(a.ocurrido_en))[0];
+              if (match) { desde = match.ocurrido_en; desdeTipo = match.tipo; }
+            } catch { /* no bloquea la lectura de señal si falla el historial */ }
+          }
+        }
         setSenal({
           rx: json.rxPower != null ? String(json.rxPower) : "—",
           oltRx: json.rxPowerOlt != null ? String(json.rxPowerOlt) : "—",
           estado: json.estado || "—",
+          desde, desdeTipo,
           ts: new Date().toLocaleTimeString(),
         });
       } else {
@@ -3201,8 +3256,9 @@ export default function SidebarApp() {
           return s && !s.startsWith("51") ? "51" + s : s;
         }).filter(Boolean).join(",");
         const routerIdCliente = MW_NODO_MAP[String(datos.nodo || "").trim()] ?? 5;
+        const { data: filaAnteriorMkw } = await supabase.from("mikrowisp_clientes").select("*").eq("mikrowisp_id", id).eq("nodo", routerIdCliente).maybeSingle();
         await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", routerIdCliente);
-        await supabase.from("mikrowisp_clientes").insert({
+        const insMkw = await supabase.from("mikrowisp_clientes").insert({
           mikrowisp_id: id,
           cedula: dni,
           nombre: String(datos.nombre || "").trim(),
@@ -3212,6 +3268,7 @@ export default function SidebarApp() {
           updated_at: new Date().toISOString(),
           agregado_por: "Automatico (orden)",
         });
+        if (insMkw.error && filaAnteriorMkw) await supabase.from("mikrowisp_clientes").insert(filaAnteriorMkw).catch(() => {});
       } catch (_) { /* no critico: solo afecta la busqueda por telefono en el sidebar */ }
       return { ok: true, id };
     } catch (e) {
@@ -3262,6 +3319,7 @@ export default function SidebarApp() {
     }
 
     setCreandoOrden(true);
+    let iptvInfoCreada = null; // fuera del try: visible en el catch para poder revertir si la orden no llega a crearse
     try {
       let codigo = "";
       const { data: codigoData } = await supabase.rpc("generar_codigo_orden");
@@ -3315,6 +3373,7 @@ export default function SidebarApp() {
           const nombreOrden = cliente ? (cliente.nombre || "") : ordenForm.nombre.trim();
           const pantallasOrden = Number(ordenIptvPantallas) > 0 ? Number(ordenIptvPantallas) : 1;
           iptvInfo = await generarCuentaIptv(dniOrden, nodoOrden, pantallasOrden, nombreOrden, null, false, ordenIptvPlan);
+          iptvInfoCreada = iptvInfo;
           setIptvData({ iptv_usuario: iptvInfo.iptv_usuario, iptv_password: iptvInfo.iptv_password, iptv_user_id: iptvInfo.iptv_user_id, xtream_user_id: iptvInfo.xtream_user_id, max_connections: pantallasOrden, created_at: new Date().toISOString(), creado_por: agente });
         } catch (e) {
           notify("No se pudo crear la cuenta IPTV: " + e.message, false);
@@ -3364,6 +3423,7 @@ export default function SidebarApp() {
         if (newCod) { payload.codigo = String(newCod); res = await supabase.from("ordenes").insert([payload]).select("id,codigo").single(); }
       }
       if (res.error) throw res.error;
+      iptvInfoCreada = null; // la orden se creo bien, ya no hay nada que revertir
 
       const codigoFinal = res.data?.codigo || codigo;
       setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
@@ -3426,6 +3486,14 @@ export default function SidebarApp() {
       }
     } catch(e) {
       notify("Error al crear orden: " + e.message, false);
+      // Si la orden no llego a crearse pero la cuenta IPTV ya se habia
+      // creado, queda huerfana (facturable en el proveedor, sin ninguna
+      // orden/cliente que la referencie) -- se revierte.
+      if (iptvInfoCreada) {
+        await fetch("https://api.maxplayer.tv/v3/api/public/users/" + iptvInfoCreada.iptv_user_id, { method: "DELETE", headers: { "Api-Token": MP_TOKEN } }).catch(() => {});
+        await eliminarLineaXtreamPropia(iptvInfoCreada.xtream_user_id);
+        await supabase.from("iptv_clientes").delete().eq("iptv_user_id", iptvInfoCreada.iptv_user_id).catch(() => {});
+      }
     }
     setCreandoOrden(false);
   }
@@ -3717,6 +3785,16 @@ export default function SidebarApp() {
   async function generarCuentaIptv(dniRaw, nodoRaw, maxConnections = 1, nombreRaw = "", expHoras = null, esDemo = false, plan = "Premium") {
     const dni = String(dniRaw || "").replace(/\D/g, "");
     if (!dni) throw new Error("Sin DNI para crear usuario IPTV");
+    // Antes no se verificaba si el DNI ya tenia cuenta IPTV: un doble clic o
+    // un reintento creaba una segunda linea Xtream/MaxPlayer (cobro real
+    // duplicado en el proveedor) y el upsert por dni solo pisaba el registro
+    // viejo en Supabase, dejando el anterior huerfano sin poder borrarlo.
+    if (!esDemo) {
+      const existente = await supabase.from("iptv_clientes").select("iptv_usuario,xtream_user_id,iptv_user_id").eq("dni", dni).maybeSingle();
+      if (existente?.data?.xtream_user_id || existente?.data?.iptv_user_id) {
+        throw new Error(`Este DNI ya tiene una cuenta IPTV (${existente.data.iptv_usuario || dni}). Usa "Cambiar plan"/"Cambiar pantallas" en vez de crear una nueva.`);
+      }
+    }
     // nodoRaw puede venir como ID numérico de MikroWisp (cliente real, vía MP_NODO_SUFFIX) o como
     // "Nod_01".."Nod_06" (cliente sin MikroWisp / orden nueva) — en ese caso el sufijo es ese número directo.
     const nodoStr = String(nodoRaw || "").trim();
@@ -3749,14 +3827,23 @@ export default function SidebarApp() {
       headers: { "Content-Type": "application/json", "Api-Token": MP_TOKEN },
       body: JSON.stringify({ user_id: userId, password: iptvPass }),
     });
-    await upsertIptvClienteConFallback({
-      dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
-      nodo: normalizarEtiquetaNodo(nodoRaw) || null, creado_por: agente || null,
-      xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
-      max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, es_demo: esDemo,
-      plan: esDemo ? "Premium" : plan,
-      demo_exp_at: (esDemo && expHoras) ? new Date(Date.now() + Number(expHoras) * 3600000).toISOString() : null,
-    });
+    try {
+      await upsertIptvClienteConFallback({
+        dni, iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId,
+        nodo: normalizarEtiquetaNodo(nodoRaw) || null, creado_por: agente || null,
+        xtream_user_id: lineaXtream.xtream_user_id, xtream_username: lineaXtream.xtream_username,
+        max_connections: pantallas, nombre: String(nombreRaw || "").trim() || null, es_demo: esDemo,
+        plan: esDemo ? "Premium" : plan,
+        demo_exp_at: (esDemo && expHoras) ? new Date(Date.now() + Number(expHoras) * 3600000).toISOString() : null,
+      });
+    } catch (e) {
+      // Si esto falla, la cuenta ya existe activa (y facturable) en
+      // MaxPlayer/Xtream pero quedaria invisible para el panel -- se revierte
+      // ambas en vez de dejarla huerfana.
+      await fetch("https://api.maxplayer.tv/v3/api/public/users/" + userId, { method: "DELETE", headers: { "Api-Token": MP_TOKEN } }).catch(() => {});
+      await eliminarLineaXtreamPropia(lineaXtream.xtream_user_id);
+      throw e;
+    }
     return { iptv_usuario: iptvUser, iptv_password: iptvPass, iptv_user_id: userId, xtream_user_id: lineaXtream.xtream_user_id };
   }
 
@@ -3845,7 +3932,7 @@ export default function SidebarApp() {
     try {
       const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
         body: JSON.stringify({ action: "update", user_id: iptvData.xtream_user_id, max_connections: nuevoValor }),
       });
       const data = await res.json().catch(() => ({}));
@@ -3867,7 +3954,7 @@ export default function SidebarApp() {
       const bouquets = PLANES_IPTV[nuevoPlan] || PLANES_IPTV.Premium;
       const res = await fetch(`${XTREAM_PROXY_URL}/api/xtream/manage-user`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-App-Token": XTREAM_INTERNAL_TOKEN },
         body: JSON.stringify({ action: "update", user_id: iptvData.xtream_user_id, bouquets }),
       });
       const data = await res.json().catch(() => ({}));
@@ -5354,8 +5441,13 @@ export default function SidebarApp() {
                   const e = ESTADOS[senal.estado];
                   if (!e) return null;
                   return (
-                    <div style={{ display:"inline-block", marginTop:6, padding:"2px 8px", borderRadius:999, fontSize:10, fontWeight:700, background:e.bg, color:e.fg }}>
-                      {e.label}
+                    <div style={{ display:"inline-flex", flexDirection:"column", gap:2, marginTop:6, padding:"3px 8px", borderRadius:8, fontSize:10, fontWeight:700, background:e.bg, color:e.fg }}>
+                      <span>{e.label}</span>
+                      {senal.desde && (
+                        <span style={{ fontWeight:600, fontSize:9.5, opacity:0.85 }}>
+                          Desde: {fmt12h(senal.desde)}
+                        </span>
+                      )}
                     </div>
                   );
                 })()}

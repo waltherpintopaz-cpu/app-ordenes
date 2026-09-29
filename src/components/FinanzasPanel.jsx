@@ -237,19 +237,19 @@ export default function FinanzasPanel({ sessionUser, theme }) {
       archivos: form.archivos || [],
       creado_por: sessionUser?.nombre || sessionUser?.username || "admin",
     };
-    if (editId) {
-      await supabase.from("finanzas_movimientos").update(payload).eq("id", editId);
-    } else {
-      await supabase.from("finanzas_movimientos").insert([payload]);
-    }
+    const { error } = editId
+      ? await supabase.from("finanzas_movimientos").update(payload).eq("id", editId)
+      : await supabase.from("finanzas_movimientos").insert([payload]);
     setSaving(false);
+    if (error) { alert("Error al guardar el movimiento:\n" + error.message); return; }
     setModal(false);
     cargarMovimientos();
   };
 
   const eliminarMov = async (id) => {
     if (!window.confirm("¿Eliminar este movimiento?")) return;
-    await supabase.from("finanzas_movimientos").delete().eq("id", id);
+    const { error } = await supabase.from("finanzas_movimientos").delete().eq("id", id);
+    if (error) { alert("Error al eliminar:\n" + error.message); return; }
     cargarMovimientos();
   };
 
@@ -277,7 +277,8 @@ export default function FinanzasPanel({ sessionUser, theme }) {
   // ── Períodos de rendición ────────────────────────────────────────────────
   const guardarPeriodo = async () => {
     if (!formRend.fecha_inicio || !formRend.fecha_fin) return;
-    await supabase.from("finanzas_periodos_rendicion").insert([{ ...formRend, estado: "borrador" }]);
+    const { error } = await supabase.from("finanzas_periodos_rendicion").insert([{ ...formRend, estado: "borrador" }]);
+    if (error) { alert("Error al guardar el período:\n" + error.message); return; }
     setModalRend(false);
     setFormRend({ nodo: "Nod_03", fecha_inicio: "", fecha_fin: "", notas: "" });
     cargarPeriodos();
@@ -285,13 +286,15 @@ export default function FinanzasPanel({ sessionUser, theme }) {
 
   const cerrarPeriodo = async (id) => {
     if (!window.confirm("¿Marcar este período como cerrado?")) return;
-    await supabase.from("finanzas_periodos_rendicion").update({ estado: "cerrado" }).eq("id", id);
+    const { error } = await supabase.from("finanzas_periodos_rendicion").update({ estado: "cerrado" }).eq("id", id);
+    if (error) { alert("Error al cerrar el período:\n" + error.message); return; }
     cargarPeriodos();
   };
 
   const eliminarPeriodo = async (id) => {
     if (!window.confirm("¿Eliminar este período?")) return;
-    await supabase.from("finanzas_periodos_rendicion").delete().eq("id", id);
+    const { error } = await supabase.from("finanzas_periodos_rendicion").delete().eq("id", id);
+    if (error) { alert("Error al eliminar el período:\n" + error.message); return; }
     cargarPeriodos();
   };
 

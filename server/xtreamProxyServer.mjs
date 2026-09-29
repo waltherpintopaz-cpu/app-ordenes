@@ -9,6 +9,15 @@ const SERVER_HOST = String(process.env.XTREAM_PROXY_HOST || "0.0.0.0").trim() ||
 const SERVER_PORT = Number(process.env.PORT || process.env.XTREAM_PROXY_PORT || 8788) || 8788;
 const XTREAM_API_BASE = String(process.env.XTREAM_API_BASE || "http://179.43.96.253:25500").trim().replace(/\/+$/, "");
 const XTREAM_API_KEY = String(process.env.XTREAM_API_KEY || "").trim();
+// Antes cualquiera que conociera la URL de este proxy podia crear/editar/
+// borrar cuentas de clientes reales sin autenticarse (hallazgo de auditoria,
+// 2026-09-28). Header "X-App-Token", nunca en una VITE_*.
+const XTREAM_INTERNAL_TOKEN = String(process.env.XTREAM_INTERNAL_TOKEN || "").trim();
+const RUTAS_PROTEGIDAS_XTREAM = new Set([
+  "/api/xtream/create-user",
+  "/api/xtream/manage-user",
+  "/api/xtream/cleanup-demos",
+]);
 
 // ---------- Limpieza automatica de demos IPTV vencidas ----------
 // Corre dentro de este mismo proceso (ya vive 24/7 en EasyPanel) cada
@@ -31,7 +40,7 @@ const writeJson = (res, status, data) => {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, X-App-Token",
   });
   res.end(JSON.stringify(data));
 };
@@ -216,6 +225,18 @@ const server = http.createServer(async (req, res) => {
       const result = await resolveMapsLink(body?.url);
       writeJson(res, result.ok ? 200 : 400, result);
       return;
+    }
+
+    if (RUTAS_PROTEGIDAS_XTREAM.has(req.url)) {
+      if (!XTREAM_INTERNAL_TOKEN) {
+        writeJson(res, 500, { success: false, error: "XTREAM_INTERNAL_TOKEN no configurado en el servidor." });
+        return;
+      }
+      const recibido = String(req.headers["x-app-token"] || "").trim();
+      if (recibido !== XTREAM_INTERNAL_TOKEN) {
+        writeJson(res, 401, { success: false, error: "No autorizado." });
+        return;
+      }
     }
 
     if (!XTREAM_API_KEY) {

@@ -2,10 +2,8 @@
 
 const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || "").trim();
 const MIKROWISP_PROXY_ENDPOINT = "/api/mikrowisp/GetClientsDetails";
-const MIKROWISP_DIRECT_ENDPOINT = "https://americanet.club/api/v1/GetClientsDetails";
-const MIKROWISP_TOKEN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
-const APPSHEET_APP_ID = String(import.meta.env.VITE_APPSHEET_APP_ID || "504a02bb-0bfc-4894-a2d5-740a254a9df7").trim();
-const APPSHEET_ACCESS_KEY = String(import.meta.env.VITE_APPSHEET_ACCESS_KEY || "V2-xKNZN-l65EA-sTLkd-KjoGY-j06T1-BEN6Z-MbXZW-MfiQq").trim();
+const APPSHEET_APP_ID = String(import.meta.env.VITE_APPSHEET_APP_ID || "").trim();
+const APPSHEET_ACCESS_KEY = String(import.meta.env.VITE_APPSHEET_ACCESS_KEY || "").trim();
 const APPSHEET_APP_NAME = String(import.meta.env.VITE_APPSHEET_APP_NAME || "Actuaciones02-637142196").trim();
 const APPSHEET_TABLE_NAME = String(import.meta.env.VITE_APPSHEET_TABLE_NAME || "Liquidaciones").trim();
 
@@ -226,12 +224,11 @@ export default function ConsultaApiPanel() {
   const [resultado, setResultado] = useState(null);
   const [resultadoAppSheet, setResultadoAppSheet] = useState([]);
   const [fotoActiva, setFotoActiva] = useState(null);
-  const mikrowispEndpoints = useMemo(() => {
-    const proxyUrl = buildApiUrl(MIKROWISP_PROXY_ENDPOINT);
-    if (API_BASE_URL) return [proxyUrl];
-    if (import.meta.env.DEV) return [proxyUrl, MIKROWISP_DIRECT_ENDPOINT];
-    return [MIKROWISP_DIRECT_ENDPOINT, proxyUrl];
-  }, []);
+  // El token real de Mikrowisp ya no vive en el navegador (antes estaba
+  // hardcodeado aca y a veces se llamaba directo a Mikrowisp con el).
+  // Ahora SIEMPRE se pasa por el proxy del backend, que inyecta su propio
+  // token server-side.
+  const mikrowispEndpoints = useMemo(() => [buildApiUrl(MIKROWISP_PROXY_ENDPOINT)], []);
 
   const normalizarRespuestaHistoricoAppSheet = (body, dniParam) => {
     const filas = Array.isArray(body?.items)
@@ -347,10 +344,8 @@ export default function ConsultaApiPanel() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            token: MIKROWISP_TOKEN,
           },
           body: JSON.stringify({
-            token: MIKROWISP_TOKEN,
             cedula: dniLimpio,
           }),
         });
@@ -362,28 +357,6 @@ export default function ConsultaApiPanel() {
         ultimoError = obtenerValorApiCliente(body, ["message", "error", "msg"]) || "Respuesta invalida del API.";
       } catch (e) {
         ultimoError = e?.message || "Fallo en envio JSON.";
-      }
-      if (json) break;
-      try {
-        const payload = new URLSearchParams();
-        payload.append("token", MIKROWISP_TOKEN);
-        payload.append("cedula", dniLimpio);
-        const resForm = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            token: MIKROWISP_TOKEN,
-          },
-          body: payload.toString(),
-        });
-        const body = await resForm.json();
-        if (resForm.ok && body && body.success !== false) {
-          json = body;
-          break;
-        }
-        ultimoError = obtenerValorApiCliente(body, ["message", "error", "msg"]) || "No se pudo consultar el cliente.";
-      } catch (e) {
-        ultimoError = e?.message || "Fallo en envio formulario.";
       }
     }
     if (!json) throw new Error(ultimoError || "No se pudo consultar Mikrowisp.");

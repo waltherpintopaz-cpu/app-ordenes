@@ -30,8 +30,12 @@ function findCaja(cajas, codigo, nodoCliente) {
   const matches = cajas.filter(c => eqCaja(c.codigo, codigo));
   if (matches.length === 0) return null;
   if (matches.length === 1) return matches[0];
-  // Hay duplicados: preferir la del mismo nodo que el cliente
-  return matches.find(c => c.nodo === nodoCliente) || matches[0];
+  // Hay duplicados (por reimportacion de KMZ): preferir la del mismo nodo
+  // que el cliente. Si ninguna coincide con el nodo, no hay forma confiable
+  // de elegir -- devolver null (los callers ya toleran esto) en vez de
+  // matches[0], que podia actualizar puertos_ocupados o dibujar el
+  // polyline hacia una caja fisica distinta a la real.
+  return matches.find(c => c.nodo === nodoCliente) || null;
 }
 
 // ── Iconos SVG ────────────────────────────────────────────────────────────────
@@ -442,9 +446,18 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const asignar = async () => {
     if (!cajaSeleccionada) return showToast("Selecciona una caja primero", false);
     if (clientesSeleccionados.size === 0) return showToast("Selecciona al menos un cliente", false);
+    const ids = Array.from(clientesSeleccionados);
+    // Antes no se validaba la capacidad real de la caja: se podian vincular
+    // mas clientes de los puertos fisicos que tiene, dejando el conteo
+    // desincronizado de la realidad sin ningun aviso.
+    const yaEnEstaCaja = clientes.filter(c => eqCaja(c.caja_nap, cajaSeleccionada.codigo) && !ids.includes(c.id)).length;
+    const capacidad = Number(cajaSeleccionada.capacidad || 8);
+    if (yaEnEstaCaja + ids.length > capacidad) {
+      const libres = Math.max(0, capacidad - yaEnEstaCaja);
+      return showToast(`La caja ${cajaSeleccionada.codigo} tiene ${libres} puerto(s) libre(s) (capacidad ${capacidad}), no alcanza para ${ids.length} cliente(s).`, false);
+    }
     setSaving(true);
     try {
-      const ids = Array.from(clientesSeleccionados);
       const { error } = await supabase.from("clientes").update({ caja_nap: cajaSeleccionada.codigo }).in("id", ids);
       if (error) throw error;
       const clientesActualizados = clientes.map(c => ids.includes(c.id) ? { ...c, caja_nap: cajaSeleccionada.codigo } : c);
@@ -471,7 +484,8 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       });
       // Sincronizar puertos_ocupados con conteo real
       const realCount = clientesActualizados.filter(c => eqCaja(c.caja_nap, cajaSeleccionada.codigo)).length;
-      await supabase.from("nap_cajas").update({ puertos_ocupados: realCount }).eq("id", cajaSeleccionada.id);
+      const napUpd = await supabase.from("nap_cajas").update({ puertos_ocupados: realCount }).eq("id", cajaSeleccionada.id);
+      if (napUpd.error) console.error("[NapVincularModal] no se pudo sincronizar puertos_ocupados:", napUpd.error.message);
       showToast(`${ids.length} cliente${ids.length > 1 ? "s" : ""} asignado${ids.length > 1 ? "s" : ""} a ${cajaSeleccionada.codigo}`);
       if (onUpdate) onUpdate();
     } catch (e) {
@@ -510,7 +524,8 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
         const cajasMatch = cajas.filter(c => eqCaja(c.codigo, codigo));
         for (const cajaObj of cajasMatch) {
           const realCount = clientesActualizados.filter(c => eqCaja(c.caja_nap, codigo) && c.nodo === cajaObj.nodo).length;
-          await supabase.from("nap_cajas").update({ puertos_ocupados: realCount }).eq("id", cajaObj.id);
+          const napUpd = await supabase.from("nap_cajas").update({ puertos_ocupados: realCount }).eq("id", cajaObj.id);
+          if (napUpd.error) console.error("[NapVincularModal] no se pudo sincronizar puertos_ocupados:", napUpd.error.message);
         }
       }
       showToast(`${ids.length} cliente(s) desvinculados`);

@@ -7,7 +7,7 @@ import { PERFILES_REGISTRO, PERFIL_DEFECTO } from "../utils/volanteoPerfiles";
 import AsignarRutasVolanteoPanel from "./AsignarRutasVolanteoPanel";
 
 const GOOGLE_MAPS_API_KEY = String(
-  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
 ).trim();
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 // Paleta amplia para que nadie del mismo grupo repita color (se asigna por
@@ -514,7 +514,8 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     setPowerBanks(Array.isArray(data) ? data : []);
   }, []);
   const liberarPowerBank = useCallback(async (id) => {
-    await supabase.from("volanteo_power_banks").update({ tecnico_id: null, tecnico_nombre: null, actualizado_en: new Date().toISOString() }).eq("id", id);
+    const { error } = await supabase.from("volanteo_power_banks").update({ tecnico_id: null, tecnico_nombre: null, actualizado_en: new Date().toISOString() }).eq("id", id);
+    if (error) window.alert("No se pudo liberar el power bank: " + (error.message || "error desconocido"));
     await cargarPowerBanks();
   }, [cargarPowerBanks]);
   // El supervisor puede asignarselo a cualquier voluntario desde aca, no
@@ -523,7 +524,8 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   // hay a mano la lista de voluntarios) en vez de buscarlo aca adentro.
   const asignarPowerBankA = useCallback(async (id, tecnicoId, tecnicoNombre) => {
     if (!tecnicoId) return;
-    await supabase.from("volanteo_power_banks").update({ tecnico_id: tecnicoId, tecnico_nombre: tecnicoNombre || tecnicoId, actualizado_en: new Date().toISOString() }).eq("id", id);
+    const { error } = await supabase.from("volanteo_power_banks").update({ tecnico_id: tecnicoId, tecnico_nombre: tecnicoNombre || tecnicoId, actualizado_en: new Date().toISOString() }).eq("id", id);
+    if (error) window.alert("No se pudo asignar el power bank: " + (error.message || "error desconocido"));
     await cargarPowerBanks();
   }, [cargarPowerBanks]);
   useEffect(() => {
@@ -537,6 +539,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   const [compartiendoUbicacion, setCompartiendoUbicacion] = useState(false);
   const [geoError, setGeoError] = useState("");
   const geoWatchIdRef = useRef(null);
+  const compartiendoRef = useRef(false);
 
   // Permite finalizar remotamente la sesion de un volanteador desde el
   // navegador (ej. se olvido de presionar "Finalizar", perdio el celular,
@@ -668,8 +671,10 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   // Rutas que el supervisor genero y confirmo para cada volanteador (ver
   // "Asignar rutas del equipo") -- antes solo se veian dentro de ese modal
   // mientras estaba abierto; ahora se dibujan tambien en el mapa principal.
+  const cargaRutasRef = useRef(0);
   const cargarRutasAsignadasHoy = useCallback(async (grupo, fecha) => {
     if (!grupo || grupo === "TODOS") { setRutasAsignadasHoy([]); return; }
+    const miToken = ++cargaRutasRef.current;
     const dia = formatDateInput(fecha);
     const { data, error: err } = await supabase
       .from("volanteo_rutas_asignadas")
@@ -677,6 +682,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       .eq("grupo", grupo)
       .eq("fecha", dia)
       .eq("confirmada", true);
+    if (miToken !== cargaRutasRef.current) return;
     if (err) {
       if (tableMissing(err, "volanteo_rutas_asignadas")) return;
       throw err;
@@ -831,7 +837,13 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     if (!err) await cargarZonasAsignadas(grupoFiltro, statsDate);
   }, [grupoFiltro, statsDate, cargarZonasAsignadas]);
 
+  const cargaPosicionesRef = useRef(0);
   const cargarPosicionesActuales = useCallback(async () => {
+    // Token de la ultima llamada: el poll de 5s, el boton "Actualizar" y los
+    // canales realtime pueden disparar esto casi a la vez -- sin esto, una
+    // respuesta vieja que llegue despues pisaba el mapa con posiciones GPS
+    // desactualizadas.
+    const miToken = ++cargaPosicionesRef.current;
     // Mismo tope de 1000 filas de PostgREST -- se pagina por si el equipo
     // supera esa cantidad de volanteadores con posicion actual.
     const PAGE = 1000;
@@ -842,6 +854,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         .select("*")
         .eq("tecnico_rol", "Volanteador")
         .range(from, from + PAGE - 1);
+      if (miToken !== cargaPosicionesRef.current) return;
       if (err) {
         if (tableMissing(err, "tecnico_ubicacion_actual")) return;
         throw err;
@@ -850,6 +863,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       data = data.concat(rows);
       if (rows.length < PAGE) break;
     }
+    if (miToken !== cargaPosicionesRef.current) return;
     setCurrentRows(data);
   }, []);
 
@@ -874,6 +888,12 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
   // posicion actual, y al desactivar se borra su fila para "desaparecer" de
   // inmediato del mapa de los demas.
   const detenerCompartirUbicacion = useCallback(async () => {
+    // Se apaga ANTES de clearWatch: si el navegador ya habia encolado un
+    // callback de watchPosition justo antes de llamar clearWatch, ese
+    // callback (async) podia resolver DESPUES del delete de abajo y
+    // resucitar la fila -- el supervisor seguia apareciendo "en vivo" pese
+    // a haber pulsado "dejar de compartir".
+    compartiendoRef.current = false;
     if (geoWatchIdRef.current != null && typeof navigator !== "undefined" && navigator.geolocation) {
       navigator.geolocation.clearWatch(geoWatchIdRef.current);
     }
@@ -897,9 +917,11 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       return;
     }
     setGeoError("");
+    compartiendoRef.current = true;
     const myName = toText(sessionUser?.nombre) || "Supervisor";
     const watchId = navigator.geolocation.watchPosition(
       async (pos) => {
+        if (!compartiendoRef.current) return;
         const lat = Number(pos.coords.latitude);
         const lng = Number(pos.coords.longitude);
         if (!isValidCoord(lat, lng)) return;
@@ -1067,10 +1089,18 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     [statsDate, cargarTramosManuales]
   );
 
+  const cargaEstadisticasRef = useRef(0);
   const cargarEstadisticasYRutas = useCallback(
     async (targetDate = statsDate) => {
+      // Token de la ultima llamada: cambiar de fecha rapido (ej. "Ayer" y
+      // enseguida "Hoy") disparaba dos cargas paginadas en paralelo -- si la
+      // mas vieja (que pagina mas lento) llegaba despues, el reporte/mapa
+      // terminaban mostrando el dia equivocado mientras el selector ya
+      // mostraba el nuevo.
+      const miToken = ++cargaEstadisticasRef.current;
       const ids = volanteadores.map((v) => v.id);
       if (ids.length === 0) {
+        if (miToken !== cargaEstadisticasRef.current) return;
         setStatsByVolanteador({});
         setTrailById({});
         return;
@@ -1094,6 +1124,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
           .lt("created_at", end.toISOString())
           .order("created_at", { ascending: true })
           .range(from, from + PAGE - 1);
+        if (miToken !== cargaEstadisticasRef.current) return;
         if (err) {
           if (tableMissing(err, "tecnico_ubicaciones")) return;
           throw err;
@@ -1102,6 +1133,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         data = data.concat(rows);
         if (rows.length < PAGE) break;
       }
+      if (miToken !== cargaEstadisticasRef.current) return;
       const grouped = {};
       (Array.isArray(data) ? data : []).forEach((row) => {
         const id = parseId(row.tecnico_id);

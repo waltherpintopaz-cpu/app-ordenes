@@ -335,7 +335,11 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
         const { data: inserted, error } = await supabase.from("nap_cajas").insert([{ ...payload, ctoid: 0 }]).select("id").single();
         if (error) throw error;
         if (inserted?.id) {
-          await supabase.from("nap_cajas").update({ ctoid: inserted.id }).eq("id", inserted.id);
+          // Sin revisar esto, la caja quedaba insertada permanentemente con
+          // ctoid=0 (valor usado como identificador legado en otras partes)
+          // sin ningun aviso si este segundo update fallaba.
+          const { error: ctoidErr } = await supabase.from("nap_cajas").update({ ctoid: inserted.id }).eq("id", inserted.id);
+          if (ctoidErr) throw new Error("Caja creada, pero no se pudo fijar su ctoid: " + ctoidErr.message);
         }
         showToast("✓ Caja registrada");
       }
@@ -346,8 +350,17 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
     } finally { setSaving(false); }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (caja) => {
+    const id = caja?.id ?? caja;
     if (!window.confirm("¿Eliminar esta caja NAP?")) return;
+    // Antes no se limpiaba la referencia en clientes.caja_nap: esos
+    // clientes quedaban apuntando a un codigo de caja que ya no existe
+    // (invisibles para cualquier resincronizacion de puertos futura).
+    const codigo = typeof caja === "object" ? caja?.codigo : null;
+    if (codigo) {
+      const { error: clearErr } = await supabase.from("clientes").update({ caja_nap: null }).eq("caja_nap", codigo);
+      if (clearErr) console.error("[NapPanel] no se pudo limpiar caja_nap de clientes:", clearErr.message);
+    }
     const { error } = await supabase.from("nap_cajas").delete().eq("id", id);
     if (error) { showToast(error.message, false); return; }
     showToast("Caja eliminada");
@@ -457,7 +470,7 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
                       {puedeEditar && (
                         <div style={{ display: "flex", gap: 6 }} onClick={e => e.stopPropagation()}>
                           <button onClick={() => openEditar(caja)} style={s.btnIconEdit}>✏</button>
-                          {esAdmin && <button onClick={() => handleDelete(caja.id)} style={s.btnIconDel}>✕</button>}
+                          {esAdmin && <button onClick={() => handleDelete(caja)} style={s.btnIconDel}>✕</button>}
                         </div>
                       )}
                     </div>

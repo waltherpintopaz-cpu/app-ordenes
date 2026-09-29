@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 
 const GOOGLE_MAPS_API_KEY = String(
-  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o"
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
 ).trim();
 const REFRESH_MS = 20_000;
 const TRAIL_COLORS = [

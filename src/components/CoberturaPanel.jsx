@@ -4,7 +4,11 @@ import { isSupabaseConfigured, supabase } from "../supabaseClient";
 const DEFAULT_CENTER = { lat: -16.43849, lng: -71.598208 };
 const RADIO_M = 500;
 const LISTA_INICIAL = 5;
-const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "AIzaSyA2rGETtusuzou_YaHpgATZf5UF1bQDn2o").trim();
+// Sin fallback hardcodeado (ver nota de seguridad en SmartOltPanel.jsx).
+// Las keys de Google Maps son client-side por diseño, pero igual deben
+// venir solo de la variable de entorno y estar restringidas por dominio
+// (HTTP referrer) en Google Cloud Console, no vivir como literal en el repo.
+const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
 
 const NODO_COLORS = {
   Nod_01: { bg: "#dbeafe", text: "#1d4ed8", border: "#93c5fd" },
@@ -182,11 +186,17 @@ export default function CoberturaPanel({ onCrearOrden, theme }) {
       const view = await supabase
         .from("nap_cajas_mapa")
         .select("id,ctoid,codigo,sector,nodo,ubicacion,lat,lng,capacidad,puertos_ocupados");
-      const table = view.error
+      // Antes el fallback a la tabla base solo se activaba si la vista
+      // respondia con error -- si la vista quedaba desactualizada/rota y
+      // respondia sin error pero vacia, el mapa reportaba "sin cajas NAP" a
+      // clientes que si tenian cobertura disponible.
+      const necesitaFallback = view.error || !Array.isArray(view.data) || view.data.length === 0;
+      const table = necesitaFallback
         ? await supabase.from("nap_cajas").select("id,ctoid,codigo,sector,nodo,ubicacion,lat,lng,capacidad,puertos_ocupados")
         : null;
       if (view.error && table?.error) throw table.error;
-      const rows = Array.isArray(view.error ? table?.data : view.data) ? (view.error ? table.data : view.data) : [];
+      const usarTabla = necesitaFallback && Array.isArray(table?.data) && table.data.length > 0;
+      const rows = usarTabla ? table.data : (Array.isArray(view.data) ? view.data : []);
       const parsed = rows.map((r) => {
         const coords = (Number.isFinite(Number(r?.lat)) && Number.isFinite(Number(r?.lng)))
           ? { lat: Number(r.lat), lng: Number(r.lng) }

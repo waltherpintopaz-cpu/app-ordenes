@@ -140,10 +140,11 @@ export default function ImportarMapaCoberturaModal({ zonasActuales = [], onClose
     setGuardando(true);
     setError("");
     try {
-      // Reimportar reemplaza limpio: borra lo previo de este mismo mapa (mid) antes de insertar
-      const { error: delErr } = await supabase.from("zonas_cobertura").delete().eq("mid", preview.mid);
-      if (delErr) throw delErr;
-
+      // Reimportar reemplaza limpio: se inserta lo nuevo PRIMERO y recien
+      // despues se borra lo previo del mismo mapa (mid) -- en el orden
+      // contrario (borrar primero), si el insert fallaba a mitad de camino
+      // el grupo de cobertura quedaba vacio sin ninguna zona (mismo patron
+      // que ya se corrigio en AsignarRutasVolanteoPanel.jsx).
       const rows = preview.zonas.map((z) => ({
         grupo: grupo.trim() || "Zona importada",
         nombre: z.nombre,
@@ -153,8 +154,16 @@ export default function ImportarMapaCoberturaModal({ zonasActuales = [], onClose
         coordinates: z.coordinates,
         mid: preview.mid,
       }));
-      const { error: insErr } = await supabase.from("zonas_cobertura").insert(rows);
+      const { data: insertadas, error: insErr } = await supabase.from("zonas_cobertura").insert(rows).select("id");
       if (insErr) throw insErr;
+
+      const idsNuevos = (insertadas || []).map((r) => r.id);
+      if (idsNuevos.length > 0) {
+        const { error: delErr } = await supabase.from("zonas_cobertura").delete().eq("mid", preview.mid).not("id", "in", `(${idsNuevos.join(",")})`);
+        if (delErr) {
+          setError("Las zonas nuevas se guardaron, pero no se pudieron limpiar todas las anteriores: " + delErr.message);
+        }
+      }
 
       setOk(`Importadas ${rows.length} zonas de "${grupo}".`);
       setPreview(null);

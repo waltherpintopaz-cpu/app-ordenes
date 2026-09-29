@@ -9,11 +9,9 @@ import {
 } from "recharts";
 
 const COLORS = ["#16a34a", "#dc2626", "#d97706", "#2563eb", "#7c3aed", "#0891b2", "#db2777", "#059669"];
-const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
-  const p = ["sk-proj-y5-AlnR1vSH_5Zh8JDLpj0RUZFWQuGNnoyoK5Z_7gT4x2n7cyiCM_Zy-76u6CPlCQB7zZ1yhX",
-             "-T3BlbkFJ6-nvZ8F3DzX7apUohd-ebkhfG2IE10xKjOpbPcy9g0ij6Y-0o3LApBhCLGOGc1IEffx8c85KgA"];
-  return p.join("");
-})();
+// La key de OpenAI ya no vive en el navegador (ver nota de seguridad en
+// TecnicosReportesPanel.jsx) -- el analisis pasa por el proxy del backend.
+const DIAGNOSTICO_API_BASE = String(import.meta.env.VITE_DIAGNOSTICO_API_BASE || "").trim().replace(/\/+$/, "");
 
 const pct = (a, b) => (b === 0 ? 0 : Math.round((a / b) * 100));
 
@@ -203,9 +201,9 @@ export default function InstalacionesReportesPanel({ cardStyle, sectionTitleStyl
     const resNodo = porNodo.map(n => `${n.nodo}: ${n.total} instal., ${n.liquidadas} éxito (${n.pct_exito}%), ${n.canceladas} cancel.`).join("\n");
     const resGest = porGestora.map(g => `${g.gestora}: ${g.total} instal., ${g.liquidadas} éxito (${g.pct_exito}%), ${g.canceladas} cancel.`).join("\n");
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(`${DIAGNOSTICO_API_BASE}/api/openai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [{
@@ -219,6 +217,7 @@ export default function InstalacionesReportesPanel({ cardStyle, sectionTitleStyl
         }),
       });
       const json = await res.json();
+      if (json?.error) throw new Error(json.error.message || "Error del proxy de IA");
       setAnalisisIA(json.choices?.[0]?.message?.content || "Sin respuesta de la IA");
     } catch (e) {
       setAnalisisIA("Error: " + e.message);

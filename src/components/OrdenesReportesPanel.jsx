@@ -66,11 +66,9 @@ function renderAnalisisPDF(doc, analisisIA) {
     }
   }
 }
-const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
-  const p = ["sk-proj-y5-AlnR1vSH_5Zh8JDLpj0RUZFWQuGNnoyoK5Z_7gT4x2n7cyiCM_Zy-76u6CPlCQB7zZ1yhX",
-             "-T3BlbkFJ6-nvZ8F3DzX7apUohd-ebkhfG2IE10xKjOpbPcy9g0ij6Y-0o3LApBhCLGOGc1IEffx8c85KgA"];
-  return p.join("");
-})();
+// La key de OpenAI ya no vive en el navegador (ver nota de seguridad en
+// TecnicosReportesPanel.jsx) -- el analisis pasa por el proxy del backend.
+const DIAGNOSTICO_API_BASE = String(import.meta.env.VITE_DIAGNOSTICO_API_BASE || "").trim().replace(/\/+$/, "");
 
 export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
   const [ordenes, setOrdenes] = useState([]);
@@ -202,9 +200,9 @@ export default function OrdenesReportesPanel({ cardStyle, sectionTitleStyle }) {
       por_tipo: porTipo.map(r => ({ tipo: r.tipo, total: r.total, liquidadas: r.liquidadas, pct: pct(r.liquidadas, r.total) })),
     };
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(`${DIAGNOSTICO_API_BASE}/api/openai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${OPENAI_KEY}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [{

@@ -9,11 +9,11 @@ import {
 } from "recharts";
 
 const COLORS = ["#2563eb", "#16a34a", "#d97706", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#059669"];
-const OPENAI_KEY = import.meta.env.VITE_OPENAI_KEY || (() => {
-  const p = ["sk-proj-y5-AlnR1vSH_5Zh8JDLpj0RUZFWQuGNnoyoK5Z_7gT4x2n7cyiCM_Zy-76u6CPlCQB7zZ1yhX",
-             "-T3BlbkFJ6-nvZ8F3DzX7apUohd-ebkhfG2IE10xKjOpbPcy9g0ij6Y-0o3LApBhCLGOGc1IEffx8c85KgA"];
-  return p.join("");
-})();
+// La key de OpenAI ya no vive en el navegador (antes estaba partida en 2
+// strings acá mismo para esquivar escaneos de secretos, pero igual quedaba
+// 100% extraible del bundle publico). Ahora el analisis pasa por el proxy
+// del backend, que la agrega server-side.
+const DIAGNOSTICO_API_BASE = String(import.meta.env.VITE_DIAGNOSTICO_API_BASE || "").trim().replace(/\/+$/, "");
 
 const pct = (a, b) => (b === 0 ? 0 : Math.round((a / b) * 100));
 
@@ -91,6 +91,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
   const [dropData, setDropData]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
+  const [datosTruncados, setDatosTruncados] = useState(false);
   const [analisisIA, setAnalisisIA]   = useState("");
   const [loadingIA, setLoadingIA]     = useState(false);
   const [tecnicoDetalle, setTecnicoDetalle] = useState(null);
@@ -130,11 +131,21 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         .lt("fecha_liquidacion",  peruDateToUtcEnd(fechaHasta))
         .limit(10000),
     ]);
+    // PostgREST corta en 10000 sin avisar -- si un rango de fechas amplio
+    // supera eso, el reporte se truncaba en silencio y las KPIs subestimaban
+    // el total real.
+    const truncado = [resOrdenes, resMats, resLiqs].some((r) => (r.data || []).length >= 10000);
+    setDatosTruncados(truncado);
     if (resOrdenes.error) setError(resOrdenes.error.message);
     else setOrdenes((resOrdenes.data || []).map((o) => ({ ...o, nodo: normalizarEtiquetaNodo(o.nodo) })));
 
     const liqMap = Object.fromEntries((resLiqs.data || []).map(l => [l.id, l]));
-    const mats = (resMats.data || []).map(m => ({
+    // ilike("material","%drop%") ya filtra en la BD, pero como substring
+    // puede incluir materiales que solo contienen "drop" en medio de otro
+    // nombre -- se confirma con un match de palabra completa en el cliente
+    // antes de contarlo como metros de drop.
+    const esMaterialDrop = (nombre) => /\bdrop\b/i.test(String(nombre || ""));
+    const mats = (resMats.data || []).filter(m => esMaterialDrop(m.material)).map(m => ({
       ...m,
       tecnico: liqMap[m.liquidacion_id]?.tecnico_liquida || null,
       nodo:    normalizarEtiquetaNodo(liqMap[m.liquidacion_id]?.nodo) || null,
@@ -301,9 +312,9 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
       return `${t.tecnico}: ${t.total} órdenes, ${t.liquidadas} liquidadas (${t.pct_liq}%), ${t.instalaciones} instalaciones, ${t.incidencias} incidencias, ${t.recuperaciones} recuperaciones equipo, canceladas: ${t.canceladas}${drop ? `, metros drop: ${drop.totalMetros}m (prom ${drop.promMetros}m/trabajo)` : ""}`;
     }).join("\n");
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(`${DIAGNOSTICO_API_BASE}/api/openai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_KEY}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [{
@@ -317,6 +328,7 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
         }),
       });
       const json = await res.json();
+      if (json?.error) throw new Error(json.error.message || "Error del proxy de IA");
       setAnalisisIA(json.choices?.[0]?.message?.content || "Sin respuesta de la IA");
     } catch (e) {
       setAnalisisIA("Error al conectar con la IA: " + e.message);
@@ -467,6 +479,11 @@ export default function TecnicosReportesPanel({ cardStyle, sectionTitleStyle }) 
 
       {loading && <div style={{ ...cardStyle, color: "#6b7280" }}>Cargando...</div>}
       {error   && <div style={{ ...cardStyle, color: "#dc2626" }}>{error}</div>}
+      {!loading && !error && datosTruncados && (
+        <div style={{ ...cardStyle, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a" }}>
+          ⚠ El rango de fechas tiene demasiados registros y el reporte se cortó en 10,000 filas. Achica el rango para ver el total real.
+        </div>
+      )}
 
       {!loading && !error && (
         <>
