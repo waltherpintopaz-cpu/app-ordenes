@@ -4405,8 +4405,13 @@ export default function App() {
           return s && !s.startsWith("51") ? "51" + s : s;
         }).filter(Boolean).join(",");
         const routerIdCliente = MW_NODO_MAP_BASE_WEB[String(datos.nodo || "").trim()] ?? 5;
+        // Se respalda la fila antes de borrar: si el insert de abajo falla, se
+        // reinserta el respaldo en vez de dejar al cliente sin fila en
+        // mikrowisp_clientes (desaparece de busquedas por telefono en el
+        // sidebar hasta la proxima sincronizacion manual).
+        const { data: filaAnteriorMkw } = await supabase.from("mikrowisp_clientes").select("*").eq("mikrowisp_id", id).eq("nodo", routerIdCliente).maybeSingle();
         await supabase.from("mikrowisp_clientes").delete().eq("mikrowisp_id", id).eq("nodo", routerIdCliente);
-        await supabase.from("mikrowisp_clientes").insert({
+        const insMkw = await supabase.from("mikrowisp_clientes").insert({
           mikrowisp_id: id,
           cedula: dni,
           nombre: String(datos.nombre || "").trim(),
@@ -4416,6 +4421,7 @@ export default function App() {
           updated_at: new Date().toISOString(),
           agregado_por: "Automatico (orden)",
         });
+        if (insMkw.error && filaAnteriorMkw) await supabase.from("mikrowisp_clientes").insert(filaAnteriorMkw).catch(() => {});
       } catch (_) { /* no critico */ }
       return { ok: true, id };
     } catch (e) {
@@ -10703,6 +10709,7 @@ export default function App() {
 
     // Crear cuenta IPTV junto con la orden (si se marcó la opción)
     let descripcionFinal = orden.descripcion || "";
+    let iptvInfoCreada = null; // fuera del try: visible en el catch del insert para poder revertir si la orden no llega a crearse
     if (ordenIncluirIptv && !descripcionFinal.includes("Cuenta IPTV MaxPlayer")) {
       try {
         const dniLimpio = String(orden.dni || "").replace(/\D/g, "");
@@ -10732,7 +10739,11 @@ export default function App() {
         }
 
         const pantallasOrden = Number(ordenIptvPantallas) > 0 ? Number(ordenIptvPantallas) : 1;
-        const iptvInfo = iptvExistente || iptvClienteExistente || await generarCuentaIptv(orden.dni, orden.nodo, pantallasOrden, orden.nombre, ordenIptvPlan);
+        let iptvInfo = iptvExistente || iptvClienteExistente;
+        if (!iptvInfo) {
+          iptvInfo = await generarCuentaIptv(orden.dni, orden.nodo, pantallasOrden, orden.nombre, ordenIptvPlan);
+          iptvInfoCreada = iptvInfo;
+        }
         descripcionFinal = [
           descripcionFinal,
           iptvInfo.iptv_password
@@ -10805,6 +10816,7 @@ export default function App() {
           }
           if (res.error) throw res.error;
         }
+        iptvInfoCreada = null; // la orden se creo/actualizo bien, ya no hay nada que revertir
         saved = res.data;
         const merged = deserializeOrderFromSupabase(saved || payload);
         if (ordenEditandoId) {
@@ -10841,6 +10853,14 @@ export default function App() {
       } catch (e) {
         const msg = String(e?.message || "No se pudo guardar orden en Supabase.");
         alert(msg);
+        // Si la orden no llego a crearse pero la cuenta IPTV ya se habia
+        // creado, queda huerfana (facturable en el proveedor, sin ninguna
+        // orden/cliente que la referencie) -- se revierte.
+        if (iptvInfoCreada) {
+          await fetch("https://api.maxplayer.tv/v3/api/public/users/" + iptvInfoCreada.iptv_user_id, { method: "DELETE", headers: { "Api-Token": MP_TOKEN } }).catch(() => {});
+          await eliminarLineaXtreamPropia(iptvInfoCreada.xtream_user_id);
+          await supabase.from("iptv_clientes").delete().eq("iptv_user_id", iptvInfoCreada.iptv_user_id).catch(() => {});
+        }
         return;
       }
     } else if (ordenEditandoId) {
