@@ -227,11 +227,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (RUTAS_PROTEGIDAS_XTREAM.has(req.url)) {
-      if (!XTREAM_INTERNAL_TOKEN) {
-        writeJson(res, 500, { success: false, error: "XTREAM_INTERNAL_TOKEN no configurado en el servidor." });
-        return;
-      }
+    // Transitorio: el token solo se exige si XTREAM_INTERNAL_TOKEN esta configurado,
+    // para no cortar a las apps moviles (aun no lo envian) ni a una web compilada
+    // sin VITE_XTREAM_INTERNAL_TOKEN. Configurarlo en ambos lados activa la proteccion.
+    if (RUTAS_PROTEGIDAS_XTREAM.has(req.url) && XTREAM_INTERNAL_TOKEN) {
       const recibido = String(req.headers["x-app-token"] || "").trim();
       if (recibido !== XTREAM_INTERNAL_TOKEN) {
         writeJson(res, 401, { success: false, error: "No autorizado." });
