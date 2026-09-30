@@ -78,8 +78,8 @@ function napCajaIcon(caja, selected) {
   });
 }
 
-function clienteIcon(sinCaja, selected) {
-  const bg = selected ? "#f97316" : sinCaja ? "#ef4444" : "#3b82f6";
+function clienteIcon(sinCaja, selected, tienePuerto) {
+  const bg = selected ? "#f97316" : sinCaja ? "#ef4444" : tienePuerto ? "#8b5cf6" : "#3b82f6";
   const border = selected ? "#fff7ed" : "#ffffff";
   const size = selected ? 16 : 10;
   const shadow = selected ? "0 0 0 3px rgba(249,115,22,0.35), 0 2px 6px rgba(0,0,0,0.3)" : "0 1px 4px rgba(0,0,0,0.25)";
@@ -105,6 +105,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const [zoomActual, setZoomActual] = useState(13);
   const [verClientesCaja, setVerClientesCaja] = useState(false);
   const [puertoElegido, setPuertoElegido] = useState(null);
+  const [puertoOriginal, setPuertoOriginal] = useState(null); // puerto que YA tenia el cliente antes de tocar nada, para poder decir "Cambiar" en vez de "Elegir"
   const [mostrarSelectorPuerto, setMostrarSelectorPuerto] = useState(false);
 
   const mapRef = useRef(null);
@@ -309,17 +310,18 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const coords = parseCoordsStr(cli.ubicacion);
       if (!coords) return;
       const sinCaja = !cli.caja_nap;
+      const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
       const sel = selActual.has(cli.id);
 
       const marker = L.marker([coords.lat, coords.lng], {
-        icon: clienteIcon(sinCaja, sel),
+        icon: clienteIcon(sinCaja, sel, tienePuerto),
         zIndexOffset: sel ? 900 : sinCaja ? 200 : 100,
       }).addTo(layer);
 
       marker.bindTooltip(`
         <div style="font-family:Inter,system-ui,sans-serif;padding:2px 2px;line-height:1.4">
           <div style="font-size:12px;font-weight:800;color:#0f172a">${cli.nombre || "-"}</div>
-          <div style="font-size:10px;color:#64748b;margin-top:1px">${cli.nodo || ""}${cli.caja_nap ? ` · <span style="color:#1d4ed8;font-weight:700">${cli.caja_nap}</span>` : ' · <span style="color:#dc2626;font-weight:700">Sin caja</span>'}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:1px">${cli.nodo || ""}${cli.caja_nap ? ` · <span style="color:#1d4ed8;font-weight:700">${cli.caja_nap}</span>${tienePuerto ? ` · <span style="color:#7c3aed;font-weight:700">Puerto ${cli.puerto_nap}</span>` : ""}` : ' · <span style="color:#dc2626;font-weight:700">Sin caja</span>'}</div>
         </div>
       `, { direction: "top", offset: [0, -8], opacity: 0.97, className: "nap-tooltip" });
 
@@ -380,7 +382,8 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       if (!cli) return;
       const sel = clientesSeleccionados.has(cli.id);
       const sinCaja = !cli.caja_nap;
-      marker.setIcon(clienteIcon(sinCaja, sel));
+      const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
+      marker.setIcon(clienteIcon(sinCaja, sel, tienePuerto));
       marker.setZIndexOffset(sel ? 900 : sinCaja ? 200 : 100);
     });
   }, [clientesSeleccionados, clientes]);
@@ -468,8 +471,16 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const payload = puertoAGuardar
         ? { caja_nap: cajaSeleccionada.codigo, puerto_nap: puertoAGuardar }
         : { caja_nap: cajaSeleccionada.codigo };
-      const { error } = await supabase.from("clientes").update(payload).in("id", ids);
+      // .select() para poder verificar CUANTAS filas se actualizaron de
+      // verdad -- sin esto, un update bloqueado en silencio por RLS (0 filas
+      // afectadas, sin "error") se mostraba como exito aunque nada se
+      // hubiera guardado (bug real detectado: clientes que parecian
+      // asignados en el mapa aparecian sin caja_nap al recargar).
+      const { data: actualizados, error } = await supabase.from("clientes").update(payload).in("id", ids).select("id");
       if (error) throw error;
+      if (!actualizados || actualizados.length !== ids.length) {
+        throw new Error(`Solo se guardaron ${actualizados?.length || 0} de ${ids.length} cliente(s) -- revisa permisos (RLS) en la tabla clientes.`);
+      }
       const clientesActualizados = clientes.map(c => ids.includes(c.id) ? { ...c, ...payload } : c);
       setClientes(clientesActualizados);
       setClientesSeleccionados(new Set());
@@ -478,7 +489,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const layer = clienteLayerRef.current;
       ids.forEach(id => {
         const m = clienteMarkersRef.current[id];
-        if (m) m.setIcon(clienteIcon(false, false));
+        if (m) m.setIcon(clienteIcon(false, false, puertoAGuardar != null));
         // Crear polyline hacia la caja si hay coords
         if (layer) {
           const cli = clientes.find(c => c.id === id);
@@ -514,8 +525,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const cajasAfectadas = [...new Set(
         clientes.filter(c => ids.includes(c.id) && c.caja_nap).map(c => c.caja_nap)
       )];
-      const { error } = await supabase.from("clientes").update({ caja_nap: null }).in("id", ids);
+      const { data: actualizados, error } = await supabase.from("clientes").update({ caja_nap: null }).in("id", ids).select("id");
       if (error) throw error;
+      if (!actualizados || actualizados.length !== ids.length) {
+        throw new Error(`Solo se desvincularon ${actualizados?.length || 0} de ${ids.length} cliente(s) -- revisa permisos (RLS) en la tabla clientes.`);
+      }
       const clientesActualizados = clientes.map(c => ids.includes(c.id) ? { ...c, caja_nap: null } : c);
       setClientes(clientesActualizados);
       setClientesSeleccionados(new Set());
@@ -551,11 +565,22 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
   // El puerto elegido solo tiene sentido para 1 cliente a la vez -- si la
   // seleccion cambia a 0 o 2+, se limpia para no arrastrar un puerto de
-  // otro cliente a un asignado en lote.
+  // otro cliente a un asignado en lote. Si ese unico cliente YA tenia un
+  // puerto asignado en esta misma caja, se precarga (para poder mostrar
+  // "Cambiar" en vez de "Elegir" y no dar la impresion de que no tiene nada).
   useEffect(() => {
-    if (clientesSeleccionados.size !== 1) setPuertoElegido(null);
-  }, [clientesSeleccionados]);
-  useEffect(() => { setPuertoElegido(null); }, [cajaSeleccionada?.id]);
+    if (clientesSeleccionados.size !== 1 || !cajaSeleccionada) {
+      setPuertoElegido(null);
+      setPuertoOriginal(null);
+      return;
+    }
+    const soloId = Array.from(clientesSeleccionados)[0];
+    const cli = clientes.find(c => c.id === soloId);
+    const yaTenia = cli && eqCaja(cli.caja_nap, cajaSeleccionada.codigo) && cli.puerto_nap != null ? Number(cli.puerto_nap) : null;
+    setPuertoOriginal(yaTenia);
+    setPuertoElegido(yaTenia);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientesSeleccionados, cajaSeleccionada?.id]);
 
   const quitarClienteIndividual = async (cli) => {
     if (!window.confirm(`¿Desvincular a ${cli.nombre} de ${cli.caja_nap}?`)) return;
@@ -639,6 +664,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
             <div style={s.leyenda}>
               <span style={{ ...s.dot, background: "#ef4444" }} /> Sin caja
               <span style={{ ...s.dot, background: "#3b82f6", marginLeft: 8 }} /> Con caja
+              <span style={{ ...s.dot, background: "#8b5cf6", marginLeft: 8 }} /> Con puerto
               <span style={{ ...s.dot, background: "#f97316", marginLeft: 8 }} /> Selec.
             </div>
             <button onClick={onClose} style={s.btnClose}>✕</button>
@@ -826,6 +852,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
               ) : clientesOrdenados.map(cli => {
                 const sel = clientesSeleccionados.has(cli.id);
                 const sinCaja = !cli.caja_nap;
+                const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
                 const coords = parseCoordsStr(cli.ubicacion);
                 const dist = cajaSeleccionada?.lat && coords
                   ? haversineKm(cajaSeleccionada.lat, cajaSeleccionada.lng, coords.lat, coords.lng)
@@ -836,13 +863,14 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
                     onClick={() => toggleCliente(cli.id)}
                     style={{ ...s.clienteRow, background: sel ? "#fff7ed" : "#fff", borderColor: sel ? "#f97316" : "#f1f5f9" }}
                   >
-                    <div style={{ ...s.clienteDot, background: sel ? "#f97316" : sinCaja ? "#ef4444" : "#3b82f6" }} />
+                    <div style={{ ...s.clienteDot, background: sel ? "#f97316" : sinCaja ? "#ef4444" : tienePuerto ? "#8b5cf6" : "#3b82f6" }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={s.clienteNombre}>{cli.nombre || "-"}</div>
                       <div style={s.clienteMeta}>
                         {cli.dni || ""}
                         {cli.nodo ? ` · ${cli.nodo}` : ""}
                         {cli.caja_nap ? ` · ${cli.caja_nap}` : ""}
+                        {tienePuerto ? ` · P${cli.puerto_nap}` : ""}
                       </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
@@ -871,12 +899,16 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
                   onClick={() => setMostrarSelectorPuerto(true)}
                   style={{
                     ...s.btnSm, width: "100%", textAlign: "center",
-                    background: puertoElegido ? "#fff7ed" : "#eff6ff",
-                    borderColor: puertoElegido ? "#fed7aa" : "#bfdbfe",
-                    color: puertoElegido ? "#ea580c" : "#1d4ed8",
+                    background: puertoElegido == null ? "#eff6ff" : puertoOriginal === puertoElegido ? "#f5f3ff" : "#fff7ed",
+                    borderColor: puertoElegido == null ? "#bfdbfe" : puertoOriginal === puertoElegido ? "#ddd6fe" : "#fed7aa",
+                    color: puertoElegido == null ? "#1d4ed8" : puertoOriginal === puertoElegido ? "#7c3aed" : "#ea580c",
                   }}
                 >
-                  {puertoElegido ? `Puerto elegido: ${puertoElegido}` : "Elegir puerto (opcional)"}
+                  {puertoElegido == null
+                    ? "Elegir puerto (opcional)"
+                    : puertoOriginal === puertoElegido
+                      ? `Ya tiene puerto ${puertoElegido} — tocar para cambiar`
+                      : `Cambiar a puerto ${puertoElegido}`}
                 </button>
               )}
               <button
