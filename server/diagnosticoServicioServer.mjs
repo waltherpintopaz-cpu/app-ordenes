@@ -1802,6 +1802,38 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Prueba de conexion pura -- a diferencia de sync-router, no trae ni
+    // guarda nada, solo confirma que se puede conectar y autenticar contra
+    // el Mikrotik (usado por el boton "Probar conexion" del panel, para no
+    // depender del conteo de /ppp/secret como unica senal de "funciona").
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/test-router") {
+      const body = await readJsonBody(req);
+      const routerKey = String(body?.routerKey || "").trim();
+      if (!routerKey) {
+        writeJson(res, 400, { ok: false, error: "Falta routerKey." });
+        return;
+      }
+      let connection = null;
+      try {
+        connection = await connectRouterByKey(routerKey);
+        const identity = await withTimeout(
+          connection.api.write("/system/identity/print", []),
+          10000,
+          "Probar conexion"
+        );
+        writeJson(res, 200, {
+          ok: true,
+          identity: Array.isArray(identity) && identity[0] ? identity[0].name : null,
+          router: buildRouterInfo(connection.router),
+        });
+      } catch (error) {
+        writeJson(res, 200, { ok: false, error: formatErrorDetail(connection?.getSocketError?.() || error) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/api/diagnostico-servicio/sync-all") {
       const resultados = await syncAllRoutersIpCache();
       writeJson(res, 200, { ok: true, resultados });
