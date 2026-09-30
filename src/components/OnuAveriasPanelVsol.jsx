@@ -399,7 +399,12 @@ export default function OnuAveriasPanelVsol({ theme }) {
                     <div style={{ margin: "0 14px 10px", padding: "8px 12px", borderRadius: 8, fontSize: 12, background: ident.ok ? "#f0fdf4" : "#fef2f2", color: ident.ok ? "#15803d" : "#991b1b" }}>
                       {ident.ok ? (
                         ident.usuario ? (
-                          <>Usuario PPPoE real: <b style={{ fontFamily: "monospace" }}>{ident.usuario}</b>{ident.comentario ? ` — ${ident.comentario}` : ""} (MAC {ident.mac})</>
+                          <>
+                            {ident.codigoAbonado && (
+                              <span style={{ display: "inline-block", padding: "1px 8px", borderRadius: 999, background: "#7c3aed", color: "#fff", fontWeight: 800, fontSize: 11, marginRight: 6 }}>{ident.codigoAbonado}</span>
+                            )}
+                            {ident.comentario || "sin nombre"} — <b style={{ fontFamily: "monospace" }}>{ident.usuario}</b> (MAC {ident.mac})
+                          </>
                         ) : (
                           <>{ident.aviso || "MAC encontrada, pero sin coincidencia en el MikroTik."} (MAC {ident.mac})</>
                         )
