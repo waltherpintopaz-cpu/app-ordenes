@@ -149,6 +149,8 @@ async function upsertIptvClienteConFallback(payload) {
     throw rRes.error;
   }
 }
+const OLT_CONFIG_TABLE = "olt_config";
+const OLT_SIGNAL_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/+$/, "");
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const HIST_APPSHEET_SHEET_ID = "1soSl4tyfSC7VDNAXhRWUhtkotk09G1IpjqqxkzQnqKE";
@@ -2755,6 +2757,12 @@ export default function App() {
   const [mikrotikConfigInfo, setMikrotikConfigInfo] = useState("");
   const [mikrotikConfigError, setMikrotikConfigError] = useState("");
   const [routerCardAbierto, setRouterCardAbierto] = useState({}); // { [routerKey]: true } -- colapsado por defecto
+  const [oltConfigList, setOltConfigList] = useState([]);
+  const [oltConfigLoading, setOltConfigLoading] = useState(false);
+  const [oltConfigSaving, setOltConfigSaving] = useState(false);
+  const [oltConfigInfo, setOltConfigInfo] = useState("");
+  const [oltConfigError, setOltConfigError] = useState("");
+  const [oltCardAbierto, setOltCardAbierto] = useState({}); // { [name]: true } -- colapsado por defecto
   const [nodoConfigCardAbierto, setNodoConfigCardAbierto] = useState({}); // { [idx]: true } -- colapsado por defecto
   const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
   const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
@@ -8329,6 +8337,128 @@ export default function App() {
     } finally {
       setMikrotikConfigSaving(false);
     }
+  };
+
+  const cargarOltConfigDesdeSupabase = async (opts = { silent: true }) => {
+    if (!isSupabaseConfigured) return;
+    setOltConfigLoading(true);
+    setOltConfigError("");
+    try {
+      const { data, error } = await supabase
+        .from(OLT_CONFIG_TABLE)
+        .select("name,ip,vendor,ssh_user,ssh_password,enable_password,pon_ports,vlan,snmp_community,mikrotik_host,mikrotik_port,mikrotik_user,mikrotik_password,activo")
+        .order("name", { ascending: true })
+        .limit(200);
+      if (error) throw error;
+      setOltConfigList((Array.isArray(data) ? data : []).map((item) => normalizarOltConfig(item)));
+      if (!opts?.silent) setOltConfigInfo(`Configuración OLT cargada desde Supabase. OLTs: ${(data || []).length}.`);
+    } catch (error) {
+      console.error("Error cargando configuración OLT desde Supabase:", error);
+      if (!opts?.silent) setOltConfigError(String(error?.message || "No se pudo cargar la configuración OLT."));
+    } finally {
+      setOltConfigLoading(false);
+    }
+  };
+
+  const guardarOltConfigEnSupabase = async () => {
+    if (!isSupabaseConfigured) {
+      setOltConfigError("Supabase no está configurado en esta app.");
+      return;
+    }
+    setOltConfigSaving(true);
+    setOltConfigError("");
+    setOltConfigInfo("");
+    try {
+      const seen = new Set();
+      const payload = oltConfigList.map((item) => normalizarOltConfig(item)).map((item) => {
+        if (!item.name) throw new Error("Cada OLT necesita un nombre único (ej. Nod_04_A).");
+        if (seen.has(item.name)) throw new Error(`El nombre de OLT "${item.name}" está repetido.`);
+        seen.add(item.name);
+        if (!item.ip.trim()) throw new Error(`Falta la IP para la OLT "${item.name}".`);
+        return {
+          name: item.name,
+          ip: item.ip.trim(),
+          vendor: item.vendor,
+          ssh_user: nullIfEmpty(item.sshUser.trim()),
+          ssh_password: nullIfEmpty(item.sshPassword.trim()),
+          enable_password: nullIfEmpty(item.enablePassword.trim()),
+          pon_ports: Number(item.ponPorts) || 8,
+          vlan: item.vlan.trim() ? Number(item.vlan) || null : null,
+          snmp_community: item.snmpCommunity.trim() || "public",
+          mikrotik_host: nullIfEmpty(item.mikrotikHost.trim()),
+          mikrotik_port: item.mikrotikHost.trim() ? Number(item.mikrotikPort) || 8728 : null,
+          mikrotik_user: nullIfEmpty(item.mikrotikUser.trim()),
+          mikrotik_password: nullIfEmpty(item.mikrotikPassword.trim()),
+          activo: item.activo !== false,
+        };
+      });
+      if (!payload.length) throw new Error("Agrega al menos una OLT para guardar la configuración.");
+
+      const { error } = await supabase.from(OLT_CONFIG_TABLE).upsert(payload, { onConflict: "name" });
+      if (error) throw error;
+
+      setOltConfigList(payload.map((item) => normalizarOltConfig(item)));
+      // Recarga en vivo -- para que la OLT nueva/editada quede activa sin
+      // reiniciar el servicio (ver POST /reload-config en olt-signal-test).
+      // Best-effort: si esto falla (servicio caido, CORS, etc.) la config
+      // igual quedo guardada en Supabase y se aplicara sola en <=10 min.
+      let recargaOk = false;
+      try {
+        const r = await fetch(`${OLT_SIGNAL_API}/reload-config`, { method: "POST" }).then((r) => r.json());
+        recargaOk = !!r?.ok;
+      } catch { /* silencioso, ver comentario arriba */ }
+
+      setOltConfigInfo(
+        recargaOk
+          ? "Configuración OLT guardada y aplicada al instante en olt-signal."
+          : "Configuración OLT guardada. No se pudo confirmar la recarga en vivo del servicio, pero se aplicará sola en unos minutos."
+      );
+    } catch (error) {
+      console.error("Error guardando configuración OLT:", error);
+      setOltConfigError(String(error?.message || "No se pudo guardar la configuración OLT."));
+    } finally {
+      setOltConfigSaving(false);
+    }
+  };
+
+  const handleOltConfigChange = (name, field, value) => {
+    setOltConfigList((prev) =>
+      prev.map((item) =>
+        item.name === name
+          ? normalizarOltConfig({ ...item, [field]: field === "activo" ? Boolean(value) : value })
+          : item
+      )
+    );
+    setOltConfigInfo("");
+    setOltConfigError("");
+  };
+
+  const agregarOltConfig = () => {
+    setOltConfigList((prev) => {
+      const existente = new Set(prev.map((item) => item.name));
+      let idx = prev.length + 1;
+      let name = `Nod_0${idx}_A`;
+      while (existente.has(name)) {
+        idx += 1;
+        name = `Nod_0${idx}_A`;
+      }
+      return [
+        ...prev,
+        normalizarOltConfig({
+          name,
+          ip: "",
+          vendor: "vsol",
+          sshUser: "",
+          sshPassword: "",
+          ponPorts: "8",
+          snmpCommunity: "public",
+          activo: true,
+          persisted: false,
+        }),
+      ];
+    });
+    setOltConfigInfo("");
+    setOltConfigError("");
   };
 
   const cargarAppControlDesdeSupabase = async () => {
@@ -22030,6 +22160,15 @@ export default function App() {
                   {esAdminSesion ? (
                     <button
                       type="button"
+                      onClick={() => { setUsuariosPanelTab("olt"); void cargarOltConfigDesdeSupabase({ silent: false }); }}
+                      style={usuariosPanelTab === "olt" ? primaryButton : secondaryButton}
+                    >
+                      OLT
+                    </button>
+                  ) : null}
+                  {esAdminSesion ? (
+                    <button
+                      type="button"
                       onClick={() => { setUsuariosPanelTab("nodos"); void cargarNodosConfigFilas(); }}
                       style={usuariosPanelTab === "nodos" ? primaryButton : secondaryButton}
                     >
@@ -22695,6 +22834,231 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                </div>
+              </div>
+            ) : null}
+
+            {esAdminSesion && usuariosPanelTab === "olt" ? (
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center", marginBottom: "16px" }}>
+                  <div style={{ display: "grid", gap: "4px" }}>
+                    <h2 style={{ ...sectionTitleStyle, margin: 0 }}>Configuración OLT</h2>
+                    <p style={{ ...subtitleStyle, margin: 0 }}>
+                      Agrega o edita OLTs (VSOL/Huawei) desde acá — IP, credenciales SSH/SNMP y MikroTik asociado. El servicio olt-signal
+                      recarga esto solo, sin redeploy ni tocar código.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      style={secondaryButton}
+                      onClick={() => void cargarOltConfigDesdeSupabase({ silent: false })}
+                      disabled={oltConfigLoading || oltConfigSaving}
+                    >
+                      {oltConfigLoading ? "Recargando..." : "Recargar"}
+                    </button>
+                    <button type="button" style={secondaryButton} onClick={agregarOltConfig}>
+                      Agregar OLT
+                    </button>
+                    <button
+                      type="button"
+                      style={primaryButton}
+                      onClick={() => void guardarOltConfigEnSupabase()}
+                      disabled={oltConfigLoading || oltConfigSaving}
+                    >
+                      {oltConfigSaving ? "Guardando..." : "Guardar configuración"}
+                    </button>
+                  </div>
+                </div>
+
+                {oltConfigInfo ? (
+                  <div style={{ ...badgeSuccess, padding: "10px 12px", borderRadius: "12px", marginBottom: "12px" }}>{oltConfigInfo}</div>
+                ) : null}
+                {oltConfigError ? (
+                  <div style={{ ...badgeDanger, padding: "10px 12px", borderRadius: "12px", marginBottom: "12px", display: "block" }}>{oltConfigError}</div>
+                ) : null}
+
+                <div style={{ display: "grid", gap: "16px" }}>
+                  {oltConfigList.length === 0 && !oltConfigLoading ? (
+                    <div style={{ padding: "16px", borderRadius: "12px", background: "#f8fafc", border: "1px dashed #cbd5e1", color: "#64748b", fontSize: "13px" }}>
+                      Sin OLTs configuradas todavía. Usa "Agregar OLT" para crear la primera.
+                    </div>
+                  ) : null}
+                  {oltConfigList.map((olt) => (
+                    <div
+                      key={olt.name || Math.random()}
+                      style={{ border: "1px solid #c7d5e8", borderRadius: "14px", background: "#ffffff", boxShadow: "0 1px 4px rgba(15,23,42,0.07)", overflow: "hidden" }}
+                    >
+                      <div
+                        onClick={() => setOltCardAbierto((prev) => ({ ...prev, [olt.name]: !prev[olt.name] }))}
+                        style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px",
+                          padding: "8px 14px", background: olt.activo ? "#eff6ff" : "#f1f5f9", cursor: "pointer",
+                          borderBottom: oltCardAbierto[olt.name] ? "1px solid #dbe6f5" : "none",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "11px", color: "#94a3b8" }}>{oltCardAbierto[olt.name] ? "▼" : "▶"}</span>
+                          <span style={{ fontSize: "14px", fontWeight: 800, color: "#0f172a" }}>{olt.name || "(sin nombre)"}</span>
+                          <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 8px", borderRadius: "999px", background: olt.vendor === "huawei" ? "#ede9fe" : "#dbeafe", color: olt.vendor === "huawei" ? "#6d28d9" : "#1d4ed8" }}>
+                            {olt.vendor === "huawei" ? "Huawei" : "VSOL"}
+                          </span>
+                          <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 8px", borderRadius: "999px", background: olt.activo ? "#dcfce7" : "#fee2e2", color: olt.activo ? "#15803d" : "#dc2626" }}>
+                            {olt.activo ? "Activo" : "Inactivo"}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#475569" }}>{olt.ip || "sin IP"}</span>
+                      </div>
+                      {oltCardAbierto[olt.name] && (
+                        <div style={{ padding: "12px 14px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "8px" }}>
+                            <div>
+                              <label style={labelStyle}>Nombre (nodo)</label>
+                              <input
+                                style={inputStyle}
+                                value={olt.name}
+                                disabled={olt.persisted && Boolean(olt.name)}
+                                onChange={(e) => handleOltConfigChange(olt.name, "name", e.target.value)}
+                                placeholder="Nod_04_A"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>IP</label>
+                              <input
+                                style={inputStyle}
+                                value={olt.ip}
+                                onChange={(e) => handleOltConfigChange(olt.name, "ip", e.target.value)}
+                                placeholder="192.168.8.200"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Fabricante</label>
+                              <select
+                                style={inputStyle}
+                                value={olt.vendor}
+                                onChange={(e) => handleOltConfigChange(olt.name, "vendor", e.target.value)}
+                              >
+                                <option value="vsol">VSOL</option>
+                                <option value="huawei">Huawei</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Puertos PON</label>
+                              <input
+                                style={inputStyle}
+                                value={olt.ponPorts}
+                                onChange={(e) => handleOltConfigChange(olt.name, "ponPorts", String(e.target.value || "").replace(/\D/g, ""))}
+                                placeholder="8"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>VLAN (opcional)</label>
+                              <input
+                                style={inputStyle}
+                                value={olt.vlan}
+                                onChange={(e) => handleOltConfigChange(olt.name, "vlan", String(e.target.value || "").replace(/\D/g, ""))}
+                                placeholder="100"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Estado</label>
+                              <select
+                                style={inputStyle}
+                                value={olt.activo ? "SI" : "NO"}
+                                onChange={(e) => handleOltConfigChange(olt.name, "activo", e.target.value === "SI")}
+                              >
+                                <option value="SI">Activo</option>
+                                <option value="NO">Inactivo</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Usuario SSH/Telnet</label>
+                              <input
+                                style={inputStyle}
+                                value={olt.sshUser}
+                                onChange={(e) => handleOltConfigChange(olt.name, "sshUser", e.target.value)}
+                                placeholder="admin"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Contraseña SSH/Telnet</label>
+                              <input
+                                type="password"
+                                style={inputStyle}
+                                value={olt.sshPassword}
+                                onChange={(e) => handleOltConfigChange(olt.name, "sshPassword", e.target.value)}
+                                placeholder="********"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Contraseña enable (opcional)</label>
+                              <input
+                                type="password"
+                                style={inputStyle}
+                                value={olt.enablePassword}
+                                onChange={(e) => handleOltConfigChange(olt.name, "enablePassword", e.target.value)}
+                                placeholder="Vacío = misma que SSH"
+                              />
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Comunidad SNMP</label>
+                              <input
+                                style={inputStyle}
+                                value={olt.snmpCommunity}
+                                onChange={(e) => handleOltConfigChange(olt.name, "snmpCommunity", e.target.value)}
+                                placeholder="public"
+                              />
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed #dbe6f5" }}>
+                            <div style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: "8px" }}>
+                              MikroTik asociado (opcional, para cruzar SN por MAC en /fill-sn)
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "8px" }}>
+                              <div>
+                                <label style={labelStyle}>Host</label>
+                                <input
+                                  style={inputStyle}
+                                  value={olt.mikrotikHost}
+                                  onChange={(e) => handleOltConfigChange(olt.name, "mikrotikHost", e.target.value)}
+                                  placeholder="172.25.100.140"
+                                />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Puerto API</label>
+                                <input
+                                  style={inputStyle}
+                                  value={olt.mikrotikPort}
+                                  onChange={(e) => handleOltConfigChange(olt.name, "mikrotikPort", String(e.target.value || "").replace(/\D/g, ""))}
+                                  placeholder="8728"
+                                />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Usuario API</label>
+                                <input
+                                  style={inputStyle}
+                                  value={olt.mikrotikUser}
+                                  onChange={(e) => handleOltConfigChange(olt.name, "mikrotikUser", e.target.value)}
+                                  placeholder="admin"
+                                />
+                              </div>
+                              <div>
+                                <label style={labelStyle}>Contraseña API</label>
+                                <input
+                                  type="password"
+                                  style={inputStyle}
+                                  value={olt.mikrotikPassword}
+                                  onChange={(e) => handleOltConfigChange(olt.name, "mikrotikPassword", e.target.value)}
+                                  placeholder="********"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}
@@ -29055,6 +29419,28 @@ function normalizarNodosAccesoWeb(rawNodos) {
     .map((x) => NODOS_BASE_WEB.find((n) => n.toLowerCase() === x.toLowerCase()) || x)
     .filter((x) => valid.has(String(x).toLowerCase()));
   return Array.from(new Set(mapped));
+}
+
+function normalizarOltConfig(item = {}) {
+  const ponPortsRaw = String(item?.ponPorts ?? item?.pon_ports ?? "").trim();
+  const ponPortsNum = Number(ponPortsRaw);
+  return {
+    name: String(item?.name || "").trim(),
+    ip: String(item?.ip || "").trim(),
+    vendor: String(item?.vendor || "vsol").trim().toLowerCase() === "huawei" ? "huawei" : "vsol",
+    sshUser: String(item?.sshUser ?? item?.ssh_user ?? "").trim(),
+    sshPassword: String(item?.sshPassword ?? item?.ssh_password ?? "").trim(),
+    enablePassword: String(item?.enablePassword ?? item?.enable_password ?? "").trim(),
+    ponPorts: String(Number.isFinite(ponPortsNum) && ponPortsNum > 0 ? ponPortsNum : 8),
+    vlan: String(item?.vlan ?? "").trim(),
+    snmpCommunity: String(item?.snmpCommunity ?? item?.snmp_community ?? "public").trim() || "public",
+    mikrotikHost: String(item?.mikrotikHost ?? item?.mikrotik_host ?? "").trim(),
+    mikrotikPort: String(item?.mikrotikPort ?? item?.mikrotik_port ?? "8728").trim(),
+    mikrotikUser: String(item?.mikrotikUser ?? item?.mikrotik_user ?? "").trim(),
+    mikrotikPassword: String(item?.mikrotikPassword ?? item?.mikrotik_password ?? "").trim(),
+    activo: item?.activo !== false,
+    persisted: Boolean(item?.persisted ?? item?._persisted ?? item?.name),
+  };
 }
 
 function normalizarRouterKey(value = "") {
