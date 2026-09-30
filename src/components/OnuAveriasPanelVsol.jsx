@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 
 const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
 
-// Version VSOL de OnuAveriasPanel.jsx (Huawei) -- misma tabla onu_eventos,
-// pero filtrada por el propio servicio a fuente=vsol. Todavia no existe del
-// lado de VSOL: averias de zona (agrupar N caidas juntas) ni la config de
-// avisos por WhatsApp/Telegram -- solo el historial de eventos individuales
-// por ahora. Tampoco existe /onu-info para VSOL, asi que no hay "Ver ficha".
+// Version VSOL de OnuAveriasPanel.jsx (Huawei) -- misma tabla onu_eventos
+// (filtrada por el propio servicio a fuente=vsol) y misma logica de averias
+// de zona (3+ ONUs caidas juntas en el mismo OLT+puerto). Todavia no existe
+// /onu-info para VSOL, asi que no hay "Ver ficha" -- en su lugar hay
+// "Identificar por SN", que cruza SN -> MAC real -> usuario PPPoE del
+// MikroTik como alternativa cuando el nombre guardado no es confiable.
 const REFRESH_MS = 20000;
 
 const TIPO_INFO = {
@@ -19,6 +20,7 @@ const TIPO_DESCONOCIDO = { label: "Desconocido", dot: "#9ca3af", text: "#374151"
 
 const Ico = {
   refresh: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6" /><path d="M23 20v-6h-6" /><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" /></svg>,
+  alertTriangle: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>,
 };
 
 function formatoFecha(iso) {
@@ -32,6 +34,7 @@ export default function OnuAveriasPanelVsol({ theme }) {
     ? { bg: "#111c33", card: "#1a2740", border: "#2c3c58", text: "#e6ecf7", sub: "#93a2bd" }
     : { bg: "#f4f6fb", card: "#ffffff", border: "#e2e8f4", text: "#1a2740", sub: "#5b6b8c" };
 
+  const [averias, setAverias] = useState([]);
   const [eventosTodos, setEventosTodos] = useState([]);
   const [categoriaFiltro, setCategoriaFiltro] = useState("los_sin_recuperar");
   const [cargando, setCargando] = useState(false);
@@ -53,12 +56,33 @@ export default function OnuAveriasPanelVsol({ theme }) {
     }
   }, []);
 
+  // Identificacion alternativa: SN -> MAC real -> usuario PPPoE del
+  // MikroTik. No reemplaza el nombre del evento, es solo para cuando hay
+  // dudas de a quien pertenece.
+  const [identificacionPorEvento, setIdentificacionPorEvento] = useState({});
+  const identificarPorSn = useCallback(async (ev) => {
+    if (!ev.sn) return;
+    setIdentificacionPorEvento((m) => ({ ...m, [ev.id]: "cargando" }));
+    try {
+      const r = await fetch(`${OLT_SSH_API}/identificar-por-sn?sn=${encodeURIComponent(ev.sn)}`).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo identificar.");
+      setIdentificacionPorEvento((m) => ({ ...m, [ev.id]: r }));
+    } catch (e) {
+      setIdentificacionPorEvento((m) => ({ ...m, [ev.id]: { ok: false, error: e.message || "Error de red." } }));
+    }
+  }, []);
+
   const cargar = useCallback(async () => {
     setCargando(true);
     setError("");
     try {
-      const rEventos = await fetch(`${OLT_SSH_API}/onu-eventos?limit=150`).then((r) => r.json());
+      const [rAverias, rEventos] = await Promise.all([
+        fetch(`${OLT_SSH_API}/onu-averias-zona?activa=1`).then((r) => r.json()),
+        fetch(`${OLT_SSH_API}/onu-eventos?limit=150`).then((r) => r.json()),
+      ]);
+      if (!rAverias.ok) throw new Error(rAverias.error || "Error consultando averías de zona.");
       if (!rEventos.ok) throw new Error(rEventos.error || "Error consultando eventos.");
+      setAverias(Array.isArray(rAverias.averias) ? rAverias.averias : []);
       setEventosTodos(Array.isArray(rEventos.eventos) ? rEventos.eventos : []);
       setUltimaActualizacion(new Date());
     } catch (e) {
@@ -75,7 +99,7 @@ export default function OnuAveriasPanelVsol({ theme }) {
     const masRecientePorOnu = new Map();
     for (const ev of eventosTodos) {
       if (ev.tipo !== "los_down" && ev.tipo !== "los_up") continue;
-      const key = ev.sn || `${ev.board}-${ev.port}`;
+      const key = ev.sn || `${ev.zona}-${ev.port}`;
       const actual = masRecientePorOnu.get(key);
       if (!actual || new Date(ev.ocurrido_en) > new Date(actual.ocurrido_en)) masRecientePorOnu.set(key, ev);
     }
@@ -119,6 +143,38 @@ export default function OnuAveriasPanelVsol({ theme }) {
         </div>
       )}
 
+      {/* Averías de zona -- lo mas urgente, arriba y destacado */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: col.sub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+          Averías de zona activas ({averias.length})
+        </div>
+        {averias.length === 0 ? (
+          <div style={{ padding: 16, borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}`, color: col.sub, fontSize: 13 }}>
+            Sin averías de zona detectadas ahora mismo. Se marca acá cuando 3 o más ONUs de la misma OLT+puerto caen juntas en pocos minutos (indicador de corte de fibra, no de clientes individuales).
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10 }}>
+            {averias.map((a) => (
+              <div key={a.id} style={{ padding: 14, borderRadius: 10, background: "#fef2f2", border: "1.5px solid #fca5a5" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <Ico.alertTriangle width={18} height={18} color="#dc2626" />
+                  <div style={{ fontWeight: 800, color: "#991b1b", fontSize: 14.5 }}>
+                    {a.zona || "OLT ?"} · Puerto {a.port}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12.5, color: "#7f1d1d", marginBottom: 4 }}>
+                  {a.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)"} — {a.cantidad_onus} ONUs caídas juntas
+                </div>
+                <div style={{ fontSize: 11, color: "#991b1b", opacity: 0.8 }}>
+                  Desde {formatoFecha(a.primera_deteccion)} · Actualizado {formatoFecha(a.ultima_actualizacion)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Eventos individuales -- historial, filtrable */}
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: col.sub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -137,7 +193,7 @@ export default function OnuAveriasPanelVsol({ theme }) {
         </div>
 
         <div style={{ borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}`, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 70px", gap: 0, padding: "8px 14px", background: isDark ? "#0d172a" : "#f8fafc", fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 70px 90px 90px 190px", gap: 0, padding: "8px 14px", background: isDark ? "#0d172a" : "#f8fafc", fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase" }}>
             <div>Cuándo</div>
             <div>Cliente</div>
             <div>PON</div>
@@ -152,39 +208,63 @@ export default function OnuAveriasPanelVsol({ theme }) {
           ) : (
             eventos.map((ev) => {
               const info = TIPO_INFO[ev.tipo] || TIPO_DESCONOCIDO;
+              const ident = identificacionPorEvento[ev.id];
               return (
-                <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 70px", gap: 0, padding: "9px 14px", borderTop: `1px solid ${col.border}`, fontSize: 12.5, color: col.text, alignItems: "center" }}>
-                  <div style={{ color: col.sub, fontSize: 11.5 }}>{formatoFecha(ev.ocurrido_en)}</div>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{ev.nombre || "—"}</div>
-                    <div style={{ fontSize: 11, color: col.sub, display: "flex", gap: 6 }}>
-                      {ev.sn && <span style={{ fontFamily: "monospace" }}>{ev.sn}</span>}
-                      {ev.zona && <span>{ev.zona}</span>}
+                <div key={ev.id} style={{ borderTop: `1px solid ${col.border}` }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 70px 90px 90px 190px", gap: 0, padding: "9px 14px", fontSize: 12.5, color: col.text, alignItems: "center" }}>
+                    <div style={{ color: col.sub, fontSize: 11.5 }}>{formatoFecha(ev.ocurrido_en)}</div>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{ev.nombre || "—"}</div>
+                      <div style={{ fontSize: 11, color: col.sub, display: "flex", gap: 6 }}>
+                        {ev.sn && <span style={{ fontFamily: "monospace" }}>{ev.sn}</span>}
+                        {ev.zona && <span>{ev.zona}</span>}
+                      </div>
+                    </div>
+                    <div style={{ color: col.sub, fontSize: 11.5 }}>{ev.port != null ? ev.port : "—"}</div>
+                    <div>
+                      <span style={{ display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: info.bg, color: info.text }}>
+                        {info.label}
+                      </span>
+                    </div>
+                    {(() => {
+                      const senalViva = senalEnVivoPorEvento[ev.id];
+                      if (senalViva && senalViva !== "cargando" && senalViva !== "error") {
+                        return <div style={{ fontSize: 11.5 }} title="Señal en vivo, no la del momento del evento">{senalViva.rxPower != null ? `${senalViva.rxPower} dBm ⚡` : "—"}</div>;
+                      }
+                      return <div style={{ fontSize: 11.5 }}>{ev.rx_power != null ? `${ev.rx_power} dBm` : "—"}</div>;
+                    })()}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {ev.sn && (
+                        <button
+                          onClick={() => refrescarSenal(ev)}
+                          disabled={senalEnVivoPorEvento[ev.id] === "cargando"}
+                          title="Consultar la señal actual (en vivo) de esta ONU"
+                          style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid #2563eb", background: "transparent", color: "#2563eb" }}
+                        >{senalEnVivoPorEvento[ev.id] === "cargando" ? "…" : "🔄"}</button>
+                      )}
+                      {ev.sn && (
+                        <button
+                          onClick={() => identificarPorSn(ev)}
+                          disabled={ident === "cargando"}
+                          title="Alternativa: cruza SN → MAC real → usuario PPPoE del MikroTik"
+                          style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid #7c3aed", background: "transparent", color: "#7c3aed" }}
+                        >{ident === "cargando" ? "…" : "🔍 Identificar"}</button>
+                      )}
                     </div>
                   </div>
-                  <div style={{ color: col.sub, fontSize: 11.5 }}>{ev.port != null ? ev.port : "—"}</div>
-                  <div>
-                    <span style={{ display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: info.bg, color: info.text }}>
-                      {info.label}
-                    </span>
-                  </div>
-                  {(() => {
-                    const senalViva = senalEnVivoPorEvento[ev.id];
-                    if (senalViva && senalViva !== "cargando" && senalViva !== "error") {
-                      return <div style={{ fontSize: 11.5 }} title="Señal en vivo, no la del momento del evento">{senalViva.rxPower != null ? `${senalViva.rxPower} dBm ⚡` : "—"}</div>;
-                    }
-                    return <div style={{ fontSize: 11.5 }}>{ev.rx_power != null ? `${ev.rx_power} dBm` : "—"}</div>;
-                  })()}
-                  <div>
-                    {ev.sn && (
-                      <button
-                        onClick={() => refrescarSenal(ev)}
-                        disabled={senalEnVivoPorEvento[ev.id] === "cargando"}
-                        title="Consultar la señal actual (en vivo) de esta ONU"
-                        style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid #2563eb", background: "transparent", color: "#2563eb" }}
-                      >{senalEnVivoPorEvento[ev.id] === "cargando" ? "…" : "🔄"}</button>
-                    )}
-                  </div>
+                  {ident && ident !== "cargando" && (
+                    <div style={{ margin: "0 14px 10px", padding: "8px 12px", borderRadius: 8, fontSize: 12, background: ident.ok ? "#f0fdf4" : "#fef2f2", color: ident.ok ? "#15803d" : "#991b1b" }}>
+                      {ident.ok ? (
+                        ident.usuario ? (
+                          <>Usuario PPPoE real: <b style={{ fontFamily: "monospace" }}>{ident.usuario}</b>{ident.comentario ? ` — ${ident.comentario}` : ""} (MAC {ident.mac})</>
+                        ) : (
+                          <>{ident.aviso || "MAC encontrada, pero sin coincidencia en el MikroTik."} (MAC {ident.mac})</>
+                        )
+                      ) : (
+                        <>{ident.error}</>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })
