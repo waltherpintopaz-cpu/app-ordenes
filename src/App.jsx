@@ -875,6 +875,12 @@ const buildInitialOrder = () => ({
   montoCobrar: "",
   autorOrden: "",
   tecnico: "",
+  // Se llena solo cuando el tecnico elige "Usar: servicio existente" en el
+  // selector de servicios duplicados (mismo DNI) -- indica que esta
+  // instalacion es sobre un servicio que YA tiene codigo de abonado, para
+  // reusarlo en vez de generar uno nuevo (un "+ Es un servicio nuevo" en
+  // ese mismo selector lo deja vacio a proposito).
+  codigoAbonadoExistente: "",
 });
 
 function numberOrNull(value) {
@@ -909,6 +915,7 @@ function serializeOrderToSupabase(orderItem = {}, opts = {}) {
     password_usuario: String(orderItem.passwordUsuario || "").trim(),
     sn_onu: String(orderItem.snOnu || "").trim(),
     codigo_etiqueta: String(orderItem.codigoEtiqueta || "").trim(),
+    codigo_abonado: String(orderItem.codigoAbonado || "").trim() || null,
     ubicacion: String(orderItem.ubicacion || "").trim(),
     caja_nap: String(orderItem.cajaNap || "").trim(),
     descripcion: String(orderItem.descripcion || "").trim(),
@@ -953,6 +960,7 @@ function sanitizeOrderPayloadForSupabase(rawPayload = {}) {
     "password_usuario",
     "sn_onu",
     "codigo_etiqueta",
+    "codigo_abonado",
     "ubicacion",
     "caja_nap",
     "descripcion",
@@ -1002,6 +1010,7 @@ function deserializeOrderFromSupabase(row = {}) {
     passwordUsuario: String(row.password_usuario || "").trim(),
     snOnu: String(row.sn_onu || "").trim(),
     codigoEtiqueta: String(row.codigo_etiqueta || "").trim(),
+    codigoAbonado: String(row.codigo_abonado || "").trim(),
     ubicacion: String(row.ubicacion || "").trim(),
     ubicacionReferencial:
       row.ubicacion_referencial === true ||
@@ -10372,6 +10381,10 @@ export default function App() {
       puertoNap: clienteInterno.puerto_nap || prev.puertoNap,
       snOnu: clienteInterno.sn_onu || prev.snOnu,
       codigoEtiqueta: clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
+      // Asignacion explicita (no "|| prev.codigoAbonadoExistente"): si este
+      // servicio no tiene codigo, no debe quedar pegado el de una
+      // seleccion anterior.
+      codigoAbonadoExistente: clienteInterno.codigo_abonado || "",
     }));
     if (clienteInterno.caja_nap) cajaNapDesdClienteRef.current = true;
     const numsSel = [];
@@ -10399,7 +10412,7 @@ export default function App() {
 
   const usarComoServicioNuevo = () => {
     const nombreExistente = modalSelectorServicio?.servicios?.[0]?.nombre || modalSelectorServicio?.nombreReniec || "";
-    setOrden((prev) => ({ ...prev, nombre: nombreExistente || prev.nombre }));
+    setOrden((prev) => ({ ...prev, nombre: nombreExistente || prev.nombre, codigoAbonadoExistente: "" }));
     // Servicio nuevo (otra dirección): no mostrar fotos de los otros servicios
     setFotosClienteDni([]);
     setModalSelectorServicio(null);
@@ -10430,7 +10443,7 @@ export default function App() {
       if (isSupabaseConfigured) {
         const { data: srvs } = await supabase
           .from("clientes")
-          .select("id,codigo_cliente,nombre,direccion,celular,email,contacto,nodo,usuario_nodo,password_usuario,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta")
+          .select("id,codigo_cliente,codigo_abonado,nombre,direccion,celular,email,contacto,nodo,usuario_nodo,password_usuario,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta")
           .eq("dni", dni)
           .order("id", { ascending: false });
         todosServiciosDB = srvs || [];
@@ -10756,12 +10769,41 @@ export default function App() {
     }
 
     const current = ordenEditandoId ? ordenes.find((item) => item.id === ordenEditandoId) || {} : {};
+
+    // Generar (o reutilizar) el codigo de abonado ya en la creacion de la
+    // orden -- antes solo se generaba al liquidar, y el tecnico no lo tenia
+    // disponible mientras hacia la instalacion (por ejemplo, para anotarlo
+    // en el precinto del cable). Si el DNI ya es cliente con codigo, se
+    // reusa ese; si no, se genera uno nuevo con la funcion SQL (no deja
+    // huecos si la orden se cancela despues: recalcula sobre lo que
+    // realmente existe en clientes, no consume un correlativo aparte).
+    // El codigo es por SERVICIO, no por persona -- un cliente con dos
+    // direcciones/conexiones (segundo servicio) debe tener dos codigos
+    // distintos. Por eso no se busca "algun codigo existente para este DNI"
+    // (eso le pondria el codigo del primer servicio, hasta con el prefijo
+    // de nodo equivocado, al segundo). Se reusa un codigo existente solo en
+    // 2 casos: (a) es la MISMA orden que se esta reeditando, o (b) el
+    // tecnico eligio explicitamente "Usar: servicio existente" en el
+    // selector de servicios duplicados (orden.codigoAbonadoExistente) -- ahi
+    // el mismo esta diciendo que es el mismo servicio, no uno nuevo.
+    let codigoAbonadoOrden = String(current.codigoAbonado || orden.codigoAbonadoExistente || "").trim();
+    if (!codigoAbonadoOrden && ["Instalacion Internet", "Instalacion Internet y Cable"].includes(orden.tipoActuacion) && orden.nodo && isSupabaseConfigured) {
+      try {
+        const { data: codData } = await supabase.rpc("generar_codigo_abonado", { p_nodo: orden.nodo });
+        codigoAbonadoOrden = codData || "";
+      } catch (_) {
+        // No critico: la orden se crea igual sin codigo, se completa
+        // despues a mano si hace falta.
+      }
+    }
+
     const estadoFinal = String(current.estado || orden.estado || "Pendiente");
     const fechaCreacionFinal = current.fecha_creacion || current.fechaCreacion || new Date().toISOString();
     const ordenLocal = {
       ...current,
       ...orden,
       descripcion: descripcionFinal,
+      codigoAbonado: codigoAbonadoOrden,
       id: ordenEditandoId || Date.now(),
       estado: estadoFinal,
       fechaCreacion: formatFechaFlexible(fechaCreacionFinal),
@@ -11566,9 +11608,11 @@ export default function App() {
 
     const nodo = String(registroLiquidado.nodo || "").trim();
 
-    // Generar código abonado N0X-XXXX desde función SQL
-    let codigoAbonado = "";
-    if (isSupabaseConfigured && nodo) {
+    // Reusar el codigo de abonado si ya se genero al crear la orden (flujo
+    // nuevo) -- solo se genera aca como respaldo para ordenes viejas que se
+    // crearon antes de este cambio y nunca tuvieron codigo asignado.
+    let codigoAbonado = String(registroLiquidado.codigoAbonado || "").trim();
+    if (!codigoAbonado && isSupabaseConfigured && nodo) {
       const { data: codData } = await supabase.rpc("generar_codigo_abonado", { p_nodo: nodo });
       codigoAbonado = codData || "";
     }

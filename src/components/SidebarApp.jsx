@@ -952,7 +952,7 @@ export default function SidebarApp() {
   const [showMensajesRapidos, setShowMensajesRapidos] = useState(false);
   const [mensajesRapidosDisponibles, setMensajesRapidosDisponibles] = useState([]);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"", idPlantilla:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"", idPlantilla:"", codigoAbonadoExistente:"" });
   // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto) ─────────────
   const [mkwPerfilesOrden, setMkwPerfilesOrden] = useState([]);
   const [mkwRedesOrden,    setMkwRedesOrden]    = useState([]);
@@ -3380,6 +3380,29 @@ export default function SidebarApp() {
         }
       }
 
+      // Generar el codigo de abonado ya en la creacion de la orden -- antes
+      // solo se generaba al liquidar, y el tecnico no lo tenia disponible
+      // mientras hacia la instalacion (ej. para anotarlo en el precinto del
+      // cable). El codigo es por SERVICIO, no por persona -- un cliente con
+      // dos direcciones/conexiones (segundo servicio) debe tener dos
+      // codigos distintos, por eso NO se busca "algun codigo existente para
+      // este DNI" (eso le pondria el codigo del primer servicio, hasta con
+      // el prefijo de nodo equivocado, al segundo). Se reusa un codigo
+      // existente solo si el tecnico eligio explicitamente "Usar: servicio
+      // existente" en el selector de servicios duplicados
+      // (ordenForm.codigoAbonadoExistente) -- ahi esta diciendo que es el
+      // mismo servicio, no uno nuevo.
+      let codigoAbonadoOrden = String(ordenForm.codigoAbonadoExistente || "").trim();
+      const dniParaAbonado = cliente ? (cliente.cedula || "") : ordenForm.dni.trim();
+      if (!codigoAbonadoOrden && ["Instalacion Internet", "Instalacion Internet y Cable"].includes(ordenForm.tipoActuacion) && nodoFinal && dniParaAbonado) {
+        try {
+          const { data: codData } = await supabase.rpc("generar_codigo_abonado", { p_nodo: nodoFinal });
+          codigoAbonadoOrden = codData || "";
+        } catch (_) {
+          // No critico: la orden se crea igual sin codigo.
+        }
+      }
+
       const payload = {
         empresa:        empresaOrden,
         codigo,
@@ -3403,6 +3426,7 @@ export default function SidebarApp() {
         usuario_nodo:   usuarioNodoFinal,
         password_usuario: passwordUsuarioFinal,
         sn_onu:         snOnuFinal,
+        codigo_abonado: codigoAbonadoOrden || null,
         caja_nap:       ordenForm.cajaNap || "",
         ubicacion:      ordenForm.coordenadas || "",
         ubicacion_referencial: !!ordenForm.ubicacionReferencial,
@@ -3429,7 +3453,7 @@ export default function SidebarApp() {
       setOrdenCreada({ id: res.data?.id, codigo: codigoFinal });
       setOrdenIncluirIptv(false);
       setOrdenIptvPantallas("1");
-      setOrdenForm(p => ({ ...p, ubicacionReferencial: false }));
+      setOrdenForm(p => ({ ...p, ubicacionReferencial: false, codigoAbonadoExistente: "" }));
       notify(`✅ Orden ${codigoFinal} creada`);
 
       // Automatizacion Mikrowisp Nod_04/05/06: crear el cliente en
@@ -3510,13 +3534,20 @@ export default function SidebarApp() {
       cajaNap:   c.caja_nap  || p.cajaNap,
       snOnu:     c.sn_onu    || p.snOnu,
       empresa:   c.nodo ? empresaPorNodo(c.nodo) : p.empresa,
+      // El tecnico esta diciendo "es el mismo servicio", no uno nuevo -- se
+      // reusa su codigo de abonado en vez de generar uno nuevo al crear la
+      // orden (ver crearOrden).
+      // Asignacion explicita (no "|| p.codigoAbonadoExistente"): si este
+      // servicio no tiene codigo, no debe quedar pegado el de una
+      // seleccion anterior.
+      codigoAbonadoExistente: c.codigo_abonado || "",
     }));
     notify("✅ Cliente encontrado en base de datos");
   }
 
   function usarComoServicioNuevo() {
     const nombreExistente = modalSelectorServicio?.servicios?.[0]?.nombre || "";
-    if (nombreExistente) setOrdenForm(p=>({ ...p, nombre: nombreExistente }));
+    setOrdenForm(p=>({ ...p, nombre: nombreExistente || p.nombre, codigoAbonadoExistente: "" }));
     setModalSelectorServicio(null);
   }
 
@@ -3528,7 +3559,7 @@ export default function SidebarApp() {
     try {
       // Buscar TODOS los servicios del documento en Supabase (puede tener varios)
       const { data: srvs } = await supabase.from("clientes")
-        .select("nombre,direccion,celular,email,nodo,usuario_nodo,caja_nap,sn_onu")
+        .select("nombre,direccion,celular,email,nodo,usuario_nodo,caja_nap,sn_onu,codigo_abonado")
         .eq("dni", dni).order("id",{ascending:false});
       const todosServicios = srvs || [];
       const esInstalacionActual = ["Instalacion Internet","Instalacion Internet y Cable","Instalacion TV"].includes(ordenForm.tipoActuacion);

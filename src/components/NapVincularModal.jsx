@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import L from "leaflet";
 import { supabase } from "../supabaseClient";
+import NapPuertoSelector from "./NapPuertoSelector";
 
 const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const ZOOM_CLIENTES = 14;
@@ -103,6 +104,8 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const [toast, setToast] = useState(null);
   const [zoomActual, setZoomActual] = useState(13);
   const [verClientesCaja, setVerClientesCaja] = useState(false);
+  const [puertoElegido, setPuertoElegido] = useState(null);
+  const [mostrarSelectorPuerto, setMostrarSelectorPuerto] = useState(false);
 
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -458,11 +461,19 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
     }
     setSaving(true);
     try {
-      const { error } = await supabase.from("clientes").update({ caja_nap: cajaSeleccionada.codigo }).in("id", ids);
+      // El puerto elegido solo se guarda cuando se asigna a un unico
+      // cliente (si hay varios seleccionados no hay forma de saber a
+      // cual de ellos correspondia ese puerto).
+      const puertoAGuardar = ids.length === 1 ? puertoElegido : null;
+      const payload = puertoAGuardar
+        ? { caja_nap: cajaSeleccionada.codigo, puerto_nap: puertoAGuardar }
+        : { caja_nap: cajaSeleccionada.codigo };
+      const { error } = await supabase.from("clientes").update(payload).in("id", ids);
       if (error) throw error;
-      const clientesActualizados = clientes.map(c => ids.includes(c.id) ? { ...c, caja_nap: cajaSeleccionada.codigo } : c);
+      const clientesActualizados = clientes.map(c => ids.includes(c.id) ? { ...c, ...payload } : c);
       setClientes(clientesActualizados);
       setClientesSeleccionados(new Set());
+      setPuertoElegido(null);
       // Actualizar iconos y polylines en el mapa de forma inmediata
       const layer = clienteLayerRef.current;
       ids.forEach(id => {
@@ -537,6 +548,14 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
   const toggleCliente = (id) =>
     setClientesSeleccionados(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  // El puerto elegido solo tiene sentido para 1 cliente a la vez -- si la
+  // seleccion cambia a 0 o 2+, se limpia para no arrastrar un puerto de
+  // otro cliente a un asignado en lote.
+  useEffect(() => {
+    if (clientesSeleccionados.size !== 1) setPuertoElegido(null);
+  }, [clientesSeleccionados]);
+  useEffect(() => { setPuertoElegido(null); }, [cajaSeleccionada?.id]);
 
   const quitarClienteIndividual = async (cli) => {
     if (!window.confirm(`¿Desvincular a ${cli.nombre} de ${cli.caja_nap}?`)) return;
@@ -847,6 +866,19 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
             {/* Acciones */}
             <div style={s.footer}>
+              {cajaSeleccionada && clientesSeleccionados.size === 1 && (
+                <button
+                  onClick={() => setMostrarSelectorPuerto(true)}
+                  style={{
+                    ...s.btnSm, width: "100%", textAlign: "center",
+                    background: puertoElegido ? "#fff7ed" : "#eff6ff",
+                    borderColor: puertoElegido ? "#fed7aa" : "#bfdbfe",
+                    color: puertoElegido ? "#ea580c" : "#1d4ed8",
+                  }}
+                >
+                  {puertoElegido ? `Puerto elegido: ${puertoElegido}` : "Elegir puerto (opcional)"}
+                </button>
+              )}
               <button
                 onClick={asignar}
                 disabled={saving || !cajaSeleccionada || clientesSeleccionados.size === 0}
@@ -906,6 +938,18 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
           </div>
         </div>
       </div>
+
+      {mostrarSelectorPuerto && cajaSeleccionada && (
+        <NapPuertoSelector
+          cajaCodigo={cajaSeleccionada.codigo}
+          capacidad={cajaSeleccionada.capacidad}
+          clientes={clientes}
+          excluirClienteId={Array.from(clientesSeleccionados)[0]}
+          puertoSeleccionado={puertoElegido}
+          onSelect={(n) => { setPuertoElegido(n); setMostrarSelectorPuerto(false); }}
+          onClose={() => setMostrarSelectorPuerto(false)}
+        />
+      )}
     </div>
   );
 }
