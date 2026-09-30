@@ -15,6 +15,7 @@ import MensajesRapidosPanel from "./components/MensajesRapidosPanel";
 import SmartOltPanel from "./components/SmartOltPanel";
 import OnuInventarioPanel from "./components/OnuInventarioPanel";
 import OnuAveriasPanel from "./components/OnuAveriasPanel";
+import OnuAveriasPanelVsol from "./components/OnuAveriasPanelVsol";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import BotControlPanel from "./components/BotControlPanel";
@@ -359,6 +360,7 @@ const MENU_VISTAS_WEB = [
   { key: "smartOlt", label: "Smart OLT" },
   { key: "onuInventario", label: "Central OLT (Huawei)", gestoraVisible: true },
   { key: "onuAverias", label: "Averías OLT (LOS/Luz)", gestoraVisible: true },
+  { key: "onuAveriasVsol", label: "Averías OLT (VSOL)", gestoraVisible: true },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
   { key: "seguimientoVehiculos", label: "Seguimiento vehiculos" },
   { key: "seguimientoVolanteadores", label: "Seguimiento volanteadores" },
@@ -21980,6 +21982,7 @@ export default function App() {
         {vistaActiva === "smartOlt" && <SmartOltPanel theme={theme} />}
         {vistaActiva === "onuInventario" && <OnuInventarioPanel theme={theme} />}
         {vistaActiva === "onuAverias" && <OnuAveriasPanel theme={theme} />}
+        {vistaActiva === "onuAveriasVsol" && <OnuAveriasPanelVsol theme={theme} />}
 
         {vistaActiva === "seguimientoTecnicos" && (
           <SeguimientoTecnicosPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />

@@ -1,0 +1,196 @@
+import { useCallback, useEffect, useState } from "react";
+
+const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+
+// Version VSOL de OnuAveriasPanel.jsx (Huawei) -- misma tabla onu_eventos,
+// pero filtrada por el propio servicio a fuente=vsol. Todavia no existe del
+// lado de VSOL: averias de zona (agrupar N caidas juntas) ni la config de
+// avisos por WhatsApp/Telegram -- solo el historial de eventos individuales
+// por ahora. Tampoco existe /onu-info para VSOL, asi que no hay "Ver ficha".
+const REFRESH_MS = 20000;
+
+const TIPO_INFO = {
+  los_down:   { label: "Sin señal (LOS)",  dot: "#ef4444", text: "#991b1b", bg: "#fee2e2" },
+  los_up:     { label: "Recuperó señal",   dot: "#22c55e", text: "#15803d", bg: "#dcfce7" },
+  power_down: { label: "Corte de luz",     dot: "#f59e0b", text: "#92400e", bg: "#fef3c7" },
+  power_up:   { label: "Volvió la luz",    dot: "#22c55e", text: "#15803d", bg: "#dcfce7" },
+};
+const TIPO_DESCONOCIDO = { label: "Desconocido", dot: "#9ca3af", text: "#374151", bg: "#f3f4f6" };
+
+const Ico = {
+  refresh: (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6" /><path d="M23 20v-6h-6" /><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15" /></svg>,
+};
+
+function formatoFecha(iso) {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleString("es-PE", { dateStyle: "short", timeStyle: "medium" }); } catch { return iso; }
+}
+
+export default function OnuAveriasPanelVsol({ theme }) {
+  const isDark = theme === "dark";
+  const col = isDark
+    ? { bg: "#111c33", card: "#1a2740", border: "#2c3c58", text: "#e6ecf7", sub: "#93a2bd" }
+    : { bg: "#f4f6fb", card: "#ffffff", border: "#e2e8f4", text: "#1a2740", sub: "#5b6b8c" };
+
+  const [eventosTodos, setEventosTodos] = useState([]);
+  const [categoriaFiltro, setCategoriaFiltro] = useState("los_sin_recuperar");
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+  const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
+
+  // Señal en vivo pedida a mano por evento -- usa /signal (no hay /onu-info
+  // para VSOL todavia), asi que solo trae rxPower/txPower, sin rxPowerOlt.
+  const [senalEnVivoPorEvento, setSenalEnVivoPorEvento] = useState({});
+  const refrescarSenal = useCallback(async (ev) => {
+    if (!ev.sn) return;
+    setSenalEnVivoPorEvento((m) => ({ ...m, [ev.id]: "cargando" }));
+    try {
+      const r = await fetch(`${OLT_SSH_API}/signal?sn=${encodeURIComponent(ev.sn)}`).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo consultar.");
+      setSenalEnVivoPorEvento((m) => ({ ...m, [ev.id]: { rxPower: r.rxPower } }));
+    } catch {
+      setSenalEnVivoPorEvento((m) => ({ ...m, [ev.id]: "error" }));
+    }
+  }, []);
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setError("");
+    try {
+      const rEventos = await fetch(`${OLT_SSH_API}/onu-eventos?limit=150`).then((r) => r.json());
+      if (!rEventos.ok) throw new Error(rEventos.error || "Error consultando eventos.");
+      setEventosTodos(Array.isArray(rEventos.eventos) ? rEventos.eventos : []);
+      setUltimaActualizacion(new Date());
+    } catch (e) {
+      setError(e.message || "Error de red.");
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  // Mismo criterio que la version Huawei: "LOS sin recuperar" = de los
+  // ultimos eventos, agrupar por ONU (sn) y quedarse con el mas reciente;
+  // si ese mas reciente es "los_down", sigue caida ahora mismo.
+  const losSinRecuperar = (() => {
+    const masRecientePorOnu = new Map();
+    for (const ev of eventosTodos) {
+      if (ev.tipo !== "los_down" && ev.tipo !== "los_up") continue;
+      const key = ev.sn || `${ev.board}-${ev.port}`;
+      const actual = masRecientePorOnu.get(key);
+      if (!actual || new Date(ev.ocurrido_en) > new Date(actual.ocurrido_en)) masRecientePorOnu.set(key, ev);
+    }
+    return [...masRecientePorOnu.values()]
+      .filter((ev) => ev.tipo === "los_down")
+      .sort((a, b) => new Date(b.ocurrido_en) - new Date(a.ocurrido_en));
+  })();
+
+  const eventos = categoriaFiltro === "los_sin_recuperar" ? losSinRecuperar : eventosTodos.filter((ev) => {
+    if (categoriaFiltro === "los") return ev.tipo === "los_down" || ev.tipo === "los_up";
+    if (categoriaFiltro === "luz") return ev.tipo === "power_down" || ev.tipo === "power_up";
+    return true;
+  });
+
+  useEffect(() => {
+    cargar();
+    const id = setInterval(cargar, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [cargar]);
+
+  return (
+    <div style={{ padding: 20, background: col.bg, minHeight: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: col.text }}>Averías OLT — LOS / Corte de luz (VSOL)</div>
+          <div style={{ fontSize: 12.5, color: col.sub, marginTop: 2 }}>
+            Armado en tiempo real desde traps SNMP de las OLT VSOL (nodos DIM) · Se refresca cada 20s
+            {ultimaActualizacion ? ` · Última actualización ${ultimaActualizacion.toLocaleTimeString("es-PE")}` : ""}
+          </div>
+        </div>
+        <button
+          onClick={cargar}
+          disabled={cargando}
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: cargando ? "not-allowed" : "pointer", opacity: cargando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+        ><Ico.refresh width={14} height={14} />{cargando ? "Actualizando…" : "Actualizar"}</button>
+      </div>
+
+      {error && (
+        <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#fee2e2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
+          {error}
+        </div>
+      )}
+
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: col.sub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Eventos recientes
+          </div>
+          <select
+            value={categoriaFiltro}
+            onChange={(e) => setCategoriaFiltro(e.target.value)}
+            style={{ padding: "5px 8px", fontSize: 12, borderRadius: 6, border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+          >
+            <option value="los">LOS (sin señal / recupera)</option>
+            <option value="los_sin_recuperar">LOS sin recuperar (activas)</option>
+            <option value="luz">Luz (corte / vuelve)</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+
+        <div style={{ borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}`, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 70px", gap: 0, padding: "8px 14px", background: isDark ? "#0d172a" : "#f8fafc", fontSize: 10.5, fontWeight: 800, color: col.sub, textTransform: "uppercase" }}>
+            <div>Cuándo</div>
+            <div>Cliente</div>
+            <div>PON</div>
+            <div>Tipo</div>
+            <div>Rx ONU</div>
+            <div></div>
+          </div>
+          {eventos.length === 0 ? (
+            <div style={{ padding: 20, textAlign: "center", color: col.sub, fontSize: 13 }}>
+              {cargando ? "Cargando…" : "Sin eventos registrados todavía."}
+            </div>
+          ) : (
+            eventos.map((ev) => {
+              const info = TIPO_INFO[ev.tipo] || TIPO_DESCONOCIDO;
+              return (
+                <div key={ev.id} style={{ display: "grid", gridTemplateColumns: "150px 1fr 90px 90px 90px 70px", gap: 0, padding: "9px 14px", borderTop: `1px solid ${col.border}`, fontSize: 12.5, color: col.text, alignItems: "center" }}>
+                  <div style={{ color: col.sub, fontSize: 11.5 }}>{formatoFecha(ev.ocurrido_en)}</div>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{ev.nombre || "—"}</div>
+                    <div style={{ fontSize: 11, color: col.sub, display: "flex", gap: 6 }}>
+                      {ev.sn && <span style={{ fontFamily: "monospace" }}>{ev.sn}</span>}
+                      {ev.zona && <span>{ev.zona}</span>}
+                    </div>
+                  </div>
+                  <div style={{ color: col.sub, fontSize: 11.5 }}>{ev.port != null ? ev.port : "—"}</div>
+                  <div>
+                    <span style={{ display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: info.bg, color: info.text }}>
+                      {info.label}
+                    </span>
+                  </div>
+                  {(() => {
+                    const senalViva = senalEnVivoPorEvento[ev.id];
+                    if (senalViva && senalViva !== "cargando" && senalViva !== "error") {
+                      return <div style={{ fontSize: 11.5 }} title="Señal en vivo, no la del momento del evento">{senalViva.rxPower != null ? `${senalViva.rxPower} dBm ⚡` : "—"}</div>;
+                    }
+                    return <div style={{ fontSize: 11.5 }}>{ev.rx_power != null ? `${ev.rx_power} dBm` : "—"}</div>;
+                  })()}
+                  <div>
+                    {ev.sn && (
+                      <button
+                        onClick={() => refrescarSenal(ev)}
+                        disabled={senalEnVivoPorEvento[ev.id] === "cargando"}
+                        title="Consultar la señal actual (en vivo) de esta ONU"
+                        style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, borderRadius: 6, cursor: "pointer", border: "1.5px solid #2563eb", background: "transparent", color: "#2563eb" }}
+                      >{senalEnVivoPorEvento[ev.id] === "cargando" ? "…" : "🔄"}</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
