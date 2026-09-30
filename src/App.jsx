@@ -2763,6 +2763,8 @@ export default function App() {
   const [oltConfigInfo, setOltConfigInfo] = useState("");
   const [oltConfigError, setOltConfigError] = useState("");
   const [oltCardAbierto, setOltCardAbierto] = useState({}); // { [name]: true } -- colapsado por defecto
+  const [oltTrapConfigLoading, setOltTrapConfigLoading] = useState(""); // "" | name de la OLT en curso
+  const [oltTrapConfigResultado, setOltTrapConfigResultado] = useState({}); // { [name]: {ok, texto} }
   const [nodoConfigCardAbierto, setNodoConfigCardAbierto] = useState({}); // { [idx]: true } -- colapsado por defecto
   const [ipCacheSyncLoading, setIpCacheSyncLoading] = useState(""); // "" | "all" | routerKey
   const [ipCacheSyncInfo, setIpCacheSyncInfo] = useState("");
@@ -8459,6 +8461,24 @@ export default function App() {
     });
     setOltConfigInfo("");
     setOltConfigError("");
+  };
+
+  const configurarTrapOlt = async (name) => {
+    setOltTrapConfigLoading(name);
+    setOltTrapConfigResultado((prev) => ({ ...prev, [name]: null }));
+    try {
+      const r = await fetch(`${OLT_SIGNAL_API}/configurar-trap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      }).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo configurar el trap.");
+      setOltTrapConfigResultado((prev) => ({ ...prev, [name]: { ok: true, texto: "✓ Trap configurado y guardado en la OLT." } }));
+    } catch (e) {
+      setOltTrapConfigResultado((prev) => ({ ...prev, [name]: { ok: false, texto: e.message || "Error de red." } }));
+    } finally {
+      setOltTrapConfigLoading("");
+    }
   };
 
   const cargarAppControlDesdeSupabase = async () => {
@@ -23010,6 +23030,32 @@ export default function App() {
                               />
                             </div>
                           </div>
+
+                          {olt.vendor === "vsol" && (
+                            <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed #dbe6f5" }}>
+                              <div style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: "8px" }}>
+                                Traps SNMP (eventos LOS / corte de luz)
+                              </div>
+                              <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "8px" }}>
+                                Configura la OLT por SSH para que mande sus eventos a este servicio — reemplaza el comando manual (<code>snmp host ... write</code>).
+                                Solo hace falta una vez por OLT.
+                              </div>
+                              <button
+                                type="button"
+                                style={{ ...secondaryButton, fontSize: "12px", padding: "6px 12px" }}
+                                disabled={oltTrapConfigLoading === olt.name || !olt.persisted}
+                                onClick={() => void configurarTrapOlt(olt.name)}
+                                title={!olt.persisted ? "Guarda la configuración primero" : ""}
+                              >
+                                {oltTrapConfigLoading === olt.name ? "Configurando..." : "📡 Configurar traps en esta OLT"}
+                              </button>
+                              {oltTrapConfigResultado[olt.name] ? (
+                                <div style={{ marginTop: "8px", fontSize: "12px", fontWeight: 600, color: oltTrapConfigResultado[olt.name].ok ? "#15803d" : "#dc2626" }}>
+                                  {oltTrapConfigResultado[olt.name].texto}
+                                </div>
+                              ) : null}
+                            </div>
+                          )}
 
                           <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px dashed #dbe6f5" }}>
                             <div style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: "8px" }}>
