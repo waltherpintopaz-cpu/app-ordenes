@@ -35,6 +35,11 @@ const CHATWOOT_TOKEN = String(process.env.CHATWOOT_TOKEN || DEFAULT_CHATWOOT_TOK
 // aca, el frontend le pega a este proxy sin conocer el token.
 const HUAWEI_OLT_SNMP_API = String(process.env.HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/+$/, "");
 const HUAWEI_ACCION_TOKEN = String(process.env.HUAWEI_ACCION_TOKEN || "").trim();
+// Mismo patron que arriba, pero para el servicio VSOL (olt-signal, nodos
+// DIM) -- el ACCION_TOKEN de ese servicio protege su /averia-config (guarda
+// un bot token de Telegram) y no debe viajar al navegador.
+const OLT_SSH_API = String(process.env.OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/+$/, "");
+const VSOL_ACCION_TOKEN = String(process.env.VSOL_ACCION_TOKEN || "").trim();
 // La key de OpenAI NUNCA debe vivir en el navegador (antes estaba en varios
 // paneles como VITE_OPENAI_KEY, 100% extraible del bundle publico -- ver
 // auditoria de seguridad, 2026-09-28). Ahora solo vive aca, server-side.
@@ -1897,6 +1902,29 @@ const server = http.createServer(async (req, res) => {
           body: JSON.stringify(body || {}),
         });
         const data = await upstream.json().catch(() => ({ ok: false, error: "Respuesta invalida del servicio Huawei." }));
+        return writeJson(res, upstream.status, data);
+      } catch (e) {
+        return writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
+    }
+
+    // Mismo proxy que arriba, pero para VSOL (olt-signal) -- por ahora solo
+    // "averia-config", el resto de acciones (reiniciar/eliminar/etc) todavia
+    // no existen del lado de VSOL.
+    const VSOL_ONU_RUTAS = {
+      "averia-config": "/averia-config",
+    };
+    if (req.method === "POST" && String(req.url || "").startsWith("/api/vsol-onu/") && VSOL_ONU_RUTAS[req.url.split("/").pop()]) {
+      if (!VSOL_ACCION_TOKEN) return writeJson(res, 500, { ok: false, error: "VSOL_ACCION_TOKEN no configurado en el servidor." });
+      const rutaDestino = VSOL_ONU_RUTAS[req.url.split("/").pop()];
+      try {
+        const body = await readJsonBody(req);
+        const upstream = await fetch(`${OLT_SSH_API}${rutaDestino}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-debug-token": VSOL_ACCION_TOKEN },
+          body: JSON.stringify(body || {}),
+        });
+        const data = await upstream.json().catch(() => ({ ok: false, error: "Respuesta invalida del servicio VSOL." }));
         return writeJson(res, upstream.status, data);
       } catch (e) {
         return writeJson(res, 200, { ok: false, error: e.message || String(e) });
