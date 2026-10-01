@@ -1330,8 +1330,15 @@ const handleActualizarContactoChatwoot = async (body) => {
     ? "⛔SUSPENDIDO"
     : (mikrotikInfo && mikrotikInfo.estado !== "conectado" ? etiquetaOffline : "✅");
   // DNI y usuario PPPoE van SIEMPRE (a pedido explicito, para tenerlos a mano
-  // sin abrir nada) -- el resto de las señales solo aparece cuando aporta algo.
-  const nombreCompacto = [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, etiquetaEstado, etiquetaDeuda].filter(Boolean).join(" · ");
+  // sin abrir nada), pero al final -- no son urgentes. Lo negativo (estado
+  // distinto de "todo bien", y/o deuda) va PEGADO al nodo, al principio: en
+  // una lista angosta que trunca el texto, asi nunca se pierde justo lo que
+  // hace falta ver primero. Si no hay nada negativo, el "✅" va al final,
+  // discreto, porque no hay apuro en verlo.
+  const alertas = [etiquetaEstado !== "✅" ? etiquetaEstado : null, etiquetaDeuda].filter(Boolean);
+  const nombreCompacto = alertas.length
+    ? [nodoCliente, ...alertas, nombreCorto, cedulaParaCruce, userPppoe].filter(Boolean).join(" · ")
+    : [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, "✅"].filter(Boolean).join(" · ");
 
   const customAttrs = {
     dni: cedulaParaCruce || "",
