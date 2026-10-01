@@ -1206,6 +1206,14 @@ const buscarPorTelefonoMikrowisp = async (telefono) => {
   return null;
 };
 
+// Cooldown por contacto: si una conversacion tiene varios mensajes seguidos
+// en poco tiempo (de cualquiera de los dos lados), no tiene sentido repetir
+// Mikrowisp/Mikrotik/señal en cada uno -- se actualiza una vez y se ignoran
+// los que lleguen dentro de la ventana. En memoria nomas (si el servicio se
+// reinicia, se resetea solo, no hace falta limpiar nada a mano).
+const _cooldownPorContacto = new Map(); // "accountId:contactId" -> ms
+const COOLDOWN_MS = 45_000;
+
 const handleActualizarContactoChatwoot = async (body) => {
   // "message_created" se dispara para los dos lados (cliente Y agente) --
   // a pedido explicito se actualiza en ambos casos, sin filtrar por
@@ -1215,6 +1223,14 @@ const handleActualizarContactoChatwoot = async (body) => {
   const phone = body?.conversation?.meta?.sender?.phone_number || body?.sender?.phone_number || body?.phone || "";
   if (!body?.dry_run && (!accountId || !contactId)) {
     return { ok: false, motivo: "Webhook sin account_id/contact_id (no es un evento de conversacion)." };
+  }
+
+  const cooldownKey = `${accountId}:${contactId}`;
+  if (!body?.dry_run) {
+    const ultima = _cooldownPorContacto.get(cooldownKey);
+    if (ultima && Date.now() - ultima < COOLDOWN_MS) {
+      return { ok: false, motivo: `Cooldown activo (actualizado hace ${Math.round((Date.now() - ultima) / 1000)}s, se ignora hasta los ${COOLDOWN_MS / 1000}s).` };
+    }
   }
 
   const tenantCfg = await cargarTenantConfig(body?.tenant_id || DEFAULT_TENANT_ID);
@@ -1393,6 +1409,7 @@ const handleActualizarContactoChatwoot = async (body) => {
     throw new Error(`Chatwoot PUT HTTP ${putRes.status}: ${JSON.stringify(putJson).slice(0, 300)}`);
   }
 
+  _cooldownPorContacto.set(cooldownKey, Date.now());
   return { ok: true, dni: cedulaParaCruce, nombre: nombreCompacto, custom_attributes: customAttrs };
 };
 
