@@ -1294,6 +1294,23 @@ const handleActualizarContactoChatwoot = async (body) => {
   }
 
   const nombreReal = cliente?.nombre || mkw.nombre || "";
+
+  // El "name" del contacto es lo UNICO siempre visible sin abrir nada (lista
+  // de conversaciones, notificaciones, apps moviles que no muestran bien los
+  // custom_attributes) -- el detalle completo ya lo resuelve el sidebar, asi
+  // que aca solo van las 3 señales que sirven para decidir algo de un
+  // vistazo: nodo (para detectar averia de zona si escriben varios juntos),
+  // suspendido (explica "no tengo internet" sin entrar a nada), y
+  // conexion/deuda cuando NO esta suspendido.
+  const estaSuspendido = String(datos?.estado || "").trim().toUpperCase() === "SUSPENDIDO";
+  const NOMBRE_MAX = 20;
+  const nombreCorto = nombreReal.length > NOMBRE_MAX ? `${nombreReal.slice(0, NOMBRE_MAX)}…` : nombreReal;
+  const etiquetaDeuda = totalFacturas > 0 ? `💸DEU S/${totalFacturas.toFixed(0)}` : "✅OK";
+  const etiquetaEstado = estaSuspendido
+    ? "⛔SUSPENDIDO"
+    : (mikrotikInfo ? (mikrotikInfo.estado === "conectado" ? "🟢ON" : "🔴OFF") : null);
+  const nombreCompacto = [nodoCliente, nombreCorto, etiquetaEstado, etiquetaDeuda].filter(Boolean).join(" · ");
+
   const customAttrs = {
     dni: cedulaParaCruce || "",
     usuario_pppoe: userPppoe || "",
@@ -1309,20 +1326,20 @@ const handleActualizarContactoChatwoot = async (body) => {
   // dry_run: arma todo pero NO escribe en Chatwoot -- para probar el cruce de
   // datos contra clientes reales sin tocar un contacto en produccion.
   if (body?.dry_run) {
-    return { ok: true, dry_run: true, mikrowisp: mkw, cliente, mikrotikInfo, nombreReal, custom_attributes: customAttrs };
+    return { ok: true, dry_run: true, mikrowisp: mkw, cliente, mikrotikInfo, nombreReal, nombreCompacto, custom_attributes: customAttrs };
   }
 
   const putRes = await fetchConTimeout(`${tenantCfg.chatwoot_base_url.replace(/\/+$/, "")}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", api_access_token: tenantCfg.chatwoot_token },
-    body: JSON.stringify({ ...(nombreReal ? { name: nombreReal } : {}), custom_attributes: customAttrs }),
+    body: JSON.stringify({ ...(nombreCompacto ? { name: nombreCompacto } : {}), custom_attributes: customAttrs }),
   });
   const putJson = await putRes.json().catch(() => ({}));
   if (!putRes.ok) {
     throw new Error(`Chatwoot PUT HTTP ${putRes.status}: ${JSON.stringify(putJson).slice(0, 300)}`);
   }
 
-  return { ok: true, dni: cedulaParaCruce, nombre: nombreReal, custom_attributes: customAttrs };
+  return { ok: true, dni: cedulaParaCruce, nombre: nombreCompacto, custom_attributes: customAttrs };
 };
 
 const proxySmartOltRequest = async (req) => {
