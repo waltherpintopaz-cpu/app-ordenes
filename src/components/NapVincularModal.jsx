@@ -1,10 +1,38 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import L from "leaflet";
+import "leaflet.markercluster";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { supabase } from "../supabaseClient";
 import NapPuertoSelector from "./NapPuertoSelector";
 
 const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const ZOOM_CLIENTES = 14;
+// Con 1000+ cajas y cientos de clientes renderizados como marcadores sueltos,
+// el navegador sufria al pan/zoom. Agrupar en clusters (y solo "explotar" el
+// grupo real al hacer zoom bien cerca) resuelve el problema de fluidez sin
+// perder la posicion exacta de cada pin.
+function makeClusterIconFactory(claseCss) {
+  return (cluster) => {
+    const count = cluster.getChildCount();
+    const size = count < 10 ? 34 : count < 100 ? 40 : 46;
+    return L.divIcon({
+      html: `<div style="width:${size - 6}px;height:${size - 6}px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${count < 100 ? 12 : 11}px;">${count}</div>`,
+      className: `marker-cluster-custom ${claseCss}`,
+      iconSize: L.point(size, size),
+    });
+  };
+}
+const clusterGroupOptions = {
+  spiderfyOnMaxZoom: true,
+  showCoverageOnHover: false,
+  zoomToBoundsOnClick: true,
+  maxClusterRadius: 50,
+  disableClusteringAtZoom: 18,
+};
+// Alto fijo de cada fila de la lista de clientes (usado para la
+// virtualizacion manual de abajo) -- debe coincidir con s.clienteRow.
+const ALTO_FILA_CLIENTE = 50;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function parseCoordsStr(ubicacion) {
@@ -97,6 +125,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const [filtroNodo, setFiltroNodo] = useState("Todos");
   const [filtroNodoClientes, setFiltroNodoClientes] = useState("Todos");
   const [busqueda, setBusqueda] = useState("");
+  const [busquedaDebounced, setBusquedaDebounced] = useState("");
   const [soloSinCaja, setSoloSinCaja] = useState(true);
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
   const [clientesSeleccionados, setClientesSeleccionados] = useState(new Set());
@@ -107,6 +136,15 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const [puertoElegido, setPuertoElegido] = useState(null);
   const [puertoOriginal, setPuertoOriginal] = useState(null); // puerto que YA tenia el cliente antes de tocar nada, para poder decir "Cambiar" en vez de "Elegir"
   const [mostrarSelectorPuerto, setMostrarSelectorPuerto] = useState(false);
+  // Virtualizacion manual de la lista de clientes: con cientos/miles de
+  // filas, montar un <div> por cada una (aunque no se vea) es lo que hacia
+  // sentir pesado el scroll. Solo se renderizan las filas realmente
+  // visibles (+ colchon), con dos espaciadores arriba/abajo que ocupan el
+  // alto de las filas no renderizadas, asi el scrollbar queda del tamaño
+  // real de la lista completa.
+  const [scrollTop, setScrollTop] = useState(0);
+  const [altoLista, setAltoLista] = useState(500);
+  const listaWrapRef = useRef(null);
 
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -114,6 +152,8 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const clienteMarkersRef = useRef({});
   const polylineMarkersRef = useRef({});   // clienteId → polyline
   const clienteLayerRef = useRef(null);
+  const cajaClusterRef = useRef(null);
+  const polylineLayerRef = useRef(null);
   // Refs para acceso en efectos sin stale closure
   const clientesSeleccionadosRef = useRef(clientesSeleccionados);
   const cajaSeleccionadaRef = useRef(cajaSeleccionada);
@@ -161,7 +201,14 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   useEffect(() => {
     const style = document.createElement("style");
     style.id = "nap-tooltip-style";
-    style.textContent = `.nap-tooltip { background:#fff !important; border:1px solid #e2e8f0 !important; border-radius:8px !important; box-shadow:0 4px 16px rgba(0,0,0,0.15) !important; padding:6px 10px !important; } .nap-tooltip::before { display:none !important; }`;
+    style.textContent = `.nap-tooltip { background:#fff !important; border:1px solid #e2e8f0 !important; border-radius:8px !important; box-shadow:0 4px 16px rgba(0,0,0,0.15) !important; padding:6px 10px !important; } .nap-tooltip::before { display:none !important; }
+      .nap-cliente-row:hover { border-color:#cbd5e1 !important; transform:translateX(1px); }
+      .nap-cliente-row:active { transform:scale(0.99); }
+      .marker-cluster-custom { border-radius:50%; display:flex !important; align-items:center; justify-content:center; }
+      .marker-cluster-custom-caja { background:rgba(22,63,134,0.25); }
+      .marker-cluster-custom-caja div { background:#163f86; color:#fff; font-weight:800; box-shadow:0 2px 8px rgba(22,63,134,0.5); }
+      .marker-cluster-custom-cliente { background:rgba(37,99,235,0.2); }
+      .marker-cluster-custom-cliente div { background:#2563eb; color:#fff; font-weight:800; box-shadow:0 2px 8px rgba(37,99,235,0.5); }`;
     if (!document.getElementById("nap-tooltip-style")) document.head.appendChild(style);
     return () => document.getElementById("nap-tooltip-style")?.remove();
   }, []);
@@ -195,16 +242,32 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
     L.control.zoom({ position: "bottomright" }).addTo(map);
     L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 
-    const clienteLayer = L.layerGroup().addTo(map);
+    const clienteLayer = L.markerClusterGroup({
+      ...clusterGroupOptions,
+      iconCreateFunction: makeClusterIconFactory("marker-cluster-custom-cliente"),
+    }).addTo(map);
     clienteLayerRef.current = clienteLayer;
+    const cajaCluster = L.markerClusterGroup({
+      ...clusterGroupOptions,
+      maxClusterRadius: 60,
+      iconCreateFunction: makeClusterIconFactory("marker-cluster-custom-caja"),
+    }).addTo(map);
+    cajaClusterRef.current = cajaCluster;
+    // Las polylines cliente->caja van en un layerGroup aparte: un
+    // markerClusterGroup solo sabe agrupar Markers, no Polylines, asi que
+    // meterlas ahi adentro las dejaba sin dibujar.
+    const polylineLayer = L.layerGroup().addTo(map);
+    polylineLayerRef.current = polylineLayer;
 
     map.on("zoomend", () => {
       const z = map.getZoom();
       setZoomActual(z);
       if (z >= ZOOM_CLIENTES) {
         map.addLayer(clienteLayer);
+        map.addLayer(polylineLayer);
       } else {
         map.removeLayer(clienteLayer);
+        map.removeLayer(polylineLayer);
       }
     });
 
@@ -213,15 +276,18 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       map.remove();
       mapInstanceRef.current = null;
       clienteLayerRef.current = null;
+      cajaClusterRef.current = null;
+      polylineLayerRef.current = null;
     };
   }, []);
 
   // ── Marcadores de cajas (solo recrea al cambiar cajas o nodo) ──────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
+    const cluster = cajaClusterRef.current;
+    if (!map || !cluster) return;
 
-    Object.values(cajaMarkersRef.current).forEach(m => m.remove());
+    cluster.clearLayers();
     cajaMarkersRef.current = {};
 
     const lista = filtroNodo === "Todos" ? cajas : cajas.filter(c => c.nodo === filtroNodo);
@@ -235,7 +301,8 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const marker = L.marker([Number(caja.lat), Number(caja.lng)], {
         icon: napCajaIcon(caja, sel),
         zIndexOffset: sel ? 1000 : 500,
-      }).addTo(map);
+      });
+      cluster.addLayer(marker);
 
       marker.bindPopup(`
         <div style="font-family:Inter,system-ui,sans-serif;min-width:180px;line-height:1.4">
@@ -349,7 +416,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
   // ── Polylines cliente → caja (recrea al cambiar clientes o filtro) ──────────
   useEffect(() => {
-    const layer = clienteLayerRef.current;
+    const layer = polylineLayerRef.current;
     if (!layer || loading) return;
 
     // Usar layer.removeLayer (funciona aunque el layer no esté en el mapa por zoom)
@@ -422,12 +489,20 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       .then(() => { if (onUpdate) onUpdate(); });
   }, [cajaSeleccionada?.id, clientes, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Debounce de busqueda -- con miles de clientes, filtrar en cada tecla
+  // (y sobre todo re-renderizar la lista completa en cada tecla) se sentia
+  // trabado. Se tipea instantaneo, el filtrado real espera 180ms de pausa.
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaDebounced(busqueda), 180);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
   // ── Filtrado lista ──────────────────────────────────────────────────────────
-  const clientesFiltrados = clientes.filter(c => {
+  const clientesFiltrados = useMemo(() => clientes.filter(c => {
     if (soloSinCaja && c.caja_nap) return false;
     if (filtroNodoClientes !== "Todos" && c.nodo !== filtroNodoClientes) return false;
-    if (busqueda) {
-      const q = busqueda.toLowerCase();
+    if (busquedaDebounced) {
+      const q = busquedaDebounced.toLowerCase();
       if (
         !String(c.nombre || "").toLowerCase().includes(q) &&
         !String(c.dni || "").toLowerCase().includes(q) &&
@@ -435,16 +510,49 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       ) return false;
     }
     return true;
-  });
+  }), [clientes, soloSinCaja, filtroNodoClientes, busquedaDebounced]);
 
-  const clientesOrdenados = cajaSeleccionada?.lat
+  // Medir el alto real del contenedor de la lista (cambia segun si el panel
+  // de la caja activa esta abierto/con clientes conectados visibles, etc.)
+  useEffect(() => {
+    const el = listaWrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect?.height;
+      if (h) setAltoLista(h);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const clientesOrdenados = useMemo(() => (cajaSeleccionada?.lat
     ? [...clientesFiltrados].sort((a, b) => {
         const ca = parseCoordsStr(a.ubicacion), cb = parseCoordsStr(b.ubicacion);
         const da = ca ? haversineKm(cajaSeleccionada.lat, cajaSeleccionada.lng, ca.lat, ca.lng) : 999;
         const db = cb ? haversineKm(cajaSeleccionada.lat, cajaSeleccionada.lng, cb.lat, cb.lng) : 999;
         return da - db;
       })
-    : clientesFiltrados;
+    : clientesFiltrados), [clientesFiltrados, cajaSeleccionada?.lat, cajaSeleccionada?.lng]);
+
+  // Si cambia el filtro/orden y el scroll quedaba mas abajo de lo que la
+  // nueva lista (mas corta) alcanza, volver arriba para no dejar un hueco
+  // en blanco.
+  useEffect(() => {
+    const maxScroll = Math.max(0, clientesOrdenados.length * ALTO_FILA_CLIENTE - altoLista);
+    if (scrollTop > maxScroll) {
+      setScrollTop(0);
+      if (listaWrapRef.current) listaWrapRef.current.scrollTop = 0;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientesOrdenados.length]);
+
+  const OVERSCAN = 6;
+  const primerIndice = Math.max(0, Math.floor(scrollTop / ALTO_FILA_CLIENTE) - OVERSCAN);
+  const cantidadVisible = Math.ceil(altoLista / ALTO_FILA_CLIENTE) + OVERSCAN * 2;
+  const ultimoIndice = Math.min(clientesOrdenados.length, primerIndice + cantidadVisible);
+  const clientesVisibles = clientesOrdenados.slice(primerIndice, ultimoIndice);
+  const alturaAntes = primerIndice * ALTO_FILA_CLIENTE;
+  const alturaDespues = (clientesOrdenados.length - ultimoIndice) * ALTO_FILA_CLIENTE;
 
   const sinCajaTotal = clientes.filter(c => !c.caja_nap).length;
 
@@ -486,7 +594,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       setClientesSeleccionados(new Set());
       setPuertoElegido(null);
       // Actualizar iconos y polylines en el mapa de forma inmediata
-      const layer = clienteLayerRef.current;
+      const layer = polylineLayerRef.current;
       ids.forEach(id => {
         const m = clienteMarkersRef.current[id];
         if (m) m.setIcon(clienteIcon(false, false, puertoAGuardar != null));
@@ -534,7 +642,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       setClientes(clientesActualizados);
       setClientesSeleccionados(new Set());
       // Actualizar iconos y eliminar polylines de forma inmediata
-      const layer = clienteLayerRef.current;
+      const layer = polylineLayerRef.current;
       ids.forEach(id => {
         const m = clienteMarkersRef.current[id];
         if (m) m.setIcon(clienteIcon(true, false));
@@ -594,7 +702,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       // Actualizar marcador e icono en mapa
       const m = clienteMarkersRef.current[cli.id];
       if (m) m.setIcon(clienteIcon(true, false));
-      const layer = clienteLayerRef.current;
+      const layer = polylineLayerRef.current;
       const line = polylineMarkersRef.current[cli.id];
       if (line) { if (layer) layer.removeLayer(line); else line.remove(); delete polylineMarkersRef.current[cli.id]; }
       // Sincronizar puertos_ocupados
@@ -843,53 +951,67 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
               )}
             </div>
 
-            {/* Lista clientes */}
-            <div style={s.listaWrap}>
+            {/* Lista clientes -- virtualizada: con cientos/miles de filas
+                solo se montan las que caben en pantalla (+colchon), el resto
+                del alto lo ocupan dos espaciadores para que el scrollbar
+                siga reflejando el total real. */}
+            <div
+              ref={listaWrapRef}
+              style={s.listaWrap}
+              onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
+            >
               {loading ? (
                 <div style={s.emptyMsg}>Cargando clientes…</div>
               ) : clientesOrdenados.length === 0 ? (
                 <div style={{ ...s.emptyMsg, color: "#22c55e" }}>✓ Todos los clientes tienen caja</div>
-              ) : clientesOrdenados.map(cli => {
-                const sel = clientesSeleccionados.has(cli.id);
-                const sinCaja = !cli.caja_nap;
-                const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
-                const coords = parseCoordsStr(cli.ubicacion);
-                const dist = cajaSeleccionada?.lat && coords
-                  ? haversineKm(cajaSeleccionada.lat, cajaSeleccionada.lng, coords.lat, coords.lng)
-                  : null;
-                return (
-                  <div
-                    key={cli.id}
-                    onClick={() => toggleCliente(cli.id)}
-                    style={{ ...s.clienteRow, background: sel ? "#fff7ed" : "#fff", borderColor: sel ? "#f97316" : "#f1f5f9" }}
-                  >
-                    <div style={{ ...s.clienteDot, background: sel ? "#f97316" : sinCaja ? "#ef4444" : tienePuerto ? "#8b5cf6" : "#3b82f6" }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={s.clienteNombre}>{cli.nombre || "-"}</div>
-                      <div style={s.clienteMeta}>
-                        {cli.dni || ""}
-                        {cli.nodo ? ` · ${cli.nodo}` : ""}
-                        {cli.caja_nap ? ` · ${cli.caja_nap}` : ""}
-                        {tienePuerto ? ` · P${cli.puerto_nap}` : ""}
+              ) : (
+                <>
+                  {alturaAntes > 0 && <div style={{ height: alturaAntes, flexShrink: 0 }} />}
+                  {clientesVisibles.map(cli => {
+                    const sel = clientesSeleccionados.has(cli.id);
+                    const sinCaja = !cli.caja_nap;
+                    const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
+                    const coords = parseCoordsStr(cli.ubicacion);
+                    const dist = cajaSeleccionada?.lat && coords
+                      ? haversineKm(cajaSeleccionada.lat, cajaSeleccionada.lng, coords.lat, coords.lng)
+                      : null;
+                    return (
+                      <div
+                        key={cli.id}
+                        onClick={() => toggleCliente(cli.id)}
+                        className="nap-cliente-row"
+                        style={{ ...s.clienteRow, background: sel ? "#fff7ed" : "#fff", borderColor: sel ? "#f97316" : "#f1f5f9" }}
+                      >
+                        <div style={{ ...s.clienteDot, background: sel ? "#f97316" : sinCaja ? "#ef4444" : tienePuerto ? "#8b5cf6" : "#3b82f6" }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={s.clienteNombre}>{cli.nombre || "-"}</div>
+                          <div style={s.clienteMeta}>
+                            {cli.dni || ""}
+                            {cli.nodo ? ` · ${cli.nodo}` : ""}
+                            {cli.caja_nap ? ` · ${cli.caja_nap}` : ""}
+                            {tienePuerto ? ` · P${cli.puerto_nap}` : ""}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                          {dist !== null && (
+                            <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                              {dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`}
+                            </span>
+                          )}
+                          {coords && (
+                            <button
+                              onClick={e => { e.stopPropagation(); flyToCliente(cli); }}
+                              style={s.btnFly}
+                              title="Ver en mapa"
+                            >🗺</button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-                      {dist !== null && (
-                        <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                          {dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`}
-                        </span>
-                      )}
-                      {coords && (
-                        <button
-                          onClick={e => { e.stopPropagation(); flyToCliente(cli); }}
-                          style={s.btnFly}
-                          title="Ver en mapa"
-                        >🗺</button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                  {alturaDespues > 0 && <div style={{ height: alturaDespues, flexShrink: 0 }} />}
+                </>
+              )}
             </div>
 
             {/* Acciones */}
@@ -1089,11 +1211,17 @@ const s = {
     padding: "4px 8px", background: "#eff6ff", border: "1px solid #bfdbfe",
     borderRadius: 7, cursor: "pointer", fontSize: 10, color: "#1d4ed8", fontWeight: 700,
   },
-  listaWrap: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 },
+  // display:flex + flexDirection:column (sin gap: la fila ya trae su propio
+  // margin-bottom) para que los espaciadores de la virtualizacion midan
+  // exactamente ALTO_FILA_CLIENTE por fila, sin un gap extra descuadrando la
+  // cuenta entre scrollTop y el indice real.
+  listaWrap: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" },
   emptyMsg: { textAlign: "center", padding: "24px 0", color: "#94a3b8", fontSize: 12 },
   clienteRow: {
-    display: "flex", alignItems: "center", gap: 8, padding: "7px 8px",
+    display: "flex", alignItems: "center", gap: 8, padding: "0 8px",
+    height: ALTO_FILA_CLIENTE - 6, marginBottom: 6, boxSizing: "border-box",
     borderRadius: 9, border: "1.5px solid", cursor: "pointer",
+    transition: "background .12s, border-color .12s, transform .12s",
   },
   clienteDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
   clienteNombre: {
