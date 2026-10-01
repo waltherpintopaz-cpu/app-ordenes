@@ -358,8 +358,22 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
     // (invisibles para cualquier resincronizacion de puertos futura).
     const codigo = typeof caja === "object" ? caja?.codigo : null;
     if (codigo) {
-      const { error: clearErr } = await supabase.from("clientes").update({ caja_nap: null }).eq("caja_nap", codigo);
-      if (clearErr) console.error("[NapPanel] no se pudo limpiar caja_nap de clientes:", clearErr.message);
+      // Pueden existir varias filas de nap_cajas con el MISMO codigo (ej.
+      // reimportaciones de KMZ que no revisan duplicados). clientes.caja_nap
+      // guarda el codigo (texto), no el id de esta fila puntual -- si se
+      // limpia por codigo sin mas, eliminar CUALQUIERA de las cajas
+      // duplicadas (aunque este vacia) borraba la asignacion de los
+      // clientes reales que estaban en OTRA de las duplicadas. Bug real
+      // reportado: clientes vinculados que se borraban solos al eliminar
+      // una caja que el usuario creia vacia/duplicada.
+      const { count: duplicadas } = await supabase
+        .from("nap_cajas")
+        .select("id", { count: "exact", head: true })
+        .eq("codigo", codigo);
+      if ((duplicadas || 0) <= 1) {
+        const { error: clearErr } = await supabase.from("clientes").update({ caja_nap: null }).eq("caja_nap", codigo);
+        if (clearErr) console.error("[NapPanel] no se pudo limpiar caja_nap de clientes:", clearErr.message);
+      }
     }
     const { error } = await supabase.from("nap_cajas").delete().eq("id", id);
     if (error) { showToast(error.message, false); return; }
