@@ -1328,8 +1328,10 @@ const handleActualizarContactoChatwoot = async (body) => {
     : "🔴OFFLINE";
   const etiquetaEstado = estaSuspendido
     ? "⛔SUSPENDIDO"
-    : (mikrotikInfo && mikrotikInfo.estado !== "conectado" ? etiquetaOffline : null);
-  const nombreCompacto = [nodoCliente, nombreCorto, etiquetaEstado, etiquetaDeuda].filter(Boolean).join(" · ");
+    : (mikrotikInfo && mikrotikInfo.estado !== "conectado" ? etiquetaOffline : "✅");
+  // DNI y usuario PPPoE van SIEMPRE (a pedido explicito, para tenerlos a mano
+  // sin abrir nada) -- el resto de las señales solo aparece cuando aporta algo.
+  const nombreCompacto = [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, etiquetaEstado, etiquetaDeuda].filter(Boolean).join(" · ");
 
   const customAttrs = {
     dni: cedulaParaCruce || "",
