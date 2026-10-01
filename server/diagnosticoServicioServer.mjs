@@ -1323,7 +1323,7 @@ const handleActualizarContactoChatwoot = async (body) => {
   // aporta mostrarlo -- unicamente se señala cuando esta desconectado, y si
   // hay un evento real de la ONU se distingue sin luz de sin señal (fibra/
   // equipo) en vez de un generico "desconectado".
-  const etiquetaOffline = ultimoEventoOnu?.tipo === "power_down" ? "🔌SIN LUZ"
+  const etiquetaOffline = ultimoEventoOnu?.tipo === "power_down" ? "🔌SIN ENERGÍA"
     : ultimoEventoOnu?.tipo === "los_down" ? "📡SIN SEÑAL"
     : "🔴OFFLINE";
   const etiquetaEstado = estaSuspendido
