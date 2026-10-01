@@ -1231,6 +1231,30 @@ const handleEvolutionProxyAccion = async (accion, payload, tenantId) => {
   else if (accion === "ConnectionState") { url = `${base}/instance/connectionState/${nombre}`; method = "GET"; }
   else if (accion === "Logout") { url = `${base}/instance/logout/${nombre}`; method = "DELETE"; }
   else if (accion === "Delete") { url = `${base}/instance/delete/${nombre}`; method = "DELETE"; }
+  else if (accion === "SetChatwoot") {
+    // Conecta la instancia al Chatwoot del MISMO tenant (tenant_config) -- se
+    // saca el accountId real pidiendole el perfil a Chatwoot con el token ya
+    // guardado, asi no hace falta otro campo de configuracion a mano.
+    if (!cfg.chatwoot_base_url || !cfg.chatwoot_token) throw new Error("Falta chatwoot_base_url/chatwoot_token en tenant_config.");
+    const perfilRes = await fetchConTimeout(`${cfg.chatwoot_base_url.replace(/\/+$/, "")}/api/v1/profile`, { headers: { api_access_token: cfg.chatwoot_token } }, 10000);
+    const perfil = await perfilRes.json().catch(() => ({}));
+    const accountId = perfil?.account_id || perfil?.accounts?.[0]?.id;
+    if (!accountId) throw new Error("No se pudo resolver el account_id de Chatwoot con el token guardado.");
+    url = `${base}/chatwoot/set/${nombre}`; method = "POST";
+    body = JSON.stringify({
+      enabled: true,
+      accountId: String(accountId),
+      token: cfg.chatwoot_token,
+      url: cfg.chatwoot_base_url.replace(/\/+$/, ""),
+      nameInbox: payload.instanceName,
+      autoCreate: true,
+      signMsg: false,
+      reopenConversation: true,
+      conversationPending: false,
+      importContacts: false,
+      importMessages: false,
+    });
+  }
   else throw new Error(`Accion no permitida: ${accion}`);
 
   const res = await fetchConTimeout(url, { method, headers, body }, 20000);
