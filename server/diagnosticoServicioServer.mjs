@@ -1160,6 +1160,114 @@ const proxyMikrowispGenerico = async (req) => {
   }
 };
 
+// ── Actualizar contacto de Chatwoot (reemplazo del flujo n8n "Actualizar_contacto") ──
+// El flujo viejo de n8n (76 nodos, ~15 ramas copiadas y pegadas por router Mikrotik)
+// identificaba al cliente por telefono contra "mikrowisp_clientes", traia facturacion
+// de Mikrowisp, y cruzaba contra Mikrotik -- todo a mano, duplicado por cada router, con
+// bugs reales (un If que referenciaba un nodo inexistente, un rango de nodos que dejaba
+// el nodo 11 sin actualizar nunca, nodos 11/12 consultando el Mikrowisp de Americanet en
+// vez del de DimFiber pese al comentario de MKW_PROXY_NODOS_DIM mas arriba, un "=Nod_02"
+// mal tipeado, y dos pipelines corriendo en paralelo sobre el mismo contacto).
+// Esta version reusa lo que YA existe en este archivo en vez de reimplementarlo:
+//   - buscarPorTelefonoMikrowisp(): unico lookup nuevo, contra mikrowisp_clientes.
+//   - handleMkwProxyAccion(): ya resuelve el tenant correcto (Americanet/DimFiber)
+//     segun el nodo NUMERICO de Mikrowisp -- no hace falta volver a mapear routers acá.
+//   - queryRouter(): ya resuelve el router Mikrotik por el nodo "Nod_XX" de "clientes"
+//     (tabla que se llena al liquidar la orden) y consulta PPP active/secret.
+// En vez de amontonar todo en el campo "name" (como hacia n8n, dificil de leer), esto
+// escribe custom_attributes separados y dejar "name" solo con el nombre real.
+const normalizarTelefono = (s) => String(s || "").replace(/\D/g, "");
+
+const buscarPorTelefonoMikrowisp = async (telefono) => {
+  const tel = normalizarTelefono(telefono);
+  if (!tel) return null;
+  // Probar el numero completo y los ultimos 9 digitos (sin codigo de pais) -- el
+  // campo "telefonos" en la base no tiene un formato 100% consistente.
+  const candidatos = [...new Set([tel, tel.slice(-9)])].filter(Boolean);
+  for (const cand of candidatos) {
+    const rows = await fetchSupabaseRows(
+      "mikrowisp_clientes",
+      `select=mikrowisp_id,cedula,nombre,nodo,telefonos&telefonos=ilike.*${encodeURIComponent(cand)}*&limit=1`
+    ).catch(() => []);
+    if (Array.isArray(rows) && rows[0]) return rows[0];
+  }
+  return null;
+};
+
+const handleActualizarContactoChatwoot = async (body) => {
+  const accountId = body?.account?.id ?? body?.account ?? null;
+  const contactId = body?.conversation?.contact_inbox?.contact_id ?? null;
+  const phone = body?.conversation?.meta?.sender?.phone_number || body?.sender?.phone_number || body?.phone || "";
+  if (!body?.dry_run && (!accountId || !contactId)) {
+    return { ok: false, motivo: "Webhook sin account_id/contact_id (no es un evento de conversacion)." };
+  }
+
+  const mkw = await buscarPorTelefonoMikrowisp(phone);
+  if (!mkw) {
+    return { ok: false, motivo: "No se encontró el cliente en mikrowisp_clientes por teléfono.", phone };
+  }
+
+  const [detalle, clienteRows] = await Promise.all([
+    handleMkwProxyAccion("GetClientsDetails", mkw.nodo, { idcliente: mkw.mikrowisp_id }).catch((e) => {
+      console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
+      return null;
+    }),
+    fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad&dni=eq.${encodeURIComponent(mkw.cedula)}&limit=1`).catch(() => []),
+  ]);
+
+  const cliente = Array.isArray(clienteRows) && clienteRows[0] ? clienteRows[0] : null;
+  const datos = detalle?.datos?.[0] || detalle?.data?.datos?.[0] || null;
+  const servicio = datos?.servicios?.[0] || null;
+  const factBlock = datos?.facturacion || {};
+  const facturasNoPagadas = Number(factBlock.facturas_nopagadas ?? factBlock.facturas_no_pagadas ?? 0);
+  const totalFacturas = Number(factBlock.total_facturas ?? 0);
+  const deudaResumen = totalFacturas > 0
+    ? `Deuda: S/ ${totalFacturas.toFixed(2)} (${facturasNoPagadas} sin pagar)`
+    : "Sin deudas";
+
+  const nodoCliente = cliente?.nodo || null; // "Nod_XX"
+  const userPppoe = servicio?.pppuser || cliente?.usuario_nodo || null;
+
+  let mikrotikInfo = null;
+  if (nodoCliente && userPppoe) {
+    mikrotikInfo = await queryRouter({ nodo: nodoCliente, userPppoe }).catch((e) => {
+      console.warn("[actualizar-contacto] queryRouter error:", e.message);
+      return null;
+    });
+  }
+
+  const nombreReal = cliente?.nombre || mkw.nombre || "";
+  const customAttrs = {
+    dni: mkw.cedula || "",
+    usuario_pppoe: userPppoe || "",
+    direccion: cliente?.direccion || "",
+    estado_mikrowisp: datos?.estado || "",
+    deuda: deudaResumen,
+    plan: servicio?.perfil || servicio?.plan || cliente?.velocidad || "",
+    conexion: mikrotikInfo ? (mikrotikInfo.estado === "conectado" ? "En línea" : "Fuera de línea") : "Desconocido",
+    uptime: mikrotikInfo?.uptime || "",
+    ultima_desconexion: mikrotikInfo?.lastLoggedOut || "",
+  };
+
+  // dry_run: arma todo pero NO escribe en Chatwoot -- para probar el cruce de
+  // datos contra clientes reales sin tocar un contacto en produccion.
+  if (body?.dry_run) {
+    return { ok: true, dry_run: true, mikrowisp: mkw, cliente, mikrotikInfo, nombreReal, custom_attributes: customAttrs };
+  }
+
+  const putRes = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", api_access_token: CHATWOOT_TOKEN },
+    body: JSON.stringify({ ...(nombreReal ? { name: nombreReal } : {}), custom_attributes: customAttrs }),
+  });
+  const putJson = await putRes.json().catch(() => ({}));
+  if (!putRes.ok) {
+    throw new Error(`Chatwoot PUT HTTP ${putRes.status}: ${JSON.stringify(putJson).slice(0, 300)}`);
+  }
+
+  return { ok: true, dni: mkw.cedula, nombre: nombreReal, custom_attributes: customAttrs };
+};
+
 const proxySmartOltRequest = async (req) => {
   const url = new URL(req.url || "", "http://localhost");
   const targetPath = url.pathname.replace(/^\/api\/smartolt/, "");
@@ -1684,6 +1792,19 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/mikrowisp-proxy") {
       const result = await proxyMikrowispGenerico(req);
       writeJson(res, result.status, result.json);
+      return;
+    }
+
+    // Reemplazo del webhook "actuaaaaa" de n8n -- apuntar la automatizacion de
+    // Chatwoot (o el webhook de n8n, como paso intermedio) a este endpoint.
+    if (req.method === "POST" && req.url === "/api/chatwoot/actualizar-contacto") {
+      try {
+        const body = await readJsonBody(req);
+        const data = await handleActualizarContactoChatwoot(body);
+        writeJson(res, 200, data);
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
       return;
     }
 
