@@ -1183,7 +1183,7 @@ const cargarTenantConfig = async (tenantId) => {
   }
   const rows = await fetchSupabaseRows(
     "tenant_config",
-    `select=tenant_id,mikrowisp_url,mikrowisp_token,chatwoot_base_url,chatwoot_token&tenant_id=eq.${encodeURIComponent(tenantId)}&limit=1`
+    `select=tenant_id,mikrowisp_url,mikrowisp_token,chatwoot_base_url,chatwoot_token,evolution_base_url,evolution_api_key&tenant_id=eq.${encodeURIComponent(tenantId)}&limit=1`
   );
   const cfg = Array.isArray(rows) && rows[0] ? rows[0] : null;
   _tenantConfigCache = { data: cfg, en: Date.now() };
@@ -1204,6 +1204,39 @@ const buscarPorTelefonoMikrowisp = async (telefono) => {
     if (Array.isArray(rows) && rows[0]) return rows[0];
   }
   return null;
+};
+
+// ── Proxy Evolution API (WhatsApp) -- la API key global de Evolution NUNCA
+// debe viajar al navegador (mismo criterio que OpenAI/Huawei/VSOL de mas
+// arriba), asi que el panel de DIM le pega a este proxy en vez de hablarle
+// directo al servidor de Evolution. URL/key salen de tenant_config (igual
+// patron que Mikrowisp/Chatwoot) -- configurable desde el navegador, no fijo
+// por variable de entorno del servicio.
+const handleEvolutionProxyAccion = async (accion, payload, tenantId) => {
+  const cfg = await cargarTenantConfig(tenantId || DEFAULT_TENANT_ID);
+  if (!cfg?.evolution_base_url || !cfg?.evolution_api_key) {
+    throw new Error("Falta evolution_base_url/evolution_api_key en tenant_config.");
+  }
+  const base = cfg.evolution_base_url.replace(/\/+$/, "");
+  const headers = { "Content-Type": "application/json", apikey: cfg.evolution_api_key };
+  const nombre = encodeURIComponent(payload?.instanceName || "");
+
+  let url, method, body;
+  if (accion === "FetchInstances") { url = `${base}/instance/fetchInstances`; method = "GET"; }
+  else if (accion === "CreateInstance") {
+    url = `${base}/instance/create`; method = "POST";
+    body = JSON.stringify({ instanceName: payload.instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true, number: payload.number || undefined });
+  }
+  else if (accion === "Connect") { url = `${base}/instance/connect/${nombre}`; method = "GET"; }
+  else if (accion === "ConnectionState") { url = `${base}/instance/connectionState/${nombre}`; method = "GET"; }
+  else if (accion === "Logout") { url = `${base}/instance/logout/${nombre}`; method = "DELETE"; }
+  else if (accion === "Delete") { url = `${base}/instance/delete/${nombre}`; method = "DELETE"; }
+  else throw new Error(`Accion no permitida: ${accion}`);
+
+  const res = await fetchConTimeout(url, { method, headers, body }, 20000);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Evolution API HTTP ${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
+  return json;
 };
 
 // Cooldown por contacto: si una conversacion tiene varios mensajes seguidos
@@ -1942,6 +1975,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/mikrowisp-proxy") {
       const result = await proxyMikrowispGenerico(req);
       writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/evolution-proxy") {
+      try {
+        const body = await readJsonBody(req);
+        const data = await handleEvolutionProxyAccion(body?.accion, body?.payload || {}, body?.tenant_id);
+        writeJson(res, 200, { ok: true, data });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
       return;
     }
 
