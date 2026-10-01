@@ -1207,14 +1207,9 @@ const buscarPorTelefonoMikrowisp = async (telefono) => {
 };
 
 const handleActualizarContactoChatwoot = async (body) => {
-  // Chatwoot manda el mismo evento "message_created" tanto para mensajes del
-  // cliente como para respuestas del agente -- sin este filtro, cada vez que
-  // un agente contesta se repetiria toda la consulta a Mikrowisp/Mikrotik sin
-  // necesidad (el contacto no cambio, el que escribio fue el agente).
-  if (!body?.dry_run && body?.message_type && body.message_type !== "incoming") {
-    return { ok: false, motivo: `Ignorado: message_type="${body.message_type}" (no es un mensaje entrante del cliente).` };
-  }
-
+  // "message_created" se dispara para los dos lados (cliente Y agente) --
+  // a pedido explicito se actualiza en ambos casos, sin filtrar por
+  // message_type.
   const accountId = body?.account?.id ?? body?.account ?? null;
   const contactId = body?.conversation?.contact_inbox?.contact_id ?? null;
   const phone = body?.conversation?.meta?.sender?.phone_number || body?.sender?.phone_number || body?.phone || "";
