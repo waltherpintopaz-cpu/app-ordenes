@@ -107,15 +107,19 @@ function napCajaIcon(caja, selected) {
   });
 }
 
-function clienteIcon(sinCaja, selected, tienePuerto) {
+function clienteIcon(sinCaja, selected, tienePuerto, candidato) {
   const bg = selected ? "#f97316" : sinCaja ? "#ef4444" : tienePuerto ? "#8b5cf6" : "#3b82f6";
   const border = selected ? "#fff7ed" : "#ffffff";
-  const size = selected ? 16 : 10;
+  const size = selected ? 16 : candidato ? 13 : 10;
   const shadow = selected ? "0 0 0 3px rgba(249,115,22,0.35), 0 2px 6px rgba(0,0,0,0.3)" : "0 1px 4px rgba(0,0,0,0.25)";
+  // "Candidato" = sin caja y entre los mas cercanos a la caja seleccionada --
+  // pulso naranja para que salten a la vista como "estos son los que
+  // probablemente van en esta caja" sin tener que adivinar por distancia.
+  const anim = candidato && !selected ? "animation:nap-candidato-pulse 1.3s ease-in-out infinite;" : "";
   return L.divIcon({
     className: "",
     iconAnchor: [size / 2, size / 2],
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};border:2px solid ${border};box-shadow:${shadow};transition:all .15s;"></div>`,
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};border:2px solid ${border};box-shadow:${shadow};transition:all .15s;${anim}"></div>`,
   });
 }
 
@@ -161,6 +165,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const cajaSeleccionadaRef = useRef(cajaSeleccionada);
   useEffect(() => { clientesSeleccionadosRef.current = clientesSeleccionados; }, [clientesSeleccionados]);
   useEffect(() => { cajaSeleccionadaRef.current = cajaSeleccionada; }, [cajaSeleccionada]);
+  const candidatosIdsRef = useRef(new Set());
   const seleccionDesdeMapaRef = useRef(false);
   const prevFiltroNodoRef = useRef(filtroNodo);
   const prevCajaIdRef = useRef(null);
@@ -206,6 +211,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
     style.textContent = `.nap-tooltip { background:#fff !important; border:1px solid #e2e8f0 !important; border-radius:8px !important; box-shadow:0 4px 16px rgba(0,0,0,0.15) !important; padding:6px 10px !important; } .nap-tooltip::before { display:none !important; }
       .nap-cliente-row:hover { border-color:#cbd5e1 !important; transform:translateX(1px); }
       .nap-cliente-row:active { transform:scale(0.99); }
+      .nap-quick-assign { width:16px; height:16px; border-radius:50%; border:none; background:#22c55e; color:#fff; font-size:12px; font-weight:800; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:transform .12s, background .12s; }
+      .nap-quick-assign:hover { background:#16a34a; transform:scale(1.18); }
+      .nap-quick-assign:active { transform:scale(0.92); }
+      .nap-quick-assign:disabled { opacity:.5; cursor:default; }
+      @keyframes nap-candidato-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(249,115,22,0.55); } 50% { box-shadow:0 0 0 6px rgba(249,115,22,0); } }
       .marker-cluster-custom { border-radius:50%; display:flex !important; align-items:center; justify-content:center; }
       .marker-cluster-custom-caja { background:rgba(22,63,134,0.25); }
       .marker-cluster-custom-caja div { background:#163f86; color:#fff; font-weight:800; box-shadow:0 2px 8px rgba(22,63,134,0.5); }
@@ -381,10 +391,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const sinCaja = !cli.caja_nap;
       const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
       const sel = selActual.has(cli.id);
+      const candidato = candidatosIdsRef.current.has(cli.id);
 
       const marker = L.marker([coords.lat, coords.lng], {
-        icon: clienteIcon(sinCaja, sel, tienePuerto),
-        zIndexOffset: sel ? 900 : sinCaja ? 200 : 100,
+        icon: clienteIcon(sinCaja, sel, tienePuerto, candidato),
+        zIndexOffset: sel ? 900 : candidato ? 300 : sinCaja ? 200 : 100,
       }).addTo(layer);
 
       marker.bindTooltip(`
@@ -444,6 +455,32 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientes, filtroNodoClientes, loading]);
 
+  // Clientes sin caja mas cercanos a la caja seleccionada -- se resaltan con
+  // un pulso en el mapa para que salten a la vista como "candidatos
+  // probables" de esa caja, sin tener que ir adivinando por distancia uno
+  // por uno. Limitado a un radio razonable (300m) para no marcar a medio
+  // mapa como "candidato" cuando en realidad no hay nadie cerca.
+  const candidatosIds = useMemo(() => {
+    if (!cajaSeleccionada?.lat || !cajaSeleccionada?.lng) return new Set();
+    const RADIO_KM = 0.3;
+    const MAX_CANDIDATOS = 15;
+    return new Set(
+      clientes
+        .filter(c => !c.caja_nap)
+        .map(c => {
+          const coords = parseCoordsStr(c.ubicacion);
+          if (!coords) return null;
+          const dist = haversineKm(cajaSeleccionada.lat, cajaSeleccionada.lng, coords.lat, coords.lng);
+          return dist <= RADIO_KM ? { id: c.id, dist } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, MAX_CANDIDATOS)
+        .map(c => c.id)
+    );
+  }, [cajaSeleccionada?.id, cajaSeleccionada?.lat, cajaSeleccionada?.lng, clientes]);
+  useEffect(() => { candidatosIdsRef.current = candidatosIds; }, [candidatosIds]);
+
   // ── Actualizar iconos de clientes seleccionados (sin recrear markers) ─────
   useEffect(() => {
     Object.entries(clienteMarkersRef.current).forEach(([id, marker]) => {
@@ -452,10 +489,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const sel = clientesSeleccionados.has(cli.id);
       const sinCaja = !cli.caja_nap;
       const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
-      marker.setIcon(clienteIcon(sinCaja, sel, tienePuerto));
-      marker.setZIndexOffset(sel ? 900 : sinCaja ? 200 : 100);
+      const candidato = candidatosIds.has(cli.id);
+      marker.setIcon(clienteIcon(sinCaja, sel, tienePuerto, candidato));
+      marker.setZIndexOffset(sel ? 900 : candidato ? 300 : sinCaja ? 200 : 100);
     });
-  }, [clientesSeleccionados, clientes]);
+  }, [clientesSeleccionados, clientes, candidatosIds]);
 
   // ── Zoom a caja seleccionada (solo desde panel lateral, no desde mapa) ───────
   useEffect(() => {
@@ -559,10 +597,10 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const sinCajaTotal = clientes.filter(c => !c.caja_nap).length;
 
   // ── Asignar ─────────────────────────────────────────────────────────────────
-  const asignar = async () => {
+  const asignar = async (idsOverride) => {
     if (!cajaSeleccionada) return showToast("Selecciona una caja primero", false);
-    if (clientesSeleccionados.size === 0) return showToast("Selecciona al menos un cliente", false);
-    const ids = Array.from(clientesSeleccionados);
+    const ids = idsOverride || Array.from(clientesSeleccionados);
+    if (ids.length === 0) return showToast("Selecciona al menos un cliente", false);
     // Antes no se validaba la capacidad real de la caja: se podian vincular
     // mas clientes de los puertos fisicos que tiene, dejando el conteo
     // desincronizado de la realidad sin ningun aviso.
@@ -577,7 +615,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       // El puerto elegido solo se guarda cuando se asigna a un unico
       // cliente (si hay varios seleccionados no hay forma de saber a
       // cual de ellos correspondia ese puerto).
-      const puertoAGuardar = ids.length === 1 ? puertoElegido : null;
+      // El puerto elegido en el footer solo aplica al flujo normal (checkbox
+      // + "Asignar"); la asignacion rapida de un clic no pasa por "Elegir
+      // puerto", asi que nunca debe arrastrar un puerto elegido antes para
+      // OTRO cliente.
+      const puertoAGuardar = !idsOverride && ids.length === 1 ? puertoElegido : null;
       const payload = puertoAGuardar
         ? { caja_nap: cajaSeleccionada.codigo, puerto_nap: puertoAGuardar }
         : { caja_nap: cajaSeleccionada.codigo };
@@ -965,6 +1007,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
                   ✓ {clientesSeleccionados.size} sel.
                 </span>
               )}
+              {candidatosIds.size > 0 && (
+                <span style={{ ...s.chip, background: "#fff7ed", color: "#ea580c", borderColor: "#fed7aa" }}>
+                  📍 {candidatosIds.size} cerca sin caja
+                </span>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
@@ -1025,13 +1072,29 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
                               {dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`}
                             </span>
                           )}
-                          {coords && (
-                            <button
-                              onClick={e => { e.stopPropagation(); flyToCliente(cli); }}
-                              style={s.btnFly}
-                              title="Ver en mapa"
-                            >🗺</button>
-                          )}
+                          <div style={{ display: "flex", gap: 4 }}>
+                            {coords && (
+                              <button
+                                onClick={e => { e.stopPropagation(); flyToCliente(cli); }}
+                                style={s.btnFly}
+                                title="Ver en mapa"
+                              >🗺</button>
+                            )}
+                            {/* Asignacion rapida: con una caja ya seleccionada,
+                                un solo clic vincula a este cliente ahi mismo --
+                                sin tener que marcarlo y despues ir a tocar
+                                "Asignar" aparte. Solo tiene sentido ofrecerla
+                                si el cliente todavia no tiene caja y hay
+                                puertos libres. */}
+                            {cajaSeleccionada && sinCaja && (
+                              <button
+                                onClick={e => { e.stopPropagation(); asignar([cli.id]); }}
+                                disabled={saving}
+                                className="nap-quick-assign"
+                                title={`Vincular directo a ${cajaSeleccionada.codigo}`}
+                              >+</button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
