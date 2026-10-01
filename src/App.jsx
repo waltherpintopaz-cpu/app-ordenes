@@ -6531,7 +6531,25 @@ export default function App() {
   const guardarClientesEnSupabase = async (lista = clientes, opts = {}) => {
     if (!isSupabaseConfigured) return;
     const data = Array.isArray(lista) ? lista : [];
-    const payload = data.map(serializarClienteParaSupabase);
+    // caja_nap/puerto_nap NUNCA se mandan desde aca. Esta funcion sube en
+    // bloque la copia en memoria de "clientes" -- un useEffect la dispara
+    // automaticamente cada vez que ese estado cambia por CUALQUIER motivo,
+    // sin que nadie toque nada de NAP. "Vincular Clientes NAP" escribe esas
+    // dos columnas directo a Supabase sin pasar por el estado "clientes" de
+    // esta pantalla, asi que la copia en memoria queda vieja/vacia para
+    // cualquier cliente recien vinculado -- el proximo auto-guardado (de
+    // cualquier cambio, en cualquier parte de la app) volvia a pisar
+    // caja_nap/puerto_nap con ese valor vacio. Bug real reportado: cajas
+    // asignadas que se borraban solas sin que nadie tocara nada de NAP.
+    // El unico lugar que SI debe poder cambiar estas columnas es "Editar
+    // cliente" (guardarEdicionCliente), que hace su propio update directo
+    // sin pasar por aca.
+    const payload = data.map((c) => {
+      const row = serializarClienteParaSupabase(c);
+      delete row.caja_nap;
+      delete row.puerto_nap;
+      return row;
+    });
     if (!payload.length) return;
     const replaceAllOnIdentity = Boolean(opts?.replaceAllOnIdentity);
     const rowNoIdOf = (row) => ({
