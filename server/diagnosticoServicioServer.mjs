@@ -1305,7 +1305,7 @@ const handleActualizarContactoChatwoot = async (body) => {
   const estaSuspendido = String(datos?.estado || "").trim().toUpperCase() === "SUSPENDIDO";
   const NOMBRE_MAX = 20;
   const nombreCorto = nombreReal.length > NOMBRE_MAX ? `${nombreReal.slice(0, NOMBRE_MAX)}…` : nombreReal;
-  const etiquetaDeuda = totalFacturas > 0 ? `💸DEU S/${totalFacturas.toFixed(0)}` : "✅OK";
+  const etiquetaDeuda = totalFacturas > 0 ? `💸DEU S/${totalFacturas.toFixed(0)}` : null;
   const etiquetaEstado = estaSuspendido
     ? "⛔SUSPENDIDO"
     : (mikrotikInfo ? (mikrotikInfo.estado === "conectado" ? "🟢ON" : "🔴OFF") : null);
