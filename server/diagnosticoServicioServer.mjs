@@ -39,6 +39,11 @@ const HUAWEI_ACCION_TOKEN = String(process.env.HUAWEI_ACCION_TOKEN || "").trim()
 // DIM) -- el ACCION_TOKEN de ese servicio protege su /averia-config (guarda
 // un bot token de Telegram) y no debe viajar al navegador.
 const OLT_SSH_API = String(process.env.OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/+$/, "");
+// "vsol" (DIM, via OLT_SSH_API /signal) o "huawei" (Americanet, via
+// HUAWEI_OLT_SNMP_API /onu-info) -- ambos devuelven el mismo campo
+// "rxPower", asi que el resto de handleActualizarContactoChatwoot no
+// necesita saber cual proveedor respondio.
+const OLT_SIGNAL_PROVIDER = String(process.env.OLT_SIGNAL_PROVIDER || "vsol").trim().toLowerCase();
 const VSOL_ACCION_TOKEN = String(process.env.VSOL_ACCION_TOKEN || "").trim();
 // La key de OpenAI NUNCA debe vivir en el navegador (antes estaba en varios
 // paneles como VITE_OPENAI_KEY, 100% extraible del bundle publico -- ver
@@ -1412,7 +1417,13 @@ const handleActualizarContactoChatwoot = async (body) => {
         })
       : Promise.resolve(null),
     cliente?.sn_onu
-      ? fetchConTimeout(`${OLT_SSH_API}/signal?sn=${encodeURIComponent(cliente.sn_onu)}&nodo=${encodeURIComponent(nodoCliente || "")}`, {}, 8000)
+      ? fetchConTimeout(
+          OLT_SIGNAL_PROVIDER === "huawei"
+            ? `${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(cliente.sn_onu)}`
+            : `${OLT_SSH_API}/signal?sn=${encodeURIComponent(cliente.sn_onu)}&nodo=${encodeURIComponent(nodoCliente || "")}`,
+          {},
+          8000
+        )
           .then((r) => r.json())
           .then((j) => (j?.ok ? j : null))
           .catch((e) => {
