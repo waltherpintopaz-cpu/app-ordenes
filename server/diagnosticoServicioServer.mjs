@@ -1270,7 +1270,7 @@ const handleActualizarContactoChatwoot = async (body) => {
   // HOY para el mismo mikrowisp_id) -- preferir siempre la cedula fresca de
   // la respuesta real de Mikrowisp para cruzar contra "clientes".
   const cedulaParaCruce = datosPrevio?.cedula || mkw.cedula;
-  const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad&dni=eq.${encodeURIComponent(cedulaParaCruce)}&limit=1`).catch(() => []);
+  const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu&dni=eq.${encodeURIComponent(cedulaParaCruce)}&limit=1`).catch(() => []);
 
   const cliente = Array.isArray(clienteRows) && clienteRows[0] ? clienteRows[0] : null;
   const datos = datosPrevio;
@@ -1293,6 +1293,19 @@ const handleActualizarContactoChatwoot = async (body) => {
     });
   }
 
+  // Si esta desconectado, buscar el ULTIMO evento real de su ONU (olt-signal-
+  // dim ya los guarda via traps SNMP) para distinguir corte de luz (power_down,
+  // "ONU Dying Gasp") de perdida de señal/fibra cortada (los_down, "ONU Port
+  // Los") -- mucho mas util para el agente que un generico "desconectado".
+  let ultimoEventoOnu = null;
+  if (cliente?.sn_onu && mikrotikInfo && mikrotikInfo.estado !== "conectado") {
+    const eventoRows = await fetchSupabaseRows(
+      "onu_eventos",
+      `select=tipo,causa_texto,ocurrido_en&sn=eq.${encodeURIComponent(cliente.sn_onu)}&order=ocurrido_en.desc&limit=1`
+    ).catch(() => []);
+    ultimoEventoOnu = Array.isArray(eventoRows) && eventoRows[0] ? eventoRows[0] : null;
+  }
+
   const nombreReal = cliente?.nombre || mkw.nombre || "";
 
   // El "name" del contacto es lo UNICO siempre visible sin abrir nada (lista
@@ -1306,9 +1319,16 @@ const handleActualizarContactoChatwoot = async (body) => {
   const NOMBRE_MAX = 20;
   const nombreCorto = nombreReal.length > NOMBRE_MAX ? `${nombreReal.slice(0, NOMBRE_MAX)}…` : nombreReal;
   const etiquetaDeuda = totalFacturas > 0 ? `💸DEU S/${totalFacturas.toFixed(0)}` : null;
+  // Solo se marca lo que importa: conectado (ON) es el estado esperado, no
+  // aporta mostrarlo -- unicamente se señala cuando esta desconectado, y si
+  // hay un evento real de la ONU se distingue sin luz de sin señal (fibra/
+  // equipo) en vez de un generico "desconectado".
+  const etiquetaOffline = ultimoEventoOnu?.tipo === "power_down" ? "🔌SIN LUZ"
+    : ultimoEventoOnu?.tipo === "los_down" ? "📡SIN SEÑAL"
+    : "🔴OFFLINE";
   const etiquetaEstado = estaSuspendido
     ? "⛔SUSPENDIDO"
-    : (mikrotikInfo ? (mikrotikInfo.estado === "conectado" ? "🟢ON" : "🔴OFF") : null);
+    : (mikrotikInfo && mikrotikInfo.estado !== "conectado" ? etiquetaOffline : null);
   const nombreCompacto = [nodoCliente, nombreCorto, etiquetaEstado, etiquetaDeuda].filter(Boolean).join(" · ");
 
   const customAttrs = {
@@ -1321,6 +1341,9 @@ const handleActualizarContactoChatwoot = async (body) => {
     conexion: mikrotikInfo ? (mikrotikInfo.estado === "conectado" ? "En línea" : "Fuera de línea") : "Desconocido",
     uptime: mikrotikInfo?.uptime || "",
     ultima_desconexion: mikrotikInfo?.lastLoggedOut || "",
+    ultimo_evento_olt: ultimoEventoOnu
+      ? `${ultimoEventoOnu.causa_texto || ultimoEventoOnu.tipo} (${new Date(ultimoEventoOnu.ocurrido_en).toLocaleString("es-PE")})`
+      : "",
   };
 
   // dry_run: arma todo pero NO escribe en Chatwoot -- para probar el cruce de
