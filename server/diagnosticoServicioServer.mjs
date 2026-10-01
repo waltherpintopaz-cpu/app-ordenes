@@ -1299,8 +1299,26 @@ const handleActualizarContactoChatwoot = async (body) => {
   }
 
   const mkw = await buscarPorTelefonoMikrowisp(phone);
+
+  // Plan B: si no esta en mikrowisp_clientes (cliente recien instalado, o un
+  // desfase de sincronizacion), buscar directo en "clientes" por celular en
+  // vez de no hacer nada. No hay mikrowisp_id en este caso, asi que no se
+  // puede traer facturacion en vivo -- pero al menos sale nombre, direccion,
+  // nodo y conexion Mikrotik real, en vez de dejar el contacto sin tocar.
+  let clientePorTelefono = null;
   if (!mkw) {
-    return { ok: false, motivo: "No se encontró el cliente en mikrowisp_clientes por teléfono.", phone };
+    const tel = normalizarTelefono(phone);
+    const candidatos = [...new Set([tel, tel.slice(-9)])].filter(Boolean);
+    for (const cand of candidatos) {
+      const rows = await fetchSupabaseRows(
+        "clientes",
+        `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu,dni&celular=ilike.*${encodeURIComponent(cand)}*&limit=1`
+      ).catch(() => []);
+      if (Array.isArray(rows) && rows[0]) { clientePorTelefono = rows[0]; break; }
+    }
+    if (!clientePorTelefono) {
+      return { ok: false, motivo: "No se encontró el cliente ni en mikrowisp_clientes ni en clientes por teléfono.", phone };
+    }
   }
 
   const getClientsDetails = async (idcliente) => {
@@ -1313,10 +1331,10 @@ const handleActualizarContactoChatwoot = async (body) => {
     return readProxyJsonResponse(res, "Mikrowisp GetClientsDetails");
   };
 
-  const detalle = await getClientsDetails(mkw.mikrowisp_id).catch((e) => {
+  const detalle = mkw ? await getClientsDetails(mkw.mikrowisp_id).catch((e) => {
     console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
     return null;
-  });
+  }) : null;
   let datosPrevio = detalle?.datos?.[0] || detalle?.data?.datos?.[0] || null;
 
   // Verificacion de seguridad: mikrowisp_clientes es un espejo que puede
@@ -1338,14 +1356,22 @@ const handleActualizarContactoChatwoot = async (body) => {
     }
   }
 
-  // mikrowisp_clientes es un espejo que puede quedar desactualizado (visto en
-  // vivo: una cedula guardada ahi no coincidia con la que Mikrowisp devuelve
-  // HOY para el mismo mikrowisp_id) -- preferir siempre la cedula fresca de
-  // la respuesta real de Mikrowisp para cruzar contra "clientes".
-  const cedulaParaCruce = datosPrevio?.cedula || mkw.cedula;
-  const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu&dni=eq.${encodeURIComponent(cedulaParaCruce)}&limit=1`).catch(() => []);
-
-  const cliente = Array.isArray(clienteRows) && clienteRows[0] ? clienteRows[0] : null;
+  let cliente;
+  let cedulaParaCruce;
+  if (mkw) {
+    // mikrowisp_clientes es un espejo que puede quedar desactualizado (visto
+    // en vivo: una cedula guardada ahi no coincidia con la que Mikrowisp
+    // devuelve HOY para el mismo mikrowisp_id) -- preferir siempre la cedula
+    // fresca de la respuesta real de Mikrowisp para cruzar contra "clientes".
+    cedulaParaCruce = datosPrevio?.cedula || mkw.cedula;
+    const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu&dni=eq.${encodeURIComponent(cedulaParaCruce)}&limit=1`).catch(() => []);
+    cliente = Array.isArray(clienteRows) && clienteRows[0] ? clienteRows[0] : null;
+  } else {
+    // Plan B: ya tenemos la fila de "clientes" encontrada por telefono, no
+    // hace falta volver a buscarla.
+    cliente = clientePorTelefono;
+    cedulaParaCruce = clientePorTelefono.dni || null;
+  }
   const datos = datosPrevio;
   const servicio = datos?.servicios?.[0] || null;
   const factBlock = datos?.facturacion || {};
@@ -1392,7 +1418,7 @@ const handleActualizarContactoChatwoot = async (body) => {
     ultimoEventoOnu = Array.isArray(eventoRows) && eventoRows[0] ? eventoRows[0] : null;
   }
 
-  const nombreReal = cliente?.nombre || mkw.nombre || "";
+  const nombreReal = cliente?.nombre || mkw?.nombre || "";
 
   // El "name" del contacto es lo UNICO siempre visible sin abrir nada (lista
   // de conversaciones, notificaciones, apps moviles que no muestran bien los
