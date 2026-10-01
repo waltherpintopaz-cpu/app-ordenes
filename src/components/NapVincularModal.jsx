@@ -690,6 +690,26 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientesSeleccionados, cajaSeleccionada?.id]);
 
+  // Mover a un cliente YA conectado de un puerto a otro dentro de la misma
+  // caja -- pedido explicito para poder reordenar la bandeja sin tener que
+  // desvincular y volver a vincular. Solo cambia puerto_nap, caja_nap queda
+  // igual (sigue siendo la misma caja).
+  const moverPuertoCliente = async (clienteId, nuevoPuerto) => {
+    const cli = clientes.find(c => c.id === clienteId);
+    if (!cli) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("clientes").update({ puerto_nap: nuevoPuerto }).eq("id", clienteId);
+      if (error) throw error;
+      setClientes(prev => prev.map(c => c.id === clienteId ? { ...c, puerto_nap: nuevoPuerto } : c));
+      showToast(`${cli.nombre} movido al puerto ${nuevoPuerto}`);
+    } catch (e) {
+      showToast(e?.message || "No se pudo mover el puerto", false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const quitarClienteIndividual = async (cli) => {
     if (!window.confirm(`¿Desvincular a ${cli.nombre} de ${cli.caja_nap}?`)) return;
     setSaving(true);
@@ -843,9 +863,14 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
                   </div>
                 )}
 
-                <button onClick={() => { setCajaSeleccionada(null); setClientesSeleccionados(new Set()); setVerClientesCaja(false); }} style={s.btnCambiar}>
-                  Cambiar caja
-                </button>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <button onClick={() => setMostrarSelectorPuerto(true)} style={{ ...s.btnCambiar, marginTop: 0, flex: 1, background: "#fff7ed", color: "#ea580c" }}>
+                    🔌 Ver bandeja de puertos
+                  </button>
+                  <button onClick={() => { setCajaSeleccionada(null); setClientesSeleccionados(new Set()); setVerClientesCaja(false); }} style={{ ...s.btnCambiar, marginTop: 0 }}>
+                    Cambiar caja
+                  </button>
+                </div>
               </div>
               );
             })() : (
@@ -1100,7 +1125,12 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
           clientes={clientes}
           excluirClienteId={Array.from(clientesSeleccionados)[0]}
           puertoSeleccionado={puertoElegido}
+          // Si no hay exactamente un cliente en proceso de asignacion, se
+          // abrio desde "Ver bandeja de puertos" -- solo mirar/mover, sin
+          // forzar a elegir un puerto para cerrar.
+          soloVer={clientesSeleccionados.size !== 1}
           onSelect={(n) => { setPuertoElegido(n); setMostrarSelectorPuerto(false); }}
+          onMoverPuerto={moverPuertoCliente}
           onClose={() => setMostrarSelectorPuerto(false)}
         />
       )}

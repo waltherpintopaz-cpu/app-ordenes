@@ -86,12 +86,12 @@ function PortIcon({ ocupado }) {
   );
 }
 
-function PortTile({ n, index, ocupado, seleccionado, onSelect, onTapOcupado, senal }) {
+function PortTile({ n, index, ocupado, seleccionado, destino, onSelect, onTapOcupado, senal }) {
   return (
     <button
       onClick={() => (ocupado ? onTapOcupado(n) : onSelect(n))}
-      title={ocupado ? `Puerto ${n} ocupado: ${ocupado.nombre}` : `Puerto ${n} libre`}
-      className="nps-port"
+      title={ocupado ? `Puerto ${n} ocupado: ${ocupado.nombre}` : destino ? `Mover aquí (puerto ${n})` : `Puerto ${n} libre`}
+      className={`nps-port${destino ? " nps-port-destino" : ""}`}
       style={{ animationDelay: `${Math.min(index, 24) * 26}ms` }}
     >
       <div className={`nps-port-icon${seleccionado ? " nps-port-sel" : ""}`}>
@@ -120,7 +120,7 @@ function InfoFila({ etiqueta, valor, link }) {
   );
 }
 
-function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto }) {
+function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto, onIniciarMover, moviendo }) {
   const [expandido, setExpandido] = useState(false);
   useEffect(() => { setExpandido(false); }, [info.n]);
   const calidad = info.rx != null ? calidadDe(info.rx) : null;
@@ -149,11 +149,20 @@ function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto }) {
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
         <button className="nps-link-btn" onClick={onRepetir} disabled={info.cargando}>↻ Recargar</button>
         {!info.cargando && !info.error && (
           <button className="nps-link-btn" onClick={() => setExpandido(v => !v)}>
             {expandido ? "▲ Ocultar información" : "▼ Ver más información"}
+          </button>
+        )}
+        {!!onIniciarMover && (
+          <button
+            className="nps-link-btn"
+            style={{ color: moviendo ? "#fbbf24" : "#93c5fd" }}
+            onClick={onIniciarMover}
+          >
+            {moviendo ? "⇄ Toca el puerto libre destino…" : "⇄ Mover a otro puerto"}
           </button>
         )}
       </div>
@@ -184,12 +193,16 @@ function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto }) {
   );
 }
 
-export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, excluirClienteId, puertoSeleccionado, onSelect, onClose }) {
+export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, excluirClienteId, puertoSeleccionado, soloVer, onSelect, onMoverPuerto, onClose }) {
   const [seleccionado, setSeleccionado] = useState(puertoSeleccionado ?? null);
   const [verInfo, setVerInfo] = useState(null);
   const [senalesGlobales, setSenalesGlobales] = useState(null);
   const [cargandoTodas, setCargandoTodas] = useState(false);
   const [fotoZoom, setFotoZoom] = useState(null);
+  // Mover un cliente ya conectado a otro puerto libre dentro de la misma
+  // caja -- se activa desde el panel de señal de un puerto ocupado, y el
+  // siguiente clic en un puerto LIBRE confirma el destino.
+  const [moviendo, setMoviendo] = useState(null); // { clienteId, nombre, desdePuerto }
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -204,7 +217,7 @@ export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, exc
       if (excluirClienteId && c.id === excluirClienteId) continue;
       if (c.puerto_nap == null) continue;
       map[c.puerto_nap] = {
-        nombre: c.nombre || "", sn: c.sn_onu || "", nodo: c.nodo || "",
+        id: c.id, nombre: c.nombre || "", sn: c.sn_onu || "", nodo: c.nodo || "",
         direccion: c.direccion || "", ubicacion: c.ubicacion || "",
         fotos: fotosDe(c),
       };
@@ -321,7 +334,16 @@ export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, exc
                   index={index}
                   ocupado={ocupados[n]}
                   seleccionado={seleccionado === n}
-                  onSelect={setSeleccionado}
+                  destino={!!moviendo && !ocupados[n]}
+                  onSelect={(puerto) => {
+                    if (moviendo) {
+                      onMoverPuerto?.(moviendo.clienteId, puerto);
+                      setMoviendo(null);
+                      setVerInfo(null);
+                    } else {
+                      setSeleccionado(puerto);
+                    }
+                  }}
                   onTapOcupado={consultarSenalVivo}
                   senal={senalesGlobales?.[n]}
                 />
@@ -341,22 +363,32 @@ export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, exc
               cliente={ocupados[verInfo.n]}
               onRepetir={() => consultarSenalVivo(verInfo.n)}
               onZoomFoto={setFotoZoom}
+              moviendo={moviendo?.desdePuerto === verInfo.n}
+              onIniciarMover={onMoverPuerto ? () => {
+                setMoviendo(m => (m?.desdePuerto === verInfo.n
+                  ? null
+                  : { clienteId: ocupados[verInfo.n]?.id, nombre: verInfo.nombre, desdePuerto: verInfo.n }));
+              } : null}
             />
           )}
 
-          <div style={{ display: "flex", gap: 14, fontSize: 10, color: "#64748b", fontWeight: 600, justifyContent: "center", marginTop: 14 }}>
+          <div style={{ display: "flex", gap: 14, fontSize: 10, color: "#64748b", fontWeight: 600, justifyContent: "center", marginTop: 14, flexWrap: "wrap" }}>
             <span><span className="nps-dot" style={{ background: "#16a34a" }} /> Ocupado (clic ve señal en vivo)</span>
             <span><span className="nps-dot" style={{ background: "#94a3b8" }} /> Libre</span>
           </div>
         </div>
 
-        <button
-          className={`nps-confirm${seleccionado ? " nps-confirm-ready" : ""}`}
-          disabled={!seleccionado}
-          onClick={() => onSelect(seleccionado)}
-        >
-          {seleccionado ? `Usar puerto ${seleccionado}` : "Toca un puerto libre"}
-        </button>
+        {soloVer ? (
+          <button className="nps-confirm nps-confirm-ready" onClick={onClose}>Cerrar</button>
+        ) : (
+          <button
+            className={`nps-confirm${seleccionado ? " nps-confirm-ready" : ""}`}
+            disabled={!seleccionado}
+            onClick={() => onSelect(seleccionado)}
+          >
+            {seleccionado ? `Usar puerto ${seleccionado}` : "Toca un puerto libre"}
+          </button>
+        )}
       </div>
 
       {fotoZoom && (
@@ -378,6 +410,8 @@ export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, exc
         .nps-port-icon { width: 100%; aspect-ratio: 44/52; position: relative; transition: transform .18s cubic-bezier(.34,1.56,.64,1); }
         .nps-port-sel { transform: scale(1.14); filter: drop-shadow(0 0 0 2px #3b82f6); }
         .nps-port-sel::after { content: ""; position: absolute; inset: -4px; border: 2px solid #3b82f6; border-radius: 10px; }
+        .nps-port-destino .nps-port-icon { animation: nps-destino-pulse 1s ease-in-out infinite; }
+        @keyframes nps-destino-pulse { 0%, 100% { filter: drop-shadow(0 0 0 rgba(251,191,36,0.6)); } 50% { filter: drop-shadow(0 0 6px rgba(251,191,36,0.9)); } }
         .nps-port-num { font-size: 10px; font-weight: 700; color: #64748b; margin-top: 3px; }
         .nps-port-num-ocu { color: #166534; }
         .nps-port-num-sel { color: #3b82f6; }
