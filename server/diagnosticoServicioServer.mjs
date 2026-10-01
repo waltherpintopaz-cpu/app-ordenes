@@ -1842,9 +1842,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/chatwoot/actualizar-contacto") {
       try {
         const body = await readJsonBody(req);
+        console.log(`[actualizar-contacto] llamada recibida: event=${body?.event} message_type=${body?.message_type} phone=${body?.conversation?.meta?.sender?.phone_number || body?.phone || "-"}`);
         const data = await handleActualizarContactoChatwoot(body);
+        console.log(`[actualizar-contacto] resultado:`, JSON.stringify(data).slice(0, 500));
         writeJson(res, 200, data);
       } catch (e) {
+        console.log(`[actualizar-contacto] ERROR: ${e.message}`);
         writeJson(res, 200, { ok: false, error: e.message || String(e) });
       }
       return;
