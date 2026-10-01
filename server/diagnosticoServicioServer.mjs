@@ -1285,13 +1285,26 @@ const handleActualizarContactoChatwoot = async (body) => {
   const nodoCliente = cliente?.nodo || null; // "Nod_XX"
   const userPppoe = servicio?.pppuser || cliente?.usuario_nodo || null;
 
-  let mikrotikInfo = null;
-  if (nodoCliente && userPppoe) {
-    mikrotikInfo = await queryRouter({ nodo: nodoCliente, userPppoe }).catch((e) => {
-      console.warn("[actualizar-contacto] queryRouter error:", e.message);
-      return null;
-    });
-  }
+  // Mikrotik (conectado/uptime) y señal óptica (olt-signal-dim, 1 sola
+  // consulta SNMP por dentro) se piden en paralelo -- son independientes
+  // entre si, no hace falta esperar uno para pedir el otro.
+  const [mikrotikInfo, senalInfo] = await Promise.all([
+    (nodoCliente && userPppoe)
+      ? queryRouter({ nodo: nodoCliente, userPppoe }).catch((e) => {
+          console.warn("[actualizar-contacto] queryRouter error:", e.message);
+          return null;
+        })
+      : Promise.resolve(null),
+    cliente?.sn_onu
+      ? fetchConTimeout(`${OLT_SSH_API}/signal?sn=${encodeURIComponent(cliente.sn_onu)}&nodo=${encodeURIComponent(nodoCliente || "")}`, {}, 8000)
+          .then((r) => r.json())
+          .then((j) => (j?.ok ? j : null))
+          .catch((e) => {
+            console.warn("[actualizar-contacto] signal error:", e.message);
+            return null;
+          })
+      : Promise.resolve(null),
+  ]);
 
   // Si esta desconectado, buscar el ULTIMO evento real de su ONU (olt-signal-
   // dim ya los guarda via traps SNMP) para distinguir corte de luz (power_down,
@@ -1336,10 +1349,17 @@ const handleActualizarContactoChatwoot = async (body) => {
   // cliente llama o escribe igual, asi que tienen que verse aunque la lista
   // angosta trunque el resto del texto. Si esta todo bien, el "✅" queda al
   // final, discreto.
+  // Señal debil (peor que -26dBm, mas negativo) tambien es una alerta real --
+  // explica cortes intermitentes aunque el PPPoE este conectado -- asi que va
+  // pegada al nodo igual que el estado, no atras con DNI/PPPoE.
+  const SENAL_MINIMA_DBM = -26;
+  const senalEsDebil = senalInfo?.rxPower != null && senalInfo.rxPower < SENAL_MINIMA_DBM;
+  const etiquetaSenal = senalInfo?.rxPower != null ? `📶${senalInfo.rxPower}dBm` : null;
   const estadoEsNegativo = etiquetaEstado !== "✅";
-  const nombreCompacto = estadoEsNegativo
-    ? [nodoCliente, etiquetaEstado, nombreCorto, cedulaParaCruce, userPppoe, etiquetaDeuda].filter(Boolean).join(" · ")
-    : [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, etiquetaDeuda, "✅"].filter(Boolean).join(" · ");
+  const alertasFrente = [estadoEsNegativo ? etiquetaEstado : null, senalEsDebil ? etiquetaSenal : null].filter(Boolean);
+  const nombreCompacto = alertasFrente.length
+    ? [nodoCliente, ...alertasFrente, nombreCorto, cedulaParaCruce, userPppoe, (senalEsDebil ? null : etiquetaSenal), etiquetaDeuda].filter(Boolean).join(" · ")
+    : [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, etiquetaSenal, etiquetaDeuda, "✅"].filter(Boolean).join(" · ");
 
   const customAttrs = {
     dni: cedulaParaCruce || "",
@@ -1354,6 +1374,7 @@ const handleActualizarContactoChatwoot = async (body) => {
     ultimo_evento_olt: ultimoEventoOnu
       ? `${ultimoEventoOnu.causa_texto || ultimoEventoOnu.tipo} (${new Date(ultimoEventoOnu.ocurrido_en).toLocaleString("es-PE")})`
       : "",
+    senal_rx: etiquetaSenal || "",
   };
 
   // dry_run: arma todo pero NO escribe en Chatwoot -- para probar el cruce de
