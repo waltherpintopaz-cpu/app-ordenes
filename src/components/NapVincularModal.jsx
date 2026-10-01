@@ -5,6 +5,7 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { supabase } from "../supabaseClient";
 import NapPuertoSelector from "./NapPuertoSelector";
+import NapClienteSenalModal from "./NapClienteSenalModal";
 
 const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
 const ZOOM_CLIENTES = 14;
@@ -136,6 +137,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const [puertoElegido, setPuertoElegido] = useState(null);
   const [puertoOriginal, setPuertoOriginal] = useState(null); // puerto que YA tenia el cliente antes de tocar nada, para poder decir "Cambiar" en vez de "Elegir"
   const [mostrarSelectorPuerto, setMostrarSelectorPuerto] = useState(false);
+  const [mostrarSenalCliente, setMostrarSenalCliente] = useState(false);
   // Virtualizacion manual de la lista de clientes: con cientos/miles de
   // filas, montar un <div> por cada una (aunque no se vea) es lo que hacia
   // sentir pesado el scroll. Solo se renderizan las filas realmente
@@ -179,7 +181,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       while (true) {
         const { data, error } = await supabase
           .from("clientes")
-          .select("id,dni,nombre,direccion,celular,nodo,caja_nap,puerto_nap,ubicacion,sn_onu,rx_signal,signal_updated_at,foto_fachada,fotos_liquidacion")
+          .select("id,dni,nombre,direccion,celular,nodo,usuario_nodo,caja_nap,puerto_nap,ubicacion,sn_onu,rx_signal,signal_updated_at,foto_fachada,fotos_liquidacion")
           .order("nombre")
           .range(from, from + PAGE - 1);
         if (error) throw error;
@@ -1041,6 +1043,14 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
             {/* Acciones */}
             <div style={s.footer}>
+              {clientesSeleccionados.size === 1 && (
+                <button
+                  onClick={() => setMostrarSenalCliente(true)}
+                  style={{ ...s.btnSm, width: "100%", textAlign: "center", background: "#f0fdfa", borderColor: "#99f6e4", color: "#0f766e" }}
+                >
+                  📶 Ver señal / buscar SN
+                </button>
+              )}
               {cajaSeleccionada && clientesSeleccionados.size === 1 && (
                 <button
                   onClick={() => setMostrarSelectorPuerto(true)}
@@ -1131,9 +1141,27 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
           soloVer={clientesSeleccionados.size !== 1}
           onSelect={(n) => { setPuertoElegido(n); setMostrarSelectorPuerto(false); }}
           onMoverPuerto={moverPuertoCliente}
+          onQuitarCliente={(id) => {
+            const cli = clientes.find(c => c.id === id);
+            if (cli) quitarClienteIndividual(cli);
+          }}
           onClose={() => setMostrarSelectorPuerto(false)}
         />
       )}
+
+      {mostrarSenalCliente && clientesSeleccionados.size === 1 && (() => {
+        const cli = clientes.find(c => c.id === Array.from(clientesSeleccionados)[0]);
+        if (!cli) return null;
+        return (
+          <NapClienteSenalModal
+            cliente={cli}
+            onClose={() => setMostrarSenalCliente(false)}
+            onSnGuardado={(id, sn) => {
+              setClientes(prev => prev.map(c => c.id === id ? { ...c, sn_onu: sn } : c));
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

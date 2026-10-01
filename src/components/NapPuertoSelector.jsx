@@ -120,7 +120,7 @@ function InfoFila({ etiqueta, valor, link }) {
   );
 }
 
-function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto, onIniciarMover, moviendo }) {
+function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto, onIniciarMover, moviendo, onQuitar }) {
   const [expandido, setExpandido] = useState(false);
   useEffect(() => { setExpandido(false); }, [info.n]);
   const calidad = info.rx != null ? calidadDe(info.rx) : null;
@@ -165,6 +165,11 @@ function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto, onIniciarMover, 
             {moviendo ? "⇄ Toca el puerto libre destino…" : "⇄ Mover a otro puerto"}
           </button>
         )}
+        {!!onQuitar && (
+          <button className="nps-link-btn" style={{ color: "#f87171" }} onClick={onQuitar}>
+            🗑 Quitar de esta caja
+          </button>
+        )}
       </div>
 
       {expandido && (
@@ -193,7 +198,7 @@ function InfoPanelSenal({ info, cliente, onRepetir, onZoomFoto, onIniciarMover, 
   );
 }
 
-export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, excluirClienteId, puertoSeleccionado, soloVer, onSelect, onMoverPuerto, onClose }) {
+export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, excluirClienteId, puertoSeleccionado, soloVer, onSelect, onMoverPuerto, onQuitarCliente, onClose }) {
   const [seleccionado, setSeleccionado] = useState(puertoSeleccionado ?? null);
   const [verInfo, setVerInfo] = useState(null);
   const [senalesGlobales, setSenalesGlobales] = useState(null);
@@ -368,6 +373,10 @@ export default function NapPuertoSelector({ cajaCodigo, capacidad, clientes, exc
                 setMoviendo(m => (m?.desdePuerto === verInfo.n
                   ? null
                   : { clienteId: ocupados[verInfo.n]?.id, nombre: verInfo.nombre, desdePuerto: verInfo.n }));
+              } : null}
+              onQuitar={onQuitarCliente ? () => {
+                const id = ocupados[verInfo.n]?.id;
+                if (id) { onQuitarCliente(id); setVerInfo(null); }
               } : null}
             />
           )}
