@@ -1237,16 +1237,20 @@ const handleActualizarContactoChatwoot = async (body) => {
     return readProxyJsonResponse(res, "Mikrowisp GetClientsDetails");
   };
 
-  const [detalle, clienteRows] = await Promise.all([
-    getClientsDetails(mkw.mikrowisp_id).catch((e) => {
-      console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
-      return null;
-    }),
-    fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad&dni=eq.${encodeURIComponent(mkw.cedula)}&limit=1`).catch(() => []),
-  ]);
+  const detalle = await getClientsDetails(mkw.mikrowisp_id).catch((e) => {
+    console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
+    return null;
+  });
+  const datosPrevio = detalle?.datos?.[0] || detalle?.data?.datos?.[0] || null;
+  // mikrowisp_clientes es un espejo que puede quedar desactualizado (visto en
+  // vivo: una cedula guardada ahi no coincidia con la que Mikrowisp devuelve
+  // HOY para el mismo mikrowisp_id) -- preferir siempre la cedula fresca de
+  // la respuesta real de Mikrowisp para cruzar contra "clientes".
+  const cedulaParaCruce = datosPrevio?.cedula || mkw.cedula;
+  const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad&dni=eq.${encodeURIComponent(cedulaParaCruce)}&limit=1`).catch(() => []);
 
   const cliente = Array.isArray(clienteRows) && clienteRows[0] ? clienteRows[0] : null;
-  const datos = detalle?.datos?.[0] || detalle?.data?.datos?.[0] || null;
+  const datos = datosPrevio;
   const servicio = datos?.servicios?.[0] || null;
   const factBlock = datos?.facturacion || {};
   const facturasNoPagadas = Number(factBlock.facturas_nopagadas ?? factBlock.facturas_no_pagadas ?? 0);
@@ -1268,7 +1272,7 @@ const handleActualizarContactoChatwoot = async (body) => {
 
   const nombreReal = cliente?.nombre || mkw.nombre || "";
   const customAttrs = {
-    dni: mkw.cedula || "",
+    dni: cedulaParaCruce || "",
     usuario_pppoe: userPppoe || "",
     direccion: cliente?.direccion || "",
     estado_mikrowisp: datos?.estado || "",
@@ -1295,7 +1299,7 @@ const handleActualizarContactoChatwoot = async (body) => {
     throw new Error(`Chatwoot PUT HTTP ${putRes.status}: ${JSON.stringify(putJson).slice(0, 300)}`);
   }
 
-  return { ok: true, dni: mkw.cedula, nombre: nombreReal, custom_attributes: customAttrs };
+  return { ok: true, dni: cedulaParaCruce, nombre: nombreReal, custom_attributes: customAttrs };
 };
 
 const proxySmartOltRequest = async (req) => {
