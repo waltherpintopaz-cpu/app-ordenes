@@ -1370,7 +1370,12 @@ const handleActualizarContactoChatwoot = async (body) => {
   // pegada al nodo igual que el estado, no atras con DNI/PPPoE.
   const SENAL_MINIMA_DBM = -26;
   const senalEsDebil = senalInfo?.rxPower != null && senalInfo.rxPower < SENAL_MINIMA_DBM;
-  const etiquetaSenal = senalInfo?.rxPower != null ? `📶${senalInfo.rxPower}dBm` : null;
+  // Icono distinto segun si la señal esta bien o no -- el rojo llama la
+  // atencion de verdad cuando el parametro esta alto (señal debil), en vez
+  // de usar el mismo icono neutro de siempre.
+  const etiquetaSenal = senalInfo?.rxPower != null
+    ? (senalEsDebil ? `🔴📶${senalInfo.rxPower}dBm` : `📶${senalInfo.rxPower}dBm`)
+    : null;
   const estadoEsNegativo = etiquetaEstado !== "✅";
   const alertasFrente = [estadoEsNegativo ? etiquetaEstado : null, senalEsDebil ? etiquetaSenal : null].filter(Boolean);
   const nombreCompacto = alertasFrente.length
