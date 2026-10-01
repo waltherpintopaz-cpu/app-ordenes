@@ -1329,16 +1329,17 @@ const handleActualizarContactoChatwoot = async (body) => {
   const etiquetaEstado = estaSuspendido
     ? "⛔SUSPENDIDO"
     : (mikrotikInfo && mikrotikInfo.estado !== "conectado" ? etiquetaOffline : "✅");
-  // DNI y usuario PPPoE van SIEMPRE (a pedido explicito, para tenerlos a mano
-  // sin abrir nada), pero al final -- no son urgentes. Lo negativo (estado
-  // distinto de "todo bien", y/o deuda) va PEGADO al nodo, al principio: en
-  // una lista angosta que trunca el texto, asi nunca se pierde justo lo que
-  // hace falta ver primero. Si no hay nada negativo, el "✅" va al final,
-  // discreto, porque no hay apuro en verlo.
-  const alertas = [etiquetaEstado !== "✅" ? etiquetaEstado : null, etiquetaDeuda].filter(Boolean);
-  const nombreCompacto = alertas.length
-    ? [nodoCliente, ...alertas, nombreCorto, cedulaParaCruce, userPppoe].filter(Boolean).join(" · ")
-    : [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, "✅"].filter(Boolean).join(" · ");
+  // DNI, usuario PPPoE y deuda van SIEMPRE en su lugar de siempre (al final)
+  // -- la deuda no es urgente, el cliente no necesariamente escribe por eso.
+  // Lo que SI va pegado al nodo, al principio, es solo el ESTADO (sin
+  // energia/sin señal/suspendido/offline): son los casos en los que el
+  // cliente llama o escribe igual, asi que tienen que verse aunque la lista
+  // angosta trunque el resto del texto. Si esta todo bien, el "✅" queda al
+  // final, discreto.
+  const estadoEsNegativo = etiquetaEstado !== "✅";
+  const nombreCompacto = estadoEsNegativo
+    ? [nodoCliente, etiquetaEstado, nombreCorto, cedulaParaCruce, userPppoe, etiquetaDeuda].filter(Boolean).join(" · ")
+    : [nodoCliente, nombreCorto, cedulaParaCruce, userPppoe, etiquetaDeuda, "✅"].filter(Boolean).join(" · ");
 
   const customAttrs = {
     dni: cedulaParaCruce || "",
