@@ -1244,7 +1244,27 @@ const handleActualizarContactoChatwoot = async (body) => {
     console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
     return null;
   });
-  const datosPrevio = detalle?.datos?.[0] || detalle?.data?.datos?.[0] || null;
+  let datosPrevio = detalle?.datos?.[0] || detalle?.data?.datos?.[0] || null;
+
+  // Verificacion de seguridad: mikrowisp_clientes es un espejo que puede
+  // quedar desactualizado -- visto en vivo un caso real donde el
+  // mikrowisp_id guardado localmente para un telefono ya pertenece a OTRO
+  // cliente en el Mikrowisp real (el id se reasigno). Sin este chequeo,
+  // se terminaria mostrando la deuda/direccion de un cliente distinto bajo
+  // la conversacion de otro -- no es solo un dato mal mostrado, es un
+  // problema de privacidad. Si el telefono que devuelve Mikrowisp para
+  // este idcliente no contiene el telefono que buscamos, se descarta la
+  // respuesta por completo.
+  if (datosPrevio) {
+    const telDevuelto = normalizarTelefono(datosPrevio.movil || datosPrevio.telefono || "");
+    const telBuscado = normalizarTelefono(phone);
+    const coincide = telDevuelto && telBuscado && (telDevuelto.endsWith(telBuscado.slice(-9)) || telBuscado.endsWith(telDevuelto.slice(-9)));
+    if (!coincide) {
+      console.warn(`[actualizar-contacto] mikrowisp_id ${mkw.mikrowisp_id} desactualizado: telefono buscado ${telBuscado} no coincide con el que devuelve Mikrowisp (${telDevuelto}, cliente "${datosPrevio.nombre}"). Se descarta.`);
+      datosPrevio = null;
+    }
+  }
+
   // mikrowisp_clientes es un espejo que puede quedar desactualizado (visto en
   // vivo: una cedula guardada ahi no coincidia con la que Mikrowisp devuelve
   // HOY para el mismo mikrowisp_id) -- preferir siempre la cedula fresca de
