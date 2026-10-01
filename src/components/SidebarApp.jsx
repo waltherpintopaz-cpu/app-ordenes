@@ -926,6 +926,12 @@ export default function SidebarApp() {
   const [guardandoVlan, setGuardandoVlan] = useState(false);
   const [senal,    setSenal]    = useState(null);   // { rx, oltRx, ts }
   const [senalLoad,setSenalLoad]= useState(false);
+  // Buscar SN por MAC (cuando no hay SN guardado, o el guardado ya no lo
+  // reconoce la OLT -- ONU cambiada/re-registrada)
+  const [snBuscando, setSnBuscando] = useState(false);
+  const [snBuscarError, setSnBuscarError] = useState("");
+  const [snCandidato, setSnCandidato] = useState(null); // { sn, port, onuId, olt, mac }
+  const [snPosibleIncorrecto, setSnPosibleIncorrecto] = useState(false);
   const [showMap,    setShowMap]    = useState(false);
   const [factExpand, setFactExpand] = useState(null);
   const [debugMsgs,  setDebugMsgs] = useState([]);
@@ -2562,6 +2568,7 @@ export default function SidebarApp() {
   async function consultarSenal() {
     if (!snOnu) return notify("No se encontró SN de ONU para este cliente", false);
     setSenalLoad(true);
+    setSnPosibleIncorrecto(false);
     try {
       const esOltSsh = esNodoOltSsh(nodoReal);
       if (esOltSsh) {
@@ -2570,7 +2577,13 @@ export default function SidebarApp() {
         if (nodoReal) params.set("nodo", nodoReal);
         const res = await fetch(`${OLT_SSH_API}/signal?${params}`);
         const json = await res.json().catch(() => ({}));
-        if (!json.ok) throw new Error(json.error || "No se pudo obtener señal OLT.");
+        if (!json.ok) {
+          // El SN guardado existe pero la OLT no lo reconoce -- puede estar
+          // mal/desactualizado (ONU cambiada, re-registrada, etc.). Ofrecer
+          // el mismo "Buscar SN por MAC" que cuando no hay SN en absoluto.
+          if (/no encontrad\w* en ninguna OLT/i.test(json.error || "")) setSnPosibleIncorrecto(true);
+          throw new Error(json.error || "No se pudo obtener señal OLT.");
+        }
         setSenal({
           rx: json.rxPower != null ? String(json.rxPower) : "—",
           oltRx: json.txPower != null ? String(json.txPower) : "—",
@@ -2581,7 +2594,10 @@ export default function SidebarApp() {
         // Nod_01/02/03 — servicio SNMP propio (reemplaza el proxy SmartOLT)
         const res = await fetch(`${HUAWEI_OLT_SNMP_API}/signal?sn=${encodeURIComponent(snOnu)}`);
         const json = await res.json().catch(() => ({}));
-        if (!json.ok) throw new Error(json.error || "No se pudo obtener señal SNMP.");
+        if (!json.ok) {
+          if (/no se encontr\w* la onu/i.test(json.error || "")) setSnPosibleIncorrecto(true);
+          throw new Error(json.error || "No se pudo obtener señal SNMP.");
+        }
         let desde = null, desdeTipo = null;
         if (json.estado && json.estado !== "online" && json.estado !== "—") {
           const tipoBuscado = json.estado === "power_fail" ? "power_down"
@@ -2624,6 +2640,55 @@ export default function SidebarApp() {
       notify("Error consultando señal: " + e.message, false);
     }
     setSenalLoad(false);
+  }
+
+  // ── Buscar SN por MAC (igual patron que el panel de Clientes) -- cuando no
+  // hay sn_onu guardado pero ya tenemos la MAC (caller-id de MikroTik), busca
+  // el SN cruzando esa MAC contra la OLT real: VSOL por SSH (Nod_04/05/06) o
+  // Huawei via onu_mac_wan (Nod_01/02/03). Pide confirmar antes de guardar.
+  async function buscarSnPorMacSidebar(mac) {
+    const macLimpia = String(mac || "").trim();
+    if (!macLimpia || !nodoReal) return;
+    const esOltSsh = esNodoOltSsh(nodoReal);
+    const base = esOltSsh ? OLT_SSH_API : HUAWEI_OLT_SNMP_API;
+    if (!base) return;
+    setSnBuscando(true);
+    setSnBuscarError("");
+    setSnCandidato(null);
+    try {
+      const params = new URLSearchParams({ mac: macLimpia });
+      if (esOltSsh) params.set("nodo", nodoReal);
+      const res = await fetch(`${base}/resolve-sn?${params}`);
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      setSnCandidato({ sn: json.sn, port: json.port, onuId: json.onuId, olt: json.olt, mac: macLimpia });
+    } catch (e) {
+      setSnBuscarError(String(e?.message || "No se pudo resolver el SN por MAC."));
+    } finally {
+      setSnBuscando(false);
+    }
+  }
+
+  async function confirmarSnPorMacSidebar() {
+    if (!snCandidato?.sn || !clienteIdReal) return;
+    try {
+      // Historial del SN anterior -- por si hace falta volver a buscarlo o
+      // auditar por que cambio, antes de pisarlo.
+      await supabase.from("sn_onu_historial").insert({
+        cliente_id: clienteIdReal,
+        sn_anterior: snOnu || null,
+        sn_nuevo: snCandidato.sn,
+        mac: snCandidato.mac || null,
+        origen: "buscar_por_mac_sidebar",
+      }).then(({ error }) => { if (error) console.warn("No se pudo guardar historial de SN:", error.message); });
+      await supabase.from("clientes").update({ sn_onu: snCandidato.sn }).eq("id", clienteIdReal);
+      setSnOnu(snCandidato.sn);
+      setSnCandidato(null);
+      setSnPosibleIncorrecto(false);
+      notify("✅ SN guardado correctamente");
+    } catch (e) {
+      setSnBuscarError(String(e?.message || "No se pudo guardar el SN."));
+    }
   }
 
   function senalColor(dbm) {
@@ -5425,6 +5490,40 @@ export default function SidebarApp() {
                 );
               })()}
             </div>
+
+            {/* Sin SN, o el SN guardado existe pero la OLT no lo reconoce
+                (ONU cambiada/re-registrada) -- ofrecer buscarlo por MAC en
+                vez de dejar la Señal sin mostrar nada o con error. */}
+            {(!snOnu || snPosibleIncorrecto) && diagResult?.mikrotik?.callerId && (esNodoOltSsh(nodoReal) ? OLT_SSH_API : HUAWEI_OLT_SNMP_API) && (
+              <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Señal</span>
+                  <span style={{ fontSize:10.5, color:T.muted, flex:1 }}>
+                    {snOnu ? `SN guardado (${snOnu}) no reconocido por la OLT` : "Sin SN guardado"}
+                  </span>
+                  <button onClick={() => buscarSnPorMacSidebar(diagResult.mikrotik.callerId)} disabled={snBuscando}
+                    style={{ padding:"4px 10px", background: snBuscando ? T.muted : T.blue, color:"#fff", border:"none", borderRadius:7, fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                    {snBuscando ? "Buscando..." : "🔍 Buscar SN por MAC"}
+                  </button>
+                </div>
+                {snBuscarError && <div style={{ marginTop:6, fontSize:10.5, color:T.red }}>{snBuscarError}</div>}
+                {snCandidato && (
+                  <div style={{ marginTop:8, background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:6, padding:"8px 10px" }}>
+                    <div style={{ fontSize:11, color:"#166534", fontWeight:600 }}>
+                      SN detectado: <strong>{snCandidato.sn}</strong> — {snCandidato.olt}, puerto {snCandidato.port}, ONU {snCandidato.onuId}
+                    </div>
+                    <div style={{ marginTop:6, display:"flex", gap:6 }}>
+                      <button onClick={confirmarSnPorMacSidebar} style={{ padding:"5px 10px", background:T.green||"#16a34a", color:"#fff", border:"none", borderRadius:6, fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                        Confirmar y guardar
+                      </button>
+                      <button onClick={() => setSnCandidato(null)} style={{ padding:"5px 10px", background:"#fff", color:T.muted, border:`1px solid ${T.border}`, borderRadius:6, fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Mapa */}
             {showMap && coordsStr && (() => {
