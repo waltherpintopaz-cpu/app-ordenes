@@ -1160,23 +1160,35 @@ const proxyMikrowispGenerico = async (req) => {
   }
 };
 
-// ── Actualizar contacto de Chatwoot (reemplazo del flujo n8n "Actualizar_contacto") ──
-// El flujo viejo de n8n (76 nodos, ~15 ramas copiadas y pegadas por router Mikrotik)
-// identificaba al cliente por telefono contra "mikrowisp_clientes", traia facturacion
-// de Mikrowisp, y cruzaba contra Mikrotik -- todo a mano, duplicado por cada router, con
-// bugs reales (un If que referenciaba un nodo inexistente, un rango de nodos que dejaba
-// el nodo 11 sin actualizar nunca, nodos 11/12 consultando el Mikrowisp de Americanet en
-// vez del de DimFiber pese al comentario de MKW_PROXY_NODOS_DIM mas arriba, un "=Nod_02"
-// mal tipeado, y dos pipelines corriendo en paralelo sobre el mismo contacto).
-// Esta version reusa lo que YA existe en este archivo en vez de reimplementarlo:
-//   - buscarPorTelefonoMikrowisp(): unico lookup nuevo, contra mikrowisp_clientes.
-//   - handleMkwProxyAccion(): ya resuelve el tenant correcto (Americanet/DimFiber)
-//     segun el nodo NUMERICO de Mikrowisp -- no hace falta volver a mapear routers acá.
-//   - queryRouter(): ya resuelve el router Mikrotik por el nodo "Nod_XX" de "clientes"
-//     (tabla que se llena al liquidar la orden) y consulta PPP active/secret.
-// En vez de amontonar todo en el campo "name" (como hacia n8n, dificil de leer), esto
-// escribe custom_attributes separados y dejar "name" solo con el nombre real.
+// ── Actualizar contacto de Chatwoot (para DIM -- reemplazo del flujo n8n que
+// usa Americanet, que queda intacto y aparte). DIM no quiere depender de n8n
+// para esto, y pidió explicitamente que Mikrowisp/Chatwoot queden
+// configurables desde el navegador en vez de fijos por variable de entorno
+// del servicio -- por eso ambos se leen de la tabla "tenant_config" (misma
+// tabla que ya usan xtream_proxy_url/maxplayer_token para DIM) en vez de
+// las constantes MIKROWISP_*/CHATWOOT_* de mas arriba (esas son especificas
+// de Americanet y quedan sin tocar). El router Mikrotik SI reusa
+// queryRouter()/resolveRouterByNodo() tal cual, porque esas tablas
+// (mikrotik_routers/mikrotik_nodo_router) ya son editables desde Supabase
+// por nodo -- no hace falta otro mecanismo de configuracion para eso.
 const normalizarTelefono = (s) => String(s || "").replace(/\D/g, "");
+const DEFAULT_TENANT_ID = String(process.env.TENANT_ID || "dim").trim();
+
+let _tenantConfigCache = null; // { data, en: ms }
+const TENANT_CONFIG_TTL_MS = 60_000;
+
+const cargarTenantConfig = async (tenantId) => {
+  if (_tenantConfigCache && Date.now() - _tenantConfigCache.en < TENANT_CONFIG_TTL_MS) {
+    return _tenantConfigCache.data;
+  }
+  const rows = await fetchSupabaseRows(
+    "tenant_config",
+    `select=tenant_id,mikrowisp_url,mikrowisp_token,chatwoot_base_url,chatwoot_token&tenant_id=eq.${encodeURIComponent(tenantId)}&limit=1`
+  );
+  const cfg = Array.isArray(rows) && rows[0] ? rows[0] : null;
+  _tenantConfigCache = { data: cfg, en: Date.now() };
+  return cfg;
+};
 
 const buscarPorTelefonoMikrowisp = async (telefono) => {
   const tel = normalizarTelefono(telefono);
@@ -1202,13 +1214,31 @@ const handleActualizarContactoChatwoot = async (body) => {
     return { ok: false, motivo: "Webhook sin account_id/contact_id (no es un evento de conversacion)." };
   }
 
+  const tenantCfg = await cargarTenantConfig(body?.tenant_id || DEFAULT_TENANT_ID);
+  if (!tenantCfg?.mikrowisp_url || !tenantCfg?.mikrowisp_token) {
+    return { ok: false, motivo: "Falta mikrowisp_url/mikrowisp_token en tenant_config." };
+  }
+  if (!body?.dry_run && (!tenantCfg?.chatwoot_base_url || !tenantCfg?.chatwoot_token)) {
+    return { ok: false, motivo: "Falta chatwoot_base_url/chatwoot_token en tenant_config." };
+  }
+
   const mkw = await buscarPorTelefonoMikrowisp(phone);
   if (!mkw) {
     return { ok: false, motivo: "No se encontró el cliente en mikrowisp_clientes por teléfono.", phone };
   }
 
+  const getClientsDetails = async (idcliente) => {
+    const url = buildAbsoluteApiUrl(tenantCfg.mikrowisp_url, "/GetClientsDetails");
+    const res = await fetchConTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ token: tenantCfg.mikrowisp_token, idcliente }),
+    });
+    return readProxyJsonResponse(res, "Mikrowisp GetClientsDetails");
+  };
+
   const [detalle, clienteRows] = await Promise.all([
-    handleMkwProxyAccion("GetClientsDetails", mkw.nodo, { idcliente: mkw.mikrowisp_id }).catch((e) => {
+    getClientsDetails(mkw.mikrowisp_id).catch((e) => {
       console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
       return null;
     }),
@@ -1255,9 +1285,9 @@ const handleActualizarContactoChatwoot = async (body) => {
     return { ok: true, dry_run: true, mikrowisp: mkw, cliente, mikrotikInfo, nombreReal, custom_attributes: customAttrs };
   }
 
-  const putRes = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
+  const putRes = await fetchConTimeout(`${tenantCfg.chatwoot_base_url.replace(/\/+$/, "")}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", api_access_token: CHATWOOT_TOKEN },
+    headers: { "Content-Type": "application/json", api_access_token: tenantCfg.chatwoot_token },
     body: JSON.stringify({ ...(nombreReal ? { name: nombreReal } : {}), custom_attributes: customAttrs }),
   });
   const putJson = await putRes.json().catch(() => ({}));
