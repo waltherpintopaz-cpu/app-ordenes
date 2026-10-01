@@ -363,6 +363,14 @@ const MENU_VISTAS_WEB = [
   { key: "onuInventario", label: "Central OLT (Huawei)", gestoraVisible: true },
   { key: "onuAverias", label: "Averías OLT (LOS/Luz)", gestoraVisible: true },
   { key: "onuAveriasVsol", label: "Averías OLT (VSOL)", gestoraVisible: true },
+  // Estas dos no tienen pantalla propia en la web (mainMenuItems las excluye
+  // mas abajo) -- existen solo para que el selector de "Accesos de menu" de
+  // Usuarios pueda otorgar/quitar los permisos de la APP MOVIL del tecnico
+  // "Central OLT" y "Etiquetado de ONUs", que usan estas mismas claves
+  // (centralOlt/etiquetadoOnu) en accesosMenu. Antes no existia forma de
+  // tocarlas desde la web sin pisar sin querer el acceso por defecto del rol.
+  { key: "centralOlt", label: "Central OLT (app técnico)", mobileOnly: true },
+  { key: "etiquetadoOnu", label: "Etiquetado de ONUs (app técnico)", mobileOnly: true },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
   { key: "seguimientoVehiculos", label: "Seguimiento vehiculos" },
   { key: "seguimientoVolanteadores", label: "Seguimiento volanteadores" },
@@ -412,7 +420,7 @@ const MENU_GRUPO_POR_KEY_WEB = {
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
   Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
-  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios"],
+  Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios", "etiquetadoOnu"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
   Volanteador: [],
   Supervisor: [],
@@ -16781,6 +16789,7 @@ export default function App() {
     });
   };
   const mainMenuItems = MENU_VISTAS_WEB.filter((item) => {
+    if (item.mobileOnly) return false; // sin pantalla propia en la web, solo existen para el selector de permisos
     if (!accesosSesion.includes(item.key)) return false;
     if (item.key === "almacenes" && !esAdminSesion) return false;
     return true;
