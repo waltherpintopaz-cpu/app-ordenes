@@ -1317,7 +1317,24 @@ const handleActualizarContactoChatwoot = async (body) => {
       if (Array.isArray(rows) && rows[0]) { clientePorTelefono = rows[0]; break; }
     }
     if (!clientePorTelefono) {
-      return { ok: false, motivo: "No se encontró el cliente ni en mikrowisp_clientes ni en clientes por teléfono.", phone };
+      // No es cliente en ningun lado -- en vez de dejar el contacto sin
+      // tocar (confunde: no se sabe si fallo algo o si de verdad no es
+      // cliente), se marca explicito para que se note de un vistazo. Puede
+      // ser un lead nuevo de Ventas, o un cliente real escribiendo desde un
+      // numero distinto al del titular -- en ambos casos el agente necesita
+      // saber que la busqueda automatica no encontro nada.
+      const nombreSinRegistro = "❓SIN REGISTRO";
+      if (body?.dry_run) {
+        return { ok: true, dry_run: true, sin_registro: true, phone, nombre: nombreSinRegistro };
+      }
+      const putRes = await fetchConTimeout(`${tenantCfg.chatwoot_base_url.replace(/\/+$/, "")}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", api_access_token: tenantCfg.chatwoot_token },
+        body: JSON.stringify({ name: nombreSinRegistro, custom_attributes: { estado_cliente: "No encontrado" } }),
+      }).catch((e) => { console.warn("[actualizar-contacto] PUT sin-registro error:", e.message); return null; });
+      if (putRes && !putRes.ok) console.warn(`[actualizar-contacto] PUT sin-registro HTTP ${putRes.status}`);
+      _cooldownPorContacto.set(cooldownKey, Date.now());
+      return { ok: true, sin_registro: true, phone, nombre: nombreSinRegistro };
     }
   }
 
