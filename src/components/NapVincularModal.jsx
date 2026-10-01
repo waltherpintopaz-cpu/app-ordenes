@@ -179,7 +179,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       while (true) {
         const { data, error } = await supabase
           .from("clientes")
-          .select("id,dni,nombre,direccion,celular,nodo,caja_nap,puerto_nap,ubicacion")
+          .select("id,dni,nombre,direccion,celular,nodo,caja_nap,puerto_nap,ubicacion,sn_onu,rx_signal,signal_updated_at,foto_fachada,fotos_liquidacion")
           .order("nombre")
           .range(from, from + PAGE - 1);
         if (error) throw error;
