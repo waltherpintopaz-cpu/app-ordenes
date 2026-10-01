@@ -5257,8 +5257,23 @@ export default function App() {
       setClientes(nuevosClientes);
       if (isSupabaseConfigured) {
         try {
-          const rows = actualizados.map((c) => serializarClienteParaSupabase(c));
-          await supabase.from(CLIENTES_TABLE).upsert(rows, { onConflict: "id" });
+          // Solo se toca estado_servicio -- antes se reescribia la fila
+          // completa con serializarClienteParaSupabase(c), y como "c" es la
+          // copia en memoria (nunca se entera de los caja_nap/puerto_nap
+          // asignados despues desde "Vincular Clientes NAP", que escribe
+          // directo a Supabase), cada corrida de esta actualizacion masiva
+          // terminaba pisando caja_nap/puerto_nap de vuelta a null para
+          // todo cliente cuyo estado hubiera cambiado -- bug real
+          // reportado: clientes vinculados a una caja aparecian "sin caja"
+          // despues de correr esto.
+          await Promise.all(
+            actualizados.map((c) =>
+              supabase
+                .from(CLIENTES_TABLE)
+                .update({ estado_servicio: c.estadoServicio, ultima_actualizacion: new Date().toISOString() })
+                .eq("id", c.id)
+            )
+          );
         } catch {
           // noop — estado queda en memoria
         }
@@ -13284,7 +13299,25 @@ export default function App() {
     setSelManualContacto(false);
   };
 
-  const abrirEditarCliente = (cli) => {
+  const abrirEditarCliente = async (cli) => {
+    // caja_nap/puerto_nap se asignan desde "Vincular Clientes NAP", que
+    // escribe directo a Supabase sin avisarle al estado "clientes" de esta
+    // pantalla -- si se usa el valor en memoria (potencialmente viejo) y
+    // despues se guarda esta edicion, se pisa la caja real con el valor
+    // viejo (bug real reportado: cajas asignadas que "se borraban solas").
+    // Se refresca ese par de campos directo de la base antes de abrir el
+    // formulario, para no arrastrar un dato stale.
+    let cajaNapFresca = cli.cajaNap || "";
+    let puertoNapFresco = cli.puertoNap || "";
+    if (isSupabaseConfigured && cli.id) {
+      try {
+        const { data } = await supabase.from(CLIENTES_TABLE).select("caja_nap, puerto_nap").eq("id", cli.id).maybeSingle();
+        if (data) {
+          cajaNapFresca = data.caja_nap || "";
+          puertoNapFresco = data.puerto_nap || "";
+        }
+      } catch { /* si falla, se usa el valor en memoria como antes */ }
+    }
     setFormEditarCliente({
       nombre: cli.nombre || "",
       dni: cli.dni || "",
