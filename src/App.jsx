@@ -2964,6 +2964,10 @@ export default function App() {
   const [clienteDiagnosticoRapidoLoading, setClienteDiagnosticoRapidoLoading] = useState(false);
   const [clienteDiagnosticoRapidoError, setClienteDiagnosticoRapidoError] = useState("");
   const [clienteDiagnosticoRapidoResultado, setClienteDiagnosticoRapidoResultado] = useState(null);
+  const [snPorMacLoading, setSnPorMacLoading] = useState(false);
+  const [snPorMacError, setSnPorMacError] = useState("");
+  const [snPorMacCandidato, setSnPorMacCandidato] = useState(null); // { sn, port, onuId, olt, mac }
+  const [snPorMacGuardando, setSnPorMacGuardando] = useState(false);
   const [clienteMikrotikAccionLoading, setClienteMikrotikAccionLoading] = useState("");
   const [clienteMikrotikAccionInfo, setClienteMikrotikAccionInfo] = useState("");
   const [clienteEquiposDetalle, setClienteEquiposDetalle] = useState([]); // equipos enriquecidos con foto_referencia
@@ -6070,6 +6074,62 @@ export default function App() {
       prev && String(prev?.id || "") === String(clienteId || "") ? nextEstado : prev
     );
     return nextEstado;
+  };
+
+  // Busca el SN de la ONU cruzando la MAC del cliente (PPP caller-id) contra
+  // la OLT real -- VSOL por SSH (nodos DIM) o Huawei por SNMP (nodos
+  // Americanet), igual logica que ya usa el sidebar. No escribe nada
+  // todavia, requiere confirmar.
+  const buscarSnPorMac = async (cli, mac) => {
+    const macLimpia = String(mac || "").trim();
+    if (!macLimpia || macLimpia === "-" || !cli?.nodo) return;
+    setSnPorMacLoading(true);
+    setSnPorMacError("");
+    setSnPorMacCandidato(null);
+    try {
+      const esVsol = esDimNodo(cli.nodo);
+      const base = esVsol ? OLT_SIGNAL_API : HUAWEI_OLT_SNMP_API_MODULO;
+      if (!base) throw new Error("Servicio de resolución de SN no configurado para este nodo.");
+      const params = new URLSearchParams({ mac: macLimpia });
+      if (esVsol) params.set("nodo", cli.nodo);
+      const res = await fetch(`${base}/resolve-sn?${params}`);
+      const json = await res.json().catch(() => ({}));
+      if (!json.ok) throw new Error(json.error || `Error HTTP ${res.status}`);
+      setSnPorMacCandidato({ sn: json.sn, port: json.port, onuId: json.onuId, olt: json.olt, mac: macLimpia });
+    } catch (e) {
+      setSnPorMacError(String(e?.message || "No se pudo resolver el SN por MAC."));
+    } finally {
+      setSnPorMacLoading(false);
+    }
+  };
+
+  // Guarda el SN detectado recien despues de que el usuario lo confirma --
+  // nunca se pisa el sn_onu sin que alguien lo vea y apruebe primero.
+  const confirmarSnPorMac = async (cli) => {
+    if (!snPorMacCandidato?.sn || !cli?.id) return;
+    setSnPorMacGuardando(true);
+    try {
+      await supabase.from("sn_onu_historial").insert({
+        cliente_id: cli.id,
+        sn_anterior: cli.snOnu || cli.sn_onu || null,
+        sn_nuevo: snPorMacCandidato.sn,
+        mac: snPorMacCandidato.mac || null,
+        origen: "buscar_por_mac_clientes",
+      }).then(({ error }) => { if (error) console.warn("No se pudo guardar historial de SN:", error.message); });
+      await supabase.from(CLIENTES_TABLE).update({ sn_onu: snPorMacCandidato.sn }).eq("id", cli.id);
+      setClienteDiagnosticoRapido(prev => (prev && prev.id === cli.id) ? { ...prev, snOnu: snPorMacCandidato.sn, sn_onu: snPorMacCandidato.sn } : prev);
+      setClienteSeleccionado(prev => (prev && prev.id === cli.id) ? { ...prev, snOnu: snPorMacCandidato.sn } : prev);
+      // Sin esto, la lista principal "clientes" en memoria quedaba con el SN
+      // viejo, y el auto-guardado masivo (guardarClientesEnSupabase, se
+      // dispara solo con cualquier cambio de ese estado) lo volvia a pisar
+      // al valor de antes -- mismo bug que el de caja_nap.
+      setClientes(prev => prev.map(c => c.id === cli.id ? { ...c, snOnu: snPorMacCandidato.sn, sn_onu: snPorMacCandidato.sn } : c));
+      setSnPorMacCandidato(null);
+    } catch (e) {
+      setSnPorMacError(String(e?.message || "No se pudo guardar el SN."));
+    } finally {
+      setSnPorMacGuardando(false);
+    }
   };
 
   const ejecutarAccionMikrotikCliente = async (cliente = null, accion = "") => {
@@ -26511,6 +26571,52 @@ export default function App() {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  <div style={{ marginTop: "14px", borderTop: "1px dashed #dbe6f5", paddingTop: "14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#64748b" }}>SN ONU</div>
+                        <div style={{ marginTop: "4px", fontSize: "15px", fontWeight: 700, color: "#0f172a" }}>
+                          {clienteDiagnosticoRapido?.snOnu || clienteDiagnosticoRapido?.sn_onu || "— vacío —"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void buscarSnPorMac(clienteDiagnosticoRapido, diagnosticoRapidoMikrotik?.callerId)}
+                        style={secondaryButton}
+                        disabled={snPorMacLoading || !diagnosticoRapidoMikrotik?.callerId || diagnosticoRapidoMikrotik.callerId === "-"}
+                      >
+                        {snPorMacLoading ? "Buscando..." : "Buscar SN por MAC"}
+                      </button>
+                    </div>
+
+                    {snPorMacError ? (
+                      <div style={{ marginTop: "10px", border: "1px solid #fdba74", borderRadius: "12px", background: "#fff7ed", color: "#9a3412", padding: "10px 12px", fontSize: "13px", fontWeight: 600 }}>
+                        {snPorMacError}
+                      </div>
+                    ) : null}
+
+                    {snPorMacCandidato ? (
+                      <div style={{ marginTop: "10px", border: "1px solid #bbf7d0", borderRadius: "12px", background: "#f0fdf4", padding: "12px 14px" }}>
+                        <div style={{ fontSize: "13px", color: "#166534", fontWeight: 600 }}>
+                          SN detectado: <strong>{snPorMacCandidato.sn}</strong> — OLT {snPorMacCandidato.olt}, puerto {snPorMacCandidato.port}, ONU {snPorMacCandidato.onuId}
+                        </div>
+                        <div style={{ marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => void confirmarSnPorMac(clienteDiagnosticoRapido)}
+                            style={successButton}
+                            disabled={snPorMacGuardando}
+                          >
+                            {snPorMacGuardando ? "Guardando..." : "Confirmar y guardar"}
+                          </button>
+                          <button type="button" onClick={() => setSnPorMacCandidato(null)} style={secondaryButton} disabled={snPorMacGuardando}>
+                            Descartar
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
