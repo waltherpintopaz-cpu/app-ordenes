@@ -1969,15 +1969,34 @@ const server = http.createServer(async (req, res) => {
         let mikrotik = null;
         let cliente = null;
         if (mac) {
-          connection = await connectRouterByKey("tiabaya");
-          const [secrets, activos] = await Promise.all([
-            withTimeout(connection.api.write("/ppp/secret/print", []), 20000, "Listar PPP Secret en Tiabaya"),
-            withTimeout(connection.api.write("/ppp/active/print", []), 15000, "Listar PPP Active en Tiabaya").catch(() => []),
-          ]);
-          await closeRouterApiSafe(connection.api);
-          connection = null;
+          // Antes esto solo miraba "tiabaya" -- un cliente Huawei (Nod_01/02/
+          // 03) migrado a VLAN 102 vive en el Mikrotik nuevo, no en Tiabaya,
+          // asi que su secret nunca aparecia aca y el tecnico siempre veia
+          // "no se encontro ningun cliente" aunque la ONU estuviera conectada
+          // de verdad. Mismo fix que queryRouter (a091cee): probar Tiabaya
+          // primero y, si no aparece el secret con esa MAC, probar tambien el
+          // router VLAN 102 antes de rendirse.
+          const routersCandidatos = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
+          const ordenRouters = [routersCandidatos.tiabaya, routersCandidatos[ROUTER_KEY_VLAN102]].filter(Boolean);
+          let secret = null, activos = [], routerUsado = null;
+          for (const router of ordenRouters) {
+            if (buildRouterConfigError(router)) continue;
+            let conn = null;
+            try {
+              conn = await connectToRouter(router);
+              const [secretsRouter, activosRouter] = await Promise.all([
+                withTimeout(conn.api.write("/ppp/secret/print", []), 20000, `Listar PPP Secret en ${router.nombre}`),
+                withTimeout(conn.api.write("/ppp/active/print", []), 15000, `Listar PPP Active en ${router.nombre}`).catch(() => []),
+              ]);
+              const encontrado = secretsRouter.find((s) => normMac(s["last-caller-id"] || s["caller-id"] || s.callerid) === mac);
+              if (encontrado) { secret = encontrado; activos = activosRouter; routerUsado = router; break; }
+            } catch (e) {
+              console.warn(`[onu-diagnostico-completo] ${router.nombre} no respondio:`, e.message);
+            } finally {
+              if (conn?.api) await closeRouterApiSafe(conn.api);
+            }
+          }
 
-          const secret = secrets.find((s) => normMac(s["last-caller-id"] || s["caller-id"] || s.callerid) === mac);
           if (secret) {
             const usuario = String(secret.name || "").trim();
             const activo = activos.find((a) => String(a.name || "").trim() === usuario);
@@ -1989,6 +2008,7 @@ const server = http.createServer(async (req, res) => {
               uptime: activo ? activo.uptime : null,
               ultimaDesconexion: secret["last-logged-out"] || null,
               perfil: (activo ? activo.profile : secret.profile) || null,
+              router: routerUsado?.nombre || null,
             };
 
             if (usuario) {
