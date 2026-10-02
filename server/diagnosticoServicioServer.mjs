@@ -303,11 +303,16 @@ const loadRoutersConfigFromSupabase = async () => {
   }
 };
 
-// Nod_03 en migracion: clientes ya pasados a VLAN 102 viven en un Mikrotik fisico
-// distinto (router_key "nod03_nuevo"). El resto de Nod_03 (VLAN 100 o sin VLAN)
-// sigue en el router de siempre (tiabaya). Se resuelve por VLAN, no por nodo,
-// para no depender de mover clientes "en bloque".
-const ROUTER_KEY_NOD03_VLAN102 = "nod03_nuevo";
+// Migracion a VLAN 102: originalmente solo clientes de Nod_03, pero ya se
+// estan pasando clientes de OTROS nodos tambien a este mismo Mikrotik fisico
+// (router_key "nod03_nuevo" -- el nombre quedo de cuando era exclusivo de
+// Nod_03, pero ahora es el router VLAN 102 general). El resto de cada nodo
+// (VLAN 100 o sin VLAN) sigue en su router de siempre. Se resuelve por VLAN
+// del cliente, SIN filtrar por nodo -- antes el chequeo de vlan==102 solo
+// corria "if (nodo === NOD_03)", asi que un cliente VLAN 102 de otro nodo
+// (ej. Nod_01) caia siempre al router equivocado (el de su nodo de toda la
+// vida) y mostraba "Desconectado" aunque estuviera conectado de verdad.
+const ROUTER_KEY_VLAN102 = "nod03_nuevo";
 
 const fetchClienteVlanPorPppoe = async (userPppoe = "") => {
   const user = String(userPppoe || "").trim();
@@ -328,11 +333,9 @@ const fetchClienteVlanPorPppoe = async (userPppoe = "") => {
 const resolveRouterByNodo = async (nodo = "", userPppoe = "") => {
   const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
   let router = null;
-  if (normalizeNodo(nodo) === "NOD_03") {
-    const vlan = await fetchClienteVlanPorPppoe(userPppoe);
-    if (vlan === 102 && routers[ROUTER_KEY_NOD03_VLAN102]) {
-      router = routers[ROUTER_KEY_NOD03_VLAN102];
-    }
+  const vlan = await fetchClienteVlanPorPppoe(userPppoe);
+  if (vlan === 102 && routers[ROUTER_KEY_VLAN102]) {
+    router = routers[ROUTER_KEY_VLAN102];
   }
   if (!router) router = findRouterByNodo(routers, nodo);
   if (!router) throw new Error(`No hay router configurado para el nodo ${nodo || "-"}.`);
@@ -1195,6 +1198,11 @@ const cargarTenantConfig = async (tenantId) => {
   return cfg;
 };
 
+// order=id.asc explicito: un mismo DNI/telefono puede tener mas de un
+// servicio (instalaciones en distintas direcciones/nodos) -- el criterio
+// acordado es que el PRIMER servicio (el mas viejo) es el que manda en el
+// contacto de Chatwoot, y nunca se pisa por uno nuevo que se pida despues.
+// Sin este order explicito, Postgrest no garantiza cual fila devuelve primero.
 const buscarPorTelefonoMikrowisp = async (telefono) => {
   const tel = normalizarTelefono(telefono);
   if (!tel) return null;
@@ -1204,7 +1212,26 @@ const buscarPorTelefonoMikrowisp = async (telefono) => {
   for (const cand of candidatos) {
     const rows = await fetchSupabaseRows(
       "mikrowisp_clientes",
-      `select=mikrowisp_id,cedula,nombre,nodo,telefonos&telefonos=ilike.*${encodeURIComponent(cand)}*&limit=1`
+      `select=mikrowisp_id,cedula,nombre,nodo,telefonos&telefonos=ilike.*${encodeURIComponent(cand)}*&order=id.asc&limit=1`
+    ).catch(() => []);
+    if (Array.isArray(rows) && rows[0]) return rows[0];
+  }
+  return null;
+};
+
+// Plan C: el telefono no esta ni en mikrowisp_clientes ni en clientes --
+// antes de marcarlo generico "SIN REGISTRO", buscar si ya tiene una orden
+// creada (instalacion agendada/en curso, o liquidada pero que por algun
+// motivo todavia no termino de sincronizar a "clientes"). Mismo criterio de
+// "el mas viejo gana": si tiene 2 ordenes, se usa la primera.
+const buscarOrdenPorTelefono = async (telefono) => {
+  const tel = normalizarTelefono(telefono);
+  if (!tel) return null;
+  const candidatos = [...new Set([tel, tel.slice(-9)])].filter(Boolean);
+  for (const cand of candidatos) {
+    const rows = await fetchSupabaseRows(
+      "ordenes",
+      `select=codigo,nombre,dni,nodo,estado,tipo_actuacion,fecha_actuacion,atendida_sin_liquidar_en&celular=ilike.*${encodeURIComponent(cand)}*&order=fecha_creacion.asc&limit=1`
     ).catch(() => []);
     if (Array.isArray(rows) && rows[0]) return rows[0];
   }
@@ -1317,11 +1344,45 @@ const handleActualizarContactoChatwoot = async (body) => {
     for (const cand of candidatos) {
       const rows = await fetchSupabaseRows(
         "clientes",
-        `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu,dni&celular=ilike.*${encodeURIComponent(cand)}*&limit=1`
+        `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu,dni&celular=ilike.*${encodeURIComponent(cand)}*&order=id.asc&limit=1`
       ).catch(() => []);
       if (Array.isArray(rows) && rows[0]) { clientePorTelefono = rows[0]; break; }
     }
     if (!clientePorTelefono) {
+      // Plan C: tampoco esta en "clientes" -- ver si ya tiene una orden
+      // (instalacion agendada/atendida/liquidada-sin-sincronizar) antes de
+      // marcarlo generico "sin registro".
+      const orden = await buscarOrdenPorTelefono(phone);
+      if (orden) {
+        const codigoOrden = orden.codigo || "";
+        const nombreOrden = orden.nombre || "";
+        const estaLiquidada = String(orden.estado || "").trim().toLowerCase() === "liquidada";
+        const estaAtendida = !!orden.atendida_sin_liquidar_en;
+        const { icono, estadoCliente } = estaLiquidada
+          ? { icono: "⚠️", estadoCliente: "Liquidada sin sincronizar" }
+          : estaAtendida
+            ? { icono: "🛠️", estadoCliente: "Atendida, falta liquidar" }
+            : { icono: "📋", estadoCliente: "Orden pendiente" };
+        const nombreContacto = [icono, nombreOrden, codigoOrden].filter(Boolean).join(" · ");
+        const attrsOrden = {
+          estado_cliente: estadoCliente,
+          orden_codigo: codigoOrden,
+          orden_tipo_actuacion: orden.tipo_actuacion || "",
+          orden_estado: orden.estado || "",
+          orden_fecha: orden.fecha_actuacion || "",
+        };
+        if (body?.dry_run) {
+          return { ok: true, dry_run: true, orden: true, phone, nombre: nombreContacto, custom_attributes: attrsOrden };
+        }
+        const putResOrden = await fetchConTimeout(`${tenantCfg.chatwoot_base_url.replace(/\/+$/, "")}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", api_access_token: tenantCfg.chatwoot_token },
+          body: JSON.stringify({ name: nombreContacto, custom_attributes: attrsOrden }),
+        }).catch((e) => { console.warn("[actualizar-contacto] PUT orden error:", e.message); return null; });
+        if (putResOrden && !putResOrden.ok) console.warn(`[actualizar-contacto] PUT orden HTTP ${putResOrden.status}`);
+        _cooldownPorContacto.set(cooldownKey, Date.now());
+        return { ok: true, orden: true, phone, nombre: nombreContacto };
+      }
       // No es cliente en ningun lado -- en vez de dejar el contacto sin
       // tocar (confunde: no se sabe si fallo algo o si de verdad no es
       // cliente), se marca explicito para que se note de un vistazo. Puede
@@ -1386,7 +1447,7 @@ const handleActualizarContactoChatwoot = async (body) => {
     // devuelve HOY para el mismo mikrowisp_id) -- preferir siempre la cedula
     // fresca de la respuesta real de Mikrowisp para cruzar contra "clientes".
     cedulaParaCruce = datosPrevio?.cedula || mkw.cedula;
-    const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu&dni=eq.${encodeURIComponent(cedulaParaCruce)}&limit=1`).catch(() => []);
+    const clienteRows = await fetchSupabaseRows("clientes", `select=nombre,direccion,nodo,usuario_nodo,velocidad,sn_onu&dni=eq.${encodeURIComponent(cedulaParaCruce)}&order=id.asc&limit=1`).catch(() => []);
     cliente = Array.isArray(clienteRows) && clienteRows[0] ? clienteRows[0] : null;
   } else {
     // Plan B: ya tenemos la fila de "clientes" encontrada por telefono, no
