@@ -8,6 +8,10 @@ import NapPuertoSelector from "./NapPuertoSelector";
 import NapClienteSenalModal from "./NapClienteSenalModal";
 
 const NODOS = ["Todos", "Nod_01", "Nod_02", "Nod_03", "Nod_04", "Nod_05", "Nod_06", "Nod_07"];
+const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "").trim().replace(/\/$/, "");
+const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "").trim().replace(/\/$/, "");
+const NODOS_HUAWEI = new Set(["Nod_01", "Nod_02", "Nod_03"]);
+const esNodoOltSsh = (nodo) => !!OLT_SSH_API && !NODOS_HUAWEI.has(String(nodo || ""));
 const ZOOM_CLIENTES = 14;
 // Con 1000+ cajas y cientos de clientes renderizados como marcadores sueltos,
 // el navegador sufria al pan/zoom. Agrupar en clusters (y solo "explotar" el
@@ -107,7 +111,13 @@ function napCajaIcon(caja, selected) {
   });
 }
 
-function clienteIcon(sinCaja, selected, tienePuerto, candidato) {
+function senalColorDe(rx) {
+  if (rx >= -24) return "#22c55e";
+  if (rx >= -27) return "#f59e0b";
+  return "#ef4444";
+}
+
+function clienteIcon(sinCaja, selected, tienePuerto, candidato, senal) {
   const bg = selected ? "#f97316" : sinCaja ? "#ef4444" : tienePuerto ? "#8b5cf6" : "#3b82f6";
   const border = selected ? "#fff7ed" : "#ffffff";
   const size = selected ? 16 : candidato ? 13 : 10;
@@ -116,10 +126,27 @@ function clienteIcon(sinCaja, selected, tienePuerto, candidato) {
   // pulso naranja para que salten a la vista como "estos son los que
   // probablemente van en esta caja" sin tener que adivinar por distancia.
   const anim = candidato && !selected ? "animation:nap-candidato-pulse 1.3s ease-in-out infinite;" : "";
+  // Badge de señal (dBm) flotando al lado del punto -- se pide al
+  // seleccionar la caja para los candidatos cercanos, sin tener que abrir
+  // cada cliente uno por uno para saber si su ONU esta bien.
+  let badge = "";
+  if (senal === "cargando") {
+    badge = `<div style="position:absolute;left:14px;top:-7px;width:14px;height:14px;border-radius:50%;background:#475569;display:flex;align-items:center;justify-content:center;"><div style="width:7px;height:7px;border:1.5px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:nap-spin .7s linear infinite;"></div></div>`;
+  } else if (senal === "error") {
+    badge = `<div style="position:absolute;left:14px;top:-7px;min-width:14px;height:14px;border-radius:7px;background:#64748b;color:#fff;font-size:8px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 3px;">—</div>`;
+  } else if (typeof senal === "number") {
+    const c = senalColorDe(senal);
+    badge = `<div style="position:absolute;left:14px;top:-7px;min-width:30px;height:15px;border-radius:7.5px;background:${c};color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;white-space:nowrap;box-shadow:0 2px 5px rgba(0,0,0,0.3);">${senal.toFixed(1)}</div>`;
+  }
+  const w = badge ? 48 : size;
   return L.divIcon({
     className: "",
+    iconSize: badge ? [w, size] : undefined,
     iconAnchor: [size / 2, size / 2],
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};border:2px solid ${border};box-shadow:${shadow};transition:all .15s;${anim}"></div>`,
+    html: `<div style="position:relative;width:${size}px;height:${size}px;">
+      <div style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};border:2px solid ${border};box-shadow:${shadow};transition:all .15s;${anim}"></div>
+      ${badge}
+    </div>`,
   });
 }
 
@@ -216,6 +243,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       .nap-quick-assign:active { transform:scale(0.92); }
       .nap-quick-assign:disabled { opacity:.5; cursor:default; }
       @keyframes nap-candidato-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(249,115,22,0.55); } 50% { box-shadow:0 0 0 6px rgba(249,115,22,0); } }
+      @keyframes nap-spin { to { transform:rotate(360deg); } }
       .marker-cluster-custom { border-radius:50%; display:flex !important; align-items:center; justify-content:center; }
       .marker-cluster-custom-caja { background:rgba(22,63,134,0.25); }
       .marker-cluster-custom-caja div { background:#163f86; color:#fff; font-weight:800; box-shadow:0 2px 8px rgba(22,63,134,0.5); }
@@ -481,6 +509,37 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   }, [cajaSeleccionada?.id, cajaSeleccionada?.lat, cajaSeleccionada?.lng, clientes]);
   useEffect(() => { candidatosIdsRef.current = candidatosIds; }, [candidatosIds]);
 
+  // Señal en vivo de cada candidato cercano -- se pide sola al seleccionar
+  // la caja (sin tener que abrir cliente por cliente), y cada badge aparece
+  // apenas responde la suya, sin esperar a las demas.
+  const [senalesCandidatos, setSenalesCandidatos] = useState({});
+  useEffect(() => {
+    setSenalesCandidatos({});
+    if (candidatosIds.size === 0) return;
+    const candidatosConSn = clientes.filter(c => candidatosIds.has(c.id) && c.sn_onu);
+    if (!candidatosConSn.length) return;
+    setSenalesCandidatos(Object.fromEntries(candidatosConSn.map(c => [c.id, "cargando"])));
+    candidatosConSn.forEach(c => {
+      (async () => {
+        try {
+          const esOltSsh = esNodoOltSsh(c.nodo);
+          const base = esOltSsh ? OLT_SSH_API : HUAWEI_OLT_SNMP_API;
+          if (!base) throw new Error();
+          const endpoint = esOltSsh
+            ? `${base}/signal?sn=${encodeURIComponent(c.sn_onu)}&nodo=${encodeURIComponent(c.nodo || "")}`
+            : `${base}/onu-info?sn=${encodeURIComponent(c.sn_onu)}`;
+          const res = await fetch(endpoint);
+          const json = await res.json().catch(() => ({}));
+          if (!json?.ok || json.rxPower == null || !Number.isFinite(Number(json.rxPower))) throw new Error();
+          setSenalesCandidatos(prev => ({ ...prev, [c.id]: Number(json.rxPower) }));
+        } catch {
+          setSenalesCandidatos(prev => ({ ...prev, [c.id]: "error" }));
+        }
+      })();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidatosIds]);
+
   // ── Actualizar iconos de clientes seleccionados (sin recrear markers) ─────
   useEffect(() => {
     Object.entries(clienteMarkersRef.current).forEach(([id, marker]) => {
@@ -490,10 +549,11 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       const sinCaja = !cli.caja_nap;
       const tienePuerto = !!cli.caja_nap && cli.puerto_nap != null;
       const candidato = candidatosIds.has(cli.id);
-      marker.setIcon(clienteIcon(sinCaja, sel, tienePuerto, candidato));
+      const senal = candidato ? senalesCandidatos[cli.id] : undefined;
+      marker.setIcon(clienteIcon(sinCaja, sel, tienePuerto, candidato, senal));
       marker.setZIndexOffset(sel ? 900 : candidato ? 300 : sinCaja ? 200 : 100);
     });
-  }, [clientesSeleccionados, clientes, candidatosIds]);
+  }, [clientesSeleccionados, clientes, candidatosIds, senalesCandidatos]);
 
   // ── Zoom a caja seleccionada (solo desde panel lateral, no desde mapa) ───────
   useEffect(() => {
