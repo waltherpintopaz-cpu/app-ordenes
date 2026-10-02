@@ -725,11 +725,11 @@ const findMorosoEntries = async ({ api, userPppoe, ip = "" }) => {
 const resolveSecretRemoteAddress = (secret = null, active = null) =>
   pickFirst(secret?.["remote-address"], secret?.remoteaddress, secret?.["remote_address"], active?.address);
 
-const queryRouter = async ({ nodo, userPppoe }) => {
+const queryRouterOnRouter = async (router, userPppoe) => {
   let connection = null;
   try {
-    connection = await connectRouterByNodo(nodo, userPppoe);
-    const { api, router } = connection;
+    connection = await connectToRouter(router);
+    const { api } = connection;
     const { secret, active, activeTimedOut } = await loadSecretAndActive({ api, router, userPppoe });
 
     if (active) {
@@ -776,13 +776,44 @@ const queryRouter = async ({ nodo, userPppoe }) => {
     };
   } catch (error) {
     const detail = formatErrorDetail(connection?.getSocketError?.() || error);
-    const router = connection?.router;
-    if (router) {
-      throw new Error(`No se pudo consultar ${router.nombre} (${router.host}:${router.port}): ${detail}`);
-    }
-    throw error;
+    throw new Error(`No se pudo consultar ${router.nombre} (${router.host}:${router.port}): ${detail}`);
   } finally {
     if (connection?.api) await closeRouterApiSafe(connection.api);
+  }
+};
+
+const queryRouter = async ({ nodo, userPppoe }) => {
+  const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
+  const routerPrincipal = findRouterByNodo(routers, nodo);
+  if (!routerPrincipal) throw new Error(`No hay router configurado para el nodo ${nodo || "-"}.`);
+  const configErrorPrincipal = buildRouterConfigError(routerPrincipal);
+  if (configErrorPrincipal) throw new Error(configErrorPrincipal);
+
+  const resultadoPrincipal = await queryRouterOnRouter(routerPrincipal, userPppoe);
+  if (resultadoPrincipal.estado === "conectado") return resultadoPrincipal;
+
+  // Fallback VLAN 102: no se confia unicamente en que alguien haya marcado
+  // "vlan=102" a mano en la tabla "clientes" (campo que en la practica queda
+  // sin llenar -- confirmado en vivo con un cliente real migrado sin ese
+  // dato) -- si el router de su nodo de toda la vida no encuentra ni
+  // secret ni sesion activa, se prueba tambien el Mikrotik nuevo (VLAN 102,
+  // compartido entre nodos) antes de darlo por desconectado. Sin esto,
+  // cualquier cliente migrado sin el campo vlan actualizado se mostraba
+  // "Desconectado" aunque estuviera conectado de verdad.
+  const routerVlan102 = routers[ROUTER_KEY_VLAN102];
+  if (!routerVlan102 || normalizeRouterKey(routerPrincipal.id) === ROUTER_KEY_VLAN102) return resultadoPrincipal;
+  if (buildRouterConfigError(routerVlan102)) return resultadoPrincipal;
+
+  try {
+    const resultadoVlan102 = await queryRouterOnRouter(routerVlan102, userPppoe);
+    if (resultadoVlan102.estado === "conectado") return resultadoVlan102;
+    // Ninguno de los 2 tiene sesion activa -- preferir el que al menos tenga
+    // el secret registrado (mas informativo que "sin-registro" generico).
+    return resultadoPrincipal.estado === "no-conectado" ? resultadoPrincipal : resultadoVlan102;
+  } catch {
+    // Si el router VLAN 102 no responde (ej. caido), no tapar el resultado
+    // valido (aunque sea "desconectado") del router principal con un error.
+    return resultadoPrincipal;
   }
 };
 
