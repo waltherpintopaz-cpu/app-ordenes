@@ -806,7 +806,27 @@ const queryRouter = async ({ nodo, userPppoe }) => {
 
   try {
     const resultadoVlan102 = await queryRouterOnRouter(routerVlan102, userPppoe);
-    if (resultadoVlan102.estado === "conectado") return resultadoVlan102;
+    if (resultadoVlan102.estado === "conectado") {
+      // Autocorreccion: ya que se confirmo en vivo que esta en el router
+      // VLAN 102, guardar ese dato en "clientes" para que la proxima
+      // consulta (aca y en resolveRouterByNodo, que SI depende de este
+      // campo para suspender/activar) vaya directo sin pasar por el
+      // fallback. Fire-and-forget: si falla el guardado no debe tumbar la
+      // respuesta, que ya es valida igual.
+      if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+        fetch(`${SUPABASE_URL}/rest/v1/clientes?usuario_nodo=eq.${encodeURIComponent(userPppoe)}`, {
+          method: "PATCH",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({ vlan: 102 }),
+        }).catch((e) => console.warn("[queryRouter] no se pudo autocorregir vlan=102 en clientes:", e.message));
+      }
+      return resultadoVlan102;
+    }
     // Ninguno de los 2 tiene sesion activa -- preferir el que al menos tenga
     // el secret registrado (mas informativo que "sin-registro" generico).
     return resultadoPrincipal.estado === "no-conectado" ? resultadoPrincipal : resultadoVlan102;
