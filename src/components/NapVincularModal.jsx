@@ -659,7 +659,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   // ── Asignar ─────────────────────────────────────────────────────────────────
   const asignar = async (idsOverride) => {
     if (!cajaSeleccionada) return showToast("Selecciona una caja primero", false);
-    const ids = idsOverride || Array.from(clientesSeleccionados);
+    const ids = Array.isArray(idsOverride) ? idsOverride : Array.from(clientesSeleccionados);
     if (ids.length === 0) return showToast("Selecciona al menos un cliente", false);
     // Antes no se validaba la capacidad real de la caja: se podian vincular
     // mas clientes de los puertos fisicos que tiene, dejando el conteo
@@ -679,7 +679,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
       // + "Asignar"); la asignacion rapida de un clic no pasa por "Elegir
       // puerto", asi que nunca debe arrastrar un puerto elegido antes para
       // OTRO cliente.
-      const puertoAGuardar = !idsOverride && ids.length === 1 ? puertoElegido : null;
+      const puertoAGuardar = !Array.isArray(idsOverride) && ids.length === 1 ? puertoElegido : null;
       const payload = puertoAGuardar
         ? { caja_nap: cajaSeleccionada.codigo, puerto_nap: puertoAGuardar }
         : { caja_nap: cajaSeleccionada.codigo };
@@ -1192,7 +1192,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
                 </button>
               )}
               <button
-                onClick={asignar}
+                onClick={() => asignar()}
                 disabled={saving || !cajaSeleccionada || clientesSeleccionados.size === 0}
                 style={{ ...s.btnAsignar, opacity: (!cajaSeleccionada || clientesSeleccionados.size === 0) ? 0.4 : 1 }}
               >
