@@ -36,6 +36,23 @@ function pctColor(p) {
   return "#0284c7";
 }
 
+// Una caja NAP cuelga de un solo PON (tarjeta+puerto) del OLT -- a diferencia
+// de puerto_nap (posicion dentro de la caja, dato humano que se asigna al
+// azar desde aca sin verificar), tarjeta/puerto es un hecho fisico. Solo se
+// considera "consenso" con 2+ clientes YA confirmados en campo (via la app,
+// que es la unica que graba olt_board/olt_port en vivo) que coincidan entre
+// si -- con 0 o 1 no hay con que comparar, y esta vista nunca consulta la
+// OLT en vivo (cero demora, solo lee lo que la app de campo ya guardo).
+function consensoTarjetaPuerto(lista) {
+  const confirmados = (lista || []).filter((c) => c.olt_board != null && c.olt_port != null);
+  if (confirmados.length < 2) return null;
+  const clave = (c) => `${c.olt_board}-${c.olt_port}`;
+  const primera = clave(confirmados[0]);
+  const todosIguales = confirmados.every((c) => clave(c) === primera);
+  if (!todosIguales) return { conflicto: true };
+  return { board: confirmados[0].olt_board, port: confirmados[0].olt_port, conflicto: false };
+}
+
 function FotoThumb({ url, label }) {
   const [broken, setBroken] = useState(false);
   return (
@@ -216,7 +233,7 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
       const codigoBuscado = String(caja.codigo || "").trim();
       const { data } = await supabase
         .from("clientes")
-        .select("id,nombre,dni,celular,direccion,nodo,usuario_nodo,estado_servicio,sn_onu,caja_nap,puerto_nap")
+        .select("id,nombre,dni,celular,direccion,nodo,usuario_nodo,estado_servicio,sn_onu,caja_nap,puerto_nap,olt_board,olt_port")
         .ilike("caja_nap", codigoBuscado)
         .order("nombre");
       // El match exacto (.eq) fallaba con la minima diferencia de mayusculas/
@@ -562,19 +579,46 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
               <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>
                 CLIENTES CONECTADOS {loadingClientes ? "…" : `(${clientes.length})`}
               </div>
+              {!loadingClientes && (() => {
+                const consenso = consensoTarjetaPuerto(clientes);
+                if (consenso?.conflicto) return (
+                  <div style={{ fontSize: 11.5, color: "#92400e", background: "#fef3c7", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+                    ⚠ Esta caja tiene clientes confirmados en campo con tarjeta/puerto distintos entre sí — hay un error de asignación sin resolver, revisar antes de seguir agregando.
+                  </div>
+                );
+                if (consenso) return (
+                  <div style={{ fontSize: 11.5, color: "#0f766e", background: "#ccfbf1", borderRadius: 8, padding: "6px 10px", marginBottom: 10, fontWeight: 600 }}>
+                    Tarjeta {consenso.board} / Puerto {consenso.port} — confirmado en campo
+                  </div>
+                );
+                return (
+                  <div style={{ fontSize: 11.5, color: "#94a3b8", fontStyle: "italic", marginBottom: 10 }}>
+                    Tarjeta/puerto del OLT: aún sin confirmar ningún borne en esta caja (se completa cuando el técnico la etiquetea en campo).
+                  </div>
+                );
+              })()}
               {loadingClientes ? (
                 <div style={{ fontSize: 12, color: "#6b7280" }}>Cargando…</div>
               ) : clientes.length === 0 ? (
                 <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>Sin clientes vinculados a esta caja</div>
               ) : (
                 <div style={{ display: "grid", gap: 6 }}>
-                  {clientes.map(cl => (
-                    <div key={cl.id} style={s.clienteRow}>
+                  {clientes.map(cl => {
+                    const consenso = consensoTarjetaPuerto(clientes);
+                    const discordante = consenso && !consenso.conflicto && cl.olt_board != null && cl.olt_port != null
+                      && (cl.olt_board !== consenso.board || cl.olt_port !== consenso.port);
+                    return (
+                    <div key={cl.id} style={{ ...s.clienteRow, ...(discordante ? { border: "1px solid #fca5a5", background: "#fef2f2" } : {}) }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>{cl.nombre}</div>
                         <div style={{ fontSize: 11, color: "#6b7280" }}>DNI {cl.dni} · {cl.celular}</div>
                         {cl.puerto_nap && (
                           <div style={{ fontSize: 11, color: "#0369a1", fontWeight: 600 }}>Puerto {cl.puerto_nap}</div>
+                        )}
+                        {discordante && (
+                          <div style={{ fontSize: 10.5, color: "#b91c1c", fontWeight: 700 }}>
+                            ⚠ Tarjeta {cl.olt_board}/Puerto {cl.olt_port} — no coincide con el resto de la caja
+                          </div>
                         )}
                       </div>
                       <span style={{
@@ -585,7 +629,8 @@ export default function NapPanel({ sessionUser, rolSesion, theme }) {
                         {cl.estado_servicio || "—"}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
