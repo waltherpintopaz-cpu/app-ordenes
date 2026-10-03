@@ -3759,6 +3759,53 @@ export default function App() {
     return () => { cancelado = true; };
   }, [vistaActiva, isSupabaseConfigured]);
 
+  // Equipo instalado por DNI (tipo/marca/modelo/serial) -- para la pantalla
+  // "Suspendidos", cruzando liquidacion_equipos por liquidacion_id (via
+  // liquidaciones.dni) o directo por cliente_dni (equipos sin liquidar
+  // todavia). Se excluye cualquier serial que ya tenga su contraparte
+  // "Recuperado" para ese mismo DNI -- ese ya no deberia seguir en casa del
+  // cliente.
+  const [equipoPorDniSuspendidos, setEquipoPorDniSuspendidos] = useState({});
+  useEffect(() => {
+    if (vistaActiva !== "suspendidos" || !isSupabaseConfigured) return;
+    const dnis = Array.from(new Set(
+      clientesPorNodo
+        .filter((c) => String(c.estadoServicio || "").toUpperCase() === "SUSPENDIDO")
+        .map((c) => String(c.dni || "").trim())
+        .filter(Boolean)
+    ));
+    if (!dnis.length) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const { data: liqs } = await supabase.from("liquidaciones").select("id,dni").in("dni", dnis);
+        const dniPorLiqId = {};
+        (liqs || []).forEach((l) => { dniPorLiqId[l.id] = l.dni; });
+        const liqIds = (liqs || []).map((l) => l.id);
+        const orFilter = liqIds.length ? `cliente_dni.in.(${dnis.join(",")}),liquidacion_id.in.(${liqIds.join(",")})` : `cliente_dni.in.(${dnis.join(",")})`;
+        const { data: equipos } = await supabase.from("liquidacion_equipos").select("liquidacion_id,cliente_dni,tipo,marca,modelo,serial,accion,id").or(orFilter).order("id", { ascending: true });
+        if (cancelado || !Array.isArray(equipos)) return;
+        const porDni = {};
+        equipos.forEach((eq) => {
+          const dni = String(eq.cliente_dni || dniPorLiqId[eq.liquidacion_id] || "").trim();
+          if (!dni) return;
+          if (!porDni[dni]) porDni[dni] = { instalados: [], recuperadosSeriales: new Set() };
+          if (eq.accion === "Recuperado") porDni[dni].recuperadosSeriales.add(String(eq.serial || "").trim());
+          else porDni[dni].instalados.push(eq);
+        });
+        const resultado = {};
+        Object.entries(porDni).forEach(([dni, info]) => {
+          const vigente = [...info.instalados].reverse().find((eq) => !info.recuperadosSeriales.has(String(eq.serial || "").trim()));
+          if (vigente) resultado[dni] = vigente;
+        });
+        setEquipoPorDniSuspendidos(resultado);
+      } catch (_) {
+        // no critico: si falla, la columna de equipo simplemente queda vacia
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [vistaActiva, isSupabaseConfigured, clientesPorNodo]);
+
   // Pre-llenar autor de orden con el usuario actual al crear nueva orden
   useEffect(() => {
     if (vistaActiva !== "crear" || ordenEditandoId) return;
@@ -5750,6 +5797,9 @@ export default function App() {
   // MikroTik real) que ya usa Diagnostico/Consulta rapida, solo que aca se
   // dispara por fila sin tocar los estados de esas otras pantallas.
   const [verificarConexionResultado, setVerificarConexionResultado] = useState({}); // { [clienteId]: { loading, data, error } }
+  const [suspendidosFiltroNodo, setSuspendidosFiltroNodo] = useState("TODOS");
+  const [suspendidosBusqueda, setSuspendidosBusqueda] = useState("");
+  const [suspendidosOrdenAsc, setSuspendidosOrdenAsc] = useState(false); // false = mas dias primero (default)
   const verificarConexionCliente = async (cliente) => {
     const nodo = String(cliente?.nodo || "").trim();
     const userPppoe = String(cliente?.usuarioNodo || "").trim();
@@ -27864,13 +27914,23 @@ export default function App() {
         )}
 
         {vistaActiva === "suspendidos" && (() => {
-          const suspendidos = clientesPorNodo
+          const nodosDisponibles = Array.from(new Set(clientesPorNodo.map((c) => c.nodo).filter(Boolean))).sort();
+          const busquedaNorm = suspendidosBusqueda.trim().toLowerCase();
+          let suspendidos = clientesPorNodo
             .filter((c) => String(c.estadoServicio || "").toUpperCase() === "SUSPENDIDO")
             .map((c) => {
               const dias = c.fechaSuspendido ? Math.floor((Date.now() - new Date(c.fechaSuspendido).getTime()) / 86400000) : null;
               return { ...c, _dias: Number.isFinite(dias) ? dias : -1 };
-            })
-            .sort((a, b) => b._dias - a._dias);
+            });
+          if (suspendidosFiltroNodo !== "TODOS") suspendidos = suspendidos.filter((c) => c.nodo === suspendidosFiltroNodo);
+          if (busquedaNorm) {
+            suspendidos = suspendidos.filter((c) =>
+              String(c.nombre || "").toLowerCase().includes(busquedaNorm) ||
+              String(c.dni || "").includes(busquedaNorm) ||
+              String(c.celular || "").includes(busquedaNorm)
+            );
+          }
+          suspendidos = [...suspendidos].sort((a, b) => suspendidosOrdenAsc ? a._dias - b._dias : b._dias - a._dias);
           const totalRecogido = suspendidos.filter((c) => dnisEquipoRecuperado.has(String(c.dni || "").trim())).length;
           return (
           <div style={{ display: "grid", gap: 20 }}>
@@ -27882,8 +27942,30 @@ export default function App() {
                 </p>
               </div>
 
+              {/* ── Filtros ── */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 16 }}>
+                <input
+                  value={suspendidosBusqueda}
+                  onChange={(e) => setSuspendidosBusqueda(e.target.value)}
+                  placeholder="Buscar nombre, DNI o celular..."
+                  style={{ flex: "1 1 220px", padding: "9px 12px", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12.5, background: isDark ? "#16213a" : "#f8fafc", color: isDark ? "#e6ecf7" : "#0f172a", outline: "none" }}
+                />
+                <button onClick={() => setSuspendidosOrdenAsc((v) => !v)}
+                  style={{ padding: "9px 14px", background: isDark ? "#16213a" : "#f8fafc", color: isDark ? "#c3d3ee" : "#475569", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  Días: {suspendidosOrdenAsc ? "menos → más ▲" : "más → menos ▼"}
+                </button>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 18 }}>
+                {["TODOS", ...nodosDisponibles].map((n) => (
+                  <button key={n} onClick={() => setSuspendidosFiltroNodo(n)}
+                    style={{ padding: "6px 12px", border: "1.5px solid", borderRadius: 9, fontSize: 11, fontWeight: 700, cursor: "pointer", background: suspendidosFiltroNodo === n ? "#0f172a" : (isDark ? "#16213a" : "#f8fafc"), borderColor: suspendidosFiltroNodo === n ? "#0f172a" : (isDark ? "#2c3c58" : "#e2e8f0"), color: suspendidosFiltroNodo === n ? "#fff" : (isDark ? "#c3d3ee" : "#475569") }}>
+                    {n === "TODOS" ? "Todos" : n}
+                  </button>
+                ))}
+              </div>
+
               {suspendidos.length === 0 ? (
-                <div style={{ padding: 30, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No hay clientes suspendidos registrados.</div>
+                <div style={{ padding: 30, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No hay clientes suspendidos con estos filtros.</div>
               ) : (
                 <div style={{ display: "grid", gap: 10 }}>
                   {suspendidos.map((cliente) => {
@@ -27891,13 +27973,29 @@ export default function App() {
                     const conexion = verificarConexionResultado[cliente.id];
                     const diasColor = cliente._dias >= 30 ? "#dc2626" : cliente._dias >= 15 ? "#d97706" : "#64748b";
                     const estVisual = conexion?.data ? getDiagnosticoEstadoVisual(conexion.data.estado) : null;
+                    const equipo = equipoPorDniSuspendidos[String(cliente.dni || "").trim()];
+                    const sd = cliSenalData[cliente.id];
+                    const senalLoading = !!cliSenalLoading[cliente.id];
                     return (
                       <div key={cliente.id} style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5", borderRadius: 14, padding: "14px 16px", display: "grid", gap: 10 }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center", justifyContent: "space-between" }}>
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{cliente.nombre || "-"}</div>
-                            <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>
-                              DNI {cliente.dni || "-"} · {cliente.nodo || "-"} · {cliente.celular || "sin celular"}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", justifyContent: "space-between" }}>
+                          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                            {cliente.fotoFachada && (
+                              <img src={cliente.fotoFachada} alt="Fachada" onClick={() => window.open(cliente.fotoFachada, "_blank")}
+                                style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", cursor: "pointer", border: "1px solid #e2e8f0", flexShrink: 0 }} />
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{cliente.nombre || "-"}</div>
+                              <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>
+                                DNI {cliente.dni || "-"} · {cliente.nodo || "-"} · {cliente.celular || "sin celular"}
+                              </div>
+                              <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#94a3b8", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                {cliente.fechaSuspendido && <span>Suspendido el {new Date(cliente.fechaSuspendido).toLocaleDateString("es-PE")}</span>}
+                                {cliente.ubicacion && (
+                                  <a href={`https://www.google.com/maps?q=${encodeURIComponent(cliente.ubicacion)}`} target="_blank" rel="noreferrer" style={{ color: "#1d4ed8" }}>📍 Ver ubicación</a>
+                                )}
+                                {equipo && <span>📦 {[equipo.tipo, equipo.marca, equipo.modelo].filter(Boolean).join(" ")}{equipo.serial ? ` (SN ${equipo.serial})` : ""}</span>}
+                              </div>
                             </div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -27910,6 +28008,10 @@ export default function App() {
                           </div>
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                          <button onClick={() => void abrirDetalleCliente(cliente)}
+                            style={{ padding: "6px 12px", background: isDark ? "#16213a" : "#fff", color: isDark ? "#c3d3ee" : "#374151", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                            👁 Ver detalle
+                          </button>
                           {[
                             { tipo: "suspendido", label: "Notificar" },
                             { tipo: "recojo", label: "Aviso recojo" },
@@ -27937,6 +28039,21 @@ export default function App() {
                               {estVisual.label}
                               {conexion.data?.estado !== "conectado" && conexion.data?.lastLoggedOut ? ` — desde ${conexion.data.lastLoggedOut}` : ""}
                             </span>
+                          )}
+                          {/* Señal OLT -- mismo patron ya usado en Abonados, solo si el nodo tiene OLT reconocida */}
+                          {nodoUsaOltSsh(cliente.nodo) && cliente.snOnu && (
+                            <button onClick={() => void consultarSenalOltSshTabla(cliente)} disabled={senalLoading}
+                              title={`Actualizar señal OLT · SN: ${cliente.snOnu}`}
+                              style={{ padding: "6px 10px", background: "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: senalLoading ? "wait" : "pointer" }}>
+                              {senalLoading ? "⏳" : "↺ Señal OLT"}
+                            </button>
+                          )}
+                          {nodoUsaHuawei(cliente.nodo) && cliente.snOnu && (
+                            <button onClick={() => void consultarSenalClienteTabla(cliente)} disabled={senalLoading}
+                              title={sd ? `SN: ${cliente.snOnu} | RX: ${sd.rx} dBm | TX: ${sd.tx} dBm` : `Ver señal OLT · SN: ${cliente.snOnu}`}
+                              style={{ padding: "6px 10px", background: sd ? "#eff6ff" : "#f0f9ff", color: "#0369a1", border: "1px solid #bae6fd", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: senalLoading ? "wait" : "pointer" }}>
+                              {senalLoading ? "⏳" : sd ? `📶 RX ${sd.rx}` : "📶 Señal OLT"}
+                            </button>
                           )}
                         </div>
                       </div>
