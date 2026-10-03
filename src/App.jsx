@@ -5270,29 +5270,44 @@ export default function App() {
 
   const [notificarSuspendidoLoading, setNotificarSuspendidoLoading] = useState({}); // { [clienteId]: true }
 
-  // Manda un mensaje al cliente via Chatwoot (no WhatsApp directo) -- usa el
-  // mismo backend compartido que ya usa el sidebar de Chatwoot (accion
-  // ChatwootMessage, resuelve contacto+conversacion y postea el mensaje
-  // server-side, sin exponer el token de Chatwoot aca). Solo tiene sentido
+  // Manda un mensaje al cliente por WhatsApp directo (Evolution API), mismo
+  // sistema ya configurado en "Notificaciones WhatsApp" (whatsapp_config,
+  // una fila por empresa) que ya usa sendWhatsAppNotification para los
+  // mensajes automaticos de ordenes -- cambio de decision: no usar Chatwoot,
+  // reusar este canal que ya conocen y tienen probado. Solo tiene sentido
   // para clientes SUSPENDIDO -- se deshabilita para el resto en el boton.
   const notificarClienteSuspendidoChatwoot = async (cliente) => {
-    const celular = String(cliente?.celular || "").replace(/\D/g, "");
-    if (!celular) { window.alert("Este cliente no tiene celular registrado."); return; }
+    const numero = String(cliente?.celular || "").replace(/\D/g, "");
+    if (!numero) { window.alert("Este cliente no tiene celular registrado."); return; }
+    const empresa = String(cliente?.empresa || "Americanet").trim();
     const nombre = String(cliente?.nombre || "").split(",")[0].split(" ")[0] || "cliente";
     const defaultMsg = `Hola ${nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙`;
-    const mensaje = window.prompt("Mensaje a enviar por Chatwoot:", defaultMsg);
+    const mensaje = window.prompt("Mensaje a enviar por WhatsApp:", defaultMsg);
     if (!mensaje || !mensaje.trim()) return;
 
     setNotificarSuspendidoLoading((p) => ({ ...p, [cliente.id]: true }));
     try {
-      const res = await fetch(`${DIAGNO_BASE}/api/mikrowisp-proxy`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: celular, message: mensaje.trim(), account_id: "1" } }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!body?.ok) throw new Error(body?.error || `HTTP ${res.status}`);
-      window.alert("✅ Mensaje enviado por Chatwoot.");
+      const { data: waCfg } = await supabase.from("whatsapp_config").select("*").eq("empresa", empresa).maybeSingle();
+      if (!waCfg?.habilitado || !waCfg?.base_url || !waCfg?.api_key || !waCfg?.instance_name) {
+        throw new Error(`WhatsApp no está configurado/habilitado para "${empresa}" (revisar en Notificaciones WhatsApp).`);
+      }
+      let phone = numero;
+      if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+      const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: waCfg.api_key },
+          body: JSON.stringify({ number: phone, text: mensaje.trim() }),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } finally {
+        clearTimeout(timeout);
+      }
+      window.alert("✅ Mensaje enviado por WhatsApp.");
     } catch (e) {
       window.alert("No se pudo enviar: " + (e.message || String(e)));
     }
@@ -24108,13 +24123,13 @@ export default function App() {
                                       );
                                     })()}
                                   </div>
-                                  {/* Notificar por Chatwoot -- solo tiene sentido para clientes
+                                  {/* Notificar por WhatsApp -- solo tiene sentido para clientes
                                       suspendidos (pedido explicito: avisarle que regularice). */}
                                   {est === "SUSPENDIDO" && (
                                     <button
                                       onClick={() => void notificarClienteSuspendidoChatwoot(cliente)}
                                       disabled={!!notificarSuspendidoLoading[cliente.id] || !cliente.celular}
-                                      title={cliente.celular ? "Notificar por Chatwoot" : "Sin celular registrado"}
+                                      title={cliente.celular ? "Notificar por WhatsApp" : "Sin celular registrado"}
                                       style={{ padding: "0 11px", height: 30, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: notificarSuspendidoLoading[cliente.id] || !cliente.celular ? "default" : "pointer", opacity: !cliente.celular ? 0.5 : 1, whiteSpace: "nowrap" }}>
                                       {notificarSuspendidoLoading[cliente.id] ? "⏳" : "📨 Notificar"}
                                     </button>
