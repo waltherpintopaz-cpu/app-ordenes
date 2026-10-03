@@ -179,6 +179,7 @@ const RUTAS_PROTEGIDAS_INTERNAS = new Set([
   "/api/diagnostico-servicio/crear-secrets-lote",
   "/api/diagnostico-servicio/sync-router",
   "/api/diagnostico-servicio/sync-all",
+  "/api/clientes/sincronizar-estados-mikrowisp",
   "/api/cruce-mac-aplicar",
 ]);
 const requiereAuthInterna = (req) => RUTAS_PROTEGIDAS_INTERNAS.has(String(req.url || "").split("?")[0]);
@@ -1001,6 +1002,170 @@ const proxyMikrowispNod04GetClientDetails = async (req) => {
   const json = await readProxyJsonResponse(response, "Mikrowisp Nod04 GetClientsDetails");
   return { status: response.status, json };
 };
+
+// ─── Sincronizacion diaria de estado_servicio contra Mikrowisp (Nod_01/02/03) ──
+// Pedido real: saber a diario cuantos clientes estan ACTIVO/SUSPENDIDO sin
+// depender de que alguien entre a revisar Mikrowisp a mano. Existia una
+// version MANUAL de esto en el panel web (App.jsx, "Sync MikroTik") que
+// servia de base, pero tenia 2 problemas reales encontrados al auditarla
+// antes de automatizarla (ver conversacion/memoria):
+//   1. La ruta que usaba (/api/mikrowisp/GetClientsDetails) siempre inyecta
+//      MIKROWISP_TOKEN del proceso -- si esa variable queda mal configurada
+//      en EasyPanel (paso real, confirmado), la sync entera fallaba en
+//      silencio sin que nadie lo notara.
+//   2. Buscaba por DNI y tomaba el primer resultado -- un DNI con 2+
+//      servicios (confirmado con datos reales: OBRAS HERGON S.A., Country
+//      Club Tiabaya, etc.) podia terminar copiando el estado de un servicio
+//      al otro sin ninguna base real, porque Mikrowisp solo devuelve el/los
+//      servicio(s) que calcen con esa cedula en esa consulta puntual.
+// Esta version corrige ambos: el token se usa server-side siempre (nunca
+// via una ruta que dependa de un env var roto sin fallback), y cada fila se
+// empareja con su servicio real de Mikrowisp comparando pppuser === usuario_nodo
+// (dato que ya guardamos nosotros) -- si no hay forma de emparejar con
+// certeza, esa fila NO se toca y queda marcada para revision manual.
+const ESTADO_SYNC_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
+
+function normalizarEstadoMikrowispSync(raw) {
+  const txt = String(raw || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (!txt) return "DESCONOCIDO";
+  if (txt.includes("activo") || txt.includes("online") || txt.includes("enabled") || txt === "up") return "ACTIVO";
+  if (txt.includes("suspend") || txt.includes("cortado") || txt.includes("bloque") || txt.includes("disabled") || txt.includes("moroso") || txt.includes("deuda")) return "SUSPENDIDO";
+  if (txt.includes("inactivo") || txt.includes("offline") || txt === "down") return "INACTIVO";
+  return "DESCONOCIDO";
+}
+
+// select("*") de PostgREST tiene un tope de 1000 filas por defecto -- Nod_01/
+// 02/03 con DNI ya son ~1746 filas, asi que hace falta paginar.
+async function fetchSupabaseRowsPaginado(table, query, pageSize = 1000) {
+  let offset = 0;
+  let todas = [];
+  for (;;) {
+    const pagina = await fetchSupabaseRows(table, `${query}&limit=${pageSize}&offset=${offset}`);
+    todas = todas.concat(pagina);
+    if (!Array.isArray(pagina) || pagina.length < pageSize) break;
+    offset += pageSize;
+  }
+  return todas;
+}
+
+async function consultarMikrowispPorCedula(cedula) {
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
+  const response = await fetchConTimeout(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ token: MIKROWISP_TOKEN, cedula }),
+  }, 20000);
+  return readProxyJsonResponse(response, "Mikrowisp GetClientsDetails (sync estados)");
+}
+
+async function aplicarEstadoSiCambio(fila, estadoNuevo, resumen) {
+  if (!estadoNuevo || estadoNuevo === "DESCONOCIDO") {
+    resumen.sin_match += 1;
+    resumen.detalle_sin_match.push({ id: fila.id, dni: fila.dni, motivo: "Mikrowisp no devolvio un estado reconocible" });
+    return;
+  }
+  if (estadoNuevo === String(fila.estado_servicio || "").toUpperCase()) {
+    resumen.sin_cambios += 1;
+    return;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      // Solo estado_servicio -- NUNCA reescribir la fila completa aca. Bug
+      // real ya ocurrido antes con la version manual: reescribir todo el
+      // registro desde una copia en memoria pisaba caja_nap/puerto_nap a
+      // null para cualquier cliente cuyo estado hubiera cambiado.
+      body: JSON.stringify({ estado_servicio: estadoNuevo, ultima_actualizacion: new Date().toISOString() }),
+    });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    resumen.actualizados += 1;
+  } catch (e) {
+    resumen.errores += 1;
+  }
+}
+
+async function sincronizarEstadosMikrowisp() {
+  const resumen = {
+    total_dnis: 0, total_filas: 0, actualizados: 0, sin_cambios: 0,
+    sin_match: 0, errores: 0, detalle_sin_match: [], iniciado: new Date().toISOString(),
+  };
+
+  const filasCrudas = await fetchSupabaseRowsPaginado(
+    "clientes",
+    `select=id,dni,usuario_nodo,estado_servicio&nodo=in.(${ESTADO_SYNC_NODOS.join(",")})&dni=not.is.null`
+  );
+  const filas = filasCrudas.filter((f) => String(f.dni || "").replace(/\D/g, "").length >= 6);
+  resumen.total_filas = filas.length;
+
+  const porDni = new Map();
+  for (const f of filas) {
+    const dni = String(f.dni || "").replace(/\D/g, "");
+    if (!porDni.has(dni)) porDni.set(dni, []);
+    porDni.get(dni).push(f);
+  }
+  resumen.total_dnis = porDni.size;
+
+  const dnis = Array.from(porDni.keys());
+  const CONCURRENCIA = 5;
+  for (let i = 0; i < dnis.length; i += CONCURRENCIA) {
+    const lote = dnis.slice(i, i + CONCURRENCIA);
+    await Promise.all(lote.map(async (dni) => {
+      const filasDelDni = porDni.get(dni);
+      let resp;
+      try {
+        resp = await consultarMikrowispPorCedula(dni);
+      } catch (e) {
+        resumen.errores += filasDelDni.length;
+        return;
+      }
+      const datosArr = Array.isArray(resp?.datos) ? resp.datos : (resp?.datos ? [resp.datos] : []);
+      if (!datosArr.length) {
+        resumen.sin_match += filasDelDni.length;
+        filasDelDni.forEach((f) => resumen.detalle_sin_match.push({ id: f.id, dni, motivo: "Mikrowisp no devolvio datos para esta cedula" }));
+        return;
+      }
+      // Un solo servicio registrado para este DNI en nuestra base -- no
+      // hace falta emparejar por pppuser, se usa el estado del (unico)
+      // resultado directo.
+      if (filasDelDni.length === 1) {
+        await aplicarEstadoSiCambio(filasDelDni[0], normalizarEstadoMikrowispSync(datosArr[0]?.estado), resumen);
+        return;
+      }
+      // 2+ servicios para el mismo DNI: emparejar cada fila nuestra con el
+      // registro de Mikrowisp cuyo servicios[].pppuser coincida con
+      // usuario_nodo -- evita aplicar a ciegas el estado de un servicio al
+      // otro solo por compartir DNI (bug real detectado con datos de
+      // produccion antes de automatizar esto).
+      for (const fila of filasDelDni) {
+        const usuarioNodo = String(fila.usuario_nodo || "").trim().toLowerCase();
+        if (!usuarioNodo) {
+          resumen.sin_match += 1;
+          resumen.detalle_sin_match.push({ id: fila.id, dni, motivo: "DNI con 2+ servicios y esta fila no tiene usuario_nodo guardado para emparejar" });
+          continue;
+        }
+        const match = datosArr.find((d) =>
+          Array.isArray(d?.servicios) && d.servicios.some((s) => String(s?.pppuser || "").trim().toLowerCase() === usuarioNodo)
+        );
+        if (!match) {
+          resumen.sin_match += 1;
+          resumen.detalle_sin_match.push({ id: fila.id, dni, motivo: `DNI con 2+ servicios, pppuser "${fila.usuario_nodo}" no aparece en la respuesta de Mikrowisp` });
+          continue;
+        }
+        await aplicarEstadoSiCambio(fila, normalizarEstadoMikrowispSync(match?.estado), resumen);
+      }
+    }));
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  resumen.terminado = new Date().toISOString();
+  return resumen;
+}
 
 const proxyMikrowispNewUser = async (req) => {
   const body = await inyectarTokenMikrowisp(req, MIKROWISP_TOKEN);
@@ -2429,6 +2594,20 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Disparo manual del mismo job que corre solo todas las noches (ver
+    // scheduler al final del archivo) -- para forzar un refresh puntual sin
+    // esperar a las 3 AM. Protegido con DIAGNOSTICO_INTERNAL_TOKEN porque
+    // escribe en Supabase (estado_servicio de potencialmente ~1700 filas).
+    if (req.method === "POST" && req.url === "/api/clientes/sincronizar-estados-mikrowisp") {
+      try {
+        const resumen = await sincronizarEstadosMikrowisp();
+        writeJson(res, 200, { ok: true, resumen });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
+      return;
+    }
+
     // Creacion masiva y correlativa de PPP secrets dentro de un rango de IP
     // ya existente (el pool en si se crea a mano en Mikrotik). Por defecto
     // es solo vista previa (dryRun) -- hay que mandar dryRun:false explicito
@@ -2602,3 +2781,27 @@ setTimeout(() => {
       .catch((e) => console.error("Sync periodico de cache de IPs fallo:", e));
   }, IP_CACHE_SYNC_INTERVAL_MS);
 }, 15000);
+
+// Sync diaria de estado_servicio (ACTIVO/SUSPENDIDO) contra Mikrowisp, a las
+// 3:00 AM hora de Lima (UTC-5, Peru no usa horario de verano, asi que el
+// offset es fijo todo el año) -- horario de bajo trafico, pedido explicito
+// del usuario. No depende de la zona horaria del contenedor: se calcula
+// comparando contra la hora UTC directamente.
+const ESTADO_SYNC_HORA_LIMA = Number(process.env.ESTADO_SYNC_HORA_LIMA || 3); // 0-23
+function msHastaProximaHoraLima(horaObjetivo) {
+  const ahoraUtc = new Date();
+  const horaLimaActual = (ahoraUtc.getUTCHours() + 24 - 5) % 24; // UTC-5
+  let proxima = new Date(ahoraUtc);
+  proxima.setUTCMinutes(0, 0, 0);
+  let horasAAgregar = (horaObjetivo - horaLimaActual + 24) % 24;
+  if (horasAAgregar === 0 && ahoraUtc.getUTCMinutes() > 0) horasAAgregar = 24; // ya paso la hora en punto de hoy
+  proxima.setUTCHours(ahoraUtc.getUTCHours() + horasAAgregar);
+  return proxima.getTime() - ahoraUtc.getTime();
+}
+const DIA_EN_MS = 24 * 60 * 60 * 1000;
+setTimeout(function ejecutarYProgramarSyncEstados() {
+  sincronizarEstadosMikrowisp()
+    .then((r) => console.log("Sync diaria de estados Mikrowisp:", JSON.stringify(r)))
+    .catch((e) => console.error("Sync diaria de estados Mikrowisp fallo:", e.message || e));
+  setTimeout(ejecutarYProgramarSyncEstados, DIA_EN_MS);
+}, msHastaProximaHoraLima(ESTADO_SYNC_HORA_LIMA));

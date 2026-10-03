@@ -5191,102 +5191,49 @@ export default function App() {
     setMkwLimpiandoDup(false);
   };
 
+  // Reemplaza la version vieja que corria 100% en el navegador (buscaba en
+  // Mikrowisp por DNI, tomaba el primer resultado y se lo aplicaba a la
+  // fila). Esa version tenia 2 problemas reales encontrados antes de
+  // automatizarla: (1) la ruta de Mikrowisp que usaba dependia de un token
+  // del backend que quedo mal configurado en produccion -- fallaba en
+  // silencio; (2) un DNI con 2+ servicios (confirmado con casos reales:
+  // OBRAS HERGON S.A., Country Club Tiabaya) podia copiar el estado de un
+  // servicio al otro sin ninguna base real. Ahora esto solo dispara el
+  // mismo job que ya corre SOLO todas las noches a las 3 AM en el backend
+  // (diagnosticoServicioServer.mjs), que empareja cada fila por
+  // pppuser===usuario_nodo antes de tocar nada -- "Sincronizar ahora" sirve
+  // para forzar un refresh puntual sin esperar al horario automatico.
   const actualizarEstadoMasivoMikrowisp = async () => {
-    const clientesConDni = clientesPorNodo.filter((c) => {
-      const dni = String(c?.dni || "").replace(/\D/g, "").trim();
-      return dni.length >= 6;
-    });
-    if (!clientesConDni.length) {
-      window.alert("No hay clientes con DNI para consultar.");
+    if (!DIAGNOSTICO_INTERNAL_TOKEN) {
+      window.alert("Falta configurar VITE_DIAGNOSTICO_INTERNAL_TOKEN en este panel.");
       return;
     }
-    const ok = window.confirm(`Se consultará Mikrowisp para ${clientesConDni.length} clientes. Puede tardar varios minutos. ¿Continuar?`);
+    const ok = window.confirm("Se va a sincronizar el estado (ACTIVO/SUSPENDIDO) de todos los clientes de Nod_01/02/03 contra Mikrowisp. Puede tardar varios minutos. ¿Continuar?");
     if (!ok) return;
 
-    // Antes llamaba directo a Mikrowisp con un token hardcodeado (en
-    // produccion incluso ANTES de intentar el proxy). El token real de
-    // Mikrowisp no debe salir del navegador -- ahora siempre pasa por el
-    // proxy del backend, que lo inyecta server-side.
-    const endpointProxy = DIAGNO_BASE ? `${DIAGNO_BASE}/api/mikrowisp/GetClientsDetails` : "/api/mikrowisp/GetClientsDetails";
-
-    const consultarDni = async (dniLimpio) => {
-      try {
-        const res = await fetch(endpointProxy, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cedula: dniLimpio }),
-        });
-        const body = await res.json();
-        if (res.ok && body && body.success !== false) {
-          const dataBase = body?.data || body?.datos || body?.client || body?.cliente || body || {};
-          const data = Array.isArray(dataBase) && dataBase.length > 0 ? dataBase[0] : dataBase;
-          const estadoRaw = data?.estado || data?.status || data?.service_status || data?.state || "";
-          return normalizarEstadoServicioCliente(estadoRaw);
-        }
-      } catch {
-        // sin conexion al proxy
-      }
-      return null;
-    };
-
     setActualizarEstadoMasivoLoading(true);
-    setActualizarEstadoMasivoProgreso({ actual: 0, total: clientesConDni.length, actualizados: 0 });
-
-    const actualizados = [];
-    const CONCURRENCIA = 3;
-    for (let i = 0; i < clientesConDni.length; i += CONCURRENCIA) {
-      const lote = clientesConDni.slice(i, i + CONCURRENCIA);
-      const resultados = await Promise.all(
-        lote.map(async (c) => {
-          const dni = String(c?.dni || "").replace(/\D/g, "").trim();
-          const estadoNuevo = await consultarDni(dni);
-          return { c, estadoNuevo };
-        })
-      );
-      for (const { c, estadoNuevo } of resultados) {
-        if (estadoNuevo && estadoNuevo !== (c.estadoServicio || "DESCONOCIDO")) {
-          actualizados.push({ ...c, estadoServicio: estadoNuevo });
-        }
-      }
-      setActualizarEstadoMasivoProgreso({ actual: Math.min(i + CONCURRENCIA, clientesConDni.length), total: clientesConDni.length, actualizados: actualizados.length });
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    if (actualizados.length > 0) {
-      const clientesActualizadosMap = new Map(actualizados.map((c) => [String(c.id || c.dni || ""), c]));
-      const nuevosClientes = clientes.map((c) => {
-        const key = String(c.id || c.dni || "");
-        return clientesActualizadosMap.get(key) || c;
+    setActualizarEstadoMasivoProgreso(null); // el backend no reporta progreso incremental, solo el resumen final
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/clientes/sincronizar-estados-mikrowisp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN },
       });
-      setClientes(nuevosClientes);
-      if (isSupabaseConfigured) {
-        try {
-          // Solo se toca estado_servicio -- antes se reescribia la fila
-          // completa con serializarClienteParaSupabase(c), y como "c" es la
-          // copia en memoria (nunca se entera de los caja_nap/puerto_nap
-          // asignados despues desde "Vincular Clientes NAP", que escribe
-          // directo a Supabase), cada corrida de esta actualizacion masiva
-          // terminaba pisando caja_nap/puerto_nap de vuelta a null para
-          // todo cliente cuyo estado hubiera cambiado -- bug real
-          // reportado: clientes vinculados a una caja aparecian "sin caja"
-          // despues de correr esto.
-          await Promise.all(
-            actualizados.map((c) =>
-              supabase
-                .from(CLIENTES_TABLE)
-                .update({ estado_servicio: c.estadoServicio, ultima_actualizacion: new Date().toISOString() })
-                .eq("id", c.id)
-            )
-          );
-        } catch {
-          // noop — estado queda en memoria
-        }
-      }
+      const body = await res.json().catch(() => ({}));
+      if (!body?.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+      const r = body.resumen || {};
+      await cargarClientesDesdeSupabase({ silent: true });
+      window.alert(
+        `Sincronización completada.\n\n` +
+        `Clientes revisados: ${r.total_filas ?? "-"}\n` +
+        `Actualizados: ${r.actualizados ?? 0}\n` +
+        `Sin cambios: ${r.sin_cambios ?? 0}\n` +
+        `Sin poder emparejar (revisar a mano): ${r.sin_match ?? 0}\n` +
+        `Errores de conexión: ${r.errores ?? 0}`
+      );
+    } catch (e) {
+      window.alert("No se pudo sincronizar: " + (e.message || String(e)));
     }
-
     setActualizarEstadoMasivoLoading(false);
-    setActualizarEstadoMasivoProgreso(null);
-    window.alert(`Actualización completada. ${actualizados.length} clientes con estado actualizado.`);
   };
 
   // Un DNI puede tener varios servicios (otra dirección): solo se devuelven fotos del
@@ -23430,6 +23377,16 @@ export default function App() {
                 <div>
                   <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a", letterSpacing: "-0.4px" }}>Abonados</h2>
                   <p style={{ margin: "3px 0 0", fontSize: 12, color: isDark ? "#93a2bd" : "#94a3b8", fontWeight: 500 }}>{clientes.length} registros totales</p>
+                  {/* Conteo en vivo -- se recalcula solo de lo que ya esta
+                      cargado en memoria, no pide nada nuevo a Supabase. Se
+                      actualiza solo cuando corre la sincronizacion diaria
+                      (3 AM) o "Sincronizar ahora", no es un conteo en
+                      tiempo real contra Mikrowisp. */}
+                  <p style={{ margin: "4px 0 0", fontSize: 12, fontWeight: 700, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ color: "#16a34a" }}>● {clientes.filter(c => c.estadoServicio === "ACTIVO").length} activos</span>
+                    <span style={{ color: "#d97706" }}>● {clientes.filter(c => c.estadoServicio === "SUSPENDIDO").length} suspendidos</span>
+                    <span style={{ color: "#64748b" }}>● {clientes.filter(c => !c.estadoServicio || c.estadoServicio === "DESCONOCIDO").length} sin dato</span>
+                  </p>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {esAdminSesion && (
