@@ -22,6 +22,11 @@ const TIPOS = [
   { key: "template_sin_completar", label: "Sin completar", color: "#dc2626", bg: "#fef2f2", dot: "#fca5a5" },
   { key: "template_llegada", label: "Llegada del técnico", color: "#0891b2", bg: "#ecfeff", dot: "#67e8f9" },
   { key: "template_llegada_interno", label: "Llegada — aviso interno", color: "#475569", bg: "#f1f5f9", dot: "#94a3b8" },
+  // Estos 2 no se disparan solos al crear/liquidar una orden -- se mandan a
+  // mano desde el boton "Notificar"/"Avisar recojo" en la pantalla de
+  // Abonados, para un cliente SUSPENDIDO puntual.
+  { key: "template_suspendido", label: "Suspendido", color: "#b91c1c", bg: "#fef2f2", dot: "#fca5a5" },
+  { key: "template_aviso_recojo", label: "Aviso recojo equipo", color: "#0369a1", bg: "#f0f9ff", dot: "#7dd3fc" },
 ];
 
 const defaultConfig = (emp) => ({
@@ -38,6 +43,8 @@ const defaultConfig = (emp) => ({
   template_sin_completar: "Estimado/a {nombre}, su orden #{codigo} no pudo completarse en esta visita. Motivo: {resultado}. Nos comunicaremos para reagendar. — {empresa}",
   template_llegada: "Hola {nombre}, su técnico {tecnico} de {empresa} ya llegó para su visita (orden #{codigo}). 🚐",
   template_llegada_interno: "📍 Llegada confirmada — Técnico {tecnico} en orden #{codigo} ({nombre}, {direccion}).",
+  template_suspendido: "Hola {nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙 — {empresa}",
+  template_aviso_recojo: "Hola {nombre}, por falta de pago prolongada vamos a coordinar el recojo del equipo instalado en {direccion}. Si deseas evitarlo, puedes regularizar tu pago. Cualquier consulta estamos a tu disposición. — {empresa}",
 });
 
 function loadFromLS() {

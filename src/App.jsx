@@ -5268,29 +5268,66 @@ export default function App() {
     setActualizarEstadoMasivoLoading(false);
   };
 
-  const [notificarSuspendidoLoading, setNotificarSuspendidoLoading] = useState({}); // { [clienteId]: true }
+  const [notificarSuspendidoLoading, setNotificarSuspendidoLoading] = useState({}); // { [`${tipo}:${clienteId}`]: true }
+
+  // Config por tipo de aviso manual (distintos de los automaticos de ordenes
+  // que ya maneja sendWhatsAppNotification): que plantilla usar, que columna
+  // de clientes marcar como "ya enviado", y el texto por defecto si todavia
+  // no se configuro una plantilla en el panel.
+  const NOTIF_MANUAL_TIPOS = {
+    suspendido: {
+      templateKey: "template_suspendido",
+      col: "notif_suspendido_en",
+      colLocal: "notifSuspendidoEn",
+      promptTitulo: "Mensaje a enviar por WhatsApp (suspendido):",
+      defaultTpl: "Hola {nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙 — {empresa}",
+    },
+    recojo: {
+      templateKey: "template_aviso_recojo",
+      col: "notif_recojo_equipo_en",
+      colLocal: "notifRecojoEquipoEn",
+      promptTitulo: "Mensaje a enviar por WhatsApp (aviso de recojo de equipo):",
+      defaultTpl: "Hola {nombre}, por falta de pago prolongada vamos a coordinar el recojo del equipo instalado en {direccion}. Si deseas evitarlo, puedes regularizar tu pago. Cualquier consulta estamos a tu disposición. — {empresa}",
+    },
+  };
 
   // Manda un mensaje al cliente por WhatsApp directo (Evolution API), mismo
   // sistema ya configurado en "Notificaciones WhatsApp" (whatsapp_config,
   // una fila por empresa) que ya usa sendWhatsAppNotification para los
-  // mensajes automaticos de ordenes -- cambio de decision: no usar Chatwoot,
-  // reusar este canal que ya conocen y tienen probado. Solo tiene sentido
-  // para clientes SUSPENDIDO -- se deshabilita para el resto en el boton.
-  const notificarClienteSuspendidoChatwoot = async (cliente) => {
+  // mensajes automaticos de ordenes. "tipo" es "suspendido" o "recojo" --
+  // cada uno con su propia plantilla editable en ese panel y su propia
+  // marca de "ya enviado" en clientes, para no mezclar ambos avisos. Solo
+  // tiene sentido para clientes SUSPENDIDO -- se deshabilita para el resto
+  // en el boton.
+  const notificarClienteSuspendidoChatwoot = async (cliente, tipo = "suspendido") => {
+    const cfgTipo = NOTIF_MANUAL_TIPOS[tipo];
     const numero = String(cliente?.celular || "").replace(/\D/g, "");
     if (!numero) { window.alert("Este cliente no tiene celular registrado."); return; }
     const empresa = String(cliente?.empresa || "Americanet").trim();
     const nombre = String(cliente?.nombre || "").split(",")[0].split(" ")[0] || "cliente";
-    const defaultMsg = `Hola ${nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙`;
-    const mensaje = window.prompt("Mensaje a enviar por WhatsApp:", defaultMsg);
+
+    setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: true }));
+    let waCfg = null;
+    try {
+      const { data } = await supabase.from("whatsapp_config").select("*").eq("empresa", empresa).maybeSingle();
+      waCfg = data;
+    } catch (_) { /* se valida abajo */ }
+    setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: false }));
+    if (!waCfg?.habilitado || !waCfg?.base_url || !waCfg?.api_key || !waCfg?.instance_name) {
+      window.alert(`WhatsApp no está configurado/habilitado para "${empresa}" (revisar en Notificaciones WhatsApp).`);
+      return;
+    }
+
+    const tpl = waCfg[cfgTipo.templateKey] || cfgTipo.defaultTpl;
+    const mensajePrecargado = tpl
+      .replace(/{nombre}/g, nombre)
+      .replace(/{empresa}/g, empresa)
+      .replace(/{direccion}/g, cliente?.direccion || "");
+    const mensaje = window.prompt(cfgTipo.promptTitulo, mensajePrecargado);
     if (!mensaje || !mensaje.trim()) return;
 
-    setNotificarSuspendidoLoading((p) => ({ ...p, [cliente.id]: true }));
+    setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: true }));
     try {
-      const { data: waCfg } = await supabase.from("whatsapp_config").select("*").eq("empresa", empresa).maybeSingle();
-      if (!waCfg?.habilitado || !waCfg?.base_url || !waCfg?.api_key || !waCfg?.instance_name) {
-        throw new Error(`WhatsApp no está configurado/habilitado para "${empresa}" (revisar en Notificaciones WhatsApp).`);
-      }
       let phone = numero;
       if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
       const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
@@ -5307,11 +5344,17 @@ export default function App() {
       } finally {
         clearTimeout(timeout);
       }
+      // Marca de "ya enviado" -- guarda la fecha en Supabase y la refleja de
+      // inmediato en memoria para que el boton cambie a "✓ Enviado" sin
+      // tener que recargar toda la lista de Abonados.
+      const ahora = new Date().toISOString();
+      try { await supabase.from(CLIENTES_TABLE).update({ [cfgTipo.col]: ahora }).eq("id", cliente.id); } catch (_) {}
+      setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, [cfgTipo.colLocal]: ahora } : c)));
       window.alert("✅ Mensaje enviado por WhatsApp.");
     } catch (e) {
       window.alert("No se pudo enviar: " + (e.message || String(e)));
     }
-    setNotificarSuspendidoLoading((p) => ({ ...p, [cliente.id]: false }));
+    setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: false }));
   };
 
   // Un DNI puede tener varios servicios (otra dirección): solo se devuelven fotos del
@@ -6565,6 +6608,8 @@ export default function App() {
         codigoAbonado: row.codigo_abonado || p.codigoAbonado || "",
         estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
         fechaSuspendido: row.fecha_suspendido || p.fechaSuspendido || null,
+        notifSuspendidoEn: row.notif_suspendido_en || p.notifSuspendidoEn || null,
+        notifRecojoEquipoEn: row.notif_recojo_equipo_en || p.notifRecojoEquipoEn || null,
         mikrotikSuspensionIp: row.mikrotik_suspension_ip || p.mikrotikSuspensionIp || "",
         mikrotikUltimaAccion: row.mikrotik_ultima_accion || p.mikrotikUltimaAccion || "",
         en_mikrowisp: row.en_mikrowisp || p.en_mikrowisp || false,
@@ -6580,6 +6625,8 @@ export default function App() {
       codigoAbonado: row.codigo_abonado || "",
       estadoServicio: row.estado_servicio || "DESCONOCIDO",
       fechaSuspendido: row.fecha_suspendido || null,
+      notifSuspendidoEn: row.notif_suspendido_en || null,
+      notifRecojoEquipoEn: row.notif_recojo_equipo_en || null,
       codigoCliente: row.codigo_cliente || "-",
       dni: row.dni || "-",
       nombre: row.nombre || "-",
@@ -6912,7 +6959,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,fecha_suspendido,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,fecha_suspendido,notif_suspendido_en,notif_recojo_equipo_en,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
@@ -24123,17 +24170,29 @@ export default function App() {
                                       );
                                     })()}
                                   </div>
-                                  {/* Notificar por WhatsApp -- solo tiene sentido para clientes
-                                      suspendidos (pedido explicito: avisarle que regularice). */}
-                                  {est === "SUSPENDIDO" && (
-                                    <button
-                                      onClick={() => void notificarClienteSuspendidoChatwoot(cliente)}
-                                      disabled={!!notificarSuspendidoLoading[cliente.id] || !cliente.celular}
-                                      title={cliente.celular ? "Notificar por WhatsApp" : "Sin celular registrado"}
-                                      style={{ padding: "0 11px", height: 30, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: notificarSuspendidoLoading[cliente.id] || !cliente.celular ? "default" : "pointer", opacity: !cliente.celular ? 0.5 : 1, whiteSpace: "nowrap" }}>
-                                      {notificarSuspendidoLoading[cliente.id] ? "⏳" : "📨 Notificar"}
-                                    </button>
-                                  )}
+                                  {/* 2 avisos por WhatsApp -- solo para clientes suspendidos.
+                                      Cada uno marca su propia fecha de envio (notifSuspendidoEn /
+                                      notifRecojoEquipoEn) para que quede visualmente claro cual
+                                      ya se mando y cual sigue pendiente, sin tener que acordarse
+                                      ni volver a mandarlo sin querer. */}
+                                  {est === "SUSPENDIDO" && [
+                                    { tipo: "suspendido", label: "Notificar", enviadoEn: cliente.notifSuspendidoEn },
+                                    { tipo: "recojo", label: "Aviso recojo", enviadoEn: cliente.notifRecojoEquipoEn },
+                                  ].map(({ tipo, label, enviadoEn }) => {
+                                    const key = `${tipo}:${cliente.id}`;
+                                    const cargando = !!notificarSuspendidoLoading[key];
+                                    const yaEnviado = !!enviadoEn;
+                                    return (
+                                      <button
+                                        key={tipo}
+                                        onClick={() => void notificarClienteSuspendidoChatwoot(cliente, tipo)}
+                                        disabled={cargando || !cliente.celular}
+                                        title={!cliente.celular ? "Sin celular registrado" : yaEnviado ? `Ya enviado el ${new Date(enviadoEn).toLocaleString("es-PE")} — clic para enviar de nuevo` : `Enviar "${label}"`}
+                                        style={{ padding: "0 11px", height: 30, background: yaEnviado ? "#dcfce7" : "#eff6ff", color: yaEnviado ? "#166534" : "#1d4ed8", border: `1px solid ${yaEnviado ? "#86efac" : "#bfdbfe"}`, borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: cargando || !cliente.celular ? "default" : "pointer", opacity: !cliente.celular ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                                        {cargando ? "⏳" : yaEnviado ? `✓ ${label}` : `📨 ${label}`}
+                                      </button>
+                                    );
+                                  })}
                                   {/* Badge MW — visible si es nodo MikroWisp y admin, o gestor con acceso a ese nodo */}
                                   {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                     const id = String(cliente.id || cliente.dni || "");
