@@ -116,7 +116,13 @@ export default function WhatsAppConfigPanel() {
         const dbMap = {};
         EMPRESAS.forEach((e) => { dbMap[e] = defaultConfig(e); });
         data.forEach((row) => {
-          if (row?.empresa) dbMap[row.empresa] = { ...defaultConfig(row.empresa), ...row };
+          if (!row?.empresa) return;
+          // Filtrar null/undefined antes de mezclar -- una columna nueva
+          // (ej. template_suspendido, agregada por ALTER TABLE) llega como
+          // null en filas ya existentes, y pisaba el texto por defecto en
+          // vez de dejarlo como punto de partida editable.
+          const rowLimpio = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== null && v !== undefined));
+          dbMap[row.empresa] = { ...defaultConfig(row.empresa), ...rowLimpio };
         });
         setConfigs(dbMap);
         saveToLS(dbMap);
