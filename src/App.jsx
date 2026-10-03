@@ -5388,10 +5388,23 @@ export default function App() {
   // marca de "ya enviado" en clientes, para no mezclar ambos avisos. Solo
   // tiene sentido para clientes SUSPENDIDO -- se deshabilita para el resto
   // en el boton.
+  // Un cliente puede tener 2+ celulares guardados separados por coma/slash/
+  // punto y coma (ej. "51967888026,51987327672") -- antes esto se mandaba
+  // tal cual a un replace(/\D/g,"") que borraba el separador y pegaba
+  // ambos numeros en uno solo invalido, sin avisar. Esto los separa y
+  // normaliza cada uno (agrega "51" si es el formato local de 9 digitos).
+  const extraerNumerosCelular = (raw) => {
+    return String(raw || "")
+      .split(/[,;/|]+/)
+      .map((n) => n.replace(/\D/g, ""))
+      .filter((n) => n.length >= 9)
+      .map((n) => (/^9\d{8}$/.test(n) ? "51" + n : n));
+  };
+
   const notificarClienteSuspendidoChatwoot = async (cliente, tipo = "suspendido") => {
     const cfgTipo = NOTIF_MANUAL_TIPOS[tipo];
-    const numero = String(cliente?.celular || "").replace(/\D/g, "");
-    if (!numero) { mostrarNotifToast("Este cliente no tiene celular registrado.", false); return; }
+    const numeros = extraerNumerosCelular(cliente?.celular);
+    if (!numeros.length) { mostrarNotifToast("Este cliente no tiene celular registrado.", false); return; }
     const empresa = String(cliente?.empresa || "Americanet").trim();
     // Nombre completo, no solo el primer nombre -- si viene "Apellidos,
     // Nombres" (formato comun en la base) se reordena a "Nombres Apellidos"
@@ -5418,21 +5431,19 @@ export default function App() {
       .replace(/{nombre}/g, nombre)
       .replace(/{empresa}/g, empresa)
       .replace(/{direccion}/g, cliente?.direccion || "");
-    setNotifModal({ cliente, tipo, cfgTipo, mensaje: mensajePrecargado, waCfg });
+    setNotifModal({ cliente, tipo, cfgTipo, mensaje: mensajePrecargado, waCfg, numeros });
   };
 
   // Disparado por el boton "Enviar" de la ventana flotante -- el usuario ya
   // pudo editar notifModal.mensaje en el textarea antes de llegar aca.
   const confirmarEnvioNotificacion = async () => {
     if (!notifModal) return;
-    const { cliente, tipo, cfgTipo, mensaje, waCfg } = notifModal;
+    const { cliente, tipo, cfgTipo, mensaje, waCfg, numeros } = notifModal;
     if (!mensaje || !mensaje.trim()) return;
     setNotifModal(null);
     setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: true }));
-    try {
-      let phone = String(cliente?.celular || "").replace(/\D/g, "");
-      if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
-      const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
+    const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
+    const enviarA = async (phone) => {
       const ctrl = new AbortController();
       const timeout = setTimeout(() => ctrl.abort(), 8000);
       try {
@@ -5443,16 +5454,33 @@ export default function App() {
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return { phone, ok: true };
+      } catch (e) {
+        return { phone, ok: false, error: e.message || String(e) };
       } finally {
         clearTimeout(timeout);
       }
+    };
+    try {
+      // Si el cliente tiene 2+ celulares guardados, se manda a TODOS -- no
+      // solo al primero -- para maximizar que de verdad lo vea.
+      const resultados = await Promise.all((numeros?.length ? numeros : extraerNumerosCelular(cliente?.celular)).map(enviarA));
+      const exitosos = resultados.filter((r) => r.ok);
+      if (!exitosos.length) throw new Error(resultados.map((r) => `${r.phone}: ${r.error}`).join(" / "));
       // Marca de "ya enviado" -- guarda la fecha en Supabase y la refleja de
       // inmediato en memoria para que el boton cambie a "✓ Enviado" sin
-      // tener que recargar toda la lista de Abonados.
+      // tener que recargar toda la lista de Abonados. Se marca como enviado
+      // si al menos UN numero funciono, no hace falta que funcionen todos.
       const ahora = new Date().toISOString();
       try { await supabase.from(CLIENTES_TABLE).update({ [cfgTipo.col]: ahora }).eq("id", cliente.id); } catch (_) {}
       setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, [cfgTipo.colLocal]: ahora } : c)));
-      mostrarNotifToast("Mensaje enviado por WhatsApp.", true);
+      const fallidos = resultados.filter((r) => !r.ok);
+      mostrarNotifToast(
+        resultados.length > 1
+          ? `Enviado a ${exitosos.length}/${resultados.length} números${fallidos.length ? ` (falló: ${fallidos.map((f) => f.phone).join(", ")})` : ""}.`
+          : "Mensaje enviado por WhatsApp.",
+        true
+      );
     } catch (e) {
       mostrarNotifToast("No se pudo enviar: " + (e.message || String(e)), false);
     }
@@ -29994,7 +30022,10 @@ export default function App() {
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}>📨</div>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: 15, color: isDark ? "#e6ecf7" : "#0f172a" }}>{notifModal.cfgTipo.tituloModal}</div>
-                  <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>Para {notifModal.cliente.nombre || "-"} · {notifModal.cliente.celular}</div>
+                  <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>
+                    Para {notifModal.cliente.nombre || "-"}
+                    {notifModal.numeros?.length > 1 ? ` · se enviará a ${notifModal.numeros.length} números: ${notifModal.numeros.join(", ")}` : ` · ${notifModal.numeros?.[0] || notifModal.cliente.celular}`}
+                  </div>
                 </div>
               </div>
               <p style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#94a3b8", margin: "10px 0 6px" }}>Revisa o edita el mensaje antes de enviarlo:</p>
