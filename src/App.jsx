@@ -378,6 +378,7 @@ const MENU_VISTAS_WEB = [
   { key: "inventario", label: "Inventario" },
   { key: "usuarios", label: "Usuarios" },
   { key: "clientes", label: "Clientes" },
+  { key: "suspendidos", label: "Suspendidos", gestoraVisible: true },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "bot", label: "Bot" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
@@ -406,7 +407,7 @@ const MENU_GRUPOS_ORDEN_WEB = ["Operación", "Red y Diagnóstico", "Clientes", "
 const MENU_GRUPO_POR_KEY_WEB = {
   dashboard: "Operación", crear: "Operación", pendientes: "Operación", historial: "Operación", recuperaciones: "Operación", historialAppsheet: "Operación",
   diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", onuInventario: "Red y Diagnóstico", onuAverias: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
-  clientes: "Clientes", consultaCliente: "Clientes",
+  clientes: "Clientes", consultaCliente: "Clientes", suspendidos: "Clientes",
   seguimientoTecnicos: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
   whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
   inventario: "Inventario",
@@ -419,7 +420,7 @@ const MENU_GRUPO_POR_KEY_WEB = {
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "suspendidos", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios", "etiquetadoOnu"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
   Volanteador: [],
@@ -3744,7 +3745,7 @@ export default function App() {
   // a la pestaña de Recuperaciones a buscar cliente por cliente.
   const [dnisEquipoRecuperado, setDnisEquipoRecuperado] = useState(() => new Set());
   useEffect(() => {
-    if (vistaActiva !== "clientes" || !isSupabaseConfigured) return;
+    if ((vistaActiva !== "clientes" && vistaActiva !== "suspendidos") || !isSupabaseConfigured) return;
     let cancelado = false;
     (async () => {
       try {
@@ -5742,6 +5743,27 @@ export default function App() {
       throw lastError || new Error("No se pudo consultar el diagnóstico de servicio.");
     }
     return json;
+  };
+
+  // Verificacion de conexion en vivo para la pantalla "Suspendidos" --
+  // reusa el mismo endpoint de diagnostico de servicio (PPP en el
+  // MikroTik real) que ya usa Diagnostico/Consulta rapida, solo que aca se
+  // dispara por fila sin tocar los estados de esas otras pantallas.
+  const [verificarConexionResultado, setVerificarConexionResultado] = useState({}); // { [clienteId]: { loading, data, error } }
+  const verificarConexionCliente = async (cliente) => {
+    const nodo = String(cliente?.nodo || "").trim();
+    const userPppoe = String(cliente?.usuarioNodo || "").trim();
+    if (!nodo || !userPppoe) {
+      window.alert("Este cliente no tiene nodo o usuario PPPoE registrado -- no se puede verificar conexion.");
+      return;
+    }
+    setVerificarConexionResultado((p) => ({ ...p, [cliente.id]: { loading: true } }));
+    try {
+      const json = await ejecutarDiagnosticoServicioRequest({ dni: cliente.dni, cliente: cliente.nombre, nodo, userPppoe });
+      setVerificarConexionResultado((p) => ({ ...p, [cliente.id]: { loading: false, data: json?.mikrotik || null } }));
+    } catch (e) {
+      setVerificarConexionResultado((p) => ({ ...p, [cliente.id]: { loading: false, error: e.message || String(e) } }));
+    }
   };
 
   const ejecutarDiagnosticoServicioActionRequest = async (path, payload = {}) => {
@@ -27840,6 +27862,92 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {vistaActiva === "suspendidos" && (() => {
+          const suspendidos = clientesPorNodo
+            .filter((c) => String(c.estadoServicio || "").toUpperCase() === "SUSPENDIDO")
+            .map((c) => {
+              const dias = c.fechaSuspendido ? Math.floor((Date.now() - new Date(c.fechaSuspendido).getTime()) / 86400000) : null;
+              return { ...c, _dias: Number.isFinite(dias) ? dias : -1 };
+            })
+            .sort((a, b) => b._dias - a._dias);
+          const totalRecogido = suspendidos.filter((c) => dnisEquipoRecuperado.has(String(c.dni || "").trim())).length;
+          return (
+          <div style={{ display: "grid", gap: 20 }}>
+            <div style={{ background: isDark ? "#1a2740" : "#fff", borderRadius: 20, border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5", boxShadow: "0 2px 16px rgba(15,23,42,0.06)", padding: "22px 26px" }}>
+              <div style={{ marginBottom: 18 }}>
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a", letterSpacing: "-0.4px" }}>Suspendidos</h2>
+                <p style={{ margin: "3px 0 0", fontSize: 12, color: isDark ? "#93a2bd" : "#94a3b8", fontWeight: 500 }}>
+                  Ventana dedicada para notificación y recuperación de equipos — {suspendidos.length} clientes suspendidos, {totalRecogido} con equipo ya recogido
+                </p>
+              </div>
+
+              {suspendidos.length === 0 ? (
+                <div style={{ padding: 30, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>No hay clientes suspendidos registrados.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {suspendidos.map((cliente) => {
+                    const recogido = dnisEquipoRecuperado.has(String(cliente.dni || "").trim());
+                    const conexion = verificarConexionResultado[cliente.id];
+                    const diasColor = cliente._dias >= 30 ? "#dc2626" : cliente._dias >= 15 ? "#d97706" : "#64748b";
+                    const estVisual = conexion?.data ? getDiagnosticoEstadoVisual(conexion.data.estado) : null;
+                    return (
+                      <div key={cliente.id} style={{ border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5", borderRadius: 14, padding: "14px 16px", display: "grid", gap: 10 }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center", justifyContent: "space-between" }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{cliente.nombre || "-"}</div>
+                            <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>
+                              DNI {cliente.dni || "-"} · {cliente.nodo || "-"} · {cliente.celular || "sin celular"}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 700, fontSize: 12, color: diasColor }}>
+                              {cliente._dias >= 0 ? `${cliente._dias} día${cliente._dias === 1 ? "" : "s"} suspendido` : "sin fecha"}
+                            </span>
+                            <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: recogido ? "#dcfce7" : "#fef3c7", color: recogido ? "#166534" : "#92400e" }}>
+                              {recogido ? "✓ Equipo recogido" : "Equipo pendiente"}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                          {[
+                            { tipo: "suspendido", label: "Notificar" },
+                            { tipo: "recojo", label: "Aviso recojo" },
+                          ].map(({ tipo, label }) => {
+                            const enviadoEn = tipo === "suspendido" ? cliente.notifSuspendidoEn : cliente.notifRecojoEquipoEn;
+                            const key = `${tipo}:${cliente.id}`;
+                            const cargando = !!notificarSuspendidoLoading[key];
+                            const yaEnviado = !!enviadoEn;
+                            return (
+                              <button key={tipo} onClick={() => void notificarClienteSuspendidoChatwoot(cliente, tipo)}
+                                disabled={cargando || !cliente.celular}
+                                title={!cliente.celular ? "Sin celular registrado" : yaEnviado ? `Ya enviado el ${new Date(enviadoEn).toLocaleString("es-PE")}` : `Enviar "${label}"`}
+                                style={{ padding: "6px 12px", background: yaEnviado ? "#dcfce7" : "#eff6ff", color: yaEnviado ? "#166534" : "#1d4ed8", border: `1px solid ${yaEnviado ? "#86efac" : "#bfdbfe"}`, borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: cargando || !cliente.celular ? "default" : "pointer", opacity: !cliente.celular ? 0.5 : 1 }}>
+                                {cargando ? "⏳" : yaEnviado ? `✓ ${label}` : `📨 ${label}`}
+                              </button>
+                            );
+                          })}
+                          <button onClick={() => void verificarConexionCliente(cliente)} disabled={conexion?.loading}
+                            style={{ padding: "6px 12px", background: "#f8fafc", color: "#374151", border: "1px solid #e2e8f0", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: conexion?.loading ? "default" : "pointer" }}>
+                            {conexion?.loading ? "⏳ Verificando..." : "🔌 Ver conexión MikroTik"}
+                          </button>
+                          {conexion?.error && <span style={{ fontSize: 11.5, color: "#dc2626" }}>Error: {conexion.error}</span>}
+                          {estVisual && (
+                            <span style={{ padding: "4px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 700, background: estVisual.tone.soft, color: estVisual.tone.text, border: `1px solid ${estVisual.tone.border}` }}>
+                              {estVisual.label}
+                              {conexion.data?.estado !== "conectado" && conexion.data?.lastLoggedOut ? ` — desde ${conexion.data.lastLoggedOut}` : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          );
+        })()}
 
         {vistaActiva === "recuperaciones" && (
           <div style={{ display: "grid", gap: "24px" }}>
