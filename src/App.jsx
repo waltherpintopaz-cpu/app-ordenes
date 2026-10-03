@@ -2964,6 +2964,22 @@ export default function App() {
   // etc.) para que "← Volver" regrese ahi -- antes siempre volvia a
   // "clientes" fijo, aunque se hubiera abierto desde otra pantalla.
   const [detalleClienteOrigen, setDetalleClienteOrigen] = useState("clientes");
+  // Posicion de scroll de la pantalla de origen justo antes de abrir el
+  // detalle -- se restaura al volver, para no perder el lugar exacto
+  // (cliente/fila) donde se estaba en una lista larga.
+  const scrollAlAbrirDetalleRef = useRef(0);
+  const volverDeDetalleCliente = () => {
+    const destino = detalleClienteOrigen || "clientes";
+    setVistaActiva(destino);
+    // Doble requestAnimationFrame: espera a que React pinte el contenido de
+    // la pantalla destino antes de restaurar el scroll (un solo rAF a veces
+    // corre antes de que el layout nuevo este listo).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        contentWrapRef.current?.scrollTo({ top: scrollAlAbrirDetalleRef.current, behavior: "auto" });
+      });
+    });
+  };
   const [showTitularModal, setShowTitularModal] = useState(false);
   const [titularForm, setTitularForm] = useState({ dni: "", nombre: "", celular: "", correo: "" });
   const [cambiandoTitular, setCambiandoTitular] = useState(false);
@@ -5543,6 +5559,7 @@ export default function App() {
     if (!cliente) return;
     const key = clienteMergeKey(cliente);
     setDetalleClienteOrigen(vistaActiva);
+    scrollAlAbrirDetalleRef.current = contentWrapRef.current?.scrollTop || 0;
     setClienteSeleccionado(cliente);
     setVistaActiva("detalleCliente");
     setClienteSenal(null);
@@ -24645,7 +24662,7 @@ export default function App() {
                   )}
                   {esAdminSesion && <button onClick={() => abrirEditarCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>}
                   {esAdminSesion && <button onClick={() => void eliminarCliente(cli)} style={{ padding: "8px 13px", background: "#dc2626", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Eliminar</button>}
-                  <button onClick={() => setVistaActiva(detalleClienteOrigen || "clientes")} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
+                  <button onClick={volverDeDetalleCliente} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
                 </div>
               </div>
 
