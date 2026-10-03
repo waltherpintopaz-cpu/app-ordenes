@@ -3759,53 +3759,6 @@ export default function App() {
     return () => { cancelado = true; };
   }, [vistaActiva, isSupabaseConfigured]);
 
-  // Equipo instalado por DNI (tipo/marca/modelo/serial) -- para la pantalla
-  // "Suspendidos", cruzando liquidacion_equipos por liquidacion_id (via
-  // liquidaciones.dni) o directo por cliente_dni (equipos sin liquidar
-  // todavia). Se excluye cualquier serial que ya tenga su contraparte
-  // "Recuperado" para ese mismo DNI -- ese ya no deberia seguir en casa del
-  // cliente.
-  const [equipoPorDniSuspendidos, setEquipoPorDniSuspendidos] = useState({});
-  useEffect(() => {
-    if (vistaActiva !== "suspendidos" || !isSupabaseConfigured) return;
-    const dnis = Array.from(new Set(
-      clientesPorNodo
-        .filter((c) => String(c.estadoServicio || "").toUpperCase() === "SUSPENDIDO")
-        .map((c) => String(c.dni || "").trim())
-        .filter(Boolean)
-    ));
-    if (!dnis.length) return;
-    let cancelado = false;
-    (async () => {
-      try {
-        const { data: liqs } = await supabase.from("liquidaciones").select("id,dni").in("dni", dnis);
-        const dniPorLiqId = {};
-        (liqs || []).forEach((l) => { dniPorLiqId[l.id] = l.dni; });
-        const liqIds = (liqs || []).map((l) => l.id);
-        const orFilter = liqIds.length ? `cliente_dni.in.(${dnis.join(",")}),liquidacion_id.in.(${liqIds.join(",")})` : `cliente_dni.in.(${dnis.join(",")})`;
-        const { data: equipos } = await supabase.from("liquidacion_equipos").select("liquidacion_id,cliente_dni,tipo,marca,modelo,serial,accion,id").or(orFilter).order("id", { ascending: true });
-        if (cancelado || !Array.isArray(equipos)) return;
-        const porDni = {};
-        equipos.forEach((eq) => {
-          const dni = String(eq.cliente_dni || dniPorLiqId[eq.liquidacion_id] || "").trim();
-          if (!dni) return;
-          if (!porDni[dni]) porDni[dni] = { instalados: [], recuperadosSeriales: new Set() };
-          if (eq.accion === "Recuperado") porDni[dni].recuperadosSeriales.add(String(eq.serial || "").trim());
-          else porDni[dni].instalados.push(eq);
-        });
-        const resultado = {};
-        Object.entries(porDni).forEach(([dni, info]) => {
-          const vigente = [...info.instalados].reverse().find((eq) => !info.recuperadosSeriales.has(String(eq.serial || "").trim()));
-          if (vigente) resultado[dni] = vigente;
-        });
-        setEquipoPorDniSuspendidos(resultado);
-      } catch (_) {
-        // no critico: si falla, la columna de equipo simplemente queda vacia
-      }
-    })();
-    return () => { cancelado = true; };
-  }, [vistaActiva, isSupabaseConfigured, clientesPorNodo]);
-
   // Pre-llenar autor de orden con el usuario actual al crear nueva orden
   useEffect(() => {
     if (vistaActiva !== "crear" || ordenEditandoId) return;
@@ -3983,6 +3936,56 @@ export default function App() {
     clientesPorNodo.forEach((c) => { const n = String(c.nodo || "").trim(); if (n) set.add(n); });
     return Array.from(set).sort();
   }, [clientesPorNodo]);
+
+  // Equipo instalado por DNI (tipo/marca/modelo/serial) -- para la pantalla
+  // "Suspendidos", cruzando liquidacion_equipos por liquidacion_id (via
+  // liquidaciones.dni) o directo por cliente_dni (equipos sin liquidar
+  // todavia). Se excluye cualquier serial que ya tenga su contraparte
+  // "Recuperado" para ese mismo DNI -- ese ya no deberia seguir en casa del
+  // cliente. (Movido aca, DESPUES de clientesPorNodo -- antes estaba mas
+  // arriba y tiraba "Cannot access 'clientesPorNodo' before initialization"
+  // en produccion, porque useEffect igual se ejecuta top-a-bottom dentro
+  // del cuerpo del componente en cada render).
+  const [equipoPorDniSuspendidos, setEquipoPorDniSuspendidos] = useState({});
+  useEffect(() => {
+    if (vistaActiva !== "suspendidos" || !isSupabaseConfigured) return;
+    const dnis = Array.from(new Set(
+      clientesPorNodo
+        .filter((c) => String(c.estadoServicio || "").toUpperCase() === "SUSPENDIDO")
+        .map((c) => String(c.dni || "").trim())
+        .filter(Boolean)
+    ));
+    if (!dnis.length) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const { data: liqs } = await supabase.from("liquidaciones").select("id,dni").in("dni", dnis);
+        const dniPorLiqId = {};
+        (liqs || []).forEach((l) => { dniPorLiqId[l.id] = l.dni; });
+        const liqIds = (liqs || []).map((l) => l.id);
+        const orFilter = liqIds.length ? `cliente_dni.in.(${dnis.join(",")}),liquidacion_id.in.(${liqIds.join(",")})` : `cliente_dni.in.(${dnis.join(",")})`;
+        const { data: equipos } = await supabase.from("liquidacion_equipos").select("liquidacion_id,cliente_dni,tipo,marca,modelo,serial,accion,id").or(orFilter).order("id", { ascending: true });
+        if (cancelado || !Array.isArray(equipos)) return;
+        const porDni = {};
+        equipos.forEach((eq) => {
+          const dni = String(eq.cliente_dni || dniPorLiqId[eq.liquidacion_id] || "").trim();
+          if (!dni) return;
+          if (!porDni[dni]) porDni[dni] = { instalados: [], recuperadosSeriales: new Set() };
+          if (eq.accion === "Recuperado") porDni[dni].recuperadosSeriales.add(String(eq.serial || "").trim());
+          else porDni[dni].instalados.push(eq);
+        });
+        const resultado = {};
+        Object.entries(porDni).forEach(([dni, info]) => {
+          const vigente = [...info.instalados].reverse().find((eq) => !info.recuperadosSeriales.has(String(eq.serial || "").trim()));
+          if (vigente) resultado[dni] = vigente;
+        });
+        setEquipoPorDniSuspendidos(resultado);
+      } catch (_) {
+        // no critico: si falla, la columna de equipo simplemente queda vacia
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [vistaActiva, isSupabaseConfigured, clientesPorNodo]);
 
   useEffect(() => {
     if (!clientesPorNodo.length) return;
