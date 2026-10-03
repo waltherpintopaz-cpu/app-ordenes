@@ -5334,17 +5334,24 @@ export default function App() {
       templateKey: "template_suspendido",
       col: "notif_suspendido_en",
       colLocal: "notifSuspendidoEn",
-      promptTitulo: "Mensaje a enviar por WhatsApp (suspendido):",
+      tituloModal: "Notificar suspensión",
       defaultTpl: "Hola {nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙 — {empresa}",
     },
     recojo: {
       templateKey: "template_aviso_recojo",
       col: "notif_recojo_equipo_en",
       colLocal: "notifRecojoEquipoEn",
-      promptTitulo: "Mensaje a enviar por WhatsApp (aviso de recojo de equipo):",
+      tituloModal: "Aviso de recojo de equipo",
       defaultTpl: "Hola {nombre}, por falta de pago prolongada vamos a coordinar el recojo del equipo instalado en {direccion}. Si deseas evitarlo, puedes regularizar tu pago. Cualquier consulta estamos a tu disposición. — {empresa}",
     },
   };
+
+  // Ventana flotante para editar el mensaje antes de enviarlo (reemplaza al
+  // window.prompt() nativo, feo e inconsistente entre navegadores). null =
+  // cerrada; abierta trae todo lo que ya se resolvio antes de mostrarla
+  // (cliente, tipo, plantilla ya rellenada, config de WhatsApp) para que
+  // "Enviar" no tenga que volver a consultar nada.
+  const [notifModal, setNotifModal] = useState(null); // { cliente, tipo, cfgTipo, mensaje, waCfg }
 
   // Manda un mensaje al cliente por WhatsApp directo (Evolution API), mismo
   // sistema ya configurado en "Notificaciones WhatsApp" (whatsapp_config,
@@ -5384,12 +5391,19 @@ export default function App() {
       .replace(/{nombre}/g, nombre)
       .replace(/{empresa}/g, empresa)
       .replace(/{direccion}/g, cliente?.direccion || "");
-    const mensaje = window.prompt(cfgTipo.promptTitulo, mensajePrecargado);
-    if (!mensaje || !mensaje.trim()) return;
+    setNotifModal({ cliente, tipo, cfgTipo, mensaje: mensajePrecargado, waCfg });
+  };
 
+  // Disparado por el boton "Enviar" de la ventana flotante -- el usuario ya
+  // pudo editar notifModal.mensaje en el textarea antes de llegar aca.
+  const confirmarEnvioNotificacion = async () => {
+    if (!notifModal) return;
+    const { cliente, tipo, cfgTipo, mensaje, waCfg } = notifModal;
+    if (!mensaje || !mensaje.trim()) return;
+    setNotifModal(null);
     setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: true }));
     try {
-      let phone = numero;
+      let phone = String(cliente?.celular || "").replace(/\D/g, "");
       if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
       const url = `${waCfg.base_url.replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
       const ctrl = new AbortController();
@@ -29906,6 +29920,61 @@ export default function App() {
             </div>
           </div>
         ) : null}
+
+        {/* ── Ventana flotante: editar/confirmar mensaje de notificacion ── */}
+        {notifModal && (
+          <div
+            onClick={() => setNotifModal(null)}
+            style={{
+              position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", backdropFilter: "blur(2px)",
+              display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000,
+              animation: "notifModalFadeIn 0.18s ease-out",
+            }}
+          >
+            <style>{`
+              @keyframes notifModalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes notifModalPopIn { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+            `}</style>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: isDark ? "#16213a" : "#fff", borderRadius: 18, padding: "24px 26px", width: "min(480px, 92vw)",
+                boxShadow: "0 20px 60px -10px rgba(15,23,42,0.35)", animation: "notifModalPopIn 0.22s cubic-bezier(.2,.9,.3,1.1)",
+                border: isDark ? "1px solid #2c3c58" : "1px solid #e8edf5",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 17 }}>📨</div>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: isDark ? "#e6ecf7" : "#0f172a" }}>{notifModal.cfgTipo.tituloModal}</div>
+                  <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>Para {notifModal.cliente.nombre || "-"} · {notifModal.cliente.celular}</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#94a3b8", margin: "10px 0 6px" }}>Revisa o edita el mensaje antes de enviarlo:</p>
+              <textarea
+                autoFocus
+                value={notifModal.mensaje}
+                onChange={(e) => setNotifModal((p) => ({ ...p, mensaje: e.target.value }))}
+                rows={6}
+                style={{
+                  width: "100%", padding: "12px 14px", borderRadius: 12, fontSize: 13.5, lineHeight: 1.6, resize: "vertical", boxSizing: "border-box",
+                  border: isDark ? "1.5px solid #2c3c58" : "1.5px solid #dbeafe", background: isDark ? "#0f1b30" : "#f8fafc", color: isDark ? "#e6ecf7" : "#0f172a",
+                  outline: "none", fontFamily: "inherit",
+                }}
+              />
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+                <button onClick={() => setNotifModal(null)}
+                  style={{ padding: "10px 18px", borderRadius: 10, border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", background: "transparent", color: isDark ? "#93a2bd" : "#64748b", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+                <button onClick={() => void confirmarEnvioNotificacion()} disabled={!notifModal.mensaje?.trim()}
+                  style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: notifModal.mensaje?.trim() ? "#1d4ed8" : "#93c5fd", color: "#fff", fontSize: 13, fontWeight: 700, cursor: notifModal.mensaje?.trim() ? "pointer" : "default", boxShadow: "0 4px 14px rgba(29,78,216,0.3)" }}>
+                  Enviar por WhatsApp →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       </main>
     </div>
