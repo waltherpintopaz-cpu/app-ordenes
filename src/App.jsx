@@ -5359,7 +5359,13 @@ export default function App() {
     const numero = String(cliente?.celular || "").replace(/\D/g, "");
     if (!numero) { window.alert("Este cliente no tiene celular registrado."); return; }
     const empresa = String(cliente?.empresa || "Americanet").trim();
-    const nombre = String(cliente?.nombre || "").split(",")[0].split(" ")[0] || "cliente";
+    // Nombre completo, no solo el primer nombre -- si viene "Apellidos,
+    // Nombres" (formato comun en la base) se reordena a "Nombres Apellidos"
+    // antes de darle formato Titulo.
+    const nombreRaw = String(cliente?.nombre || "").trim();
+    const nombre = nombreRaw
+      ? (nombreRaw.includes(",") ? nombreRaw.split(",").reverse().join(" ").trim() : nombreRaw).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+      : "cliente";
 
     setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: true }));
     let waCfg = null;
