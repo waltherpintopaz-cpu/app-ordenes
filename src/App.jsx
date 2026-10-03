@@ -2744,7 +2744,7 @@ export default function App() {
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
   const [filtroIptv, setFiltroIptv] = useState(false);
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
-  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, diasSuspendido: true, equipoRecogido: true, snOnu: false, usuarioPppoe: false, registrado: false };
+  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, equipoRecogido: true, snOnu: false, usuarioPppoe: false, registrado: false };
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
     // Merge con el default (no solo "|| default") -- si ya habia una
     // preferencia guardada de antes de que existiera una columna nueva
@@ -4060,11 +4060,6 @@ export default function App() {
         else if (sortClientes.col === "snOnu") { va = String(a.snOnu || ""); vb = String(b.snOnu || ""); }
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
-        else if (sortClientes.col === "diasSuspendido") {
-          const calc = (v) => { const n = v ? Math.floor((Date.now() - new Date(v).getTime()) / 86400000) : NaN; return Number.isFinite(n) ? n : -1; };
-          const da = calc(a.fechaSuspendido); const db = calc(b.fechaSuspendido);
-          return sortClientes.dir === "asc" ? da - db : db - da;
-        }
         else if (sortClientes.col === "rxSignal") {
           const na = parseFloat(a.rxSignal ?? ""); const nb = parseFloat(b.rxSignal ?? "");
           const av = isNaN(na) ? -Infinity : na; const bv = isNaN(nb) ? -Infinity : nb;
@@ -23742,7 +23737,6 @@ export default function App() {
                         { key: "contacto", label: "Contacto" },
                         { key: "nodo", label: "Nodo · Plan" },
                         { key: "estado", label: "Estado" },
-                        { key: "diasSuspendido", label: "Días suspendido" },
                         { key: "equipoRecogido", label: "Equipo recogido" },
                         { key: "snOnu", label: "SN ONU" },
                         { key: "usuarioPppoe", label: "Usuario PPPoE" },
@@ -24115,7 +24109,6 @@ export default function App() {
                             { key: "contacto", label: "Contacto", sortCol: "celular" },
                             { key: "nodo", label: "Nodo · Plan", sortCol: "nodo" },
                             { key: "estado", label: "Estado", sortCol: "estado" },
-                            { key: "diasSuspendido", label: "Días susp.", sortCol: "diasSuspendido" },
                             { key: "equipoRecogido", label: "Equipo", sortCol: null },
                             { key: "snOnu", label: "SN ONU", sortCol: "snOnu" },
                             { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
@@ -24202,19 +24195,6 @@ export default function App() {
                               {colsClientesVisibles.estado && (
                               <td style={{ padding: "11px 14px" }}>
                                 <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: estCfg.bg, color: estCfg.c, whiteSpace: "nowrap" }}>{estCfg.l}</span>
-                              </td>
-                              )}
-                              {colsClientesVisibles.diasSuspendido && (
-                              <td style={{ padding: "11px 14px" }}>
-                                {(() => {
-                                  if (est !== "SUSPENDIDO" || !cliente.fechaSuspendido) return <span style={{ color: "#cbd5e1" }}>—</span>;
-                                  const dias = Math.floor((Date.now() - new Date(cliente.fechaSuspendido).getTime()) / 86400000);
-                                  if (!Number.isFinite(dias) || dias < 0) return <span style={{ color: "#cbd5e1" }}>—</span>;
-                                  // Pensado para priorizar recuperacion de equipos: mientras mas dias
-                                  // suspendido, mas urgente ir a recoger el router/ONU.
-                                  const color = dias >= 30 ? "#dc2626" : dias >= 15 ? "#d97706" : "#64748b";
-                                  return <span style={{ fontWeight: 700, fontSize: 12, color, whiteSpace: "nowrap" }}>{dias} día{dias === 1 ? "" : "s"}</span>;
-                                })()}
                               </td>
                               )}
                               {colsClientesVisibles.equipoRecogido && (
@@ -24326,29 +24306,9 @@ export default function App() {
                                       );
                                     })()}
                                   </div>
-                                  {/* 2 avisos por WhatsApp -- solo para clientes suspendidos.
-                                      Cada uno marca su propia fecha de envio (notifSuspendidoEn /
-                                      notifRecojoEquipoEn) para que quede visualmente claro cual
-                                      ya se mando y cual sigue pendiente, sin tener que acordarse
-                                      ni volver a mandarlo sin querer. */}
-                                  {est === "SUSPENDIDO" && [
-                                    { tipo: "suspendido", label: "Notificar", enviadoEn: cliente.notifSuspendidoEn },
-                                    { tipo: "recojo", label: "Aviso recojo", enviadoEn: cliente.notifRecojoEquipoEn },
-                                  ].map(({ tipo, label, enviadoEn }) => {
-                                    const key = `${tipo}:${cliente.id}`;
-                                    const cargando = !!notificarSuspendidoLoading[key];
-                                    const yaEnviado = !!enviadoEn;
-                                    return (
-                                      <button
-                                        key={tipo}
-                                        onClick={() => void notificarClienteSuspendidoChatwoot(cliente, tipo)}
-                                        disabled={cargando || !cliente.celular}
-                                        title={!cliente.celular ? "Sin celular registrado" : yaEnviado ? `Ya enviado el ${new Date(enviadoEn).toLocaleString("es-PE")} — clic para enviar de nuevo` : `Enviar "${label}"`}
-                                        style={{ padding: "0 11px", height: 30, background: yaEnviado ? "#dcfce7" : "#eff6ff", color: yaEnviado ? "#166534" : "#1d4ed8", border: `1px solid ${yaEnviado ? "#86efac" : "#bfdbfe"}`, borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: cargando || !cliente.celular ? "default" : "pointer", opacity: !cliente.celular ? 0.5 : 1, whiteSpace: "nowrap" }}>
-                                        {cargando ? "⏳" : yaEnviado ? `✓ ${label}` : `📨 ${label}`}
-                                      </button>
-                                    );
-                                  })}
+                                  {/* Notificar/Aviso recojo se quitaron de Abonados (pedido
+                                      explicito, para no saturar esta tabla) -- esas 2 acciones
+                                      ya viven solo en la pantalla dedicada "Suspendidos". */}
                                   {/* Badge MW — visible si es nodo MikroWisp y admin, o gestor con acceso a ese nodo */}
                                   {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                     const id = String(cliente.id || cliente.dni || "");
