@@ -4203,6 +4203,7 @@ export default function App() {
   // Header requerido por las rutas de diagnosticoServicioServer.mjs que
   // escriben en la red real (suspender/activar clientes, crear secrets en
   // el Mikrotik). Ver DIAGNOSTICO_INTERNAL_TOKEN en el backend.
+  // (forzado 2026-10-03 para invalidar cache de build tras agregar la var)
   const DIAGNOSTICO_INTERNAL_TOKEN = String(import.meta.env.VITE_DIAGNOSTICO_INTERNAL_TOKEN || "").trim();
 
   // El token de Mikrowisp ya no se manda desde el navegador -- el backend
