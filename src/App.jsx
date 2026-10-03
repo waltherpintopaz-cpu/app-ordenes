@@ -2960,6 +2960,10 @@ export default function App() {
   const [contratoMsg, setContratoMsg] = useState("");
 
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  // Recuerda desde que pantalla se abrio el detalle (Clientes, Suspendidos,
+  // etc.) para que "← Volver" regrese ahi -- antes siempre volvia a
+  // "clientes" fijo, aunque se hubiera abierto desde otra pantalla.
+  const [detalleClienteOrigen, setDetalleClienteOrigen] = useState("clientes");
   const [showTitularModal, setShowTitularModal] = useState(false);
   const [titularForm, setTitularForm] = useState({ dni: "", nombre: "", celular: "", correo: "" });
   const [cambiandoTitular, setCambiandoTitular] = useState(false);
@@ -5511,6 +5515,7 @@ export default function App() {
   const abrirDetalleCliente = async (cliente = null) => {
     if (!cliente) return;
     const key = clienteMergeKey(cliente);
+    setDetalleClienteOrigen(vistaActiva);
     setClienteSeleccionado(cliente);
     setVistaActiva("detalleCliente");
     setClienteSenal(null);
@@ -24613,7 +24618,7 @@ export default function App() {
                   )}
                   {esAdminSesion && <button onClick={() => abrirEditarCliente(cli)} style={{ padding: "8px 15px", background: "rgba(255,255,255,0.8)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️ Editar</button>}
                   {esAdminSesion && <button onClick={() => void eliminarCliente(cli)} style={{ padding: "8px 13px", background: "#dc2626", border: "none", borderRadius: 10, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Eliminar</button>}
-                  <button onClick={() => setVistaActiva("clientes")} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
+                  <button onClick={() => setVistaActiva(detalleClienteOrigen || "clientes")} style={{ padding: "8px 14px", background: "rgba(255,255,255,0.7)", border: "1px solid #bfdbfe", borderRadius: 10, color: "#1e40af", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>← Volver</button>
                 </div>
               </div>
 
@@ -27992,6 +27997,11 @@ export default function App() {
                               <div style={{ fontSize: 11.5, color: isDark ? "#93a2bd" : "#6b7280" }}>
                                 DNI {cliente.dni || "-"} · {cliente.nodo || "-"} · {cliente.celular || "sin celular"}
                               </div>
+                              {cliente.usuarioNodo && (
+                                <div style={{ fontSize: 11, color: isDark ? "#7fa1d4" : "#1d4ed8", fontFamily: "monospace", fontWeight: 600, marginTop: 1 }}>
+                                  👤 {cliente.usuarioNodo}
+                                </div>
+                              )}
                               <div style={{ fontSize: 11, color: isDark ? "#93a2bd" : "#94a3b8", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
                                 {cliente.fechaSuspendido && <span>Suspendido el {new Date(cliente.fechaSuspendido).toLocaleDateString("es-PE")}</span>}
                                 {cliente.ubicacion && (
