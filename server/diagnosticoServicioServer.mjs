@@ -1088,12 +1088,61 @@ const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride, baseOv
   return json;
 };
 
-const cwBuscarContacto = async (phone) => {
+// ─── Resolucion de credenciales de Chatwoot por tenant (multi-tenant aditivo) ──
+// Permite que un ISP nuevo, dado de alta SOLO en el CRM (tabla tenant_config),
+// use esta misma instancia compartida sin desplegar una copia propia ni tocar
+// variables de entorno aca. Si el request no manda tenant_id, todo se
+// comporta EXACTAMENTE igual que antes (constantes CHATWOOT_BASE/TOKEN de
+// arriba) -- Americanet, DIM y cualquier otro tenant con instancia dedicada
+// propia no se ven afectados por este cambio en absoluto.
+//
+// Seguridad: cada tenant tiene su PROPIO backend_token (nunca compartido
+// entre tenants) guardado en tenant_config. El frontend de ese tenant lo
+// manda en cada request junto a su tenant_id; aca se compara contra lo
+// guardado antes de usar las credenciales de Chatwoot de ESE tenant. Si
+// alguien extrae el token del bundle publico de un tenant (es un VITE_*,
+// siempre extraible), solo puede suplantar a ESE tenant -- mismo radio de
+// exposicion que ya existe hoy con las instancias dedicadas por tenant.
+const AMNET_CRM_SUPABASE_URL = "https://cdwdmuwfahihqbnkxlxl.supabase.co";
+const AMNET_CRM_SERVICE_ROLE_KEY = String(process.env.AMNET_CRM_SERVICE_ROLE_KEY || "").trim();
+const TENANT_CREDS_CACHE_MS = 5 * 60 * 1000;
+const tenantCredsCache = new Map(); // tenant_id -> { data, expiresAt }
+
+async function resolveTenantChatwootCreds(tenantId, tenantToken) {
+  if (!tenantId) return null; // sin tenant_id -> comportamiento de siempre
+  if (!tenantToken) throw new Error("tenant_token requerido junto con tenant_id.");
+  if (!AMNET_CRM_SERVICE_ROLE_KEY) {
+    throw new Error("AMNET_CRM_SERVICE_ROLE_KEY no configurado en este servidor -- no se puede resolver tenants.");
+  }
+  const cacheado = tenantCredsCache.get(tenantId);
+  if (cacheado && cacheado.expiresAt > Date.now()) return cacheado.data;
+  const url = `${AMNET_CRM_SUPABASE_URL}/rest/v1/tenant_config?tenant_id=eq.${encodeURIComponent(tenantId)}&select=backend_token,chatwoot_url,chatwoot_token`;
+  const res = await fetch(url, {
+    headers: {
+      apikey: AMNET_CRM_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${AMNET_CRM_SERVICE_ROLE_KEY}`,
+      Accept: "application/json",
+    },
+  });
+  if (!res.ok) throw new Error(`No se pudo consultar tenant_config del CRM (HTTP ${res.status}).`);
+  const rows = await res.json().catch(() => []);
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row || !row.backend_token) throw new Error("Tenant desconocido o sin backend_token configurado en el CRM.");
+  if (String(row.backend_token) !== String(tenantToken)) throw new Error("Token de tenant invalido.");
+  if (!row.chatwoot_url || !row.chatwoot_token) throw new Error("Este tenant no tiene Chatwoot configurado en el CRM.");
+  const data = { base: String(row.chatwoot_url).trim().replace(/\/+$/, ""), token: String(row.chatwoot_token).trim() };
+  tenantCredsCache.set(tenantId, { data, expiresAt: Date.now() + TENANT_CREDS_CACHE_MS });
+  return data;
+}
+
+const cwBuscarContacto = async (phone, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
   const local = String(phone || "").slice(-9);
   for (const q of [phone, "51" + local, local]) {
     const sr = await fetchConTimeout(
-      `${CHATWOOT_BASE}/api/v1/accounts/1/contacts/search?q=${encodeURIComponent(q)}`,
-      { headers: { api_access_token: CHATWOOT_TOKEN } },
+      `${base}/api/v1/accounts/1/contacts/search?q=${encodeURIComponent(q)}`,
+      { headers: { api_access_token: token } },
     ).then((r) => r.json()).catch(() => ({}));
     const contacts = sr?.payload?.contacts || sr?.payload || [];
     const found = Array.isArray(contacts) ? contacts[0] : null;
@@ -1102,13 +1151,15 @@ const cwBuscarContacto = async (phone) => {
   return null;
 };
 
-const cwFetchAllMessages = async (convId, acctId) => {
+const cwFetchAllMessages = async (convId, acctId, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
   let all = [];
   let beforeId = null;
   for (let i = 0; i < 6; i++) {
-    let url = `${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`;
+    let url = `${base}/api/v1/accounts/${acctId}/conversations/${convId}/messages`;
     if (beforeId) url += "?before=" + beforeId;
-    const mr = await fetchConTimeout(url, { headers: { api_access_token: CHATWOOT_TOKEN } }).then((r) => r.json()).catch(() => ({}));
+    const mr = await fetchConTimeout(url, { headers: { api_access_token: token } }).then((r) => r.json()).catch(() => ({}));
     const page = mr?.payload?.messages || mr?.payload || [];
     if (!page.length) break;
     all = all.concat(page);
@@ -1122,16 +1173,18 @@ const cwFetchAllMessages = async (convId, acctId) => {
   return all;
 };
 
-const handleChatwootMessage = async (payload) => {
+const handleChatwootMessage = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
   const phone = String(payload?.phone || "").replace(/\D/g, "");
   const msg = String(payload?.message || "");
   const acctId = String(payload?.account_id || "1");
   const attachmentUrl = payload?.attachment_url || null;
   if (!phone || !msg) throw new Error("phone y message requeridos");
-  const contactId = await cwBuscarContacto(phone);
+  const contactId = await cwBuscarContacto(phone, creds);
   if (!contactId) throw new Error("Contacto no encontrado: " + phone);
-  const cr = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
-    headers: { api_access_token: CHATWOOT_TOKEN },
+  const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+    headers: { api_access_token: token },
   }).then((r) => r.json()).catch(() => ({}));
   const convs = cr?.payload || [];
   const conv = convs.find((c) => c.status === "open") || convs[0];
@@ -1144,43 +1197,45 @@ const handleChatwootMessage = async (payload) => {
     fd.append("attachments[]", new Blob([buf], { type: contentType }), "imagen");
     fd.append("message_type", "outgoing");
     fd.append("private", "false");
-    const upRes = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
+    const upRes = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
       method: "POST",
-      headers: { api_access_token: CHATWOOT_TOKEN },
+      headers: { api_access_token: token },
       body: fd,
     });
     await readProxyJsonResponse(upRes, "Chatwoot upload imagen").catch(() => ({}));
-    const txtRes = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
+    const txtRes = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", api_access_token: CHATWOOT_TOKEN },
+      headers: { "Content-Type": "application/json", api_access_token: token },
       body: JSON.stringify({ content: msg, message_type: "outgoing", private: false }),
     });
     return await readProxyJsonResponse(txtRes, "Chatwoot mensaje texto");
   }
-  const mr = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
+  const mr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", api_access_token: CHATWOOT_TOKEN },
+    headers: { "Content-Type": "application/json", api_access_token: token },
     body: JSON.stringify({ content: msg, message_type: "outgoing", private: false }),
   });
   return await readProxyJsonResponse(mr, "Chatwoot mensaje");
 };
 
-const handleGetChatwootMessages = async (payload) => {
+const handleGetChatwootMessages = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
   const phone = String(payload?.phone || "").replace(/\D/g, "");
   const acctId = String(payload?.account_id || "1");
   const directConvId = payload?.conv_id || null;
-  if (directConvId) return { messages: await cwFetchAllMessages(directConvId, acctId) };
+  if (directConvId) return { messages: await cwFetchAllMessages(directConvId, acctId, creds) };
   if (!phone) throw new Error("phone o conv_id requerido");
-  const contactId = await cwBuscarContacto(phone);
+  const contactId = await cwBuscarContacto(phone, creds);
   if (!contactId) throw new Error("Contacto no encontrado");
-  const cr = await fetchConTimeout(`${CHATWOOT_BASE}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
-    headers: { api_access_token: CHATWOOT_TOKEN },
+  const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+    headers: { api_access_token: token },
   }).then((r) => r.json()).catch(() => ({}));
   const convs = cr?.payload || [];
   let allMessages = [];
   for (const conv of convs.slice(0, 3)) {
     if (!conv?.id) continue;
-    allMessages = allMessages.concat(await cwFetchAllMessages(conv.id, acctId));
+    allMessages = allMessages.concat(await cwFetchAllMessages(conv.id, acctId, creds));
   }
   return { messages: allMessages };
 };
@@ -1201,11 +1256,17 @@ const proxyMikrowispGenerico = async (req) => {
   const accion = body.accion || "";
   try {
     if (accion === "ChatwootMessage") {
-      const data = await handleChatwootMessage(body.payload || {});
+      // tenant_id/tenant_token: opcionales, solo los manda un tenant nuevo
+      // dado de alta en el CRM (no tiene instancia dedicada propia). Sin
+      // ellos, se usa CHATWOOT_BASE/TOKEN de siempre (comportamiento actual
+      // de Americanet/DIM/waw, sin cambios).
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleChatwootMessage(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
-      const data = await handleGetChatwootMessages(body.payload || {});
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleGetChatwootMessages(body.payload || {}, creds);
       return { status: 200, json: { ok: true, ...data } };
     }
     if (accion === "SmartOltSignal") {
