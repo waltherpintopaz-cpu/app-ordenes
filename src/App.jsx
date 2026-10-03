@@ -2743,7 +2743,7 @@ export default function App() {
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
   const [filtroIptv, setFiltroIptv] = useState(false);
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
-  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, diasSuspendido: true, snOnu: false, usuarioPppoe: false, registrado: false };
+  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, diasSuspendido: true, equipoRecogido: true, snOnu: false, usuarioPppoe: false, registrado: false };
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
     // Merge con el default (no solo "|| default") -- si ya habia una
     // preferencia guardada de antes de que existiera una columna nueva
@@ -3737,6 +3737,26 @@ export default function App() {
     void cargarHistorialRecuperaciones();
     void cargarStockTecnico();
   }, [vistaActiva]);
+
+  // Set de DNIs con al menos una ejecucion de recojo de equipo (de cualquier
+  // fecha, no solo las ultimas 200 que carga Recuperaciones) -- para poder
+  // marcar "Equipo recogido" en la pantalla de Abonados sin tener que entrar
+  // a la pestaña de Recuperaciones a buscar cliente por cliente.
+  const [dnisEquipoRecuperado, setDnisEquipoRecuperado] = useState(() => new Set());
+  useEffect(() => {
+    if (vistaActiva !== "clientes" || !isSupabaseConfigured) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from("ordenes_recuperacion_ejecucion").select("dni");
+        if (cancelado || !Array.isArray(data)) return;
+        setDnisEquipoRecuperado(new Set(data.map((r) => String(r.dni || "").trim()).filter(Boolean)));
+      } catch (_) {
+        // no critico: si falla, la columna simplemente no marca a nadie
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [vistaActiva, isSupabaseConfigured]);
 
   // Pre-llenar autor de orden con el usuario actual al crear nueva orden
   useEffect(() => {
@@ -23474,6 +23494,7 @@ export default function App() {
                         { key: "nodo", label: "Nodo · Plan" },
                         { key: "estado", label: "Estado" },
                         { key: "diasSuspendido", label: "Días suspendido" },
+                        { key: "equipoRecogido", label: "Equipo recogido" },
                         { key: "snOnu", label: "SN ONU" },
                         { key: "usuarioPppoe", label: "Usuario PPPoE" },
                         { key: "registrado", label: "Registrado" },
@@ -23846,6 +23867,7 @@ export default function App() {
                             { key: "nodo", label: "Nodo · Plan", sortCol: "nodo" },
                             { key: "estado", label: "Estado", sortCol: "estado" },
                             { key: "diasSuspendido", label: "Días susp.", sortCol: "diasSuspendido" },
+                            { key: "equipoRecogido", label: "Equipo", sortCol: null },
                             { key: "snOnu", label: "SN ONU", sortCol: "snOnu" },
                             { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
                             { key: "registrado", label: "Registrado", sortCol: "registrado" },
@@ -23944,6 +23966,17 @@ export default function App() {
                                   const color = dias >= 30 ? "#dc2626" : dias >= 15 ? "#d97706" : "#64748b";
                                   return <span style={{ fontWeight: 700, fontSize: 12, color, whiteSpace: "nowrap" }}>{dias} día{dias === 1 ? "" : "s"}</span>;
                                 })()}
+                              </td>
+                              )}
+                              {colsClientesVisibles.equipoRecogido && (
+                              <td style={{ padding: "11px 14px" }}>
+                                {est !== "SUSPENDIDO" ? (
+                                  <span style={{ color: "#cbd5e1" }}>—</span>
+                                ) : dnisEquipoRecuperado.has(String(cliente.dni || "").trim()) ? (
+                                  <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: "#dcfce7", color: "#166534", whiteSpace: "nowrap" }}>✓ Recogido</span>
+                                ) : (
+                                  <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: "#fef3c7", color: "#92400e", whiteSpace: "nowrap" }}>Pendiente</span>
+                                )}
                               </td>
                               )}
                               {colsClientesVisibles.snOnu && (
