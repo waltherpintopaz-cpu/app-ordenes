@@ -5352,6 +5352,13 @@ export default function App() {
   // (cliente, tipo, plantilla ya rellenada, config de WhatsApp) para que
   // "Enviar" no tenga que volver a consultar nada.
   const [notifModal, setNotifModal] = useState(null); // { cliente, tipo, cfgTipo, mensaje, waCfg }
+  const [notifToast, setNotifToast] = useState(null); // { msg, ok }
+  const notifToastTimerRef = useRef(null);
+  const mostrarNotifToast = (msg, ok = true) => {
+    if (notifToastTimerRef.current) clearTimeout(notifToastTimerRef.current);
+    setNotifToast({ msg, ok });
+    notifToastTimerRef.current = setTimeout(() => setNotifToast(null), 3800);
+  };
 
   // Manda un mensaje al cliente por WhatsApp directo (Evolution API), mismo
   // sistema ya configurado en "Notificaciones WhatsApp" (whatsapp_config,
@@ -5364,7 +5371,7 @@ export default function App() {
   const notificarClienteSuspendidoChatwoot = async (cliente, tipo = "suspendido") => {
     const cfgTipo = NOTIF_MANUAL_TIPOS[tipo];
     const numero = String(cliente?.celular || "").replace(/\D/g, "");
-    if (!numero) { window.alert("Este cliente no tiene celular registrado."); return; }
+    if (!numero) { mostrarNotifToast("Este cliente no tiene celular registrado.", false); return; }
     const empresa = String(cliente?.empresa || "Americanet").trim();
     // Nombre completo, no solo el primer nombre -- si viene "Apellidos,
     // Nombres" (formato comun en la base) se reordena a "Nombres Apellidos"
@@ -5382,7 +5389,7 @@ export default function App() {
     } catch (_) { /* se valida abajo */ }
     setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: false }));
     if (!waCfg?.habilitado || !waCfg?.base_url || !waCfg?.api_key || !waCfg?.instance_name) {
-      window.alert(`WhatsApp no está configurado/habilitado para "${empresa}" (revisar en Notificaciones WhatsApp).`);
+      mostrarNotifToast(`WhatsApp no está configurado/habilitado para "${empresa}" (revisar en Notificaciones WhatsApp).`, false);
       return;
     }
 
@@ -5425,9 +5432,9 @@ export default function App() {
       const ahora = new Date().toISOString();
       try { await supabase.from(CLIENTES_TABLE).update({ [cfgTipo.col]: ahora }).eq("id", cliente.id); } catch (_) {}
       setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, [cfgTipo.colLocal]: ahora } : c)));
-      window.alert("✅ Mensaje enviado por WhatsApp.");
+      mostrarNotifToast("Mensaje enviado por WhatsApp.", true);
     } catch (e) {
-      window.alert("No se pudo enviar: " + (e.message || String(e)));
+      mostrarNotifToast("No se pudo enviar: " + (e.message || String(e)), false);
     }
     setNotificarSuspendidoLoading((p) => ({ ...p, [`${tipo}:${cliente.id}`]: false }));
   };
@@ -29920,6 +29927,25 @@ export default function App() {
             </div>
           </div>
         ) : null}
+
+        {/* ── Toast flotante: resultado de enviar una notificacion ── */}
+        {notifToast && (
+          <div
+            style={{
+              position: "fixed", top: 20, right: 20, zIndex: 10001,
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "13px 18px", borderRadius: 12, maxWidth: 360,
+              background: notifToast.ok ? "#166534" : "#991b1b", color: "#fff",
+              fontSize: 13, fontWeight: 600, lineHeight: 1.4,
+              boxShadow: "0 10px 30px -6px rgba(15,23,42,0.35)",
+              animation: "notifToastSlideIn 0.25s cubic-bezier(.2,.9,.3,1.1)",
+            }}
+          >
+            <style>{`@keyframes notifToastSlideIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>{notifToast.ok ? "✅" : "⚠️"}</span>
+            <span>{notifToast.msg}</span>
+          </div>
+        )}
 
         {/* ── Ventana flotante: editar/confirmar mensaje de notificacion ── */}
         {notifModal && (
