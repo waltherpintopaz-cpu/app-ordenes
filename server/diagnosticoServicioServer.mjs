@@ -1058,13 +1058,27 @@ async function consultarMikrowispPorCedula(cedula) {
   return readProxyJsonResponse(response, "Mikrowisp GetClientsDetails (sync estados)");
 }
 
-async function aplicarEstadoSiCambio(fila, estadoNuevo, resumen) {
+// Mikrowisp entrega fecha_suspendido en hora local de Lima, sin offset
+// ("2026-09-13 23:50:08") -- se le agrega "-05:00" explicito para que
+// Postgres no la interprete como UTC por error (5 horas de diferencia).
+function normalizarFechaSuspendidoMikrowisp(raw) {
+  const txt = String(raw || "").trim();
+  if (!txt || txt.startsWith("0000-00-00")) return null;
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(txt) ? `${txt}-05:00` : txt;
+}
+
+async function aplicarEstadoSiCambio(fila, estadoNuevo, fechaSuspendidoNueva, resumen) {
   if (!estadoNuevo || estadoNuevo === "DESCONOCIDO") {
     resumen.sin_match += 1;
     resumen.detalle_sin_match.push({ id: fila.id, dni: fila.dni, motivo: "Mikrowisp no devolvio un estado reconocible" });
     return;
   }
-  if (estadoNuevo === String(fila.estado_servicio || "").toUpperCase()) {
+  const estadoCambio = estadoNuevo !== String(fila.estado_servicio || "").toUpperCase();
+  // fecha_suspendido puede llegar vacia hoy (columna nueva, filas viejas sin
+  // dato) aunque el estado no haya cambiado -- se completa igual la
+  // primera vez que se ve, sin esperar a que el estado cambie de nuevo.
+  const fechaCambio = (fechaSuspendidoNueva || null) !== (fila.fecha_suspendido || null);
+  if (!estadoCambio && !fechaCambio) {
     resumen.sin_cambios += 1;
     return;
   }
@@ -1077,11 +1091,16 @@ async function aplicarEstadoSiCambio(fila, estadoNuevo, resumen) {
         "Content-Type": "application/json",
         Prefer: "return=minimal",
       },
-      // Solo estado_servicio -- NUNCA reescribir la fila completa aca. Bug
-      // real ya ocurrido antes con la version manual: reescribir todo el
-      // registro desde una copia en memoria pisaba caja_nap/puerto_nap a
-      // null para cualquier cliente cuyo estado hubiera cambiado.
-      body: JSON.stringify({ estado_servicio: estadoNuevo, ultima_actualizacion: new Date().toISOString() }),
+      // Solo estado_servicio/fecha_suspendido -- NUNCA reescribir la fila
+      // completa aca. Bug real ya ocurrido antes con la version manual:
+      // reescribir todo el registro desde una copia en memoria pisaba
+      // caja_nap/puerto_nap a null para cualquier cliente cuyo estado
+      // hubiera cambiado.
+      body: JSON.stringify({
+        estado_servicio: estadoNuevo,
+        fecha_suspendido: fechaSuspendidoNueva,
+        ultima_actualizacion: new Date().toISOString(),
+      }),
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     resumen.actualizados += 1;
@@ -1098,7 +1117,7 @@ async function sincronizarEstadosMikrowisp() {
 
   const filasCrudas = await fetchSupabaseRowsPaginado(
     "clientes",
-    `select=id,dni,usuario_nodo,estado_servicio&nodo=in.(${ESTADO_SYNC_NODOS.join(",")})&dni=not.is.null`
+    `select=id,dni,usuario_nodo,estado_servicio,fecha_suspendido&nodo=in.(${ESTADO_SYNC_NODOS.join(",")})&dni=not.is.null`
   );
   const filas = filasCrudas.filter((f) => String(f.dni || "").replace(/\D/g, "").length >= 6);
   resumen.total_filas = filas.length;
@@ -1134,7 +1153,12 @@ async function sincronizarEstadosMikrowisp() {
       // hace falta emparejar por pppuser, se usa el estado del (unico)
       // resultado directo.
       if (filasDelDni.length === 1) {
-        await aplicarEstadoSiCambio(filasDelDni[0], normalizarEstadoMikrowispSync(datosArr[0]?.estado), resumen);
+        await aplicarEstadoSiCambio(
+          filasDelDni[0],
+          normalizarEstadoMikrowispSync(datosArr[0]?.estado),
+          normalizarFechaSuspendidoMikrowisp(datosArr[0]?.fecha_suspendido),
+          resumen
+        );
         return;
       }
       // 2+ servicios para el mismo DNI: emparejar cada fila nuestra con el
@@ -1157,7 +1181,12 @@ async function sincronizarEstadosMikrowisp() {
           resumen.detalle_sin_match.push({ id: fila.id, dni, motivo: `DNI con 2+ servicios, pppuser "${fila.usuario_nodo}" no aparece en la respuesta de Mikrowisp` });
           continue;
         }
-        await aplicarEstadoSiCambio(fila, normalizarEstadoMikrowispSync(match?.estado), resumen);
+        await aplicarEstadoSiCambio(
+          fila,
+          normalizarEstadoMikrowispSync(match?.estado),
+          normalizarFechaSuspendidoMikrowisp(match?.fecha_suspendido),
+          resumen
+        );
       }
     }));
     await new Promise((r) => setTimeout(r, 250));
