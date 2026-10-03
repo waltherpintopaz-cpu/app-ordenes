@@ -3966,8 +3966,8 @@ export default function App() {
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
         else if (sortClientes.col === "diasSuspendido") {
-          const da = a.fechaSuspendido ? Math.floor((Date.now() - new Date(a.fechaSuspendido).getTime()) / 86400000) : -1;
-          const db = b.fechaSuspendido ? Math.floor((Date.now() - new Date(b.fechaSuspendido).getTime()) / 86400000) : -1;
+          const calc = (v) => { const n = v ? Math.floor((Date.now() - new Date(v).getTime()) / 86400000) : NaN; return Number.isFinite(n) ? n : -1; };
+          const da = calc(a.fechaSuspendido); const db = calc(b.fechaSuspendido);
           return sortClientes.dir === "asc" ? da - db : db - da;
         }
         else if (sortClientes.col === "rxSignal") {
@@ -6846,7 +6846,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,fecha_suspendido,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
