@@ -5268,6 +5268,37 @@ export default function App() {
     setActualizarEstadoMasivoLoading(false);
   };
 
+  const [notificarSuspendidoLoading, setNotificarSuspendidoLoading] = useState({}); // { [clienteId]: true }
+
+  // Manda un mensaje al cliente via Chatwoot (no WhatsApp directo) -- usa el
+  // mismo backend compartido que ya usa el sidebar de Chatwoot (accion
+  // ChatwootMessage, resuelve contacto+conversacion y postea el mensaje
+  // server-side, sin exponer el token de Chatwoot aca). Solo tiene sentido
+  // para clientes SUSPENDIDO -- se deshabilita para el resto en el boton.
+  const notificarClienteSuspendidoChatwoot = async (cliente) => {
+    const celular = String(cliente?.celular || "").replace(/\D/g, "");
+    if (!celular) { window.alert("Este cliente no tiene celular registrado."); return; }
+    const nombre = String(cliente?.nombre || "").split(",")[0].split(" ")[0] || "cliente";
+    const defaultMsg = `Hola ${nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙`;
+    const mensaje = window.prompt("Mensaje a enviar por Chatwoot:", defaultMsg);
+    if (!mensaje || !mensaje.trim()) return;
+
+    setNotificarSuspendidoLoading((p) => ({ ...p, [cliente.id]: true }));
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/mikrowisp-proxy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: celular, message: mensaje.trim(), account_id: "1" } }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!body?.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+      window.alert("✅ Mensaje enviado por Chatwoot.");
+    } catch (e) {
+      window.alert("No se pudo enviar: " + (e.message || String(e)));
+    }
+    setNotificarSuspendidoLoading((p) => ({ ...p, [cliente.id]: false }));
+  };
+
   // Un DNI puede tener varios servicios (otra dirección): solo se devuelven fotos del
   // servicio indicado (mismo usuario PPPoE o misma dirección) y de la propia orden.
   // opts.estricto fuerza el filtro aunque el DNI tenga un solo servicio (instalación nueva).
@@ -24077,6 +24108,17 @@ export default function App() {
                                       );
                                     })()}
                                   </div>
+                                  {/* Notificar por Chatwoot -- solo tiene sentido para clientes
+                                      suspendidos (pedido explicito: avisarle que regularice). */}
+                                  {est === "SUSPENDIDO" && (
+                                    <button
+                                      onClick={() => void notificarClienteSuspendidoChatwoot(cliente)}
+                                      disabled={!!notificarSuspendidoLoading[cliente.id] || !cliente.celular}
+                                      title={cliente.celular ? "Notificar por Chatwoot" : "Sin celular registrado"}
+                                      style={{ padding: "0 11px", height: 30, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: notificarSuspendidoLoading[cliente.id] || !cliente.celular ? "default" : "pointer", opacity: !cliente.celular ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                                      {notificarSuspendidoLoading[cliente.id] ? "⏳" : "📨 Notificar"}
+                                    </button>
+                                  )}
                                   {/* Badge MW — visible si es nodo MikroWisp y admin, o gestor con acceso a ese nodo */}
                                   {MIKROWISP_NODOS.includes(String(cliente.nodo || "")) && (esAdminSesion || (esGestorSesion && tieneAccesoNodoSesion(cliente.nodo))) && (() => {
                                     const id = String(cliente.id || cliente.dni || "");
