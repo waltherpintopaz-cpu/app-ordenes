@@ -1,5 +1,5 @@
 ﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -2966,20 +2966,24 @@ export default function App() {
   const [detalleClienteOrigen, setDetalleClienteOrigen] = useState("clientes");
   // Posicion de scroll de la pantalla de origen justo antes de abrir el
   // detalle -- se restaura al volver, para no perder el lugar exacto
-  // (cliente/fila) donde se estaba en una lista larga.
+  // (cliente/fila) donde se estaba en una lista larga. pendienteRestaurarScrollRef
+  // != null marca "hay que restaurar en cuanto vistaActiva termine de
+  // pintar" -- un useLayoutEffect mas abajo lo consume. Antes se intentaba
+  // restaurar con doble requestAnimationFrame justo despues de
+  // setVistaActiva, pero con listas grandes el layout nuevo a veces no
+  // estaba listo todavia en ese momento y el scroll se quedaba en 0.
   const scrollAlAbrirDetalleRef = useRef(0);
+  const pendienteRestaurarScrollRef = useRef(null);
   const volverDeDetalleCliente = () => {
-    const destino = detalleClienteOrigen || "clientes";
-    setVistaActiva(destino);
-    // Doble requestAnimationFrame: espera a que React pinte el contenido de
-    // la pantalla destino antes de restaurar el scroll (un solo rAF a veces
-    // corre antes de que el layout nuevo este listo).
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        contentWrapRef.current?.scrollTo({ top: scrollAlAbrirDetalleRef.current, behavior: "auto" });
-      });
-    });
+    pendienteRestaurarScrollRef.current = scrollAlAbrirDetalleRef.current;
+    setVistaActiva(detalleClienteOrigen || "clientes");
   };
+  useLayoutEffect(() => {
+    if (pendienteRestaurarScrollRef.current == null) return;
+    const valor = pendienteRestaurarScrollRef.current;
+    pendienteRestaurarScrollRef.current = null;
+    if (contentWrapRef.current) contentWrapRef.current.scrollTop = valor;
+  }, [vistaActiva]);
   const [showTitularModal, setShowTitularModal] = useState(false);
   const [titularForm, setTitularForm] = useState({ dni: "", nombre: "", celular: "", correo: "" });
   const [cambiandoTitular, setCambiandoTitular] = useState(false);
