@@ -2743,9 +2743,15 @@ export default function App() {
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
   const [filtroIptv, setFiltroIptv] = useState(false);
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
+  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, diasSuspendido: true, snOnu: false, usuarioPppoe: false, registrado: false };
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("colsClientesVisibles") || "null") || { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, snOnu: false, usuarioPppoe: false, registrado: false }; }
-    catch { return { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, snOnu: false, usuarioPppoe: false, registrado: false }; }
+    // Merge con el default (no solo "|| default") -- si ya habia una
+    // preferencia guardada de antes de que existiera una columna nueva
+    // (ej. diasSuspendido), el merge hace que igual aparezca por default
+    // en vez de quedar oculta para siempre solo por ser mas vieja que esa
+    // preferencia guardada.
+    try { return { ...COLS_CLIENTES_DEFAULT, ...(JSON.parse(localStorage.getItem("colsClientesVisibles") || "null") || {}) }; }
+    catch { return COLS_CLIENTES_DEFAULT; }
   });
   const [mostrarColsModal, setMostrarColsModal] = useState(false);
   const [abonadosToolsOpen, setAbonadosToolsOpen] = useState(false);
@@ -3959,6 +3965,11 @@ export default function App() {
         else if (sortClientes.col === "snOnu") { va = String(a.snOnu || ""); vb = String(b.snOnu || ""); }
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
+        else if (sortClientes.col === "diasSuspendido") {
+          const da = a.fechaSuspendido ? Math.floor((Date.now() - new Date(a.fechaSuspendido).getTime()) / 86400000) : -1;
+          const db = b.fechaSuspendido ? Math.floor((Date.now() - new Date(b.fechaSuspendido).getTime()) / 86400000) : -1;
+          return sortClientes.dir === "asc" ? da - db : db - da;
+        }
         else if (sortClientes.col === "rxSignal") {
           const na = parseFloat(a.rxSignal ?? ""); const nb = parseFloat(b.rxSignal ?? "");
           const av = isNaN(na) ? -Infinity : na; const bv = isNaN(nb) ? -Infinity : nb;
@@ -6487,6 +6498,7 @@ export default function App() {
         empresa: row.empresa || p.empresa || "",
         codigoAbonado: row.codigo_abonado || p.codigoAbonado || "",
         estadoServicio: row.estado_servicio || p.estadoServicio || "DESCONOCIDO",
+        fechaSuspendido: row.fecha_suspendido || p.fechaSuspendido || null,
         mikrotikSuspensionIp: row.mikrotik_suspension_ip || p.mikrotikSuspensionIp || "",
         mikrotikUltimaAccion: row.mikrotik_ultima_accion || p.mikrotikUltimaAccion || "",
         en_mikrowisp: row.en_mikrowisp || p.en_mikrowisp || false,
@@ -6501,6 +6513,7 @@ export default function App() {
       id: row.id || row.dni || row.codigo_cliente || String(Date.now()),
       codigoAbonado: row.codigo_abonado || "",
       estadoServicio: row.estado_servicio || "DESCONOCIDO",
+      fechaSuspendido: row.fecha_suspendido || null,
       codigoCliente: row.codigo_cliente || "-",
       dni: row.dni || "-",
       nombre: row.nombre || "-",
@@ -23460,6 +23473,7 @@ export default function App() {
                         { key: "contacto", label: "Contacto" },
                         { key: "nodo", label: "Nodo · Plan" },
                         { key: "estado", label: "Estado" },
+                        { key: "diasSuspendido", label: "Días suspendido" },
                         { key: "snOnu", label: "SN ONU" },
                         { key: "usuarioPppoe", label: "Usuario PPPoE" },
                         { key: "registrado", label: "Registrado" },
@@ -23831,6 +23845,7 @@ export default function App() {
                             { key: "contacto", label: "Contacto", sortCol: "celular" },
                             { key: "nodo", label: "Nodo · Plan", sortCol: "nodo" },
                             { key: "estado", label: "Estado", sortCol: "estado" },
+                            { key: "diasSuspendido", label: "Días susp.", sortCol: "diasSuspendido" },
                             { key: "snOnu", label: "SN ONU", sortCol: "snOnu" },
                             { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
                             { key: "registrado", label: "Registrado", sortCol: "registrado" },
@@ -23916,6 +23931,19 @@ export default function App() {
                               {colsClientesVisibles.estado && (
                               <td style={{ padding: "11px 14px" }}>
                                 <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: estCfg.bg, color: estCfg.c, whiteSpace: "nowrap" }}>{estCfg.l}</span>
+                              </td>
+                              )}
+                              {colsClientesVisibles.diasSuspendido && (
+                              <td style={{ padding: "11px 14px" }}>
+                                {(() => {
+                                  if (est !== "SUSPENDIDO" || !cliente.fechaSuspendido) return <span style={{ color: "#cbd5e1" }}>—</span>;
+                                  const dias = Math.floor((Date.now() - new Date(cliente.fechaSuspendido).getTime()) / 86400000);
+                                  if (!Number.isFinite(dias) || dias < 0) return <span style={{ color: "#cbd5e1" }}>—</span>;
+                                  // Pensado para priorizar recuperacion de equipos: mientras mas dias
+                                  // suspendido, mas urgente ir a recoger el router/ONU.
+                                  const color = dias >= 30 ? "#dc2626" : dias >= 15 ? "#d97706" : "#64748b";
+                                  return <span style={{ fontWeight: 700, fontSize: 12, color, whiteSpace: "nowrap" }}>{dias} día{dias === 1 ? "" : "s"}</span>;
+                                })()}
                               </td>
                               )}
                               {colsClientesVisibles.snOnu && (
