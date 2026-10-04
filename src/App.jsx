@@ -4829,26 +4829,6 @@ export default function App() {
         });
       } catch { /* no crítico */ }
 
-      // Fecha Fija del proximo cobro automatico -- en llamada APARTE de la
-      // plantilla de arriba, porque la API de Mikrowisp dice textualmente
-      // que "id_plantilla" reemplaza cualquier otro campo mandado en el
-      // mismo JSON (asi que fecha_fija junto con id_plantilla se ignoraria).
-      // Sin esto, Mikrowisp arranca a facturar "normal" de inmediato y
-      // termina duplicando el periodo que ya cubre la factura libre del
-      // prorrateo (reportado en vivo: cliente con factura libre de
-      // prorrateo + una "normal" de Mikrowisp el mismo mes). svcFactF2Vence
-      // es la misma fecha que ya se calcula y se muestra en el wizard como
-      // "Próx. vencimiento" del paso Prorrateo (dia de pago de la plantilla,
-      // saltando al mes siguiente si faltan menos de 10 dias).
-      if (svcFactF2Vence) {
-        try {
-          await fetch(N8N_PROXY_SVC, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion: "ChangeFacturacionConfig", payload: { id_cliente: svcNuevoCliId, fecha_fija: svcFactF2Vence } })
-          });
-        } catch { /* no crítico -- Mikrowisp igual queda con la plantilla aplicada */ }
-      }
-
       // Nod_03 siempre crea el servicio en el router nuevo (VLAN 102) --
       // guardar vlan=102 de una vez en "clientes", sin esperar a que el
       // cliente se conecte por primera vez. Sin esto, "resolveRouterByNodo"
@@ -25123,7 +25103,21 @@ export default function App() {
                                             const descPlan=cli.velocidad?`Prorrateo Plan ${cli.velocidad}`:"Prorrateo servicio internet";
                                             const d=await mkN8n("CreateInvoiceLibre",{id_cliente:factPanelCliId,fecha_vencimiento:svcFactF2Vence,items:[{descripcion:descPlan,cantidad:1,precio:montoFinal,impuesto:18}]});
                                             const ok=d?.code==="200"||d?.factura_id;
-                                            if(ok){window.alert(`✅ Prorrateo #${d?.factura_id} creado por S/${montoFinal}`);setMkwWizardStep(4);}
+                                            if(ok){
+                                              // Fecha Fija aparte de la plantilla (la API de Mikrowisp
+                                              // reemplaza otros campos si van junto con id_plantilla) --
+                                              // sin esto Mikrowisp genera sola una factura "normal" para
+                                              // el mismo mes que ya cubre este prorrateo. OJO: la fecha
+                                              // fija es cuando arranca el PROXIMO ciclo automatico de
+                                              // Mikrowisp -- si le mando la misma fecha de esta factura
+                                              // libre, le estoy diciendo que arranque YA en ese mes
+                                              // (mismo problema que intento evitar). Tiene que ser un
+                                              // ciclo despues (1 mes mas).
+                                              const siguienteCiclo=new Date(svcFactF2Vence+"T00:00:00");
+                                              siguienteCiclo.setMonth(siguienteCiclo.getMonth()+1);
+                                              mkN8n("ChangeFacturacionConfig",{id_cliente:factPanelCliId,fecha_fija:siguienteCiclo.toISOString().split("T")[0]}).catch(()=>{});
+                                              window.alert(`✅ Prorrateo #${d?.factura_id} creado por S/${montoFinal}`);setMkwWizardStep(4);
+                                            }
                                             else window.alert("Error: "+(d?.mensaje||d?.message||"No se pudo crear"));
                                           }catch(e){window.alert("Error: "+e.message);}
                                           (svcFactCreandoRef.current=false,setSvcFactCreando(false));
