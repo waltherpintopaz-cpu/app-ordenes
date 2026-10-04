@@ -4733,8 +4733,12 @@ export default function App() {
     setSvcFactF1Modo("normal"); setSvcFactF1Desc("");
     setSvcFactF2Vence(""); setSvcFactF2FechaInst(""); setSvcFactF2PrecPlan("");
     setSvcFactMonto(""); setSvcFactVencimiento("");
-    // Auto-fill paso 1: vencimiento = fecha instalación
-    const fechaInst = svcNuevoForm.fecha_instalacion || new Date().toISOString().split("T")[0];
+    // Auto-fill paso 1: vencimiento = fecha instalación (= fecha de
+    // liquidacion del cliente, cli.fechaRegistro -- NUNCA leer
+    // svcNuevoForm.fecha_instalacion aca: todavia tiene el valor del
+    // cliente anterior que se haya abierto en este wizard, porque el
+    // setSvcNuevoForm(...) de mas abajo recien lo actualiza despues).
+    const fechaInst = cli.fechaRegistro ? String(cli.fechaRegistro).split("T")[0] : new Date().toISOString().split("T")[0];
     setSvcFactF1Vence(fechaInst);
     // Auto-fill paso 2: fecha instalación y próximo vencimiento (día 2 del siguiente mes)
     setSvcFactF2FechaInst(fechaInst);
