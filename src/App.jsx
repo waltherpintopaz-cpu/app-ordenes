@@ -307,6 +307,15 @@ function mikrowispRouterIdParaCliente(nodo, vlan) {
   if (n === "Nod_03" && Number(vlan) === 102) return MW_ROUTER_ID_NOD03_NUEVO;
   return MW_NODO_MAP_BASE_WEB[n] ?? 1;
 }
+// Crear Servicio (cliente nuevo en Mikrowisp): Nod_03 siempre usa el router
+// nuevo (12, VLAN 102) -- la migracion ya se completo, el router viejo (10)
+// ya no recibe altas nuevas. mikrowispRouterIdParaCliente() se deja igual
+// para no afectar consultas de señal/facturacion de clientes YA existentes
+// que puedan seguir registrados en el router viejo.
+function routerIdParaCrearServicio(nodo, vlan) {
+  if (String(nodo || "").trim() === "Nod_03") return MW_ROUTER_ID_NOD03_NUEVO;
+  return mikrowispRouterIdParaCliente(nodo, vlan);
+}
 const DEFAULT_MIKROTIK_ROUTERS_WEB = [
   {
     routerKey: "tiabaya",
@@ -4736,7 +4745,7 @@ export default function App() {
     const diasHastaVence = Math.round((proxVence - instDate) / 86400000);
     if (diasHastaVence < 10) proxVence = new Date(instDate.getFullYear(), instDate.getMonth() + 2, 2);
     setSvcFactF2Vence(proxVence.toISOString().split("T")[0]);
-    setSvcNuevoForm({ nodo: nodoInicial, vlan: cli.vlan ?? "", routerId: String(mikrowispRouterIdParaCliente(nodoInicial, cli.vlan)), id_perfil:"", costo:"",
+    setSvcNuevoForm({ nodo: nodoInicial, vlan: cli.vlan ?? "", routerId: String(routerIdParaCrearServicio(nodoInicial, cli.vlan)), id_perfil:"", costo:"",
       userppp:  cli.usuarioNodo      || "",
       passppp:  cli.passwordUsuario  || "",
       ip:       "",
@@ -4815,6 +4824,18 @@ export default function App() {
           body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion: "ChangeFacturacionConfig", payload: { id_cliente: svcNuevoCliId, id_plantilla: svcNuevoPlantillaId || 2 } })
         });
       } catch { /* no crítico */ }
+
+      // Nod_03 siempre crea el servicio en el router nuevo (VLAN 102) --
+      // guardar vlan=102 de una vez en "clientes", sin esperar a que el
+      // cliente se conecte por primera vez. Sin esto, "resolveRouterByNodo"
+      // (la usan suspender/activar) sigue el router viejo hasta que alguien
+      // corra un diagnostico en vivo que lo autocorrija -- un cliente recien
+      // instalado podria quedar sin poder suspenderse/activarse bien mientras
+      // tanto.
+      if (svcNuevoForm.nodo === "Nod_03" && svcNuevoForm.userppp) {
+        supabase.from("clientes").update({ vlan: "102" }).eq("usuario_nodo", svcNuevoForm.userppp)
+          .then(({ error }) => { if (error) console.warn("No se pudo guardar vlan=102 en clientes:", error.message); });
+      }
 
       // Servicio creado — pasar a paso 2: crear factura
       const planSeleccionado = svcNuevoPerfiles.find(p => String(p.id) === String(svcNuevoForm.id_perfil));
@@ -24822,7 +24843,7 @@ export default function App() {
                               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
                                 <div>
                                   <label style={{ fontSize:11, fontWeight:700, color:"#166534", display:"block", marginBottom:4 }}>Nodo / Router</label>
-                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,routerId:String(mikrowispRouterIdParaCliente(n,p.vlan)),id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
+                                  <select value={svcNuevoForm.nodo} onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p,nodo:n,routerId:String(routerIdParaCrearServicio(n,p.vlan)),id_perfil:"",costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                                     style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                                     {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n=><option key={n} value={n}>{n}</option>)}
                                   </select>
@@ -25565,7 +25586,7 @@ export default function App() {
                         <div>
                           <label style={{ fontSize: 11, fontWeight: 700, color: "#166534", display: "block", marginBottom: 4 }}>Nodo / Router</label>
                           <select value={svcNuevoForm.nodo}
-                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, routerId:String(mikrowispRouterIdParaCliente(n,p.vlan)), id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
+                            onChange={e => { const n=e.target.value; setSvcNuevoForm(p=>({...p, nodo:n, routerId:String(routerIdParaCrearServicio(n,p.vlan)), id_perfil:"", costo:""})); setSvcNuevoPerfiles([]); cargarPerfilesSvcNuevo(n, svcNuevoForm.vlan); }}
                             style={{ width:"100%", padding:"8px 10px", border:"1.5px solid #86efac", borderRadius:8, fontSize:12, background:"#fff" }}>
                             {["Nod_01","Nod_02","Nod_03","Nod_04","Nod_05","Nod_06"].map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
