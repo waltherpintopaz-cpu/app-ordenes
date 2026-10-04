@@ -1973,6 +1973,15 @@ export default function SidebarApp() {
     if (n === "Nod_03" && Number(vlan) === 102) return 12;
     return MW_NODO_MAP[n] ?? 1;
   };
+  // Crear Servicio (cliente nuevo en Mikrowisp): Nod_03 siempre usa el
+  // router nuevo (12, VLAN 102) -- la migracion ya se completo, el router
+  // viejo (10) ya no recibe altas nuevas. mikrowispRouterIdParaCliente()
+  // se deja igual para no afectar consultas de señal/facturacion de
+  // clientes YA existentes que puedan seguir en el router viejo.
+  const routerIdParaCrearServicio = (nodo, vlan) => {
+    if (String(nodo || "").trim() === "Nod_03") return 12;
+    return mikrowispRouterIdParaCliente(nodo, vlan);
+  };
   const MW_NODOS_OK  = useMemo(() => nodosActivosOrdenados(nodosConfig).filter((n) => n !== "Nod_02" && n !== "Nod_07"), [nodosConfig]);
   const mwEsDim = (nodo) => esDimNodoDesdeConfig(nodosConfig, nodo);
   // Nodos con automatizacion Mikrowisp al crear orden / liquidar.
@@ -2012,7 +2021,7 @@ export default function SidebarApp() {
     setMwWizardLiq([]);
     setMwForm({ id_perfil:"", id_red_ipv4:"", userppp: c.usuario_nodo||"", passppp: c.password_usuario||"",
       costo: String(c.precio_plan||""), fecha_instalacion: c.fecha_registro ? String(c.fecha_registro).split("T")[0] : new Date().toISOString().split("T")[0],
-      coordenadas: c.ubicacion||"", ip:"", routerId: String(mikrowispRouterIdParaCliente(c.nodo, c.vlan)) });
+      coordenadas: c.ubicacion||"", ip:"", routerId: String(routerIdParaCrearServicio(c.nodo, c.vlan)) });
     setMwStep(1);
     // Cargar liquidaciones del cliente
     const dni = String(c.dni||"").replace(/\D/g,"");
@@ -2075,7 +2084,7 @@ export default function SidebarApp() {
   }
 
   async function mwCargarPerfiles(nodo, mkwId, vlan, routerIdOverride) {
-    const nodoNum = Number(routerIdOverride) || mikrowispRouterIdParaCliente(nodo, vlan);
+    const nodoNum = Number(routerIdOverride) || routerIdParaCrearServicio(nodo, vlan);
     setMwForm(f => ({ ...f, routerId: String(nodoNum) }));
     const esDim = mwEsDim(nodo);
     const n = esDim ? 5 : nodoNum;
@@ -2116,7 +2125,7 @@ export default function SidebarApp() {
     setMwCreandoSvc(true); setMwMsg("");
     try {
       const nodo = mwCliSupa?.nodo || "Nod_01";
-      const nodoNum = Number(mwForm.routerId) || mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
+      const nodoNum = Number(mwForm.routerId) || routerIdParaCrearServicio(nodo, mwCliSupa?.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       const payload = { id_cliente: mwMkwId, id_router: nodoNum, id_perfil: Number(mwForm.id_perfil), id_red_ipv4: Number(mwForm.id_red_ipv4) };
@@ -2157,6 +2166,15 @@ export default function SidebarApp() {
         if (!factOk) facturacionMsg = " ⚠ El servicio se creó, pero no se pudo asignar la plantilla de facturación: " + (factRes?.mensaje || factRes?.message || "error desconocido") + ". Configúrala manualmente en Mikrowisp.";
       } catch (e) {
         facturacionMsg = " ⚠ El servicio se creó, pero no se pudo asignar la plantilla de facturación: " + e.message + ". Configúrala manualmente en Mikrowisp.";
+      }
+      // Nod_03 siempre crea el servicio en el router nuevo (VLAN 102) --
+      // guardar vlan=102 de una vez en "clientes", sin esperar a que el
+      // cliente se conecte por primera vez. Sin esto, "resolveRouterByNodo"
+      // (lo usan suspender/activar) sigue el router viejo hasta que alguien
+      // corra un diagnostico en vivo que lo autocorrija.
+      if (nodo === "Nod_03" && mwForm.userppp) {
+        supabase.from("clientes").update({ vlan: "102" }).eq("usuario_nodo", mwForm.userppp)
+          .then(({ error }) => { if (error) console.warn("No se pudo guardar vlan=102 en clientes:", error.message); });
       }
       // Pre-llenar facturas
       const fechaInst = mwForm.fecha_instalacion || new Date().toISOString().split("T")[0];
@@ -2221,12 +2239,21 @@ export default function SidebarApp() {
     setMwFactCreando(true); setMwMsg("");
     try {
       const nodo = mwCliSupa?.nodo || "Nod_01";
-      const nodoNum = mikrowispRouterIdParaCliente(nodo, mwCliSupa?.vlan);
+      const nodoNum = routerIdParaCrearServicio(nodo, mwCliSupa?.vlan);
       const esDim = mwEsDim(nodo);
       const n = esDim ? 5 : nodoNum;
       const desc = mwCliSupa?.velocidad ? `Prorrateo Plan ${mwCliSupa.velocidad}` : "Prorrateo servicio internet";
       const d = await mkwProxy(n, "CreateInvoiceLibre", { id_cliente: mwMkwId, fecha_vencimiento: mwProrrVence, items: [{ descripcion: desc, cantidad: 1, precio: montoFinal, impuesto: 18 }] });
       if (!(d?.code === "200" || d?.factura_id)) throw new Error(d?.mensaje || "No se pudo crear el prorrateo");
+      // Fecha Fija aparte de la plantilla (la API de Mikrowisp reemplaza
+      // otros campos si van junto con id_plantilla) -- sin esto Mikrowisp
+      // genera sola una factura "normal" para el mismo mes que ya cubre
+      // este prorrateo. Tiene que ser el ciclo DESPUES del vencimiento de
+      // esta factura (no la misma fecha), porque fecha_fija le dice a
+      // Mikrowisp cuando arranca su proximo cobro automatico.
+      const siguienteCiclo = new Date(mwProrrVence + "T00:00:00");
+      siguienteCiclo.setMonth(siguienteCiclo.getMonth() + 1);
+      mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, fecha_fija: siguienteCiclo.toISOString().split("T")[0] }).catch(()=>{});
       setMwStep(4);
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwFactCreando(false);
