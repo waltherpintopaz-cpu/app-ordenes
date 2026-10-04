@@ -26,12 +26,14 @@ const App = lazy(() => import("./App.jsx"));
 const LibroReclamacionesPage = lazy(() => import("./components/LibroReclamacionesPage.jsx"));
 const SeguimientoCompartidoPage = lazy(() => import("./components/SeguimientoCompartidoPage.jsx"));
 const MapaVolanteoCompartidoPage = lazy(() => import("./components/MapaVolanteoCompartidoPage.jsx"));
+const MapaAveriaCompartidoPage = lazy(() => import("./components/MapaAveriaCompartidoPage.jsx"));
 
 const path = window.location.pathname;
 const isSidebar = path === "/sidebar";
 const isLibroReclamaciones = path === "/libro-reclamaciones";
 const isSeguimientoCompartido = path === "/seguimiento";
 const isMapaVolanteoCompartido = path === "/mapa-volanteo";
+const isMapaAveriaCompartido = path === "/averia-mapa";
 
 // Fallback minimo mientras carga el chunk de la ruta (App y las paginas
 // compartidas). El sidebar no pasa por aca -- es estatico, ya esta listo.
@@ -48,6 +50,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         {isLibroReclamaciones ? <LibroReclamacionesPage />
           : isSeguimientoCompartido ? <SeguimientoCompartidoPage />
           : isMapaVolanteoCompartido ? <MapaVolanteoCompartidoPage />
+          : isMapaAveriaCompartido ? <MapaAveriaCompartidoPage />
           : <App />}
       </Suspense>
     )}

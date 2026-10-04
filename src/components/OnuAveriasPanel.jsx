@@ -614,6 +614,10 @@ function MapaAveriaClientes({ clientes, isDark }) {
   );
 }
 
+function urlMapaCompartido(averiaId) {
+  return `${window.location.origin}/averia-mapa?id=${averiaId}`;
+}
+
 function textoReporte(reporte) {
   const { averia, clientes_afectados: clientes, onus_sin_identificar: sinId, total_afectados: total } = reporte;
   const tipoTexto = averia.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)";
@@ -624,6 +628,7 @@ function textoReporte(reporte) {
     `Inicio: ${formatoFecha(averia.primera_deteccion)}`,
     averia.resuelta_en ? `Resuelta: ${formatoFecha(averia.resuelta_en)}` : null,
     `Total de clientes afectados: ${total}`,
+    `🗺️ Mapa: ${urlMapaCompartido(averia.id)}`,
     "",
   ].filter(Boolean);
   clientes.forEach((c, i) => {
@@ -648,12 +653,21 @@ function ReporteAveriaModal({ reporte, isDark, onClose }) {
     : { bg: "#f4f6fb", card: "#ffffff", border: "#e2e8f4", text: "#1a2740", sub: "#5b6b8c" };
   const cargando = reporte === "cargando";
   const [copiado, setCopiado] = useState(false);
+  const [copiadoLink, setCopiadoLink] = useState(false);
 
   const copiarTexto = async () => {
     try {
       await navigator.clipboard.writeText(textoReporte(reporte));
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
+    } catch { /* clipboard no disponible */ }
+  };
+
+  const copiarLink = async () => {
+    try {
+      await navigator.clipboard.writeText(urlMapaCompartido(reporte.averia?.id));
+      setCopiadoLink(true);
+      setTimeout(() => setCopiadoLink(false), 2000);
     } catch { /* clipboard no disponible */ }
   };
 
@@ -711,7 +725,7 @@ function ReporteAveriaModal({ reporte, isDark, onClose }) {
               )}
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(textoReporte(reporte))}`}
                 target="_blank" rel="noreferrer"
@@ -724,6 +738,21 @@ function ReporteAveriaModal({ reporte, isDark, onClose }) {
                 style={{ padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
               >
                 {copiado ? "✓ Copiado" : "Copiar texto"}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <a
+                href={urlMapaCompartido(reporte.averia.id)}
+                target="_blank" rel="noreferrer"
+                style={{ flex: 1, textAlign: "center", padding: "9px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, textDecoration: "none", border: `1.5px solid ${col.border}`, background: col.card, color: "#4f46e5" }}
+              >
+                🗺️ Ver mapa animado
+              </a>
+              <button
+                onClick={copiarLink}
+                style={{ padding: "9px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+              >
+                {copiadoLink ? "✓ Copiado" : "🔗 Copiar link"}
               </button>
             </div>
           </>
