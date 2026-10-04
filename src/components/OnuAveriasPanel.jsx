@@ -725,34 +725,32 @@ function ReporteAveriaModal({ reporte, isDark, onClose }) {
               )}
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(textoReporte(reporte))}`}
-                target="_blank" rel="noreferrer"
-                style={{ flex: 1, textAlign: "center", padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, textDecoration: "none", background: "#25D366", color: "#fff" }}
-              >
-                💬 Compartir por WhatsApp
-              </a>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(textoReporte(reporte))}`}
+              target="_blank" rel="noreferrer"
+              style={{ display: "block", textAlign: "center", padding: "11px 14px", borderRadius: 9, fontSize: 13.5, fontWeight: 700, textDecoration: "none", background: "#25D366", color: "#fff", marginBottom: 8 }}
+            >
+              💬 Compartir por WhatsApp (incluye el link del mapa)
+            </a>
+            <div style={{ display: "flex", gap: 6 }}>
               <button
                 onClick={copiarTexto}
-                style={{ padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+                style={{ flex: 1, padding: "8px 6px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
               >
-                {copiado ? "✓ Copiado" : "Copiar texto"}
+                {copiado ? "✓ Copiado" : "📋 Texto"}
               </button>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
               <a
                 href={urlMapaCompartido(reporte.averia.id)}
                 target="_blank" rel="noreferrer"
-                style={{ flex: 1, textAlign: "center", padding: "9px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, textDecoration: "none", border: `1.5px solid ${col.border}`, background: col.card, color: "#4f46e5" }}
+                style={{ flex: 1, textAlign: "center", padding: "8px 6px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, textDecoration: "none", border: `1.5px solid ${col.border}`, background: col.card, color: "#4f46e5" }}
               >
-                🗺️ Ver mapa animado
+                🗺️ Mapa
               </a>
               <button
                 onClick={copiarLink}
-                style={{ padding: "9px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+                style={{ flex: 1, padding: "8px 6px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
               >
-                {copiadoLink ? "✓ Copiado" : "🔗 Copiar link"}
+                {copiadoLink ? "✓ Copiado" : "🔗 Link"}
               </button>
             </div>
           </>
