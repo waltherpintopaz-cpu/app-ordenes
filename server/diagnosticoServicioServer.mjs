@@ -1243,7 +1243,17 @@ const fetchConTimeout = async (url, opts = {}, ms = MKW_PROXY_TIMEOUT_MS) => {
 // Nod_04=5, Nod_05=11, Nod_06=12 son el mismo Mikrowisp de DimFiber
 // (app.dimfiber.com); el "4" se mantiene por compatibilidad con el codigo
 // viejo de n8n que ya usaba ese valor ademas del 5.
-const MKW_PROXY_NODOS_DIM = new Set([4, 5, 11, 12]);
+// OJO: "12" se saco de este set -- colisiona con el router NUEVO de Nod_03
+// (Americanet, VLAN 102), que por coincidencia tiene el mismo id numerico
+// en la instancia de Mikrowisp de Americanet. Con "12" en este set, un
+// pedido de GetRedesIpv4/GetPerfiles para el Nod_03 nuevo se clasificaba
+// como DIM y se mandaba a la instancia de Mikrowisp equivocada
+// (app.dimfiber.com en vez de americanet.club) -- por eso el "Rango IPv4"
+// salia vacio al crear un servicio en Nod_03. Confirmado que nada de este
+// codigo manda nodo=11/12 para DIM en este proxy generico (siempre manda
+// nodo=5, literal, via el patron "esDim ? 5 : nodoNum"); "11" se deja
+// porque no colisiona con ningun router de Americanet.
+const MKW_PROXY_NODOS_DIM = new Set([4, 5, 11]);
 const MKW_PROXY_ACCIONES = new Set([
   "GetInvoices", "GetInvoice", "GetClientsDetails", "PaidInvoice", "PromesaPago",
   "CreateInvoice", "CreateInvoiceLibre", "DeleteInvoice", "DeleteTransaccion",
