@@ -6833,6 +6833,18 @@ export default function App() {
       const row = serializarClienteParaSupabase(c);
       delete row.caja_nap;
       delete row.puerto_nap;
+      // estado_servicio/fecha_suspendido tampoco se mandan desde aca --
+      // mismo bug que caja_nap: la sync diaria con Mikrowisp (3am) o un
+      // activar/suspender manual escriben estas 2 columnas directo a
+      // Supabase sin pasar por el estado "clientes" de esta pantalla. Si
+      // una pestaña quedo abierta desde antes con el valor viejo en
+      // memoria, el proximo auto-guardado (de CUALQUIER cambio, en
+      // cualquier parte de la app) pisaba el estado recien sincronizado de
+      // vuelta al viejo. Bug real reportado: cliente reactivado en
+      // Mikrowisp que la pantalla seguia mostrando "Suspendido" despues de
+      // la sync de las 3am.
+      delete row.estado_servicio;
+      delete row.fecha_suspendido;
       return row;
     });
     if (!payload.length) return;
