@@ -35,6 +35,14 @@ export default function OnuAveriasPanel({ theme }) {
     : { bg: "#f4f6fb", card: "#ffffff", border: "#e2e8f4", text: "#1a2740", sub: "#5b6b8c" };
 
   const [averias, setAverias] = useState([]);
+  const [vistaAverias, setVistaAverias] = useState("activas"); // "activas" | "historial"
+  const [averiasHistorial, setAveriasHistorial] = useState([]);
+  const [historialCargado, setHistorialCargado] = useState(false);
+  // Reporte de una averia puntual (clientes afectados + link de WhatsApp) --
+  // null = modal cerrado; "cargando" mientras pide al backend; objeto con
+  // los datos una vez armado.
+  const [reporteAveria, setReporteAveria] = useState(null);
+  const [reporteError, setReporteError] = useState("");
   const [eventosTodos, setEventosTodos] = useState([]);
   // El "nombre" guardado en cada evento es una foto del momento en que
   // ocurrio el trap -- si despues se corrigio el nombre de esa ONU (ej.
@@ -106,6 +114,34 @@ export default function OnuAveriasPanel({ theme }) {
       setGuardandoConfig(false);
     }
   };
+
+  const cargarHistorial = useCallback(async () => {
+    setCargando(true);
+    setError("");
+    try {
+      const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-averias-zona?activa=0`).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "Error consultando historial de averías.");
+      setAveriasHistorial(Array.isArray(r.averias) ? r.averias : []);
+      setHistorialCargado(true);
+    } catch (e) {
+      setError(e.message || "Error de red.");
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  const generarReporte = useCallback(async (averiaId) => {
+    setReporteAveria("cargando");
+    setReporteError("");
+    try {
+      const r = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-averias-zona/reporte?id=${averiaId}`).then((r) => r.json());
+      if (!r.ok) throw new Error(r.error || "No se pudo armar el reporte.");
+      setReporteAveria(r);
+    } catch (e) {
+      setReporteAveria(null);
+      setReporteError(e.message || "Error de red.");
+    }
+  }, []);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -306,34 +342,78 @@ export default function OnuAveriasPanel({ theme }) {
 
       {/* Averías de zona -- lo mas urgente, arriba y destacado */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, color: col.sub, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-          Averías de zona activas ({averias.length})
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: col.sub, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Averías de zona {vistaAverias === "activas" ? `activas (${averias.length})` : `— historial (${averiasHistorial.length})`}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setVistaAverias("activas")}
+              style={{ padding: "5px 12px", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: vistaAverias === "activas" ? "1.5px solid #dc2626" : `1.5px solid ${col.border}`, background: vistaAverias === "activas" ? "#fef2f2" : col.card, color: vistaAverias === "activas" ? "#991b1b" : col.sub }}>
+              Activas
+            </button>
+            <button
+              onClick={() => { setVistaAverias("historial"); if (!historialCargado) cargarHistorial(); }}
+              style={{ padding: "5px 12px", borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: vistaAverias === "historial" ? "1.5px solid #6366f1" : `1.5px solid ${col.border}`, background: vistaAverias === "historial" ? "#eef2ff" : col.card, color: vistaAverias === "historial" ? "#4338ca" : col.sub }}>
+              Historial
+            </button>
+          </div>
         </div>
-        {averias.length === 0 ? (
-          <div style={{ padding: 16, borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}`, color: col.sub, fontSize: 13 }}>
-            Sin averías de zona detectadas ahora mismo. Se marca acá cuando 3 o más ONUs del mismo board/puerto caen juntas en pocos minutos (indicador de corte de fibra, no de clientes individuales).
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10 }}>
-            {averias.map((a) => (
-              <div key={a.id} style={{ padding: 14, borderRadius: 10, background: "#fef2f2", border: "1.5px solid #fca5a5" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <Ico.alertTriangle width={18} height={18} color="#dc2626" />
-                  <div style={{ fontWeight: 800, color: "#991b1b", fontSize: 14.5 }}>
-                    Board {a.board} · Puerto {a.port}
-                  </div>
-                </div>
-                <div style={{ fontSize: 12.5, color: "#7f1d1d", marginBottom: 4 }}>
-                  {a.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)"} — {a.cantidad_onus} ONUs caídas juntas
-                </div>
-                <div style={{ fontSize: 11, color: "#991b1b", opacity: 0.8 }}>
-                  Desde {formatoFecha(a.primera_deteccion)} · Actualizado {formatoFecha(a.ultima_actualizacion)}
-                </div>
+        {(() => {
+          const lista = vistaAverias === "activas" ? averias : averiasHistorial;
+          const activa = vistaAverias === "activas";
+          if (lista.length === 0) {
+            return (
+              <div style={{ padding: 16, borderRadius: 10, background: col.card, border: `1.5px solid ${col.border}`, color: col.sub, fontSize: 13 }}>
+                {activa
+                  ? "Sin averías de zona detectadas ahora mismo. Se marca acá cuando 3 o más ONUs del mismo board/puerto caen juntas en pocos minutos (indicador de corte de fibra, no de clientes individuales)."
+                  : "Sin averías de zona resueltas en el historial reciente."}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          }
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 10 }}>
+              {lista.map((a) => (
+                <div key={a.id} style={{ padding: 14, borderRadius: 10, background: activa ? "#fef2f2" : (isDark ? col.card : "#f8fafc"), border: activa ? "1.5px solid #fca5a5" : `1.5px solid ${col.border}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <Ico.alertTriangle width={18} height={18} color={activa ? "#dc2626" : col.sub} />
+                    <div style={{ fontWeight: 800, color: activa ? "#991b1b" : col.text, fontSize: 14.5 }}>
+                      Board {a.board} · Puerto {a.port}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12.5, color: activa ? "#7f1d1d" : col.sub, marginBottom: 4 }}>
+                    {a.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)"} — {a.cantidad_onus} ONUs caídas juntas
+                  </div>
+                  <div style={{ fontSize: 11, color: activa ? "#991b1b" : col.sub, opacity: 0.8, marginBottom: 10 }}>
+                    Desde {formatoFecha(a.primera_deteccion)}
+                    {activa ? ` · Actualizado ${formatoFecha(a.ultima_actualizacion)}` : ` · Resuelta ${formatoFecha(a.ultima_actualizacion)}`}
+                  </div>
+                  <button
+                    onClick={() => generarReporte(a.id)}
+                    style={{ width: "100%", padding: "7px 10px", borderRadius: 8, fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: "none", background: activa ? "#dc2626" : "#4f46e5", color: "#fff" }}>
+                    📋 Generar reporte
+                  </button>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
+
+      {reporteError && (
+        <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#fee2e2", color: "#991b1b", fontSize: 13, fontWeight: 600 }}>
+          {reporteError}
+          <button onClick={() => setReporteError("")} style={{ marginLeft: 10, background: "none", border: "none", color: "#991b1b", fontWeight: 800, cursor: "pointer" }}>✕</button>
+        </div>
+      )}
+
+      {reporteAveria && (
+        <ReporteAveriaModal
+          reporte={reporteAveria}
+          isDark={isDark}
+          onClose={() => setReporteAveria(null)}
+        />
+      )}
 
       {/* Eventos individuales -- historial, filtrable */}
       <div>
@@ -427,6 +507,127 @@ export default function OnuAveriasPanel({ theme }) {
       </div>
 
       {snFicha && <FichaOnuDrawer sn={snFicha} onClose={() => setSnFicha(null)} isDark={isDark} />}
+    </div>
+  );
+}
+
+function urlMapa(ubicacion) {
+  const coords = String(ubicacion || "").trim();
+  if (!coords) return null;
+  return `https://www.google.com/maps?q=${encodeURIComponent(coords)}`;
+}
+
+function textoReporte(reporte) {
+  const { averia, clientes_afectados: clientes, onus_sin_identificar: sinId, total_afectados: total } = reporte;
+  const tipoTexto = averia.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)";
+  const estadoTexto = averia.activa ? "🔴 SIGUE ACTIVA" : "✅ Resuelta";
+  const lineas = [
+    `⚠️ *AVERÍA DE ZONA* — Board ${averia.board} / Puerto ${averia.port}`,
+    `${tipoTexto} · ${estadoTexto}`,
+    `Inicio: ${formatoFecha(averia.primera_deteccion)}`,
+    averia.resuelta_en ? `Resuelta: ${formatoFecha(averia.resuelta_en)}` : null,
+    `Total de clientes afectados: ${total}`,
+    "",
+  ].filter(Boolean);
+  clientes.forEach((c, i) => {
+    const mapa = urlMapa(c.ubicacion);
+    lineas.push(`${i + 1}. ${c.nombre || "Sin nombre"} — DNI ${c.dni || "—"}`);
+    lineas.push(`   ${c.direccion || "Sin dirección registrada"}${c.nodo ? ` (${c.nodo})` : ""}`);
+    if (c.celular) lineas.push(`   Cel: ${c.celular}`);
+    if (mapa) lineas.push(`   📍 ${mapa}`);
+    if (c.senal_previa?.rx_power != null) lineas.push(`   Señal previa: ${c.senal_previa.rx_power} dBm`);
+    lineas.push("");
+  });
+  if (sinId.length) {
+    lineas.push(`ONUs caídas sin cliente identificado (${sinId.length}):`);
+    sinId.forEach((s) => lineas.push(`   SN ${s.sn_onu}${s.nombre ? ` — ${s.nombre}` : ""}`));
+  }
+  return lineas.join("\n").trim();
+}
+
+function ReporteAveriaModal({ reporte, isDark, onClose }) {
+  const col = isDark
+    ? { bg: "#111c33", card: "#1a2740", border: "#2c3c58", text: "#e6ecf7", sub: "#93a2bd" }
+    : { bg: "#f4f6fb", card: "#ffffff", border: "#e2e8f4", text: "#1a2740", sub: "#5b6b8c" };
+  const cargando = reporte === "cargando";
+  const [copiado, setCopiado] = useState(false);
+
+  const copiarTexto = async () => {
+    try {
+      await navigator.clipboard.writeText(textoReporte(reporte));
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch { /* clipboard no disponible */ }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,15,25,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onClose}>
+      <div
+        style={{ width: "100%", maxWidth: 520, maxHeight: "85vh", overflowY: "auto", background: col.bg, border: `1.5px solid ${col.border}`, borderRadius: 14, padding: 20, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: col.text }}>📋 Reporte de avería</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, fontWeight: 800, color: col.sub, cursor: "pointer" }}>✕</button>
+        </div>
+
+        {cargando ? (
+          <div style={{ padding: 30, textAlign: "center", color: col.sub, fontSize: 13 }}>Armando reporte…</div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, background: reporte.averia.activa ? "#fef2f2" : "#f0fdf4", border: `1.5px solid ${reporte.averia.activa ? "#fca5a5" : "#86efac"}` }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: reporte.averia.activa ? "#991b1b" : "#15803d" }}>
+                Board {reporte.averia.board} · Puerto {reporte.averia.port} — {reporte.averia.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)"}
+              </div>
+              <div style={{ fontSize: 11.5, color: col.sub, marginTop: 4 }}>
+                {reporte.averia.activa ? "🔴 Sigue activa" : "✅ Resuelta"} · Inicio {formatoFecha(reporte.averia.primera_deteccion)}
+                {reporte.averia.resuelta_en ? ` · Resuelta ${formatoFecha(reporte.averia.resuelta_en)}` : ""}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: col.text, marginTop: 6 }}>
+                👥 {reporte.total_afectados} cliente{reporte.total_afectados === 1 ? "" : "s"} afectado{reporte.total_afectados === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+              {reporte.clientes_afectados.map((c) => (
+                <div key={c.sn_onu} style={{ padding: 10, borderRadius: 8, background: col.card, border: `1px solid ${col.border}` }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: col.text }}>{c.nombre || "Sin nombre"}</div>
+                  <div style={{ fontSize: 11.5, color: col.sub }}>DNI {c.dni || "—"} · {c.nodo || "—"}</div>
+                  <div style={{ fontSize: 11.5, color: col.sub }}>{c.direccion || "Sin dirección registrada"}</div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 4, flexWrap: "wrap" }}>
+                    {c.celular && <span style={{ fontSize: 11, color: col.sub }}>📞 {c.celular}</span>}
+                    {urlMapa(c.ubicacion) && (
+                      <a href={urlMapa(c.ubicacion)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#2563eb", fontWeight: 700 }}>📍 Ver en mapa</a>
+                    )}
+                    {c.senal_previa?.rx_power != null && <span style={{ fontSize: 11, color: col.sub }}>Señal previa: {c.senal_previa.rx_power} dBm</span>}
+                  </div>
+                </div>
+              ))}
+              {reporte.onus_sin_identificar.length > 0 && (
+                <div style={{ padding: 10, borderRadius: 8, background: col.card, border: `1px dashed ${col.border}`, fontSize: 11.5, color: col.sub }}>
+                  {reporte.onus_sin_identificar.length} ONU(s) caída(s) sin cliente identificado: {reporte.onus_sin_identificar.map((s) => s.sn_onu).join(", ")}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(textoReporte(reporte))}`}
+                target="_blank" rel="noreferrer"
+                style={{ flex: 1, textAlign: "center", padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, textDecoration: "none", background: "#25D366", color: "#fff" }}
+              >
+                💬 Compartir por WhatsApp
+              </a>
+              <button
+                onClick={copiarTexto}
+                style={{ padding: "10px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${col.border}`, background: col.card, color: col.text }}
+              >
+                {copiado ? "✓ Copiado" : "Copiar texto"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
