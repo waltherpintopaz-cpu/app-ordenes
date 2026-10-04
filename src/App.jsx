@@ -25116,10 +25116,10 @@ export default function App() {
                                               const siguienteCiclo=new Date(svcFactF2Vence+"T00:00:00");
                                               siguienteCiclo.setMonth(siguienteCiclo.getMonth()+1);
                                               mkN8n("ChangeFacturacionConfig",{id_cliente:factPanelCliId,fecha_fija:siguienteCiclo.toISOString().split("T")[0]}).catch(()=>{});
-                                              window.alert(`✅ Prorrateo #${d?.factura_id} creado por S/${montoFinal}`);setMkwWizardStep(4);
+                                              mostrarNotifToast(`Prorrateo #${d?.factura_id} creado por S/${montoFinal}`,true);setMkwWizardStep(4);
                                             }
-                                            else window.alert("Error: "+(d?.mensaje||d?.message||"No se pudo crear"));
-                                          }catch(e){window.alert("Error: "+e.message);}
+                                            else mostrarNotifToast("Error: "+(d?.mensaje||d?.message||"No se pudo crear"),false);
+                                          }catch(e){mostrarNotifToast("Error: "+e.message,false);}
                                           (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                         }}
                                         style={{ flex:1, padding:"10px 16px", background:svcFactCreando||!svcFactF2Vence||!(parseFloat(svcFactMonto||montoAuto)>0)?"#9ca3af":c, color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
