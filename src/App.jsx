@@ -5054,7 +5054,7 @@ export default function App() {
         body: JSON.stringify({ nodo: titularExito.nodoNum, accion: "NewSMS", payload: { idcliente: titularExito.mkwId, mensaje: msg } }),
       });
       setTitularSmsEnviado(true);
-      window.alert("✅ SMS de bienvenida enviado");
+      mostrarNotifToast("SMS de bienvenida enviado",true);
     } catch (e) {
       window.alert("Error al enviar SMS: " + e.message);
     }
@@ -24924,8 +24924,8 @@ export default function App() {
                                       const json=await ejecutarDiagnosticoServicioRequest({dni,cliente:clienteNombre,nodo,userPppoe});
                                       const ip=json?.mikrotik?.ip||"";
                                       if(ip) setSvcNuevoForm(f=>({...f,ip}));
-                                      else window.alert("No se encontró IP activa en MikroTik");
-                                    } catch { window.alert("Error al consultar MikroTik"); }
+                                      else mostrarNotifToast("No se encontró IP activa en MikroTik",false);
+                                    } catch { mostrarNotifToast("Error al consultar MikroTik",false); }
                                     setSvcNuevoIpLoading(false);
                                   }} style={{ padding:"8px 12px", background:svcNuevoIpLoading?"#d1fae5":"#f0fdf4", border:"1.5px solid #86efac", borderRadius:8, fontSize:11, fontWeight:700, color:"#15803d", cursor:"pointer", whiteSpace:"nowrap" }}>
                                     {svcNuevoIpLoading?"...":"🔍 IP MikroTik"}
@@ -25047,20 +25047,20 @@ export default function App() {
                                           let idfactura;
                                           if (svcFactF1Modo==="libre") {
                                             const d=await mkN8n("CreateInvoiceLibre",{id_cliente:factPanelCliId,fecha_vencimiento:svcFactF1Vence,items:[{descripcion:svcFactF1Desc,cantidad:1,precio:parseFloat(svcFactF1Monto),impuesto:18}]});
-                                            if (!(d?.code==="200"||d?.factura_id)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));(svcFactCreandoRef.current=false,setSvcFactCreando(false));return;}
+                                            if (!(d?.code==="200"||d?.factura_id)){mostrarNotifToast("Error: "+(d?.mensaje||"No se pudo crear"),false);(svcFactCreandoRef.current=false,setSvcFactCreando(false));return;}
                                             idfactura=d?.factura_id;
                                             if(svcFactF1Pagada&&idfactura) await mkN8n("PaidInvoice",{idcliente:factPanelCliId,idfactura:parseInt(idfactura,10),pasarela:svcFactF1Pasarela,cantidad:parseFloat(svcFactF1Monto)});
                                           } else {
                                             const d=await mkN8n("CreateInvoice",{idcliente:factPanelCliId,vencimiento:svcFactF1Vence});
-                                            if(!(d?.estado==="exito"||d?.idfactura)){window.alert("Error: "+(d?.mensaje||"No se pudo crear"));(svcFactCreandoRef.current=false,setSvcFactCreando(false));return;}
+                                            if(!(d?.estado==="exito"||d?.idfactura)){mostrarNotifToast("Error: "+(d?.mensaje||"No se pudo crear"),false);(svcFactCreandoRef.current=false,setSvcFactCreando(false));return;}
                                             idfactura=d?.idfactura;
                                             if(svcFactF1Pagada&&idfactura) await mkN8n("PaidInvoice",{idcliente:factPanelCliId,idfactura:parseInt(idfactura,10),pasarela:svcFactF1Pasarela,cantidad:parseFloat(svcFactF1Monto)});
                                           }
-                                          window.alert(`✅ Factura #${idfactura} creada${svcFactF1Pagada?" y pagada":""}`);
+                                          mostrarNotifToast(`Factura #${idfactura} creada${svcFactF1Pagada?" y pagada":""}`,true);
                                           setMkwWizardFactDone(true);
                                           setSvcFactStep(2);
                                           if(!svcFactF2PrecPlan&&cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
-                                        } catch(e){window.alert("Error: "+e.message);}
+                                        } catch(e){mostrarNotifToast("Error: "+e.message,false);}
                                         (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                       }}
                                       style={{ flex:1, padding:"10px 16px", background:svcFactCreando||!svcFactF1Vence||!svcFactF1Monto||(svcFactF1Modo==="libre"&&!svcFactF1Desc)?"#9ca3af":c, color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
@@ -25162,8 +25162,8 @@ export default function App() {
                                     const msg = `BIENVENIDA ${String(cli.nombre||"").trim()} ${dni} ${dni}`;
                                     await fetch(N8N_PROXY_SVC, { method:"POST", headers:{"Content-Type":"application/json"},
                                       body: JSON.stringify({ nodo: esDimCli?4:nodoNum, accion:"NewSMS", payload:{ idcliente: mkwCliId, mensaje: msg } }) });
-                                    window.alert("✅ SMS de bienvenida enviado");
-                                  } catch { window.alert("Error al enviar SMS"); }
+                                    mostrarNotifToast("SMS de bienvenida enviado",true);
+                                  } catch { mostrarNotifToast("Error al enviar SMS",false); }
                                 }}
                                 style={{ padding:"12px 20px", background:"#7c3aed", border:"none", borderRadius:12, color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>
                                   💬 Enviar SMS Bienvenida
@@ -25271,7 +25271,7 @@ export default function App() {
                                         items: [{ descripcion: svcFactF1Desc, cantidad: 1, precio: parseFloat(svcFactF1Monto), impuesto: 18 }]
                                       });
                                       const invOk = invData?.code === "200" || invData?.factura_id;
-                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
+                                      if (!invOk) { mostrarNotifToast("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear"),false); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = invData?.factura_id;
                                       if (svcFactF1Pagada && idfactura) {
                                         await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
@@ -25279,16 +25279,16 @@ export default function App() {
                                     } else {
                                       invData = await mkN8n("CreateInvoice", { idcliente: factPanelCliId, vencimiento: svcFactF1Vence });
                                       const invOk = invData?.estado === "exito" || invData?.idfactura;
-                                      if (!invOk) { window.alert("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
+                                      if (!invOk) { mostrarNotifToast("Error: " + (invData?.mensaje || invData?.message || "No se pudo crear"),false); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = invData?.idfactura;
                                       if (svcFactF1Pagada && idfactura) {
                                         await mkN8n("PaidInvoice", { idcliente: factPanelCliId, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
                                       }
                                     }
-                                    window.alert(`✅ Factura #${idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
+                                    mostrarNotifToast(`Factura #${idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`,true);
                                     setSvcFactStep(2);
                                     if (!svcFactF2PrecPlan && cli.precioPlan) setSvcFactF2PrecPlan(String(cli.precioPlan));
-                                  } catch(e) { window.alert("Error: " + e.message); }
+                                  } catch(e) { mostrarNotifToast("Error: " + e.message,false); }
                                   (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                 }}
                                 style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc) ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
@@ -25364,9 +25364,9 @@ export default function App() {
                                         items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 18 }]
                                       });
                                       const invOk = invData2?.code === "200" || invData2?.factura_id;
-                                      if (invOk) { window.alert(`✅ Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`); setFactPanelOpen(null); }
-                                      else window.alert("Error: " + (invData2?.mensaje || invData2?.message || "No se pudo crear"));
-                                    } catch(e) { window.alert("Error: " + e.message); }
+                                      if (invOk) { mostrarNotifToast(`Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`,true); setFactPanelOpen(null); }
+                                      else mostrarNotifToast("Error: " + (invData2?.mensaje || invData2?.message || "No se pudo crear"),false);
+                                    } catch(e) { mostrarNotifToast("Error: " + e.message,false); }
                                     (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                   }}
                                   style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0) ? "#9ca3af" : "#7c3aed", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
@@ -25476,7 +25476,7 @@ export default function App() {
                                       const p = { id_cliente, fecha_vencimiento: svcFactF1Vence, items: [{ descripcion: svcFactF1Desc, cantidad: 1, precio: parseFloat(svcFactF1Monto), impuesto: 18 }] };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
                                       const invOk = inv.json?.code === "200" || inv.json?.factura_id;
-                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
+                                      if (!invOk) { mostrarNotifToast("Error: " + (inv.json?.mensaje || "No se pudo crear"),false); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = inv.json?.factura_id;
                                       if (svcFactF1Pagada && idfactura) {
                                         await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
@@ -25485,16 +25485,16 @@ export default function App() {
                                       const p = { idcliente: id_cliente, vencimiento: svcFactF1Vence };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoice", p) : await mkFetch("CreateInvoice", p);
                                       const invOk = inv.json?.estado === "exito" || inv.json?.idfactura;
-                                      if (!invOk) { window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear")); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
+                                      if (!invOk) { mostrarNotifToast("Error: " + (inv.json?.mensaje || "No se pudo crear"),false); (svcFactCreandoRef.current=false,setSvcFactCreando(false)); return; }
                                       idfactura = inv.json?.idfactura;
                                       if (svcFactF1Pagada && idfactura) {
                                         await (esDim ? mkFetchNod04 : mkFetch)("PaidInvoice", { idcliente: id_cliente, idfactura: parseInt(idfactura,10), pasarela: svcFactF1Pasarela, cantidad: parseFloat(svcFactF1Monto) });
                                       }
                                     }
-                                    window.alert(`✅ Factura #${idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`);
+                                    mostrarNotifToast(`Factura #${idfactura} creada${svcFactF1Pagada ? " y marcada como pagada" : ""}`,true);
                                     setSvcFactStep(2);
                                     if (!svcFactF2PrecPlan && svcNuevoCreado?.precioPlan) setSvcFactF2PrecPlan(String(svcNuevoCreado.precioPlan));
-                                  } catch(e) { window.alert("Error: " + e.message); }
+                                  } catch(e) { mostrarNotifToast("Error: " + e.message,false); }
                                   (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                 }}
                                 style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF1Vence || !svcFactF1Monto || (svcFactF1Modo==="libre" && !svcFactF1Desc) ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
@@ -25572,9 +25572,9 @@ export default function App() {
                                       };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
                                       const invOk = inv.json?.code === "200" || inv.json?.factura_id;
-                                      if (invOk) { window.alert(`✅ Factura prorrateo #${inv.json?.factura_id} creada por S/${montoFinal}`); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
-                                      else window.alert("Error: " + (inv.json?.mensaje || "No se pudo crear"));
-                                    } catch(e) { window.alert("Error: " + e.message); }
+                                      if (invOk) { mostrarNotifToast(`Factura prorrateo #${inv.json?.factura_id} creada por S/${montoFinal}`,true); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
+                                      else mostrarNotifToast("Error: " + (inv.json?.mensaje || "No se pudo crear"),false);
+                                    } catch(e) { mostrarNotifToast("Error: " + e.message,false); }
                                     (svcFactCreandoRef.current=false,setSvcFactCreando(false));
                                   }}
                                   style={{ flex:1, padding:"10px 16px", background: svcFactCreando || !svcFactF2Vence || !(parseFloat(svcFactMonto || montoAuto) > 0) ? "#9ca3af" : "#16a34a", color:"#fff", border:"none", borderRadius:10, fontSize:13, fontWeight:700, cursor:"pointer" }}>
@@ -25700,8 +25700,8 @@ export default function App() {
                                 const json = await ejecutarDiagnosticoServicioRequest({ dni, cliente: clienteNombre, nodo, userPppoe });
                                 const ip = json?.mikrotik?.ip || "";
                                 if (ip) setSvcNuevoForm(f => ({...f, ip}));
-                                else window.alert("No se encontró IP activa en MikroTik");
-                              } catch { window.alert("Error al consultar MikroTik"); }
+                                else mostrarNotifToast("No se encontró IP activa en MikroTik",false);
+                              } catch { mostrarNotifToast("Error al consultar MikroTik",false); }
                               setSvcNuevoIpLoading(false);
                             }}
                             style={{ padding:"8px 12px", background: svcNuevoIpLoading ? "#d1fae5" : "#f0fdf4", border:"1.5px solid #86efac", borderRadius:8, fontSize:11, fontWeight:700, color:"#15803d", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>
