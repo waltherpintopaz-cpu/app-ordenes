@@ -1,6 +1,8 @@
 ﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+// cache-bust: forzar commit nuevo porque EasyPanel estaba sirviendo un
+// archivo comprimido de GitHub cacheado (no reflejaba los ultimos commits)
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
