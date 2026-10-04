@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
 import { FichaOnuDrawer } from "./OnuInventarioPanel";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
@@ -575,10 +576,24 @@ function MapaAveriaClientes({ clientes, isDark }) {
           fullscreenControl: false,
           styles: isDark ? [{ elementType: "geometry", stylers: [{ color: "#1a2740" }] }, { elementType: "labels.text.stroke", stylers: [{ color: "#1a2740" }] }, { elementType: "labels.text.fill", stylers: [{ color: "#93a2bd" }] }] : undefined,
         });
-        conCoords.forEach((c) => {
-          const marker = new maps.Marker({ position: c.coords, map, title: c.nombre || c.sn_onu });
+        const markers = conCoords.map((c) => {
+          const marker = new maps.Marker({ position: c.coords, title: c.nombre || c.sn_onu });
           const info = new maps.InfoWindow({ content: `<div style="font-size:12px;max-width:200px"><b>${c.nombre || "Sin nombre"}</b><br/>${c.direccion || ""}</div>` });
           marker.addListener("click", () => info.open(map, marker));
+          return marker;
+        });
+        // Agrupa en una burbuja numerada cuando hay muchos clientes juntos
+        // en pocas cuadras -- sin esto, averías grandes dejaban el mapa
+        // ilegible con decenas de pines pisandose entre si.
+        new MarkerClusterer({
+          map,
+          markers,
+          renderer: { render: ({ count, position }) => new maps.Marker({
+            position,
+            label: { text: String(count), color: "#fff", fontSize: "11px", fontWeight: "800" },
+            icon: { path: maps.SymbolPath.CIRCLE, scale: 16 + Math.min(count, 30) * 0.35, fillColor: "#dc2626", fillOpacity: 0.85, strokeColor: "#ffffff", strokeWeight: 2 },
+            zIndex: 1000 + count,
+          }) },
         });
         if (conCoords.length > 1) map.fitBounds(bounds); else map.setZoom(16);
         setEstado("listo");

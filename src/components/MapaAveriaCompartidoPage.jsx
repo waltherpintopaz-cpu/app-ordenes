@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MarkerClusterer } from "@googlemaps/markerclusterer";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
 const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
@@ -143,10 +144,13 @@ export default function MapaAveriaCompartidoPage() {
       if (conCoords.length > 1) map.fitBounds(bounds); else map.setZoom(16);
 
       const icon0 = crearIconoAveria(0);
+      // Marker SIN "map" todavia -- el clusterer de abajo decide cuando
+      // mostrar cada marcador suelto o agruparlo en una burbuja numerada
+      // (sin esto, con muchos clientes juntos en pocas cuadras el mapa
+      // queda ilegible, todos los iconos pisandose entre si).
       markersRef.current = conCoords.map((c) => {
         const marker = new maps.Marker({
           position: c.coords,
-          map,
           icon: { url: icon0.url, scaledSize: new maps.Size(icon0.size, icon0.size), anchor: new maps.Point(icon0.size / 2, icon0.size / 2) },
           title: c.nombre || c.sn_onu,
         });
@@ -157,9 +161,31 @@ export default function MapaAveriaCompartidoPage() {
         return marker;
       });
 
+      // eslint-disable-next-line no-new
+      new MarkerClusterer({
+        map,
+        markers: markersRef.current,
+        renderer: {
+          render: ({ count, position }) => new maps.Marker({
+            position,
+            label: { text: String(count), color: "#fff", fontSize: "12px", fontWeight: "800" },
+            icon: {
+              path: maps.SymbolPath.CIRCLE,
+              scale: 18 + Math.min(count, 30) * 0.4,
+              fillColor: "#dc2626",
+              fillOpacity: 0.85,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+            },
+            zIndex: 1000 + count,
+          }),
+        },
+      });
+
       // Animacion del anillo pulsante -- 4 frames en bucle, redibujando el
       // icono de cada marcador (no hay forma de animar un icono estatico
-      // de Marker salvo reemplazarlo seguido).
+      // de Marker salvo reemplazarlo seguido). Solo tiene efecto visible en
+      // los marcadores sueltos -- las burbujas de cluster no la usan.
       const anim = () => {
         if (cancelado) return;
         frameRef.current = (frameRef.current + 1) % 4;
