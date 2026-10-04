@@ -4829,6 +4829,26 @@ export default function App() {
         });
       } catch { /* no crítico */ }
 
+      // Fecha Fija del proximo cobro automatico -- en llamada APARTE de la
+      // plantilla de arriba, porque la API de Mikrowisp dice textualmente
+      // que "id_plantilla" reemplaza cualquier otro campo mandado en el
+      // mismo JSON (asi que fecha_fija junto con id_plantilla se ignoraria).
+      // Sin esto, Mikrowisp arranca a facturar "normal" de inmediato y
+      // termina duplicando el periodo que ya cubre la factura libre del
+      // prorrateo (reportado en vivo: cliente con factura libre de
+      // prorrateo + una "normal" de Mikrowisp el mismo mes). svcFactF2Vence
+      // es la misma fecha que ya se calcula y se muestra en el wizard como
+      // "Próx. vencimiento" del paso Prorrateo (dia de pago de la plantilla,
+      // saltando al mes siguiente si faltan menos de 10 dias).
+      if (svcFactF2Vence) {
+        try {
+          await fetch(N8N_PROXY_SVC, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nodo: esDim ? 5 : nodoNum, accion: "ChangeFacturacionConfig", payload: { id_cliente: svcNuevoCliId, fecha_fija: svcFactF2Vence } })
+          });
+        } catch { /* no crítico -- Mikrowisp igual queda con la plantilla aplicada */ }
+      }
+
       // Nod_03 siempre crea el servicio en el router nuevo (VLAN 102) --
       // guardar vlan=102 de una vez en "clientes", sin esperar a que el
       // cliente se conecte por primera vez. Sin esto, "resolveRouterByNodo"
