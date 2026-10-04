@@ -4369,8 +4369,8 @@ export default function App() {
   const agregarClienteMikrowisp = async (cliente) => {
     const id = String(cliente.id || cliente.dni || "").trim();
     const dni = String(cliente.dni || "").replace(/\D/g, "").trim();
-    if (!dni) return window.alert("El cliente no tiene DNI registrado.");
-    if (cliente.en_mikrowisp || mikrowisp_ok[id]) return window.alert("Este cliente ya está registrado en Mikrowisp.");
+    if (!dni) return mostrarNotifToast("El cliente no tiene DNI registrado.",false);
+    if (cliente.en_mikrowisp || mikrowisp_ok[id]) return mostrarNotifToast("Este cliente ya está registrado en Mikrowisp.",false);
 
     // esDimNodo() cubre Nod_04/05/06/07 (una sola instancia DimFiber) — antes esto
     // solo detectaba "Nod_04" y enrutaba clientes de Nod_05/06 al Mikrowisp
@@ -4387,7 +4387,7 @@ export default function App() {
       const existe = b?.estado === "exito" && (b?.idcliente || b?.data?.idcliente || b?.cedula || b?.data?.cedula);
       if (existe) {
         setMikrowispOk((p) => ({ ...p, [id]: true }));
-        window.alert(`⚠ El cliente "${cliente.nombre || dni}" ya existe en Mikrowisp (cédula: ${dni}). No se duplicará.`);
+        mostrarNotifToast(`El cliente "${cliente.nombre || dni}" ya existe en Mikrowisp (cédula: ${dni}). No se duplicará.`,false);
         return;
       }
 
@@ -4425,9 +4425,9 @@ export default function App() {
         await supabase.from(CLIENTES_TABLE).update({ en_mikrowisp: true }).eq("id", cliente.id);
         setClientes((prev) => prev.map((c) => c.id === cliente.id ? { ...c, en_mikrowisp: true } : c));
       }
-      window.alert(`✅ Cliente "${cliente.nombre || dni}" agregado a MikroWisp${esNod04 ? " DimFiber" : ""} correctamente.`);
+      mostrarNotifToast(`Cliente "${cliente.nombre || dni}" agregado a MikroWisp${esNod04 ? " DimFiber" : ""} correctamente.`,true);
     } catch (e) {
-      window.alert("Error al agregar a Mikrowisp: " + (e?.message || String(e)));
+      mostrarNotifToast("Error al agregar a Mikrowisp: " + (e?.message || String(e)),false);
     } finally {
       setMikrowispLoading((p) => ({ ...p, [id]: false }));
     }
@@ -4992,7 +4992,7 @@ export default function App() {
 
   const mkwSincronizarCliente = async (cliente) => {
     const dni = String(cliente.dni || "").replace(/\D/g, "").trim();
-    if (!dni) return window.alert("El cliente no tiene DNI registrado.");
+    if (!dni) return mostrarNotifToast("El cliente no tiene DNI registrado.",false);
     const cid = String(cliente.id || dni);
     const nodo = String(cliente.nodo || "");
     setMkwCliLoading((p) => ({ ...p, [cid]: true }));
