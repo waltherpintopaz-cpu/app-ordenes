@@ -4691,7 +4691,7 @@ export default function App() {
 
   const cargarPerfilesSvcNuevo = async (nodo, vlan, routerIdOverride) => {
     const esDim = esDimNodo(nodo);
-    const nodoNum = Number(routerIdOverride) || mikrowispRouterIdParaCliente(nodo, vlan);
+    const nodoNum = Number(routerIdOverride) || routerIdParaCrearServicio(nodo, vlan);
     setSvcNuevoForm(f => ({ ...f, routerId: String(nodoNum) }));
     try {
       const [perfRes, redesRes, plantRes] = await Promise.all([
@@ -4769,7 +4769,7 @@ export default function App() {
     if (!svcNuevoForm.id_red_ipv4) return window.alert("Selecciona un rango IPv4.");
     setSvcNuevoGuardando(true);
     const esDim = esDimNodo(svcNuevoForm.nodo);
-    const nodoNum = Number(svcNuevoForm.routerId) || mikrowispRouterIdParaCliente(svcNuevoForm.nodo, svcNuevoForm.vlan);
+    const nodoNum = Number(svcNuevoForm.routerId) || routerIdParaCrearServicio(svcNuevoForm.nodo, svcNuevoForm.vlan);
     const payload = {
       id_cliente:   svcNuevoCliId,
       id_router:    nodoNum,
