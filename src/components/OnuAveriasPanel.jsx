@@ -1,8 +1,36 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FichaOnuDrawer } from "./OnuInventarioPanel";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
 const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").trim().replace(/\/$/, "");
+const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
+
+// Mismo patron ya usado en MapaPanel.jsx -- window.__gmapsPromise cachea la
+// carga del SDK a nivel global, asi que no importa cual componente lo pida
+// primero, nunca se inserta el script 2 veces.
+const loadGoogleMapsSdk = () => {
+  if (typeof window === "undefined") return Promise.reject(new Error("Sin navegador."));
+  if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error("Sin token Google Maps."));
+  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  if (window.__gmapsPromise) return window.__gmapsPromise;
+  window.__gmapsPromise = new Promise((resolve, reject) => {
+    const prev = document.getElementById("google-maps-js-sdk");
+    if (prev) {
+      prev.addEventListener("load", () => resolve(window.google.maps), { once: true });
+      prev.addEventListener("error", () => reject(new Error("No se pudo cargar Google Maps.")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "google-maps-js-sdk";
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
+    script.onload = () => resolve(window.google.maps);
+    script.onerror = () => reject(new Error("No se pudo cargar Google Maps."));
+    document.head.appendChild(script);
+  });
+  return window.__gmapsPromise;
+};
 
 // Se arma con lo que ya guarda huawei-olt-signal via traps SNMP reales
 // (LOS/dying-gasp ocurre-recupera) -- ver onu_eventos / onu_averias_zona
@@ -517,6 +545,75 @@ function urlMapa(ubicacion) {
   return `https://www.google.com/maps?q=${encodeURIComponent(coords)}`;
 }
 
+// "ubicacion" se guarda como "lat, lng" (texto) -- null si no es un par
+// de numeros valido, para que el mapa simplemente salte ese cliente.
+function parseCoords(ubicacion) {
+  const partes = String(ubicacion || "").split(",").map((s) => Number(s.trim()));
+  if (partes.length !== 2 || partes.some((n) => Number.isNaN(n))) return null;
+  return { lat: partes[0], lng: partes[1] };
+}
+
+function MapaAveriaClientes({ clientes, isDark }) {
+  const mapRef = useRef(null);
+  const [estado, setEstado] = useState("cargando"); // cargando | listo | error | sin_coords
+
+  const conCoords = clientes.map((c) => ({ ...c, coords: parseCoords(c.ubicacion) })).filter((c) => c.coords);
+
+  useEffect(() => {
+    let cancelado = false;
+    if (!conCoords.length) { setEstado("sin_coords"); return; }
+    loadGoogleMapsSdk()
+      .then((maps) => {
+        if (cancelado || !mapRef.current) return;
+        const bounds = new maps.LatLngBounds();
+        conCoords.forEach((c) => bounds.extend(c.coords));
+        const map = new maps.Map(mapRef.current, {
+          center: bounds.getCenter(),
+          zoom: 15,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          styles: isDark ? [{ elementType: "geometry", stylers: [{ color: "#1a2740" }] }, { elementType: "labels.text.stroke", stylers: [{ color: "#1a2740" }] }, { elementType: "labels.text.fill", stylers: [{ color: "#93a2bd" }] }] : undefined,
+        });
+        conCoords.forEach((c) => {
+          const marker = new maps.Marker({ position: c.coords, map, title: c.nombre || c.sn_onu });
+          const info = new maps.InfoWindow({ content: `<div style="font-size:12px;max-width:200px"><b>${c.nombre || "Sin nombre"}</b><br/>${c.direccion || ""}</div>` });
+          marker.addListener("click", () => info.open(map, marker));
+        });
+        if (conCoords.length > 1) map.fitBounds(bounds); else map.setZoom(16);
+        setEstado("listo");
+      })
+      .catch(() => setEstado("error"));
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientes]);
+
+  if (estado === "sin_coords") {
+    return (
+      <div style={{ padding: 16, borderRadius: 8, background: isDark ? "#1a2740" : "#f8fafc", border: `1px dashed ${isDark ? "#2c3c58" : "#e2e8f4"}`, fontSize: 12, color: isDark ? "#93a2bd" : "#5b6b8c", textAlign: "center" }}>
+        Ningún cliente afectado tiene coordenadas GPS registradas.
+      </div>
+    );
+  }
+  if (estado === "error") {
+    return (
+      <div style={{ padding: 16, borderRadius: 8, background: "#fef2f2", border: "1px solid #fca5a5", fontSize: 12, color: "#991b1b", textAlign: "center" }}>
+        No se pudo cargar el mapa.
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "relative", height: 220, borderRadius: 10, overflow: "hidden", border: `1px solid ${isDark ? "#2c3c58" : "#e2e8f4"}` }}>
+      <div ref={mapRef} style={{ width: "100%", height: "100%" }} />
+      {estado === "cargando" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: isDark ? "#1a2740" : "#f8fafc", fontSize: 12, color: isDark ? "#93a2bd" : "#5b6b8c" }}>
+          Cargando mapa…
+        </div>
+      )}
+    </div>
+  );
+}
+
 function textoReporte(reporte) {
   const { averia, clientes_afectados: clientes, onus_sin_identificar: sinId, total_afectados: total } = reporte;
   const tipoTexto = averia.tipo === "power_down" ? "Corte de luz" : "Sin señal (LOS)";
@@ -586,6 +683,10 @@ function ReporteAveriaModal({ reporte, isDark, onClose }) {
               <div style={{ fontSize: 13, fontWeight: 700, color: col.text, marginTop: 6 }}>
                 👥 {reporte.total_afectados} cliente{reporte.total_afectados === 1 ? "" : "s"} afectado{reporte.total_afectados === 1 ? "" : "s"}
               </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <MapaAveriaClientes clientes={reporte.clientes_afectados} isDark={isDark} />
             </div>
 
             <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
