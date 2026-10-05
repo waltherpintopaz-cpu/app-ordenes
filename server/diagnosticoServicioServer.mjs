@@ -1211,7 +1211,10 @@ async function sincronizarEstadosMikrowisp() {
 // Activa al cliente si se encuentra suspendido" -- por eso este job NUNCA
 // llama ActiveService, solo vigila para avisar/cortar.
 const PRORRATEO_DIAS_GRACIA = Number(process.env.PRORRATEO_DIAS_GRACIA || 10);
-const PRORRATEO_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
+const PRORRATEO_NODOS = (process.env.PRORRATEO_NODOS || "Nod_01,Nod_02,Nod_03")
+  .split(",")
+  .map((n) => n.trim())
+  .filter(Boolean);
 
 async function obtenerWhatsappConfigEmpresa(empresa) {
   try {
