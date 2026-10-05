@@ -181,6 +181,7 @@ const RUTAS_PROTEGIDAS_INTERNAS = new Set([
   "/api/diagnostico-servicio/sync-all",
   "/api/clientes/sincronizar-estados-mikrowisp",
   "/api/cruce-mac-aplicar",
+  "/api/clientes/revisar-prorrateos-vencidos",
 ]);
 const requiereAuthInterna = (req) => RUTAS_PROTEGIDAS_INTERNAS.has(String(req.url || "").split("?")[0]);
 const tieneTokenInternoValido = (req) => {
@@ -1192,6 +1193,154 @@ async function sincronizarEstadosMikrowisp() {
     await new Promise((r) => setTimeout(r, 250));
   }
 
+  resumen.terminado = new Date().toISOString();
+  return resumen;
+}
+
+// ─── Corte automatico de facturas "Libre" de prorrateo vencidas ─────────
+// Mikrowisp NO corta ni avisa solo para facturas tipo "Libre" (solo para
+// las "Servicios" normales) -- confirmado revisando su documentacion
+// oficial. Sin esto, un cliente podia dejar de pagar el prorrateo de la
+// instalacion sin ninguna consecuencia automatica, ya que con el fix de
+// fecha_fija (ver mas arriba) tampoco se genera una factura "Servicios"
+// hasta el siguiente ciclo completo.
+// Pedido explicito del usuario: 10 dias de tolerancia desde el vencimiento,
+// aviso por WhatsApp 1 dia antes de cortar (dia 9), corte al dia 10. Al
+// pagar la factura (PaidInvoice, flujo normal de oficina), Mikrowisp
+// reactiva solo -- documentado textualmente como "Pagar una factura y
+// Activa al cliente si se encuentra suspendido" -- por eso este job NUNCA
+// llama ActiveService, solo vigila para avisar/cortar.
+const PRORRATEO_DIAS_GRACIA = Number(process.env.PRORRATEO_DIAS_GRACIA || 10);
+const PRORRATEO_NODOS = ["Nod_01", "Nod_02", "Nod_03"];
+
+async function obtenerWhatsappConfigEmpresa(empresa) {
+  try {
+    const rows = await fetchSupabaseRows("whatsapp_config", `select=*&empresa=eq.${encodeURIComponent(empresa)}&limit=1`);
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function enviarWhatsAppProrrateo(waCfg, fila, diasVencido) {
+  if (!waCfg?.habilitado || !waCfg.base_url || !waCfg.api_key || !waCfg.instance_name) return false;
+  const numeroRaw = String(fila.celular || "").split(/[,;/|]+/)[0].trim();
+  if (!numeroRaw) return false;
+  let phone = numeroRaw.replace(/[\s\-()]/g, "");
+  if (phone.startsWith("+")) phone = phone.slice(1);
+  if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+  const tpl = waCfg.template_prorrateo_recordatorio ||
+    "RECORDATORIO\n📣 {empresa}:\nHola {nombre}, le recordamos que tiene un pago pendiente de S/{monto} por la instalación de su servicio, con vencimiento el {fecha}.\n\nEvita el corte realizando tu pago a tiempo.\n\n📧 Envíanos tu comprobante o consulta los métodos de pago aquí 👇\n\nCódigo: {dni}🔑";
+  const mensaje = tpl
+    .replace(/{nombre}/g, fila.nombre || "")
+    .replace(/{dni}/g, fila.dni || "")
+    .replace(/{empresa}/g, fila.empresa || "AMERICANET")
+    .replace(/{fecha}/g, fila.prorrateo_vencimiento || "")
+    .replace(/{monto}/g, fila.prorrateo_monto != null ? String(fila.prorrateo_monto) : "");
+  try {
+    const url = `${String(waCfg.base_url).replace(/\/$/, "")}/message/sendText/${waCfg.instance_name}`;
+    const res = await fetchConTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: waCfg.api_key },
+      body: JSON.stringify({ number: phone, text: mensaje }),
+    }, 10000);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function revisarProrrateosVencidos() {
+  const resumen = { revisados: 0, avisados: 0, suspendidos: 0, pagados: 0, errores: 0, iniciado: new Date().toISOString() };
+  try {
+    const filas = await fetchSupabaseRowsPaginado(
+      "clientes",
+      `select=id,dni,nombre,nodo,celular,empresa,prorrateo_factura_id,prorrateo_vencimiento,prorrateo_aviso_enviado&prorrateo_factura_id=not.is.null&nodo=in.(${PRORRATEO_NODOS.join(",")})`
+    );
+    resumen.revisados = filas.length;
+    const hoyLima = new Date(Date.now() - 5 * 3600000); // UTC-5, sin horario de verano
+
+    for (const fila of filas) {
+      try {
+        if (!fila.prorrateo_vencimiento) continue;
+        const vence = new Date(fila.prorrateo_vencimiento + "T00:00:00");
+        const diasVencido = Math.floor((hoyLima - vence) / 86400000);
+        if (diasVencido < PRORRATEO_DIAS_GRACIA - 1) continue; // ni aviso ni corte todavia
+
+        // Confirmar contra Mikrowisp si de verdad sigue sin pagar --
+        // nunca confiar solo en nuestra copia local, puede estar desactualizada.
+        const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetInvoice");
+        const response = await fetchConTimeout(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ token: MIKROWISP_TOKEN, idfactura: fila.prorrateo_factura_id }),
+        }, 15000);
+        const json = await readProxyJsonResponse(response, "Mikrowisp GetInvoice (prorrateo)");
+        const factura = json?.factura || (Array.isArray(json?.datos) ? json.datos[0] : json?.datos) || json;
+        const estado = String(factura?.estado || "").toLowerCase();
+
+        if (estado === "pagado") {
+          // Ya se pago -- dejar de vigilar esta factura. Mikrowisp ya
+          // reactivo solo si estaba suspendido (PaidInvoice lo hace).
+          await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+            method: "PATCH",
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({ prorrateo_factura_id: null, prorrateo_vencimiento: null, prorrateo_aviso_enviado: false }),
+          });
+          resumen.pagados += 1;
+          continue;
+        }
+
+        if (diasVencido === PRORRATEO_DIAS_GRACIA - 1) {
+          // Dia 9: aviso, todavia sin cortar.
+          if (fila.prorrateo_aviso_enviado) continue;
+          const waCfg = await obtenerWhatsappConfigEmpresa(fila.empresa || "Americanet");
+          const enviado = await enviarWhatsAppProrrateo(waCfg, { ...fila, prorrateo_monto: factura?.total }, diasVencido);
+          if (enviado) {
+            await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+              method: "PATCH",
+              headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+              body: JSON.stringify({ prorrateo_aviso_enviado: true }),
+            });
+            resumen.avisados += 1;
+          }
+          continue;
+        }
+
+        if (diasVencido >= PRORRATEO_DIAS_GRACIA) {
+          // Dia 10+: cortar via Mikrowisp (SuspendService) -- no por
+          // Mikrotik directo, asi Mikrowisp tambien queda al tanto.
+          // "clientes" no guarda el id interno de Mikrowisp (vive en el
+          // espejo "mikrowisp_clientes", enlazado por cedula, no por id) --
+          // se consulta en vivo por cedula, mismo patron ya usado en
+          // sincronizarEstadosMikrowisp.
+          const dniLimpio = String(fila.dni || "").replace(/\D/g, "");
+          if (!dniLimpio) { resumen.errores += 1; continue; }
+          const mkwResp = await consultarMikrowispPorCedula(dniLimpio).catch(() => null);
+          const mkwId = mkwResp?.datos?.[0]?.id || mkwResp?.datos?.id;
+          if (!mkwId) { resumen.errores += 1; continue; }
+          const susEndpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/SuspendService");
+          const susRes = await fetchConTimeout(susEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ token: MIKROWISP_TOKEN, idcliente: mkwId }),
+          }, 15000);
+          await readProxyJsonResponse(susRes, "Mikrowisp SuspendService (prorrateo)");
+          await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+            method: "PATCH",
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({ prorrateo_factura_id: null, prorrateo_vencimiento: null, prorrateo_aviso_enviado: false }),
+          });
+          resumen.suspendidos += 1;
+        }
+      } catch (e) {
+        resumen.errores += 1;
+        console.error(`[prorrateo] error con cliente id=${fila.id}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.error("[prorrateo] error general:", e.message || e);
+  }
   resumen.terminado = new Date().toISOString();
   return resumen;
 }
@@ -2647,6 +2796,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Disparo manual del job de prorrateos vencidos (ver scheduler al final
+    // del archivo) -- para probarlo sin esperar a las 4 AM.
+    if (req.method === "POST" && req.url === "/api/clientes/revisar-prorrateos-vencidos") {
+      try {
+        const resumen = await revisarProrrateosVencidos();
+        writeJson(res, 200, { ok: true, resumen });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
+      return;
+    }
+
     // Creacion masiva y correlativa de PPP secrets dentro de un rango de IP
     // ya existente (el pool en si se crea a mano en Mikrotik). Por defecto
     // es solo vista previa (dryRun) -- hay que mandar dryRun:false explicito
@@ -2844,3 +3005,14 @@ setTimeout(function ejecutarYProgramarSyncEstados() {
     .catch((e) => console.error("Sync diaria de estados Mikrowisp fallo:", e.message || e));
   setTimeout(ejecutarYProgramarSyncEstados, DIA_EN_MS);
 }, msHastaProximaHoraLima(ESTADO_SYNC_HORA_LIMA));
+
+// Revision diaria de prorrateos vencidos (aviso dia 9, corte dia 10) -- a
+// una hora distinta de la sync de estados de arriba, para no competir por
+// la misma ventana de bajo trafico.
+const PRORRATEO_SYNC_HORA_LIMA = Number(process.env.PRORRATEO_SYNC_HORA_LIMA || 4); // 0-23
+setTimeout(function ejecutarYProgramarRevisionProrrateos() {
+  revisarProrrateosVencidos()
+    .then((r) => console.log("Revision diaria de prorrateos vencidos:", JSON.stringify(r)))
+    .catch((e) => console.error("Revision diaria de prorrateos vencidos fallo:", e.message || e));
+  setTimeout(ejecutarYProgramarRevisionProrrateos, DIA_EN_MS);
+}, msHastaProximaHoraLima(PRORRATEO_SYNC_HORA_LIMA));

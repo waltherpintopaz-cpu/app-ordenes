@@ -2254,6 +2254,10 @@ export default function SidebarApp() {
       const siguienteCiclo = new Date(mwProrrVence + "T00:00:00");
       siguienteCiclo.setMonth(siguienteCiclo.getMonth() + 1);
       mkwProxy(n, "ChangeFacturacionConfig", { id_cliente: mwMkwId, fecha_fija: siguienteCiclo.toISOString().split("T")[0] }).catch(()=>{});
+      if (mwCliSupa?.id) {
+        supabase.from("clientes").update({ prorrateo_factura_id: String(d?.factura_id || ""), prorrateo_vencimiento: mwProrrVence, prorrateo_aviso_enviado: false }).eq("id", mwCliSupa.id)
+          .then(({ error }) => { if (error) console.warn("No se pudo guardar seguimiento de prorrateo:", error.message); });
+      }
       setMwStep(4);
     } catch(e) { setMwMsg("Error: " + e.message); }
     setMwFactCreando(false);

@@ -25118,6 +25118,10 @@ export default function App() {
                                               const siguienteCiclo=new Date(svcFactF2Vence+"T00:00:00");
                                               siguienteCiclo.setMonth(siguienteCiclo.getMonth()+1);
                                               mkN8n("ChangeFacturacionConfig",{id_cliente:factPanelCliId,fecha_fija:siguienteCiclo.toISOString().split("T")[0]}).catch(()=>{});
+                                              if (cli?.id) {
+                                                supabase.from("clientes").update({ prorrateo_factura_id: String(d?.factura_id || ""), prorrateo_vencimiento: svcFactF2Vence, prorrateo_aviso_enviado: false }).eq("id", cli.id)
+                                                  .then(({ error }) => { if (error) console.warn("No se pudo guardar seguimiento de prorrateo:", error.message); });
+                                              }
                                               mostrarNotifToast(`Prorrateo #${d?.factura_id} creado por S/${montoFinal}`,true);setMkwWizardStep(4);
                                             }
                                             else mostrarNotifToast("Error: "+(d?.mensaje||d?.message||"No se pudo crear"),false);
@@ -25366,7 +25370,16 @@ export default function App() {
                                         items: [{ descripcion: descPlan, cantidad: 1, precio: montoFinal, impuesto: 18 }]
                                       });
                                       const invOk = invData2?.code === "200" || invData2?.factura_id;
-                                      if (invOk) { mostrarNotifToast(`Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`,true); setFactPanelOpen(null); }
+                                      if (invOk) {
+                                        const siguienteCiclo2 = new Date(svcFactF2Vence + "T00:00:00");
+                                        siguienteCiclo2.setMonth(siguienteCiclo2.getMonth() + 1);
+                                        mkN8n2("ChangeFacturacionConfig", { id_cliente: factPanelCliId, fecha_fija: siguienteCiclo2.toISOString().split("T")[0] }).catch(()=>{});
+                                        if (cli?.id) {
+                                          supabase.from("clientes").update({ prorrateo_factura_id: String(invData2?.factura_id || ""), prorrateo_vencimiento: svcFactF2Vence, prorrateo_aviso_enviado: false }).eq("id", cli.id)
+                                            .then(({ error }) => { if (error) console.warn("No se pudo guardar seguimiento de prorrateo:", error.message); });
+                                        }
+                                        mostrarNotifToast(`Factura prorrateo #${invData2?.factura_id} creada por S/${montoFinal}`,true); setFactPanelOpen(null);
+                                      }
                                       else mostrarNotifToast("Error: " + (invData2?.mensaje || invData2?.message || "No se pudo crear"),false);
                                     } catch(e) { mostrarNotifToast("Error: " + e.message,false); }
                                     (svcFactCreandoRef.current=false,setSvcFactCreando(false));
@@ -25574,7 +25587,17 @@ export default function App() {
                                       };
                                       const inv = esDim ? await mkFetchNod04("CreateInvoiceLibre", p) : await mkFetch("CreateInvoiceLibre", p);
                                       const invOk = inv.json?.code === "200" || inv.json?.factura_id;
-                                      if (invOk) { mostrarNotifToast(`Factura prorrateo #${inv.json?.factura_id} creada por S/${montoFinal}`,true); setSvcNuevoOpen(null); setSvcNuevoCreado(null); }
+                                      if (invOk) {
+                                        const siguienteCiclo3 = new Date(svcFactF2Vence + "T00:00:00");
+                                        siguienteCiclo3.setMonth(siguienteCiclo3.getMonth() + 1);
+                                        const fcPayload = { id_cliente, fecha_fija: siguienteCiclo3.toISOString().split("T")[0] };
+                                        (esDim ? mkFetchNod04("ChangeFacturacionConfig", fcPayload) : mkFetch("ChangeFacturacionConfig", fcPayload)).catch(()=>{});
+                                        if (cli?.id) {
+                                          supabase.from("clientes").update({ prorrateo_factura_id: String(inv.json?.factura_id || ""), prorrateo_vencimiento: svcFactF2Vence, prorrateo_aviso_enviado: false }).eq("id", cli.id)
+                                            .then(({ error }) => { if (error) console.warn("No se pudo guardar seguimiento de prorrateo:", error.message); });
+                                        }
+                                        mostrarNotifToast(`Factura prorrateo #${inv.json?.factura_id} creada por S/${montoFinal}`,true); setSvcNuevoOpen(null); setSvcNuevoCreado(null);
+                                      }
                                       else mostrarNotifToast("Error: " + (inv.json?.mensaje || "No se pudo crear"),false);
                                     } catch(e) { mostrarNotifToast("Error: " + e.message,false); }
                                     (svcFactCreandoRef.current=false,setSvcFactCreando(false));
