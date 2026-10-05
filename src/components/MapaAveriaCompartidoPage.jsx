@@ -105,6 +105,7 @@ function formatoFecha(iso) {
 
 export default function MapaAveriaCompartidoPage() {
   const [reporte, setReporte] = useState(null);
+  const [mostrarClientes, setMostrarClientes] = useState(false);
   const [error, setError] = useState("");
   const mapRef = useRef(null);
   const markersRef = useRef([]);
@@ -249,26 +250,40 @@ export default function MapaAveriaCompartidoPage() {
           </div>
         )}
 
-        <div style={{ display: "grid", gap: 10 }}>
-          {clientes.map((c, i) => (
-            <div key={c.sn_onu} className="avc-card" style={{ animationDelay: `${i * 40}ms`, padding: 14, borderRadius: 12, background: "#fff", border: "1.5px solid #e2e8f4", boxShadow: "0 2px 8px rgba(15,23,42,0.04)" }}>
-              <div style={{ fontWeight: 800, fontSize: 14, color: "#1a2740" }}>{c.nombre || "Sin nombre"}</div>
-              <div style={{ fontSize: 12, color: "#5b6b8c", marginTop: 2 }}>DNI {c.dni || "—"} · {c.nodo || "—"}</div>
-              <div style={{ fontSize: 12, color: "#5b6b8c", marginTop: 2 }}>{c.direccion || "Sin dirección registrada"}</div>
-              <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
-                {c.celular && <a href={`tel:${c.celular}`} style={{ fontSize: 12, color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>📞 {c.celular}</a>}
-                {parseCoords(c.ubicacion) && (
-                  <a href={`https://www.google.com/maps?q=${encodeURIComponent(c.ubicacion)}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>📍 Ver en mapa</a>
-                )}
+        <button
+          onClick={() => setMostrarClientes((v) => !v)}
+          className="avc-card"
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderRadius: 12, background: "#fff", border: "1.5px solid #e2e8f4", boxShadow: "0 2px 8px rgba(15,23,42,0.04)", cursor: "pointer", fontSize: 14, fontWeight: 800, color: "#1a2740" }}
+        >
+          <span>👥 {total} cliente{total === 1 ? "" : "s"} afectado{total === 1 ? "" : "s"}</span>
+          <span style={{ fontSize: 12, color: "#5b6b8c", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+            {mostrarClientes ? "Ocultar" : "Ver lista"}
+            <span style={{ display: "inline-block", transition: "transform 0.2s", transform: mostrarClientes ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+          </span>
+        </button>
+
+        {mostrarClientes && (
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            {clientes.map((c, i) => (
+              <div key={c.sn_onu} className="avc-card" style={{ animationDelay: `${i * 40}ms`, padding: 14, borderRadius: 12, background: "#fff", border: "1.5px solid #e2e8f4", boxShadow: "0 2px 8px rgba(15,23,42,0.04)" }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: "#1a2740" }}>{c.nombre || "Sin nombre"}</div>
+                <div style={{ fontSize: 12, color: "#5b6b8c", marginTop: 2 }}>DNI {c.dni || "—"} · {c.nodo || "—"}</div>
+                <div style={{ fontSize: 12, color: "#5b6b8c", marginTop: 2 }}>{c.direccion || "Sin dirección registrada"}</div>
+                <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
+                  {c.celular && <a href={`tel:${c.celular}`} style={{ fontSize: 12, color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>📞 {c.celular}</a>}
+                  {parseCoords(c.ubicacion) && (
+                    <a href={`https://www.google.com/maps?q=${encodeURIComponent(c.ubicacion)}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>📍 Ver en mapa</a>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
-          {sinId.length > 0 && (
-            <div className="avc-card" style={{ padding: 12, borderRadius: 10, background: "#f8fafc", border: "1px dashed #e2e8f4", fontSize: 12, color: "#5b6b8c" }}>
-              {sinId.length} ONU(s) caída(s) sin cliente identificado.
-            </div>
-          )}
-        </div>
+            ))}
+            {sinId.length > 0 && (
+              <div className="avc-card" style={{ padding: 12, borderRadius: 10, background: "#f8fafc", border: "1px dashed #e2e8f4", fontSize: 12, color: "#5b6b8c" }}>
+                {sinId.length} ONU(s) caída(s) sin cliente identificado.
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
