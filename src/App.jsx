@@ -6878,6 +6878,17 @@ export default function App() {
       // la sync de las 3am.
       delete row.estado_servicio;
       delete row.fecha_suspendido;
+      // codigo_etiqueta/precinto_codigo tampoco se mandan desde aca --
+      // mismo bug exacto que caja_nap y estado_servicio arriba. "Etiquetado
+      // de ONU" (app movil) y "Elegir puerto" escriben precinto_codigo
+      // directo a Supabase sin pasar por el estado "clientes" de esta
+      // pantalla. Si una pestaña del panel quedo abierta con el valor
+      // viejo en memoria, el proximo auto-guardado (de CUALQUIER cambio)
+      // pisaba el precinto recien etiquetado en campo de vuelta a vacio.
+      // Bug real reportado 2026-10-07: tecnicos etiquetaron una caja
+      // completa y los precintos aparecieron borrados poco despues.
+      delete row.codigo_etiqueta;
+      delete row.precinto_codigo;
       return row;
     });
     if (!payload.length) return;
