@@ -6889,6 +6889,17 @@ export default function App() {
       // completa y los precintos aparecieron borrados poco despues.
       delete row.codigo_etiqueta;
       delete row.precinto_codigo;
+      // en_mikrowisp/vlan/sn_onu -- mismo patron, mismo bug. Se escriben
+      // directo a Supabase desde flujos que no pasan por el estado
+      // "clientes" de esta pantalla: agregar a Mikrowisp (en_mikrowisp),
+      // la asignacion automatica de VLAN 102 en Nod_03 (vlan), y la
+      // deteccion automatica de SN por MAC (sn_onu) -- ademas de que la
+      // app movil tambien escribe sn_onu directo al liquidar. Una pestana
+      // vieja podia pisar cualquiera de estos de vuelta a su valor
+      // anterior en el proximo auto-guardado.
+      delete row.en_mikrowisp;
+      delete row.vlan;
+      delete row.sn_onu;
       return row;
     });
     if (!payload.length) return;
