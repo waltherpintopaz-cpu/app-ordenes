@@ -4068,7 +4068,7 @@ export default function App() {
         else if (sortClientes.col === "celular") { va = String(a.celular || ""); vb = String(b.celular || ""); }
         else if (sortClientes.col === "nodo") { va = String(a.nodo || ""); vb = String(b.nodo || ""); }
         else if (sortClientes.col === "estado") { va = String(a.estadoServicio || a.estado || ""); vb = String(b.estadoServicio || b.estado || ""); }
-        else if (sortClientes.col === "codigoEtiqueta") { va = String(a.codigoEtiqueta || ""); vb = String(b.codigoEtiqueta || ""); }
+        else if (sortClientes.col === "codigoEtiqueta") { va = String(a.precintoCodigo || a.codigoEtiqueta || ""); vb = String(b.precintoCodigo || b.codigoEtiqueta || ""); }
         else if (sortClientes.col === "snOnu") { va = String(a.snOnu || ""); vb = String(b.snOnu || ""); }
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
@@ -6821,6 +6821,10 @@ export default function App() {
       usuarioNodo: row.usuario_nodo || "",
       passwordUsuario: row.password_usuario || "",
       codigoEtiqueta: row.codigo_etiqueta || "",
+      // "Etiquetado de ONU" (herramienta para ponerse al dia con cajas sin
+      // etiquetar) solo guarda precinto_codigo, no codigo_etiqueta -- se
+      // trae tambien para poder mostrarlo como fallback en la tabla.
+      precintoCodigo: row.precinto_codigo || "",
       ubicacion: row.ubicacion || "",
       descripcion: row.descripcion || "",
       tecnico: row.tecnico || "",
@@ -7150,7 +7154,7 @@ export default function App() {
       // Sin columnas JSON pesadas (payload, fotos_liquidacion, historial_instalaciones, equipos_historial)
       // Esas se cargan al abrir el detalle individual del cliente
       let { data, error } = await fetchAll(
-        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,fecha_suspendido,notif_suspendido_en,notif_recojo_equipo_en,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
+        "id,codigo_abonado,codigo_cliente,dni,nombre,direccion,celular,email,contacto,empresa,velocidad,precio_plan,nodo,usuario_nodo,password_usuario,codigo_etiqueta,precinto_codigo,sn_onu,vlan,rx_signal,tx_signal,olt_ip,pon,onu_id,signal_updated_at,ubicacion,descripcion,tecnico,autor_orden,fecha_registro,ultima_actualizacion,foto_fachada,updated_at,en_mikrowisp,mikrowisp_sync_ok,estado_servicio,fecha_suspendido,notif_suspendido_en,notif_recojo_equipo_en,caja_nap,mikrotik_suspension_ip,mikrotik_ultima_accion,iptv_usuario,iptv_perfil"
       );
       if (error && /column .* does not exist/i.test(String(error?.message || ""))) {
         const fallback = await fetchAll("id,dni,nombre,updated_at");
@@ -24251,7 +24255,15 @@ export default function App() {
                               </td>
                               )}
                               {colsClientesVisibles.codigoEtiqueta && (
-                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 11 }}>{cliente.codigoEtiqueta || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
+                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 11 }}>
+                                {/* precintoCodigo es el campo correcto actual (precintos
+                                    numerados de fabrica, unicos) -- codigoEtiqueta es el
+                                    campo viejo/deprecado (picker que permitia reusar codigo),
+                                    que Liquidacion sigue llenando por compatibilidad pero
+                                    "Etiquetado de ONU" ya no usa. Se prioriza precintoCodigo
+                                    y se cae a codigoEtiqueta solo para registros muy viejos. */}
+                                {cliente.precintoCodigo || cliente.codigoEtiqueta || <span style={{ color: "#cbd5e1" }}>—</span>}
+                              </td>
                               )}
                               {colsClientesVisibles.snOnu && (
                               <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 11 }}>{cliente.snOnu || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
