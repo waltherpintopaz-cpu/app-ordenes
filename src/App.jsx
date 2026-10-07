@@ -2755,7 +2755,7 @@ export default function App() {
   const [filtroNodoCliente, setFiltroNodoCliente] = useState("TODOS");
   const [filtroIptv, setFiltroIptv] = useState(false);
   const [sortClientes, setSortClientes] = useState({ col: null, dir: "asc" });
-  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, equipoRecogido: true, snOnu: false, usuarioPppoe: false, registrado: false };
+  const COLS_CLIENTES_DEFAULT = { cliente: true, dni: true, empresa: true, contacto: true, nodo: true, estado: true, equipoRecogido: true, codigoEtiqueta: false, snOnu: false, usuarioPppoe: false, registrado: false };
   const [colsClientesVisibles, setColsClientesVisibles] = useState(() => {
     // Merge con el default (no solo "|| default") -- si ya habia una
     // preferencia guardada de antes de que existiera una columna nueva
@@ -4068,6 +4068,7 @@ export default function App() {
         else if (sortClientes.col === "celular") { va = String(a.celular || ""); vb = String(b.celular || ""); }
         else if (sortClientes.col === "nodo") { va = String(a.nodo || ""); vb = String(b.nodo || ""); }
         else if (sortClientes.col === "estado") { va = String(a.estadoServicio || a.estado || ""); vb = String(b.estadoServicio || b.estado || ""); }
+        else if (sortClientes.col === "codigoEtiqueta") { va = String(a.codigoEtiqueta || ""); vb = String(b.codigoEtiqueta || ""); }
         else if (sortClientes.col === "snOnu") { va = String(a.snOnu || ""); vb = String(b.snOnu || ""); }
         else if (sortClientes.col === "usuarioPppoe") { va = String(a.usuarioNodo || ""); vb = String(b.usuarioNodo || ""); }
         else if (sortClientes.col === "registrado") { va = String(a.fechaRegistro || ""); vb = String(b.fechaRegistro || ""); }
@@ -23777,6 +23778,7 @@ export default function App() {
                         { key: "nodo", label: "Nodo · Plan" },
                         { key: "estado", label: "Estado" },
                         { key: "equipoRecogido", label: "Equipo recogido" },
+                        { key: "codigoEtiqueta", label: "Cód. etiqueta" },
                         { key: "snOnu", label: "SN ONU" },
                         { key: "usuarioPppoe", label: "Usuario PPPoE" },
                         { key: "registrado", label: "Registrado" },
@@ -24149,6 +24151,7 @@ export default function App() {
                             { key: "nodo", label: "Nodo · Plan", sortCol: "nodo" },
                             { key: "estado", label: "Estado", sortCol: "estado" },
                             { key: "equipoRecogido", label: "Equipo", sortCol: null },
+                            { key: "codigoEtiqueta", label: "Cód. etiqueta", sortCol: "codigoEtiqueta" },
                             { key: "snOnu", label: "SN ONU", sortCol: "snOnu" },
                             { key: "usuarioPppoe", label: "Usuario PPPoE", sortCol: "usuarioPppoe" },
                             { key: "registrado", label: "Registrado", sortCol: "registrado" },
@@ -24246,6 +24249,9 @@ export default function App() {
                                   <span style={{ padding: "3px 9px", borderRadius: 7, fontSize: 11, fontWeight: 700, background: "#fef3c7", color: "#92400e", whiteSpace: "nowrap" }}>Pendiente</span>
                                 )}
                               </td>
+                              )}
+                              {colsClientesVisibles.codigoEtiqueta && (
+                              <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 11 }}>{cliente.codigoEtiqueta || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
                               )}
                               {colsClientesVisibles.snOnu && (
                               <td style={{ padding: "11px 14px", color: isDark ? "#a9bcdd" : "#475569", fontFamily: "monospace", fontSize: 11 }}>{cliente.snOnu || <span style={{ color: "#cbd5e1" }}>—</span>}</td>
