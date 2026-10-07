@@ -1348,6 +1348,155 @@ async function revisarProrrateosVencidos() {
   return resumen;
 }
 
+// ─── Promo "1000 Mbps por S/25 el primer mes" (piloto DIM) ───────────────────
+// Separado de revisarProrrateosVencidos() a proposito -- el prorrateo normal
+// se queda EXACTAMENTE igual, sin riesgo de tocar su comportamiento ya en
+// produccion. Este job solo corre sobre clientes.promo1000_estado.
+//
+// Diferencia clave con el prorrateo normal: el servicio es prepago, asi que
+// la PRIMERA factura de cada cliente (el prorrateo previo si cae en el
+// bucket "medio", o la promo misma si cae en "temprano"/"tardio") ya se
+// cobro en campo y se marco pagada al momento de liquidar la orden (ver
+// crearServicioMikrowispNod04AlLiquidar en la app movil). Este job entonces
+// NO persigue el pago de esa primera factura -- solo hace las transiciones
+// que dependen de la FECHA:
+//   1. "prorrateo" -> "promo": cuando se cumple la fecha en que debe
+//      arrancar la promo, sube el servicio a 1000 Mbps y genera la factura
+//      de S/25 (esta SI hay que perseguirla, el cliente la paga por fuera,
+//      no en campo).
+//   2. "promo" -> completado: cuando se cumple el mes de promo, baja el
+//      servicio al plan real elegido -- de ahi en adelante Mikrowisp cobra
+//      solo, con su ciclo normal (fecha_fija ya quedo seteada al liquidar).
+const PROMO1000_DIAS_GRACIA = Number(process.env.PROMO1000_DIAS_GRACIA || 10);
+
+async function procesarPromos1000() {
+  const resumen = { revisados: 0, subidas_a_promo: 0, bajadas_a_plan_real: 0, avisados: 0, suspendidos: 0, pagados: 0, errores: 0, iniciado: new Date().toISOString() };
+  try {
+    const filas = await fetchSupabaseRowsPaginado(
+      "clientes",
+      `select=id,dni,nombre,nodo,celular,empresa,promo1000_estado,promo1000_factura_id,promo1000_vencimiento,promo1000_aviso_enviado,promo1000_id_perfil_real,promo1000_id_perfil_promo,promo1000_fecha_cambio_plan&promo1000_estado=not.is.null`
+    );
+    resumen.revisados = filas.length;
+    const hoyLima = new Date(Date.now() - 5 * 3600000); // UTC-5, sin horario de verano
+    const hoyStr = hoyLima.toISOString().split("T")[0];
+
+    for (const fila of filas) {
+      try {
+        const dniLimpio = String(fila.dni || "").replace(/\D/g, "");
+        if (!dniLimpio) { resumen.errores += 1; continue; }
+
+        // Paso 1: todavia en el prorrateo previo (bucket "medio") -- cuando
+        // se cumple el dia siguiente al vencimiento de esa factura, arranca
+        // la promo.
+        if (fila.promo1000_estado === "prorrateo") {
+          if (!fila.promo1000_vencimiento) { resumen.errores += 1; continue; }
+          const promoInicio = new Date(fila.promo1000_vencimiento + "T00:00:00");
+          promoInicio.setDate(promoInicio.getDate() + 1);
+          if (hoyLima < promoInicio) continue; // todavia no le toca
+
+          const mkwResp = await consultarMikrowispPorCedula(dniLimpio).catch(() => null);
+          const cli = mkwResp?.datos?.[0] || mkwResp?.datos;
+          const mkwId = cli?.id;
+          const svc = cli?.servicios?.[0];
+          if (!mkwId || !svc?.id) { resumen.errores += 1; continue; }
+
+          await handleMkwProxyAccion("EditService", 5, {
+            id_servicio: svc.id,
+            id_router: Number(svc.id_router) || 5,
+            id_perfil: Number(fila.promo1000_id_perfil_promo),
+          }).catch(() => {});
+
+          const facRes = await handleMkwProxyAccion("CreateInvoiceLibre", 5, {
+            id_cliente: mkwId,
+            fecha_vencimiento: hoyStr,
+            items: [{ descripcion: "Promo 1000 Mbps - primer mes", cantidad: 1, precio: 25, impuesto: 18 }],
+          }).catch(() => null);
+          const idFactura = facRes?.factura_id;
+          if (!idFactura) { resumen.errores += 1; continue; }
+
+          await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+            method: "PATCH",
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({ promo1000_estado: "promo", promo1000_factura_id: String(idFactura), promo1000_vencimiento: hoyStr, promo1000_aviso_enviado: false }),
+          });
+          resumen.subidas_a_promo += 1;
+          continue; // el seguimiento de pago/corte de ESTA factura recien se revisa al dia siguiente
+        }
+
+        // Paso 2: en su mes de promo -- revisar si hay que avisar/cortar
+        // por falta de pago (solo aplica de verdad al bucket "medio": en
+        // "temprano"/"tardio" esta factura ya vino pagada desde la
+        // liquidacion, GetInvoice simplemente lo confirma y no hace nada
+        // mas) y, llegado el dia, bajar al plan real elegido.
+        if (fila.promo1000_estado === "promo") {
+          if (fila.promo1000_factura_id) {
+            const facturaJson = await handleMkwProxyAccion("GetInvoice", 5, { idfactura: fila.promo1000_factura_id }).catch(() => null);
+            const factura = facturaJson?.factura || (Array.isArray(facturaJson?.datos) ? facturaJson.datos[0] : facturaJson?.datos) || facturaJson;
+            const estado = String(factura?.estado || "").toLowerCase();
+            if (estado === "pagado") {
+              resumen.pagados += 1;
+            } else if (fila.promo1000_vencimiento) {
+              const vence = new Date(fila.promo1000_vencimiento + "T00:00:00");
+              const diasVencido = Math.floor((hoyLima - vence) / 86400000);
+              if (diasVencido === PROMO1000_DIAS_GRACIA - 1 && !fila.promo1000_aviso_enviado) {
+                const waCfg = await obtenerWhatsappConfigEmpresa(fila.empresa || "DIM");
+                const enviado = await enviarWhatsAppProrrateo(waCfg, { ...fila, prorrateo_vencimiento: fila.promo1000_vencimiento, prorrateo_monto: 25 }, diasVencido);
+                if (enviado) {
+                  await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+                    method: "PATCH",
+                    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+                    body: JSON.stringify({ promo1000_aviso_enviado: true }),
+                  });
+                  resumen.avisados += 1;
+                }
+              } else if (diasVencido >= PROMO1000_DIAS_GRACIA) {
+                const mkwResp = await consultarMikrowispPorCedula(dniLimpio).catch(() => null);
+                const mkwId = mkwResp?.datos?.[0]?.id || mkwResp?.datos?.id;
+                if (mkwId) {
+                  await handleMkwProxyAccion("SuspendService", 5, { idcliente: mkwId }).catch(() => {});
+                  resumen.suspendidos += 1;
+                }
+              }
+            }
+          }
+
+          // Independiente del pago: si ya se cumplio el mes de promo, baja
+          // al plan real igual (si quedo suspendido por falta de pago,
+          // sigue suspendido -- Mikrowisp lo reactiva solo al pagar,
+          // PaidInvoice ya confirmado que reactiva automaticamente).
+          if (fila.promo1000_fecha_cambio_plan && hoyStr >= fila.promo1000_fecha_cambio_plan) {
+            const mkwResp2 = await consultarMikrowispPorCedula(dniLimpio).catch(() => null);
+            const cli2 = mkwResp2?.datos?.[0] || mkwResp2?.datos;
+            const svc2 = cli2?.servicios?.[0];
+            if (svc2?.id) {
+              await handleMkwProxyAccion("EditService", 5, {
+                id_servicio: svc2.id,
+                id_router: Number(svc2.id_router) || 5,
+                id_perfil: Number(fila.promo1000_id_perfil_real),
+              }).catch(() => {});
+              await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${fila.id}`, {
+                method: "PATCH",
+                headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+                body: JSON.stringify({ promo1000_estado: null, promo1000_factura_id: null, promo1000_vencimiento: null, promo1000_aviso_enviado: false }),
+              });
+              resumen.bajadas_a_plan_real += 1;
+            } else {
+              resumen.errores += 1;
+            }
+          }
+        }
+      } catch (e) {
+        resumen.errores += 1;
+        console.error(`[promo1000] error con cliente id=${fila.id}: ${e.message}`);
+      }
+    }
+  } catch (e) {
+    console.error("[promo1000] error general:", e.message || e);
+  }
+  resumen.terminado = new Date().toISOString();
+  return resumen;
+}
+
 const proxyMikrowispNewUser = async (req) => {
   const body = await inyectarTokenMikrowisp(req, MIKROWISP_TOKEN);
   const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/NewUser");
@@ -3019,3 +3168,13 @@ setTimeout(function ejecutarYProgramarRevisionProrrateos() {
     .catch((e) => console.error("Revision diaria de prorrateos vencidos fallo:", e.message || e));
   setTimeout(ejecutarYProgramarRevisionProrrateos, DIA_EN_MS);
 }, msHastaProximaHoraLima(PRORRATEO_SYNC_HORA_LIMA));
+
+// Revision diaria de la promo 1000 Mbps (piloto DIM) -- hora propia, media
+// hora despues de la de prorrateo, para no competir por la misma ventana.
+const PROMO1000_SYNC_HORA_LIMA = Number(process.env.PROMO1000_SYNC_HORA_LIMA || 4);
+setTimeout(function ejecutarYProgramarRevisionPromo1000() {
+  procesarPromos1000()
+    .then((r) => console.log("Revision diaria de promo 1000 Mbps:", JSON.stringify(r)))
+    .catch((e) => console.error("Revision diaria de promo 1000 Mbps fallo:", e.message || e));
+  setTimeout(ejecutarYProgramarRevisionPromo1000, DIA_EN_MS);
+}, msHastaProximaHoraLima(PROMO1000_SYNC_HORA_LIMA));
