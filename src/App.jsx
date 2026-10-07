@@ -3648,7 +3648,7 @@ export default function App() {
   }, [usuarios]);
 
   const etiquetasUsadas = useMemo(() =>
-    new Set((clientes || []).map(c => String(c.codigoEtiqueta || c.codigo_etiqueta || "").trim()).filter(Boolean)),
+    new Set((clientes || []).map(c => String(c.precintoCodigo || c.codigoEtiqueta || c.codigo_etiqueta || "").trim()).filter(Boolean)),
     [clientes]
   );
   const todasEtiquetas = useMemo(() =>
@@ -4056,7 +4056,7 @@ export default function App() {
       if (filtroIptv && !c.iptv_usuario) return false;
       if (!q) return true;
       // Búsqueda por palabras sueltas (cualquier orden)
-      const texto = [c.codigoCliente, c.dni, c.nombre, c.celular, c.direccion, c.usuarioNodo, c.nodo, c.empresa, c.estado, c.velocidad, c.codigoEtiqueta, c.snOnu].join(" ");
+      const texto = [c.codigoCliente, c.dni, c.nombre, c.celular, c.direccion, c.usuarioNodo, c.nodo, c.empresa, c.estado, c.velocidad, c.codigoEtiqueta, c.precintoCodigo || "", c.snOnu].join(" ");
       return matchWords(texto);
     });
     if (sortClientes.col) {
@@ -4143,7 +4143,7 @@ export default function App() {
     const lista = Array.isArray(clientesFiltrados) ? clientesFiltrados : [];
     const conCel = lista.filter((c) => String(c.celular || "").trim()).length;
     const conNodo = lista.filter((c) => String(c.nodo || "").trim()).length;
-    const conEtiqueta = lista.filter((c) => String(c.codigoEtiqueta || "").trim() && String(c.codigoEtiqueta || "").trim() !== "-").length;
+    const conEtiqueta = lista.filter((c) => String(c.precintoCodigo || c.codigoEtiqueta || "").trim() && String(c.precintoCodigo || c.codigoEtiqueta || "").trim() !== "-").length;
     const conSnOnu = lista.filter((c) => String(c.snOnu || "").trim()).length;
     return {
       total: lista.length,
@@ -6744,6 +6744,7 @@ export default function App() {
       usuario_nodo: nullIfEmpty(cliente.usuarioNodo),
       password_usuario: nullIfEmpty(cliente.passwordUsuario),
       codigo_etiqueta: nullIfEmpty(cliente.codigoEtiqueta),
+      precinto_codigo: nullIfEmpty(cliente.codigoEtiqueta),
       sn_onu: nullIfEmpty(cliente.snOnu),
       vlan: cliente.vlan ? Number(cliente.vlan) : null,
       ubicacion: nullIfEmpty(cliente.ubicacion),
@@ -10902,7 +10903,7 @@ export default function App() {
       cajaNap: clienteInterno.caja_nap || prev.cajaNap,
       puertoNap: clienteInterno.puerto_nap || prev.puertoNap,
       snOnu: clienteInterno.sn_onu || prev.snOnu,
-      codigoEtiqueta: clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
+      codigoEtiqueta: clienteInterno.precinto_codigo || clienteInterno.codigo_etiqueta || prev.codigoEtiqueta,
       // Asignacion explicita (no "|| prev.codigoAbonadoExistente"): si este
       // servicio no tiene codigo, no debe quedar pegado el de una
       // seleccion anterior.
@@ -10965,7 +10966,7 @@ export default function App() {
       if (isSupabaseConfigured) {
         const { data: srvs } = await supabase
           .from("clientes")
-          .select("id,codigo_cliente,codigo_abonado,nombre,direccion,celular,email,contacto,nodo,usuario_nodo,password_usuario,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta")
+          .select("id,codigo_cliente,codigo_abonado,nombre,direccion,celular,email,contacto,nodo,usuario_nodo,password_usuario,velocidad,precio_plan,ubicacion,tecnico,foto_fachada,fotos_liquidacion,caja_nap,puerto_nap,sn_onu,codigo_etiqueta,precinto_codigo")
           .eq("dni", dni)
           .order("id", { ascending: false });
         todosServiciosDB = srvs || [];
@@ -12325,6 +12326,30 @@ export default function App() {
       return;
     }
 
+    // Precinto repetido -- numero de precinto de fabrica, no deberia
+    // repetirse en toda la base. No bloquea (puede ser solo error de
+    // tipeo), solo avisa antes de continuar. Se excluye por usuario_nodo
+    // (no por dni) porque el codigo/precinto es por SERVICIO, no por
+    // persona. Mismo criterio que la app movil (OrdersScreen.js).
+    const precintoLiqTrim = String(liquidacion.codigoEtiqueta || "").trim();
+    if (precintoLiqTrim && isSupabaseConfigured) {
+      try {
+        const { data: otrosPrecintoLiq } = await supabase
+          .from(CLIENTES_TABLE)
+          .select("id,nombre,dni")
+          .eq("precinto_codigo", precintoLiqTrim)
+          .neq("usuario_nodo", String(ordenEnLiquidacion.usuarioNodo || ""))
+          .limit(1);
+        const otroPrecintoLiq = otrosPrecintoLiq?.[0];
+        if (otroPrecintoLiq) {
+          const seguirLiq = window.confirm(`Este código de precinto ya está en uso por "${otroPrecintoLiq.nombre || otroPrecintoLiq.dni || "otro cliente"}". ¿Guardar de todas formas?`);
+          if (!seguirLiq) return;
+        }
+      } catch (_) {
+        // No critico: si falla la verificacion, no bloquea el guardado.
+      }
+    }
+
     if (liquidacionGuardandoRef.current) return;
     liquidacionGuardandoRef.current = true;
     setLiquidacionGuardando(true);
@@ -12356,6 +12381,7 @@ export default function App() {
         monto_cobrado: Number.isFinite(Number(liquidacion.montoCobrado)) ? Number(liquidacion.montoCobrado) : 0,
         medio_pago: String(liquidacion.medioPago || ""),
         codigo_etiqueta: String(liquidacion.codigoEtiqueta || ""),
+        precinto_codigo: String(liquidacion.codigoEtiqueta || ""),
         sn_onu: String(liquidacion.snOnu || ""),
         sn_onu_liquidacion: String(liquidacion.snOnu || ""),
         parametro: String(liquidacion.parametro || ""),
@@ -13694,6 +13720,28 @@ export default function App() {
 
   const guardarEdicionCliente = async () => {
     if (!clienteSeleccionado) return;
+    // Precinto repetido -- numero de precinto de fabrica, no deberia
+    // repetirse en toda la base. No bloquea (puede ser solo error de
+    // tipeo), solo avisa antes de continuar. Mismo criterio que en
+    // liquidacion (guardarLiquidacion) y que la app movil.
+    const precintoEditTrim = String(formEditarCliente.codigoEtiqueta || "").trim();
+    if (precintoEditTrim && isSupabaseConfigured) {
+      try {
+        const { data: otrosPrecintoEdit } = await supabase
+          .from(CLIENTES_TABLE)
+          .select("id,nombre,dni")
+          .eq("precinto_codigo", precintoEditTrim)
+          .neq("id", clienteSeleccionado.id)
+          .limit(1);
+        const otroPrecintoEdit = otrosPrecintoEdit?.[0];
+        if (otroPrecintoEdit) {
+          const seguir = window.confirm(`Este código de precinto ya está en uso por "${otroPrecintoEdit.nombre || otroPrecintoEdit.dni || "otro cliente"}". ¿Guardar de todas formas?`);
+          if (!seguir) return;
+        }
+      } catch (_) {
+        // No critico: si falla la verificacion, no bloquea el guardado.
+      }
+    }
     setGuardandoCliente(true);
     try {
       const f = formEditarCliente;
@@ -25933,7 +25981,7 @@ export default function App() {
                   {infoRow("Nodo", cli.nodo)}
                   {infoRow("Usuario PPPoE", cli.usuarioNodo, true, true)}
                   {infoRow("Contraseña", cli.passwordUsuario, true, true)}
-                  {infoRow("Cód. etiqueta", cli.codigoEtiqueta)}
+                  {infoRow("Cód. etiqueta", cli.precintoCodigo || cli.codigoEtiqueta)}
                   {infoRow("SN ONU", cli.snOnu, true)}
                   {cli.vlan && infoRow("VLAN", `${cli.vlan} — ${cli.vlan == 500 ? "Nod_06_A" : cli.vlan == 100 ? "Nod_06_B" : cli.vlan == 200 ? "Nod_04_A" : cli.vlan}`)}
                 </div>
