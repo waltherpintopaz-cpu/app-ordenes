@@ -27,6 +27,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroNodo, setFiltroNodo] = useState("Todos");
+  const [filtroPagado, setFiltroPagado] = useState("Todos"); // "Todos" | "Pagado" | "Pendiente"
 
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -64,11 +65,13 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return false;
       if (filtroCategorias.length > 0 && !filtroCategorias.includes(g.categoria || "Otros")) return false;
       if (filtroNodo !== "Todos" && (g.nodo || "") !== filtroNodo) return false;
+      if (filtroPagado === "Pagado" && !g.pagado) return false;
+      if (filtroPagado === "Pendiente" && g.pagado) return false;
       const q = filtroTexto.trim().toLowerCase();
       if (q && !String(g.descripcion || "").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategorias, filtroNodo, filtroTexto]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroCategorias, filtroNodo, filtroPagado, filtroTexto]);
 
   const total = useMemo(() => filtrados.reduce((s, g) => s + (Number(g.monto) || 0), 0), [filtrados]);
   const totalPagado = useMemo(() => filtrados.reduce((s, g) => s + (g.pagado ? (Number(g.monto) || 0) : 0), 0), [filtrados]);
@@ -106,13 +109,15 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       if (filtroMes && m !== filtroMes) return;
       if (filtroEntidad !== "Todas" && (g.entidad || "Personal") !== filtroEntidad) return;
       if (filtroNodo !== "Todos" && (g.nodo || "") !== filtroNodo) return;
+      if (filtroPagado === "Pagado" && !g.pagado) return;
+      if (filtroPagado === "Pendiente" && g.pagado) return;
       const q = filtroTexto.trim().toLowerCase();
       if (q && !String(g.descripcion || "").toLowerCase().includes(q)) return;
       const cat = g.categoria || "Otros";
       map.set(cat, (map.get(cat) || 0) + 1);
     });
     return map;
-  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroNodo, filtroTexto]);
+  }, [gastos, filtroAnio, filtroMes, filtroEntidad, filtroNodo, filtroPagado, filtroTexto]);
 
   const abrirModal = (g = null) => {
     if (g) {
@@ -217,7 +222,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategorias.length ? "-" + filtroCategorias.join("_") : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.csv`;
+    a.download = `gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategorias.length ? "-" + filtroCategorias.join("_") : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}${filtroPagado !== "Todos" ? "-" + filtroPagado : ""}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -227,7 +232,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
     const doc = new jsPDF();
     const periodoTxt = filtroMes ? `${MESES[filtroMes - 1]} ${filtroAnio}` : `Año ${filtroAnio}`;
     doc.setFontSize(16); doc.text("Reporte de Gastos", 14, 18);
-    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategorias.length ? ` · Categorías: ${filtroCategorias.join(", ")}` : ""}${filtroNodo !== "Todos" ? ` · Nodo: ${filtroNodo}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
+    doc.setFontSize(10); doc.text(`Período: ${periodoTxt}${filtroCategorias.length ? ` · Categorías: ${filtroCategorias.join(", ")}` : ""}${filtroNodo !== "Todos" ? ` · Nodo: ${filtroNodo}` : ""}${filtroPagado !== "Todos" ? ` · ${filtroPagado}` : ""}${filtroTexto.trim() ? ` · Búsqueda: "${filtroTexto.trim()}"` : ""}`, 14, 26);
     autoTable(doc, {
       startY: 32,
       head: [["Fecha", "Descripción", "Categoría", "Nodo", "Entidad", "Monto (S/)"]],
@@ -236,7 +241,7 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
       styles: { fontSize: 9 },
       footStyles: { fontStyle: "bold" },
     });
-    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategorias.length ? "-" + filtroCategorias.join("_") : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}.pdf`);
+    doc.save(`gastos_${filtroAnio}${filtroMes ? "-" + String(filtroMes).padStart(2, "0") : ""}${filtroCategorias.length ? "-" + filtroCategorias.join("_") : ""}${filtroNodo !== "Todos" ? "-" + filtroNodo : ""}${filtroPagado !== "Todos" ? "-" + filtroPagado : ""}.pdf`);
   };
 
   const inputSt = { padding: "8px 12px", borderRadius: 8, border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb", fontSize: 13, background: isDark ? "#1a2740" : "#fff", color: isDark ? "#e6ecf7" : "#111827" };
@@ -329,6 +334,11 @@ export default function GastosPersonalesPanel({ theme, sessionUser }) {
         <select value={filtroNodo} onChange={(e) => setFiltroNodo(e.target.value)} style={inputSt}>
           <option value="Todos">Todos los nodos</option>
           {nodosDisponibles.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+        <select value={filtroPagado} onChange={(e) => setFiltroPagado(e.target.value)} style={inputSt}>
+          <option value="Todos">Pagado y pendiente</option>
+          <option value="Pagado">Solo pagados</option>
+          <option value="Pendiente">Solo pendientes</option>
         </select>
         <input
           type="text"
