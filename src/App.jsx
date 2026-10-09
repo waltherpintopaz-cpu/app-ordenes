@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Star, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 // cache-bust: forzar commit nuevo porque EasyPanel estaba sirviendo un
@@ -3547,6 +3547,19 @@ export default function App() {
     }
     return set;
   }, [rolSesion, usuarioSesion, usuarios]);
+  // Contador para el badge de "Pendientes" en el menu lateral -- solo las
+  // del DIA DE HOY (fechaActuacion), no el total acumulado historico. Mismo
+  // criterio base que ordenesPendientesFiltradasSinTipo (estado operativo +
+  // restriccion de grupo de tecnico) pero SIN los filtros propios de esa
+  // pantalla (busqueda, tecnico, nodo).
+  const totalPendientesBadge = useMemo(() => {
+    const hoyStr = new Date().toISOString().split("T")[0];
+    let lista = ordenes.filter((item) => esEstadoOperativoOrden(item?.estado) && String(item?.fechaActuacion || "").slice(0, 10) === hoyStr);
+    if (nombresGrupoTecnicoLower) {
+      lista = lista.filter((o) => nombresGrupoTecnicoLower.has(String(o.tecnico || "").trim().toLowerCase()));
+    }
+    return lista.length;
+  }, [ordenes, nombresGrupoTecnicoLower]);
   const accesosSesion = useMemo(() => {
     const base = normalizarAccesosMenuWeb(usuarioSesion?.accesosMenu ?? usuarioSesion?.accesos_menu, usuarioSesion?.rol);
     if (rolSesion !== "Administrador") return base;
@@ -17135,22 +17148,27 @@ export default function App() {
     gap: "4px",
   };
 
+  // Barra de acento a la izquierda del item activo -- borderLeft en vez de
+  // un pseudo-elemento (los estilos aca son inline, no CSS real) para que
+  // anime con una transicion simple de color/ancho sin tener que montar
+  // nada aparte. El padding-left se compensa para que el texto no salte.
   const sideMenuButton = (active) => ({
     width: "calc(100% - 16px)",
     margin: "1px 8px",
     textAlign: "left",
     border: "none",
+    borderLeft: active ? `3px solid ${isDark ? "#7fa1d4" : "#1B6EC4"}` : "3px solid transparent",
     background: active ? (isDark ? "#1d2c48" : "#dbeafe") : "transparent",
     color: active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#c3d3ee" : "#374151"),
     borderRadius: "8px",
-    padding: "9px 12px",
+    padding: "9px 12px 9px 9px",
     fontSize: "13.5px",
     fontWeight: active ? 600 : 500,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     gap: "10px",
-    transition: "background 0.15s, color 0.15s",
+    transition: "background 0.15s ease, color 0.15s ease, border-color 0.2s ease, transform 0.12s ease",
   });
 
   const sideHistorialAppsheetButtonStyle = (active) => ({
@@ -17158,10 +17176,11 @@ export default function App() {
     margin: "1px 8px",
     textAlign: "left",
     border: "none",
+    borderLeft: active ? `3px solid ${isDark ? "#7fa1d4" : "#1B6EC4"}` : "3px solid transparent",
     background: active ? (isDark ? "#1d2c48" : "#dbeafe") : "transparent",
     color: active ? (isDark ? "#7fa1d4" : "#1B6EC4") : (isDark ? "#c3d3ee" : "#374151"),
     borderRadius: "8px",
-    padding: "9px 12px",
+    padding: "9px 12px 9px 9px",
     fontSize: "13.5px",
     fontWeight: active ? 600 : 500,
     cursor: "pointer",
@@ -17169,7 +17188,7 @@ export default function App() {
     alignItems: "center",
     gap: "10px",
     boxShadow: "none",
-    transition: "background 0.15s, color 0.15s",
+    transition: "background 0.15s ease, color 0.15s ease, border-color 0.2s ease, transform 0.12s ease",
   });
 
   const sideHistorialAppsheetSubmenuWrapStyle = {
@@ -17278,26 +17297,67 @@ export default function App() {
     if (item.key === "almacenes" && !esAdminSesion) return false;
     return true;
   });
+  // Favoritos: cada usuario puede "clavar" sus pantallas mas usadas arriba
+  // del todo, sin tener que navegar las secciones cada vez. Guardado por
+  // usuario (no global) en localStorage. Los items con submenu propio
+  // (historialAppsheet/reportes/maxplayerCuentas/bot) quedan afuera -- no
+  // tiene sentido favoritear algo que abre un submenu aparte.
+  const MENU_KEYS_CON_SUBMENU = useMemo(() => new Set(["historialAppsheet", "reportes", "maxplayerCuentas", "bot"]), []);
+  const menuFavoritosKey = `menuFavoritosWeb_${String(usuarioSesion?.username || usuarioSesion?.id || "anon")}`;
+  const [menuFavoritos, setMenuFavoritos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(menuFavoritosKey) || "[]"); } catch { return []; }
+  });
+  useEffect(() => {
+    try { setMenuFavoritos(JSON.parse(localStorage.getItem(menuFavoritosKey) || "[]")); } catch { setMenuFavoritos([]); }
+  }, [menuFavoritosKey]);
+  const toggleMenuFavorito = (key) => {
+    setMenuFavoritos((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      try { localStorage.setItem(menuFavoritosKey, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  const itemsFavoritos = useMemo(
+    () => mainMenuItems.filter((item) => menuFavoritos.includes(item.key) && !MENU_KEYS_CON_SUBMENU.has(item.key)),
+    [mainMenuItems, menuFavoritos, MENU_KEYS_CON_SUBMENU]
+  );
+  // Buscador rapido del menu -- con ~40 opciones repartidas en secciones,
+  // escribir 2-3 letras y que filtre ahorra tener que abrir cada seccion a
+  // mano. Mientras hay texto, las secciones que tengan algun match quedan
+  // forzadas abiertas (ignora el colapsado guardado).
+  const [menuBusqueda, setMenuBusqueda] = useState("");
+  const menuBusquedaNorm = menuBusqueda.trim().toLowerCase();
   // Agrupa mainMenuItems en secciones colapsables intercalando "encabezados"
   // sinteticos en el mismo array -- asi el render de cada item real (mas
   // abajo, con sus casos especiales de submenu) no se toca para nada, solo
   // se le filtran los items de un grupo colapsado.
   const mainMenuItemsAgrupados = useMemo(() => {
+    const itemsVisibles = menuBusquedaNorm
+      ? mainMenuItems.filter((item) => item.label.toLowerCase().includes(menuBusquedaNorm))
+      : mainMenuItems;
     const porGrupo = {};
-    mainMenuItems.forEach((item) => {
+    itemsVisibles.forEach((item) => {
       const grupo = MENU_GRUPO_POR_KEY_WEB[item.key] || "Otros";
       (porGrupo[grupo] = porGrupo[grupo] || []).push(item);
     });
     const out = [];
+    // Favoritos siempre primero, sin colapsar y sin pasar por el buscador
+    // (si estas buscando algo, ver tus favoritos de siempre no estorba).
+    if (itemsFavoritos.length > 0) {
+      const grupoFav = "⭐ Favoritos";
+      out.push({ __grupoHeader: true, grupo: grupoFav, key: `__hdr_${grupoFav}`, abierto: !menuGruposColapsados[grupoFav] });
+      if (!menuGruposColapsados[grupoFav]) out.push(...itemsFavoritos.map((item) => ({ ...item, __favorito: true })));
+      out.push({ __divider: true, key: "__divider_favoritos" });
+    }
     MENU_GRUPOS_ORDEN_WEB.forEach((grupo) => {
       const items = porGrupo[grupo];
       if (!items?.length) return;
-      const abierto = !menuGruposColapsados[grupo];
+      const abierto = menuBusquedaNorm ? true : !menuGruposColapsados[grupo];
       out.push({ __grupoHeader: true, grupo, key: `__hdr_${grupo}`, abierto });
       if (abierto) out.push(...items);
     });
     return out;
-  }, [mainMenuItems, menuGruposColapsados]);
+  }, [mainMenuItems, menuGruposColapsados, menuBusquedaNorm, itemsFavoritos]);
   const puedeGestionarSuspensionClientes = esAdminSesion || rolSesion === "Gestora";
   const diagnosticoMikrotik = diagnosticoServicioResultado?.mikrotik || null;
   const diagnosticoEstadoVisual = getDiagnosticoEstadoVisual(diagnosticoMikrotik?.estado);
@@ -17415,6 +17475,20 @@ export default function App() {
         />
       )}
       <aside style={sidebarStyle}>
+        {/* Hover sutil + scrollbar fina para el menu lateral -- sobrio,
+            sin gradientes llamativos, solo un desplazamiento y aclarado
+            minimo al pasar el mouse. Clase en vez de inline porque :hover
+            no existe en style inline. */}
+        <style>{`
+          .dim-side-btn:hover { background: ${isDark ? "rgba(127,161,212,0.12)" : "rgba(37,99,235,0.07)"} !important; transform: translateX(1px); }
+          .dim-side-btn:active { transform: scale(0.98); }
+          .dim-side-grupo-header:hover { color: ${isDark ? "#c3d3ee" : "#4b5563"} !important; }
+          .dim-sidebar-body::-webkit-scrollbar { width: 5px; }
+          .dim-sidebar-body::-webkit-scrollbar-track { background: transparent; }
+          .dim-sidebar-body::-webkit-scrollbar-thumb { background: ${isDark ? "#2c3c58" : "#e2e8f0"}; border-radius: 10px; }
+          .dim-sidebar-body::-webkit-scrollbar-thumb:hover { background: ${isDark ? "#3a4d6e" : "#cbd5e1"}; }
+          @keyframes dimSideFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        `}</style>
         <div style={sidebarHeaderStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%" }}>
             <img
@@ -17426,7 +17500,7 @@ export default function App() {
         </div>
         <div style={userCardStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "#1B6EC4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "15px", flexShrink: 0 }}>
+            <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: "#1B6EC4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "15px", flexShrink: 0, boxShadow: `0 0 0 3px ${isDark ? "rgba(127,161,212,0.18)" : "rgba(37,99,235,0.12)"}` }}>
               {(usuarioSesion?.nombre || "?")[0].toUpperCase()}
             </div>
             <div>
@@ -17438,21 +17512,57 @@ export default function App() {
         <div style={{ padding: "8px 12px", color: "#9ba4bb", fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
           Menú
         </div>
-        <div style={sidebarBodyStyle}>
-          {mainMenuItemsAgrupados.map((item) => {
+        <div style={{ padding: "0 12px 8px" }}>
+          <div style={{ position: "relative" }}>
+            <Search size={13} color={isDark ? "#6b7a99" : "#9ca3af"} style={{ position: "absolute", left: "9px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
+            <input
+              type="text"
+              value={menuBusqueda}
+              onChange={(e) => setMenuBusqueda(e.target.value)}
+              placeholder="Buscar en el menú..."
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "7px 10px 7px 28px", fontSize: "12.5px",
+                borderRadius: "7px", border: isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb",
+                background: isDark ? "#101a2e" : "#f8fafc", color: isDark ? "#e6ecf7" : "#374151", outline: "none",
+              }}
+            />
+            {!!menuBusqueda && (
+              <button
+                onClick={() => setMenuBusqueda("")}
+                style={{ position: "absolute", right: "6px", top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", cursor: "pointer", color: isDark ? "#6b7a99" : "#9ca3af", display: "flex", padding: "2px" }}
+                aria-label="Limpiar búsqueda"
+              >
+                <XCircle size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="dim-sidebar-body" style={sidebarBodyStyle}>
+          {mainMenuItemsAgrupados.map((item, idxMenu) => {
+            // Entrada escalonada al cargar/filtrar: cada encabezado de
+            // seccion aparece un poco despues que el anterior. Solo en los
+            // encabezados (no item por item) para que se note sin marear.
+            const staggerStyle = item.__grupoHeader
+              ? { animation: "dimSideFadeIn 0.3s ease backwards", animationDelay: `${Math.min(idxMenu, 10) * 35}ms` }
+              : null;
+            if (item.__divider) {
+              return <div key={item.key} style={{ height: "1px", background: isDark ? "#2c3c58" : "#eceef5", margin: "6px 10px 8px" }} />;
+            }
             if (item.__grupoHeader) {
               return (
                 <div
                   key={item.key}
+                  className="dim-side-grupo-header"
                   onClick={() => toggleMenuGrupo(item.grupo)}
                   style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "10px 10px 4px", marginTop: "4px", cursor: "pointer",
+                    padding: "10px 10px 4px", marginTop: "4px", cursor: "pointer", transition: "color 0.15s ease",
                     color: "#9ba4bb", fontSize: "10.5px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em",
+                    ...staggerStyle,
                   }}
                 >
                   <span>{item.grupo}</span>
-                  <span style={{ fontSize: "10px" }}>{item.abierto ? "▾" : "▸"}</span>
+                  <span style={{ fontSize: "10px", display: "inline-block", transition: "transform 0.2s ease", transform: item.abierto ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
                 </div>
               );
             }
@@ -17461,6 +17571,7 @@ export default function App() {
               return (
                 <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "4px" }}>
                   <button
+                    className="dim-side-btn"
                     key={`side-${item.key}`}
                     type="button"
                     style={sideHistorialAppsheetButtonStyle(isHistorialAppsheetActive)}
@@ -17495,7 +17606,7 @@ export default function App() {
                     {historialAppsheetSubmenuItemsPermitidos.map((submenu) => (
                       <button
                         key={`sub-hist-${submenu.key}`}
-                        type="button"
+                        type="button" className="dim-side-btn"
                         style={sideHistorialAppsheetSubmenuButtonStyle(historialAppsheetSubmenu === submenu.key)}
                         onClick={() => setHistorialAppsheetSubmenu(submenu.key)}
                       >
@@ -17513,6 +17624,7 @@ export default function App() {
               return (
                 <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "4px" }}>
                   <button
+                    className="dim-side-btn"
                     key={`side-${item.key}`}
                     type="button"
                     style={sideHistorialAppsheetButtonStyle(isReportesActive)}
@@ -17537,7 +17649,7 @@ export default function App() {
                     {reportesSubmenuItemsPermitidos.map((submenu) => (
                       <button
                         key={`sub-rep-${submenu.key}`}
-                        type="button"
+                        type="button" className="dim-side-btn"
                         style={sideHistorialAppsheetSubmenuButtonStyle(reportesSubmenu === submenu.key)}
                         onClick={() => setReportesSubmenu(submenu.key)}
                       >
@@ -17579,7 +17691,7 @@ export default function App() {
                     {maxplayerSubmenuItemsPermitidos.map((submenu) => (
                       <button
                         key={`sub-maxplayer-${submenu.key}`}
-                        type="button"
+                        type="button" className="dim-side-btn"
                         style={sideHistorialAppsheetSubmenuButtonStyle(isMaxplayerActive && maxplayerSubmenu === submenu.key)}
                         onClick={() => {
                           setMaxplayerSubmenu(submenu.key);
@@ -17623,7 +17735,7 @@ export default function App() {
                     {BOT_SUBMENU_ITEMS.map((submenu) => (
                       <button
                         key={`sub-bot-${submenu.key}`}
-                        type="button"
+                        type="button" className="dim-side-btn"
                         style={sideHistorialAppsheetSubmenuButtonStyle(isBotActive && botSubmenu === submenu.key)}
                         onClick={() => {
                           setBotSubmenu(submenu.key);
@@ -17638,13 +17750,42 @@ export default function App() {
               );
             }
 
+            const esFavoritoActual = menuFavoritos.includes(item.key);
             return (
-              <div key={`side-wrap-${item.key}`} style={{ display: "grid", gap: "2px" }}>
-                <button key={`side-${item.key}`} type="button" style={sideMenuButton(vistaActiva === item.key)} onClick={() => navTo(item.key)}>
-                  <span style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "flex-start" }}>
-                    {renderSidebarIcon(item.key, vistaActiva === item.key)}
-                    <span>{item.label}</span>
+              <div key={item.__favorito ? `side-wrap-fav-${item.key}` : `side-wrap-${item.key}`} style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                <button type="button" className="dim-side-btn" style={{ ...sideMenuButton(vistaActiva === item.key), flex: 1, minWidth: 0 }} onClick={() => navTo(item.key)}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "10px", justifyContent: "space-between", width: "100%", minWidth: 0 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                      {renderSidebarIcon(item.key, vistaActiva === item.key)}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
+                    </span>
+                    {item.key === "pendientes" && totalPendientesBadge > 0 && (
+                      <span style={{
+                        fontSize: "10.5px", fontWeight: 700, color: "#fff",
+                        background: vistaActiva === item.key ? "#1B6EC4" : "#94a3b8",
+                        borderRadius: "999px", padding: "1px 7px", minWidth: "18px", textAlign: "center",
+                        transition: "background 0.15s ease", flexShrink: 0,
+                      }}>
+                        {totalPendientesBadge > 99 ? "99+" : totalPendientesBadge}
+                      </span>
+                    )}
                   </span>
+                </button>
+                {/* Clavar/desclavar en Favoritos -- boton aparte (no anidado
+                    dentro del de navegacion), discreto, solo se resalta si
+                    ya esta marcado. */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toggleMenuFavorito(item.key); }}
+                  title={esFavoritoActual ? "Quitar de favoritos" : "Agregar a favoritos"}
+                  style={{
+                    border: "none", background: "transparent", cursor: "pointer", flexShrink: 0,
+                    padding: "6px", display: "flex", alignItems: "center", justifyContent: "center",
+                    color: esFavoritoActual ? "#f59e0b" : (isDark ? "#45547a" : "#d1d5db"),
+                    transition: "color 0.15s ease",
+                  }}
+                >
+                  <Star size={13} fill={esFavoritoActual ? "#f59e0b" : "none"} />
                 </button>
               </div>
             );
