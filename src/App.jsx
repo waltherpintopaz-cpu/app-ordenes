@@ -13249,23 +13249,43 @@ export default function App() {
     setUsuarioEditandoId(null);
   };
 
-  const editarUsuario = (usuario) => {
+  const editarUsuario = async (usuario) => {
+    // Mismo bug que caja_nap/precinto_codigo (ver comentarios en
+    // guardarClientesEnSupabase), version "usuarios": este formulario
+    // arma el guardado completo desde lo que ya habia en memoria. Si esa
+    // copia estaba vieja (ej. a este usuario le pusieron un "grupo" desde
+    // otra pestana/sesion despues de que esta pantalla cargo la lista),
+    // guardar CUALQUIER otro cambio volvia a pisar el grupo con el valor
+    // viejo (vacio). Bug real reportado: Cristian y Luis compartian
+    // equipo pero el grupo de Cristian aparecia vacio tras una edicion.
+    // Se trae el registro fresco de Supabase antes de llenar el
+    // formulario, en vez de confiar en la copia que ya estaba en memoria.
+    let usuarioFresco = usuario;
+    if (isSupabaseConfigured && usuario?.supabaseId) {
+      try {
+        const { data } = await supabase.from(USUARIOS_TABLE).select("*").eq("id", usuario.supabaseId).maybeSingle();
+        if (data) usuarioFresco = { ...usuario, ...deserializarUsuarioSupabase(data), id: usuario.id, supabaseId: usuario.supabaseId };
+      } catch (_) {
+        // Si falla, se sigue con la copia en memoria (mejor eso que bloquear la edicion).
+      }
+    }
     setUsuarioForm(normalizarUsuarioConPermisos({
-      nombre: usuario.nombre || "",
-      username: usuario.username || "",
-      password: usuario.password || "",
-      rol: normalizarRolSimple(usuario.rol || "Tecnico"),
-      celular: usuario.celular || "",
-      email: usuario.email || "",
-      empresa: usuario.empresa || "Americanet",
-      activo: !!usuario.activo,
-      accesosMenu: usuario.accesosMenu ?? usuario.accesos_menu,
+      nombre: usuarioFresco.nombre || "",
+      username: usuarioFresco.username || "",
+      password: usuarioFresco.password || "",
+      rol: normalizarRolSimple(usuarioFresco.rol || "Tecnico"),
+      celular: usuarioFresco.celular || "",
+      email: usuarioFresco.email || "",
+      empresa: usuarioFresco.empresa || "Americanet",
+      activo: !!usuarioFresco.activo,
+      accesosMenu: usuarioFresco.accesosMenu ?? usuarioFresco.accesos_menu,
       accesosHistorialAppsheet:
-        usuario.accesosHistorialAppsheet ?? usuario.accesos_historial_appsheet ?? usuario.accesosMenu ?? usuario.accesos_menu,
+        usuarioFresco.accesosHistorialAppsheet ?? usuarioFresco.accesos_historial_appsheet ?? usuarioFresco.accesosMenu ?? usuarioFresco.accesos_menu,
       accesosDiagnosticoServicio:
-        usuario.accesosDiagnosticoServicio ?? usuario.accesos_diagnostico_servicio ?? usuario.accesosMenu ?? usuario.accesos_menu,
-      nodosAcceso: usuario.nodosAcceso ?? usuario.nodos_acceso,
-      grupoVolanteo: usuario.grupoVolanteo ?? usuario.grupo_volanteo ?? "",
+        usuarioFresco.accesosDiagnosticoServicio ?? usuarioFresco.accesos_diagnostico_servicio ?? usuarioFresco.accesosMenu ?? usuarioFresco.accesos_menu,
+      nodosAcceso: usuarioFresco.nodosAcceso ?? usuarioFresco.nodos_acceso,
+      grupoVolanteo: usuarioFresco.grupoVolanteo ?? usuarioFresco.grupo_volanteo ?? "",
+      grupo: usuarioFresco.grupo ?? "",
     }));
     setUsuarioEditandoId(usuario.id);
     setVistaActiva("usuarios");
