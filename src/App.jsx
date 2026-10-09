@@ -2726,6 +2726,20 @@ export default function App() {
     });
     return Array.from(set).sort();
   }, [usuarios]);
+  // "Grupo" (equipo de tecnicos, no confundir con grupoVolanteo arriba) --
+  // era texto libre sin sugerencias: un espacio de mas o una mayuscula
+  // distinta entre 2 tecnicos del mismo equipo rompe en silencio el
+  // filtro que les deja verse las ordenes entre si (comparacion exacta,
+  // ver nombresGrupoTecnicoLower). Bug real reportado: un tecnico dejo de
+  // ver las ordenes de su companero de un momento a otro.
+  const gruposTecnicoExistentes = useMemo(() => {
+    const set = new Set();
+    usuarios.forEach((u) => {
+      const g = String(u?.grupo || "").trim();
+      if (g) set.add(g);
+    });
+    return Array.from(set).sort();
+  }, [usuarios]);
 
   const [clientes, setClientes] = useState(() => {
     // No usar localStorage para clientes — demasiados registros, se carga desde Supabase
@@ -3525,10 +3539,10 @@ export default function App() {
     if (rolSesion !== "Tecnico") return null;
     const nombrePropio = String(usuarioSesion?.nombre || "").trim().toLowerCase();
     const set = new Set([nombrePropio].filter(Boolean));
-    const grupoPropio = String(usuarioSesion?.grupo || "").trim();
+    const grupoPropio = String(usuarioSesion?.grupo || "").trim().toLowerCase();
     if (grupoPropio) {
       (Array.isArray(usuarios) ? usuarios : []).forEach((u) => {
-        if (String(u?.grupo || "").trim() === grupoPropio) set.add(String(u?.nombre || "").trim().toLowerCase());
+        if (String(u?.grupo || "").trim().toLowerCase() === grupoPropio) set.add(String(u?.nombre || "").trim().toLowerCase());
       });
     }
     return set;
@@ -22733,7 +22747,13 @@ export default function App() {
                           ) : (
                             <>
                               <label style={labelStyle}>Grupo</label>
-                              <input style={inputStyle} value={usuarioForm.grupo || ""} onChange={(e) => handleUsuarioChange("grupo", e.target.value)} placeholder="equipo-norte" />
+                              <input style={inputStyle} value={usuarioForm.grupo || ""} onChange={(e) => handleUsuarioChange("grupo", e.target.value)} placeholder="equipo-norte" list="grupos-tecnico-existentes" />
+                              <datalist id="grupos-tecnico-existentes">
+                                {gruposTecnicoExistentes.map((g) => <option key={g} value={g} />)}
+                              </datalist>
+                              <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94A3B8" }}>
+                                Elige uno de la lista o escribe uno nuevo — los técnicos con el mismo grupo (exacto, sin espacios de más) se ven las órdenes entre sí.
+                              </p>
                             </>
                           )}
                         </div>
