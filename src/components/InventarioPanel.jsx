@@ -737,6 +737,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
   const [articuloRegistroId, setArticuloRegistroId] = useState("");
   const [articulosMsg, setArticulosMsg] = useState("");
   const [eqPendReg, setEqPendReg] = useState([]);
+  const [guardandoLote, setGuardandoLote] = useState(false);
   const [eqPendAsig, setEqPendAsig] = useState([]);
   const [matPendAsig, setMatPendAsig] = useState([]);
   const [scanEqReg, setScanEqReg] = useState(false);
@@ -4152,6 +4153,7 @@ ${filasNodos}
               <button
                 type="button"
                 className="secondary-btn"
+                disabled={guardandoLote}
                 onClick={async () => {
                   if (!eqPendReg.length) return window.alert("No hay equipos en lista temporal.");
                   // Antes el upsert por codigo_qr no verificaba contra la BD
@@ -4159,75 +4161,90 @@ ${filasNodos}
                   // liquidado -- podia sobrescribirlo silenciosamente y
                   // desasignarlo. Se verifica primero contra la BD real (no
                   // el estado local, que puede estar desactualizado).
-                  const codigosLote = eqPendReg.map((x) => String(x.codigo_qr || "").trim()).filter(Boolean);
-                  if (codigosLote.length) {
-                    const { data: yaExisten } = await supabase.from("equipos_catalogo").select("codigo_qr").in("codigo_qr", codigosLote);
-                    if (yaExisten?.length) {
-                      return window.alert(`Estos códigos QR ya existen en el inventario (posible equipo ya asignado/liquidado): ${yaExisten.map((e) => e.codigo_qr).join(", ")}. Quita esos equipos de la lista antes de guardar.`);
+                  const loteActual = eqPendReg;
+                  setGuardandoLote(true);
+                  setQrRegistroMsg(`Guardando lote de ${loteActual.length} equipos, no cierres ni cambies de pantalla...`);
+                  try {
+                    const codigosLote = loteActual.map((x) => String(x.codigo_qr || "").trim()).filter(Boolean);
+                    if (codigosLote.length) {
+                      const { data: yaExisten } = await supabase.from("equipos_catalogo").select("codigo_qr").in("codigo_qr", codigosLote);
+                      if (yaExisten?.length) {
+                        setQrRegistroMsg("");
+                        return window.alert(`Estos códigos QR ya existen en el inventario (posible equipo ya asignado/liquidado): ${yaExisten.map((e) => e.codigo_qr).join(", ")}. Quita esos equipos de la lista antes de guardar.`);
+                      }
                     }
-                  }
-                  const payloadLote = eqPendReg.map((x) => ({
-                    empresa: x.empresa,
-                    tipo: x.tipo,
-                    marca: x.marca,
-                    modelo: x.modelo,
-                    precio_unitario: num(x.precio_unitario),
-                    codigo_qr: x.codigo_qr,
-                    serial_mac: x.serial_mac,
-                    foto_referencia: x.foto_referencia,
-                    estado: norm(x.estado).includes("almacen") ? "disponible" : x.estado,
-                    tecnico_asignado: x.tecnico_asignado || "",
-                    almacen_id: x.almacen_id || null,
-                    almacen_nombre: x.almacen_nombre || "",
-                  }));
-                  let saveLote = await supabase.from("equipos_catalogo").upsert(payloadLote, { onConflict: "codigo_qr" });
-                  if (saveLote.error && (columnMissing("almacen_id", saveLote.error) || columnMissing("almacen_nombre", saveLote.error))) {
-                    const payloadLegacy = payloadLote.map(({ almacen_id, almacen_nombre, ...rest }) => ({ ...rest }));
-                    saveLote = await supabase.from("equipos_catalogo").upsert(payloadLegacy, { onConflict: "codigo_qr" });
-                  }
-                  if (saveLote.error) return window.alert(saveLote.error.message || "No se pudo guardar.");
-                  // Cada equipo se registra con su propio reintento (hasta 3
-                  // veces) -- antes un solo fallo se tragaba en silencio y el
-                  // resto del lote quedaba sin movimiento de ingreso, sin
-                  // ningun aviso (se detecto un lote de 59 equipos donde 23
-                  // perdieron su registro asi).
-                  const fallidos = [];
-                  for (const item of eqPendReg) {
-                    let resultado = null;
-                    for (let intento = 0; intento < 3; intento += 1) {
-                      resultado = await registrarMov({
-                        tipoItem: "equipo",
-                        movimiento: "ingreso",
-                        motivo: "Registro por lote",
-                        itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`,
-                        referencia: item.codigo_qr,
-                        cantidad: 1,
-                        unidad: "unidad",
-                        costoUnitario: item.precio_unitario,
-                        tecnico: "",
-                        almacenId: item.almacen_id || "",
-                        almacenNombre: item.almacen_nombre || "",
-                      });
-                      if (resultado.ok) break;
+                    const payloadLote = loteActual.map((x) => ({
+                      empresa: x.empresa,
+                      tipo: x.tipo,
+                      marca: x.marca,
+                      modelo: x.modelo,
+                      precio_unitario: num(x.precio_unitario),
+                      codigo_qr: x.codigo_qr,
+                      serial_mac: x.serial_mac,
+                      foto_referencia: x.foto_referencia,
+                      estado: norm(x.estado).includes("almacen") ? "disponible" : x.estado,
+                      tecnico_asignado: x.tecnico_asignado || "",
+                      almacen_id: x.almacen_id || null,
+                      almacen_nombre: x.almacen_nombre || "",
+                    }));
+                    let saveLote = await supabase.from("equipos_catalogo").upsert(payloadLote, { onConflict: "codigo_qr" });
+                    if (saveLote.error && (columnMissing("almacen_id", saveLote.error) || columnMissing("almacen_nombre", saveLote.error))) {
+                      const payloadLegacy = payloadLote.map(({ almacen_id, almacen_nombre, ...rest }) => ({ ...rest }));
+                      saveLote = await supabase.from("equipos_catalogo").upsert(payloadLegacy, { onConflict: "codigo_qr" });
                     }
-                    if (!resultado.ok) fallidos.push({ qr: item.codigo_qr, error: resultado.error });
+                    if (saveLote.error) {
+                      setQrRegistroMsg("");
+                      return window.alert(saveLote.error.message || "No se pudo guardar.");
+                    }
+                    // Cada equipo se registra con su propio reintento (hasta 3
+                    // veces) y ahora EN PARALELO (antes era secuencial: con 8+
+                    // equipos y reintentos, el guardado podia tardar mucho, y
+                    // si el usuario cerraba o cambiaba de pantalla antes de que
+                    // terminara el bucle, el catalogo ya habia quedado guardado
+                    // pero el bucle de kardex se interrumpia a medias sin que
+                    // el aviso final llegara a mostrarse -- se detecto un lote
+                    // de 8 equipos donde los 8 perdieron su movimiento de
+                    // ingreso asi, sin ningun aviso en pantalla).
+                    const resultados = await Promise.all(loteActual.map(async (item) => {
+                      let resultado = null;
+                      for (let intento = 0; intento < 3; intento += 1) {
+                        resultado = await registrarMov({
+                          tipoItem: "equipo",
+                          movimiento: "ingreso",
+                          motivo: "Registro por lote",
+                          itemNombre: `${item.tipo} - ${item.marca} ${item.modelo}`,
+                          referencia: item.codigo_qr,
+                          cantidad: 1,
+                          unidad: "unidad",
+                          costoUnitario: item.precio_unitario,
+                          tecnico: "",
+                          almacenId: item.almacen_id || "",
+                          almacenNombre: item.almacen_nombre || "",
+                        });
+                        if (resultado.ok) break;
+                      }
+                      return { qr: item.codigo_qr, ok: resultado.ok, error: resultado.error };
+                    }));
+                    const fallidos = resultados.filter((r) => !r.ok);
+                    setEqPendReg((prev) => prev.filter((x) => !loteActual.includes(x)));
+                    if (fallidos.length) {
+                      window.alert(
+                        `Lote guardado (${resultados.length - fallidos.length}/${resultados.length} movimientos registrados en el kardex).\n\n` +
+                        `Los equipos YA quedaron en el catalogo, pero estos ${fallidos.length} no registraron su ingreso en el kardex ` +
+                        `(reintentar desde el kardex o contactar soporte):\n` +
+                        fallidos.map((f) => `- ${f.qr}: ${f.error}`).join("\n")
+                      );
+                      setQrRegistroMsg(`Lote guardado con ${fallidos.length} movimiento(s) pendiente(s) -- revisa el aviso.`);
+                    } else {
+                      setQrRegistroMsg("Lote guardado correctamente.");
+                    }
+                    await cargar();
+                  } finally {
+                    setGuardandoLote(false);
                   }
-                  setEqPendReg([]);
-                  if (fallidos.length) {
-                    window.alert(
-                      `Lote guardado (${eqPendReg.length - fallidos.length}/${eqPendReg.length} movimientos registrados en el kardex).\n\n` +
-                      `Los equipos YA quedaron en el catalogo, pero estos ${fallidos.length} no registraron su ingreso en el kardex ` +
-                      `(reintentar desde el kardex o contactar soporte):\n` +
-                      fallidos.map((f) => `- ${f.qr}: ${f.error}`).join("\n")
-                    );
-                    setQrRegistroMsg(`Lote guardado con ${fallidos.length} movimiento(s) pendiente(s) -- revisa el aviso.`);
-                  } else {
-                    setQrRegistroMsg("Lote guardado correctamente.");
-                  }
-                  await cargar();
                 }}
               >
-                Guardar lote ({eqPendReg.length})
+                {guardandoLote ? "Guardando lote..." : `Guardar lote (${eqPendReg.length})`}
               </button>
             </div>
           </article>
