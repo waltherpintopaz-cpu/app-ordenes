@@ -12738,7 +12738,7 @@ export default function App() {
           const stockMap = new Map();
           asigRows.forEach(row => {
             const key = `${String(row.material_nombre || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
-            stockMap.set(key, { id: row.id, disponible: Number(row.cantidad_disponible || 0), disponibleOriginal: Number(row.cantidad_disponible || 0) });
+            stockMap.set(key, { id: row.id, unidad: row.unidad || "unidad", disponible: Number(row.cantidad_disponible || 0), disponibleOriginal: Number(row.cantidad_disponible || 0) });
           });
           (prevMats || []).forEach(row => {
             const key = `${String(row.material || "").trim().toLowerCase()}|${String(row.unidad || "unidad").trim()}`;
@@ -12750,20 +12750,26 @@ export default function App() {
             if (slot) slot.disponible = Math.max(0, slot.disponible - Number(row.cantidad || 0));
             else avisos.push(`Material "${row.material}" no asignado al técnico`);
           });
-          for (const slot of stockMap.values()) {
-            if (slot.disponible === slot.disponibleOriginal) continue;
-            // Guardia .eq(cantidad_disponible, valor leido): si otra liquidacion
-            // del mismo tecnico escribio este material entremedio (lectura-
-            // modificacion-escritura no atomica), esta escritura no lo pisa
-            // silenciosamente -- avisa en vez de aplicar un delta calculado
-            // sobre un valor ya desactualizado.
-            const upd = await supabase.from("materiales_asignados_tecnicos")
-              .update({ cantidad_disponible: slot.disponible })
-              .eq("id", slot.id)
-              .eq("cantidad_disponible", slot.disponibleOriginal)
-              .select("id");
-            if (upd.error || !upd.data?.length) {
-              avisos.push(`No se pudo actualizar el stock de un material del técnico (otro movimiento lo cambió al mismo tiempo); revisa su stock manualmente.`);
+          for (const [key, slot] of stockMap.entries()) {
+            const delta = slot.disponible - slot.disponibleOriginal;
+            if (delta === 0) continue;
+            // Ajuste atomico en el servidor (ver migracion
+            // 20261010_ajustar_material_tecnico_atomico.sql) en vez de leer el
+            // saldo, calcular el delta en JS y escribirlo -- un UPDATE ... SET
+            // x = x + delta es atomico aunque dos liquidaciones del mismo
+            // tecnico se guarden al mismo tiempo, sin necesidad de guardia
+            // optimista ni de avisar "revisa manualmente".
+            const [materialNombre] = key.split("|");
+            const { error: errAjuste } = await supabase.rpc("ajustar_material_tecnico", {
+              p_tecnico: tecnicoLiq,
+              p_material_id: null,
+              p_material_nombre: materialNombre,
+              p_unidad: slot.unidad,
+              p_delta_disponible: delta,
+              p_delta_asignado: 0,
+            });
+            if (errAjuste) {
+              avisos.push(`No se pudo actualizar el stock de un material del técnico: ${errAjuste.message || errAjuste}`);
             }
           }
         }
