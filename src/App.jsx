@@ -394,7 +394,6 @@ const MENU_VISTAS_WEB = [
   { key: "bot", label: "Bot" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
   { key: "mkwEstado", label: "Estado MikroWisp" },
-  { key: "wispro", label: "WisPro Notif." },
   { key: "nap", label: "Cajas NAP" },
   { key: "cobertura", label: "Consultar cobertura" },
   { key: "promociones", label: "Promociones" },
