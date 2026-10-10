@@ -2512,31 +2512,37 @@ const server = http.createServer(async (req, res) => {
       const sn = new URL(req.url, "http://localhost").searchParams.get("sn");
       if (!sn) { writeJson(res, 400, { ok: false, error: "Falta sn" }); return; }
 
-      // VSOL (DIM) no tiene un servicio equivalente al cruce SN->MAC->
-      // MikroTik que usa Huawei -- olt-signal-dim no expone la MAC de la
-      // ONU por ningun endpoint (se probo onu-macs-puerto/onu-info/mac,
-      // ninguno existe ahi). Pero la OLT VSOL ya trae el nombre real del
-      // cliente en la descripcion de la ONU desde ANTES del etiquetado
-      // (confirmado en produccion: un cliente con caja_nap/puerto_nap aun
-      // en null ya tenia sn_onu guardado y el evento de la OLT ya devolvia
-      // su nombre correcto) -- alcanza con buscar directo por
-      // clientes.sn_onu, sin Mikrotik de por medio.
+      // VSOL (DIM) -- mismo principio que Huawei (SN -> MAC real -> secret
+      // de MikroTik por esa MAC -> usuario PPPoE -> cliente), pero el cruce
+      // SN->MAC ya esta resuelto del lado de olt-signal-dim, no aca: ese
+      // servicio expone /identificar-por-sn, que localiza la ONU por SNMP,
+      // lee la tabla de direcciones MAC real de la OLT por SSH, y cruza
+      // contra los PPP secrets del MikroTik de esa OLT especifica (ya
+      // confirmado en produccion con 2 clientes reales). No se confia en
+      // clientes.sn_onu -- si esa columna estuviera mal cargada daria el
+      // cliente equivocado sin ningun aviso; este camino nunca depende de
+      // lo que haya quedado guardado, solo de la red en vivo, igual de
+      // estricto que el camino Huawei.
       if (OLT_SIGNAL_PROVIDER === "vsol") {
         try {
-          const filas = await fetchSupabaseRows("clientes", `sn_onu=eq.${encodeURIComponent(sn)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap,puerto_sub,precinto_codigo,ubicacion,foto_fachada,fotos_liquidacion`);
-          const cliente = filas?.[0] || null;
-          if (!cliente) {
-            writeJson(res, 200, { ok: false, error: "No se encontró ningún cliente con ese SN de ONU (sn_onu no coincide con ningún registro)." });
+          const ident = await fetch(`${OLT_SSH_API}/identificar-por-sn?sn=${encodeURIComponent(sn)}`).then((r) => r.json());
+          if (!ident?.ok) {
+            writeJson(res, 200, { ok: false, error: ident?.error || "No se pudo identificar la ONU en la OLT VSOL." });
             return;
           }
-          // Tarjeta/puerto + señal en vivo -- no critico, si falla igual se
-          // devuelve el cliente (el match ya es valido sin esto).
-          let ficha = null;
-          try {
-            const sig = await fetch(`${OLT_SSH_API}/signal?sn=${encodeURIComponent(sn)}&nodo=${encodeURIComponent(cliente.nodo || "")}`).then((r) => r.json());
-            if (sig?.ok) ficha = { board: sig.slot ?? null, port: sig.port ?? null, rxPower: sig.rxPower ?? null, txPower: sig.txPower ?? null };
-          } catch (_) { /* no critico */ }
-          writeJson(res, 200, { ok: true, sn, mac: null, ficha, mikrotik: null, cliente });
+          if (!ident.usuario) {
+            writeJson(res, 200, { ok: false, error: ident.aviso || "Se encontró la MAC de la ONU pero no coincide con ningún PPP secret del MikroTik." });
+            return;
+          }
+          const filas = await fetchSupabaseRows("clientes", `usuario_nodo=eq.${encodeURIComponent(ident.usuario)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap,puerto_sub,precinto_codigo,ubicacion,foto_fachada,fotos_liquidacion`);
+          const cliente = filas?.[0] || null;
+          if (!cliente) {
+            writeJson(res, 200, { ok: false, error: `Se identificó el usuario PPPoE "${ident.usuario}" pero no hay ningún cliente con ese usuario_nodo registrado.` });
+            return;
+          }
+          const ficha = { board: null, port: ident.port ?? null, onuId: ident.onuId ?? null, oltName: ident.oltName || null };
+          const mikrotik = { usuario: ident.usuario, comentario: ident.comentario || null };
+          writeJson(res, 200, { ok: true, sn, mac: ident.mac || null, ficha, mikrotik, cliente });
         } catch (e) {
           writeJson(res, 200, { ok: false, error: e.message || String(e) });
         }
