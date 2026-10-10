@@ -19307,7 +19307,18 @@ export default function App() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {nombresTecnicosOrdenados.map((tecNombre) => {
+                <style>{`
+                  @keyframes pendTecFadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+                  @keyframes pendTecSlideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+                  .pend-tec-card { transition: box-shadow .18s ease, border-color .18s ease; }
+                  .pend-tec-card:hover { box-shadow: 0 2px 10px rgba(15,23,42,0.07); border-color: #c7d2fe; }
+                  .pend-tec-header { transition: background .15s ease; }
+                  .pend-tec-header:hover { background: #f8fafc; }
+                  .pend-tec-header:active { background: #eef2ff; }
+                  .pend-tec-body { animation: pendTecSlideDown .2s ease; }
+                  .pend-bar-seg { transition: width .5s cubic-bezier(.4,0,.2,1); }
+                `}</style>
+                {nombresTecnicosOrdenados.map((tecNombre, tecIdx) => {
                   const listaTec = gruposPorTecnico[tecNombre];
                   // Con busqueda activa se despliegan todos los grupos automaticamente --
                   // si no, el resultado queda "escondido" dentro de un grupo colapsado y
@@ -19323,8 +19334,9 @@ export default function App() {
                   const pendienteTec = listaTec.length - enProcesoTec - atendidasTec;
                   const inicialTec = tecNombre.trim().charAt(0).toUpperCase() || "?";
                   return (
-                    <div key={tecNombre} style={{ border: "1px solid #e8edf5", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff" }}>
+                    <div key={tecNombre} className="pend-tec-card" style={{ border: "1px solid #e8edf5", borderRadius: 14, overflow: "hidden", background: isDark ? "#16213a" : "#fff", animation: "pendTecFadeIn .3s ease backwards", animationDelay: `${Math.min(tecIdx, 10) * 40}ms` }}>
                       <button
+                        className="pend-tec-header"
                         onClick={() => setTecnicoGruposAbiertos((prev) => ({ ...prev, [tecNombre]: !prev[tecNombre] }))}
                         style={{
                           width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
@@ -19332,7 +19344,7 @@ export default function App() {
                         }}
                       >
                         <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 15, transform: abierto ? "rotate(90deg)" : "none", transition: "transform 0.15s", color: "#94a3b8" }}>▶</span>
+                          <span style={{ fontSize: 15, transform: abierto ? "rotate(90deg)" : "none", transition: "transform 0.2s ease", color: "#94a3b8", display: "inline-block" }}>▶</span>
                           <span style={{
                             width: 32, height: 32, borderRadius: 16, flexShrink: 0,
                             background: PC.neutroBg, border: `1px solid ${PC.neutroBorder}`,
@@ -19343,9 +19355,9 @@ export default function App() {
                             <span style={{ fontWeight: 800, fontSize: 14, color: isDark ? "#e6ecf7" : "#0f172a" }}>{tecNombre}</span>
                             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <span style={{ width: 90, height: 6, borderRadius: 3, overflow: "hidden", display: "flex", background: "#e5e7eb" }}>
-                                {pendienteTec > 0 && <span title={`${pendienteTec} pendiente${pendienteTec === 1 ? "" : "s"}`} style={{ width: `${(pendienteTec / listaTec.length) * 100}%`, background: PC.pendiente }} />}
-                                {enProcesoTec > 0 && <span title={`${enProcesoTec} en proceso`} style={{ width: `${(enProcesoTec / listaTec.length) * 100}%`, background: PC.proceso }} />}
-                                {atendidasTec > 0 && <span title={`${atendidasTec} atendida${atendidasTec === 1 ? "" : "s"} sin liquidar`} style={{ width: `${(atendidasTec / listaTec.length) * 100}%`, background: PC.atendida }} />}
+                                {pendienteTec > 0 && <span className="pend-bar-seg" title={`${pendienteTec} pendiente${pendienteTec === 1 ? "" : "s"}`} style={{ width: `${(pendienteTec / listaTec.length) * 100}%`, background: PC.pendiente }} />}
+                                {enProcesoTec > 0 && <span className="pend-bar-seg" title={`${enProcesoTec} en proceso`} style={{ width: `${(enProcesoTec / listaTec.length) * 100}%`, background: PC.proceso }} />}
+                                {atendidasTec > 0 && <span className="pend-bar-seg" title={`${atendidasTec} atendida${atendidasTec === 1 ? "" : "s"} sin liquidar`} style={{ width: `${(atendidasTec / listaTec.length) * 100}%`, background: PC.atendida }} />}
                               </span>
                               <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b" }}>{listaTec.length} orden{listaTec.length === 1 ? "" : "es"}</span>
                             </span>
@@ -19356,7 +19368,7 @@ export default function App() {
                         </span>
                       </button>
                       {abierto && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 10px 10px" }}>
+                      <div className="pend-tec-body" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 10px 10px" }}>
                 {listaTec.map((item) => {
                   const tipoBadge = getOrdenTipoBadge(item.orden);
                   const accentColor = getOrdenTipoBorderColor(item.orden);
