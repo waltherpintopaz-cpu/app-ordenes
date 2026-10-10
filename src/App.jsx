@@ -1941,7 +1941,7 @@ const RANGOS_SENAL_HISTORIAL = [
   { key: "anio", label: "Anual", horas: 24 * 365 },
 ];
 
-function GraficoSenalHistorial({ sn }) {
+function GraficoSenalHistorial({ sn, sinMargen }) {
   const [rango, setRango] = useState("dia");
   const [filas, setFilas] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2008,7 +2008,7 @@ function GraficoSenalHistorial({ sn }) {
   const maxAbs = puntos.length ? Math.max(...puntos.map(p => p.rx)) : null;
 
   return (
-    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginTop: sinMargen ? 0 : 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           📈 Historial de señal (Rx)
@@ -2039,7 +2039,7 @@ function GraficoSenalHistorial({ sn }) {
       )}
       {!loading && !error && puntos.length >= 2 && (
         <>
-          <div style={{ width: "100%", maxWidth: 640, height: 180 }}>
+          <div style={{ width: "100%", height: 170 }}>
             <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
               <defs>
                 <linearGradient id="gradSenalHist" x1="0" y1="0" x2="0" y2="1">
@@ -2076,7 +2076,7 @@ function GraficoSenalHistorial({ sn }) {
 // ver huawei-olt-signal/index.js OID.bytesUp/bytesDown). Mismo patron que
 // GraficoSenalHistorial: lee trafico_onu_historial, calculado por el job
 // pollearTrafico() cada 15min.
-function GraficoTrafico({ sn }) {
+function GraficoTrafico({ sn, sinMargen }) {
   const [rango, setRango] = useState("dia");
   const [filas, setFilas] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2141,7 +2141,7 @@ function GraficoTrafico({ sn }) {
   };
 
   return (
-    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
+    <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginTop: sinMargen ? 0 : 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           📶 Tráfico (Upload/Download)
@@ -2172,7 +2172,7 @@ function GraficoTrafico({ sn }) {
       )}
       {!loading && !error && puntos.length >= 2 && (
         <>
-          <div style={{ width: "100%", maxWidth: 640, height: 180 }}>
+          <div style={{ width: "100%", height: 170 }}>
             <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
               {ticksY.map((t, i) => (
                 <g key={i}>
@@ -26379,7 +26379,7 @@ export default function App() {
 
               {/* ── Señal ONU — VSOL/SSH ── */}
               {cli.snOnu && nodoUsaOltSsh(cli.nodo) && (
-                <div style={{ background: "linear-gradient(135deg,#f0f9ff,#e0f2fe)", border: "1.5px solid #7dd3fc", borderRadius: 16, padding: "18px 24px" }}>
+                <div style={{ background: "linear-gradient(135deg,#f0f9ff,#e0f2fe)", border: "1.5px solid #7dd3fc", borderRadius: 16, padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#075985", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                       📶 Señal OLT — {cli.snOnu}{cli.vlan ? ` · VLAN ${cli.vlan}` : ""}
@@ -26444,7 +26444,7 @@ export default function App() {
 
               {/* ── Señal ONU — SmartOLT/Huawei ── */}
               {cli.snOnu && nodoUsaHuawei(cli.nodo) && (
-                <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "18px 24px" }}>
+                <div style={{ background: "linear-gradient(135deg,#f0fdf4,#dcfce7)", border: "1.5px solid #86efac", borderRadius: 16, padding: "14px 18px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 800, color: "#166534", textTransform: "uppercase", letterSpacing: "0.08em" }}>📶 Señal ONU — {cli.snOnu}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -26503,8 +26503,10 @@ export default function App() {
                       <span>Sin señal registrada — presiona "Consultar Señal" para obtener datos en tiempo real.</span>
                     </div>
                   )}
-                  <GraficoSenalHistorial sn={cli.snOnu} />
-                  <GraficoTrafico sn={cli.snOnu} />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 12, marginTop: 12 }}>
+                    <GraficoSenalHistorial sn={cli.snOnu} sinMargen />
+                    <GraficoTrafico sn={cli.snOnu} sinMargen />
+                  </div>
                   <ResumenConsumo sn={cli.snOnu} />
                   <FichaOnuHuawei sn={cli.snOnu} />
                 </div>
