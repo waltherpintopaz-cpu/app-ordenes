@@ -7050,11 +7050,25 @@ export default function App() {
           const backupRes = await supabase.from(CLIENTES_TABLE).select("*");
           if (backupRes.error) throw backupRes.error;
           const backup = backupRes.data || [];
-
-          const del = await supabase.from(CLIENTES_TABLE).delete().not("id", "is", null);
-          if (del.error) throw del.error;
-
-          const rowsNoId = payload.map(rowNoIdOf);
+          const backupPorId = new Map(backup.map((r) => [r.id, r]));
+          // Esta rama reconstruye la tabla ENTERA desde cero -- a diferencia
+          // del upsert normal de arriba (donde excluir caja_nap/puerto_nap/
+          // precinto_codigo/etc de la copia en memoria es lo correcto, para
+          // no pisar lo que haya cambiado por otro lado), aca cualquier campo
+          // que no se mande en el insert se pierde para SIEMPRE, no se queda
+          // "como estaba". rowNoIdOf() parte de "payload", que ya tiene esos
+          // campos borrados a proposito mas arriba -- sin este merge, un
+          // import de Google Sheet que choque con el error de identity
+          // (428C9) borraba caja/puerto/etiqueta/estado de TODA la tabla,
+          // no solo de los clientes importados. Se repone desde "backup"
+          // (el respaldo recien leido, antes del delete).
+          const PROTEGIDOS_RECONSTRUCCION = ["caja_nap", "puerto_nap", "precinto_codigo", "codigo_etiqueta", "estado_servicio", "fecha_suspendido", "en_mikrowisp", "vlan", "sn_onu"];
+          const rowsNoId = payload.map((p) => {
+            const row = rowNoIdOf(p);
+            const orig = backupPorId.get(p.id);
+            if (orig) PROTEGIDOS_RECONSTRUCCION.forEach((k) => { row[k] = orig[k] ?? null; });
+            return row;
+          });
           const insChunks = [];
           for (let i = 0; i < rowsNoId.length; i += 500) insChunks.push(rowsNoId.slice(i, i + 500));
           try {
