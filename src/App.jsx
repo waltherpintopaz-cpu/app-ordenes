@@ -13800,12 +13800,22 @@ export default function App() {
     // formulario, para no arrastrar un dato stale.
     let cajaNapFresca = cli.cajaNap || "";
     let puertoNapFresco = cli.puertoNap || "";
+    // precinto_codigo tiene el mismo riesgo que caja_nap/puerto_nap arriba,
+    // pero peor: "Etiquetado de ONU" (app movil) escribe precinto_codigo,
+    // NO codigo_etiqueta (campo viejo/deprecado) -- asi que cli.codigoEtiqueta
+    // en memoria practicamente SIEMPRE esta vacio para un cliente etiquetado
+    // por un tecnico, aunque el precinto si este bien guardado en la base.
+    // Guardar esta edicion sin refrescar esto primero pisaba ese precinto
+    // real con "" -> null (bug real reportado: se borra la etiqueta y solo
+    // queda caja/puerto).
+    let codigoEtiquetaFresco = cli.precintoCodigo || cli.codigoEtiqueta || "";
     if (isSupabaseConfigured && cli.id) {
       try {
-        const { data } = await supabase.from(CLIENTES_TABLE).select("caja_nap, puerto_nap").eq("id", cli.id).maybeSingle();
+        const { data } = await supabase.from(CLIENTES_TABLE).select("caja_nap, puerto_nap, precinto_codigo, codigo_etiqueta").eq("id", cli.id).maybeSingle();
         if (data) {
           cajaNapFresca = data.caja_nap || "";
           puertoNapFresco = data.puerto_nap || "";
+          codigoEtiquetaFresco = data.precinto_codigo || data.codigo_etiqueta || "";
         }
       } catch { /* si falla, se usa el valor en memoria como antes */ }
     }
@@ -13824,11 +13834,11 @@ export default function App() {
       passwordUsuario: cli.passwordUsuario || "",
       snOnu: cli.snOnu || "",
       vlan: cli.vlan != null ? String(cli.vlan) : "",
-      codigoEtiqueta: cli.codigoEtiqueta || "",
+      codigoEtiqueta: codigoEtiquetaFresco,
       codigoCliente: cli.codigoCliente || cli.codigoAbonado || "",
       estadoServicio: cli.estadoServicio || "ACTIVO",
-      cajaNap: cli.cajaNap || "",
-      puertoNap: cli.puertoNap || "",
+      cajaNap: cajaNapFresca,
+      puertoNap: puertoNapFresco,
       descripcion: cli.descripcion || "",
       ubicacion: cli.ubicacion || "",
       fotoFachada: cli.fotoFachada || "",
