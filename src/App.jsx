@@ -907,6 +907,44 @@ const buildInitialOrder = () => ({
   codigoAbonadoExistente: "",
 });
 
+// Icono de puerto/adaptador optico -- version web del mismo diseño usado en
+// SelectorPuertoCaja.js (app movil, Etiquetado de ONUs / Liquidacion), para
+// que el grid de bornes de Crear Orden se vea igual que esa pantalla.
+const PORT_ICON_COLORS = { plate: "#E7EAEF", plateEdge: "#B7BEC9", adapter: "#2F9E46", adapter2: "#3FBF5A", dustcap: "#D7DCE2", cable: "#1B1F26", cableCore: "#454C58", boot: "#454C58" };
+function PortIconWeb({ ocupado, colorOverride }) {
+  const C = PORT_ICON_COLORS;
+  const adapterColor = colorOverride || C.adapter;
+  const adapterColor2 = colorOverride || C.adapter2;
+  if (!ocupado) {
+    return (
+      <svg viewBox="0 0 44 52" width="100%" height="100%">
+        <rect x={3} y={15} width={38} height={22} rx={6} fill={C.plate} stroke={C.plateEdge} strokeWidth={1.2} />
+        <rect x={8} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.5} />
+        <rect x={30} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.5} />
+        <rect x={13} y={18} width={18} height={16} rx={3.5} fill={C.adapter} opacity={0.5} />
+        <rect x={16.5} y={22} width={11} height={8} rx={2} fill={C.dustcap} />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 44 52" width="100%" height="100%">
+      <rect x={3} y={15} width={38} height={22} rx={6} fill={C.plate} stroke={C.plateEdge} strokeWidth={1.2} />
+      <path d="M22 38 C22 43, 22 44, 22 50" fill="none" stroke={C.cable} strokeWidth={5.5} strokeLinecap="round" />
+      <path d="M22 38 C22 43, 22 44, 22 50" fill="none" stroke={C.cableCore} strokeWidth={1.4} strokeLinecap="round" opacity={0.45} />
+      <rect x={19} y={34} width={6} height={7} rx={1.8} fill={C.boot} />
+      <rect x={8} y={21} width={6} height={10} rx={1.6} fill={adapterColor} />
+      <rect x={30} y={21} width={6} height={10} rx={1.6} fill={adapterColor} />
+      <rect x={13} y={18} width={18} height={16} rx={3.5} fill={adapterColor} />
+      <rect x={16.5} y={1} width={11} height={19} rx={3} fill={adapterColor2} />
+      <rect x={18.5} y={3.2} width={7} height={2.4} rx={1.1} fill="rgba(255,255,255,0.6)" />
+      <rect x={18.5} y={7} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.12)" />
+      <rect x={18.5} y={10} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.12)" />
+      <rect x={14.5} y={21} width={15} height={9} rx={1.8} fill="#EEF3FF" opacity={0.95} />
+      <rect x={14.5} y={21} width={15} height={3} rx={1.4} fill="#FFFFFF" opacity={0.45} />
+    </svg>
+  );
+}
+
 function numberOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -18835,14 +18873,19 @@ export default function App() {
                     </div>
 
                     {/* Bornes/puertos de la caja elegida -- quienes clientes la ocupan
-                        y, para gestor/admin, elegir un puerto libre para la orden. */}
+                        y, para gestor/admin, elegir un puerto libre para la orden.
+                        Mismo lenguaje visual (bandeja + iconos de adaptador SC/APC +
+                        entrada escalonada con resorte) que SelectorPuertoCaja.js en
+                        la app movil (Etiquetado de ONUs / Liquidacion). */}
                     {orden.cajaNap && (
                       <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #eef2f7" }}>
                         <style>{`
-                          @keyframes borneFadeIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
-                          .borne-tile { transition: transform .12s ease, box-shadow .12s ease; animation: borneFadeIn .22s ease backwards; }
-                          .borne-tile.libre:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 3px 10px rgba(15,23,42,0.12); }
-                          .borne-tile.libre:active { transform: scale(0.95); }
+                          @keyframes borneFadeIn { from { opacity: 0; transform: scale(.5) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+                          .borne-tile-wrap { animation: borneFadeIn .36s cubic-bezier(.34,1.56,.64,1) backwards; }
+                          .borne-icon { transition: transform .15s cubic-bezier(.34,1.56,.64,1), box-shadow .15s ease; }
+                          .borne-tile-wrap.libre:hover .borne-icon { transform: scale(1.12) translateY(-2px); box-shadow: 0 4px 12px rgba(15,23,42,0.15); }
+                          .borne-tile-wrap.libre:active .borne-icon { transform: scale(0.94); }
+                          .borne-tile-wrap.sel .borne-icon { transform: scale(1.1); }
                         `}</style>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
                           <label style={labelStyle}>Bornes de {orden.cajaNap}</label>
@@ -18859,40 +18902,45 @@ export default function App() {
                           <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando bornes…</div>
                         ) : cajaBornesInfo ? (
                           <>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: 8, maxWidth: 520 }}>
-                              {Array.from({ length: cajaBornesInfo.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
-                                const ocupantes = cajaBornesInfo.porPuerto[puerto] || [];
-                                const confirmado = ocupantes.some(c => c.precinto_codigo);
-                                const libre = ocupantes.length === 0;
-                                const sel = orden.puertoNap === puerto;
-                                const puedeAsignar = (esGestorSesion || esAdminSesion) && libre;
-                                const bg = sel ? "#1d4ed8" : confirmado ? "#16a34a" : !libre ? "#f59e0b" : "#f1f5f9";
-                                const fg = sel || confirmado || !libre ? "#fff" : "#64748b";
-                                const titulo = libre ? `Puerto ${puerto} — libre` : `Puerto ${puerto} — ${ocupantes.map(c => c.nombre).join(", ")}${confirmado ? " (confirmado en campo)" : " (sin confirmar)"}`;
-                                return (
-                                  <div
-                                    key={puerto}
-                                    className={`borne-tile ${libre ? "libre" : ""}`}
-                                    title={titulo}
-                                    onClick={() => { if (puedeAsignar) handleChange("puertoNap", sel ? "" : puerto); }}
-                                    style={{
-                                      animationDelay: `${Math.min(idx, 24) * 15}ms`,
-                                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                                      height: 52, borderRadius: 10, background: bg, color: fg,
-                                      border: sel ? "2px solid #1e3a8a" : "1px solid rgba(15,23,42,0.06)",
-                                      cursor: puedeAsignar ? "pointer" : "default",
-                                      boxShadow: sel ? "0 0 0 3px rgba(29,78,216,0.18)" : "none",
-                                    }}
-                                  >
-                                    <span style={{ fontSize: 13, fontWeight: 800 }}>{puerto}</span>
-                                    {!libre && (
-                                      <span style={{ fontSize: 9, fontWeight: 600, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                        {ocupantes[0].nombre?.split(" ")[0] || "—"}
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                            <div style={{ position: "relative", background: "#2b2f38", borderRadius: 14, padding: "20px 16px 14px", maxWidth: 560 }}>
+                              <div style={{ position: "absolute", top: 8, left: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a" }} />
+                              <div style={{ position: "absolute", top: 8, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a" }} />
+                              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#8d93a3", marginBottom: 10 }}>
+                                SPLITTER 1:{cajaBornesInfo.capacidad}
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(50px, 1fr))", gap: 10 }}>
+                                {Array.from({ length: cajaBornesInfo.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
+                                  const ocupantes = cajaBornesInfo.porPuerto[puerto] || [];
+                                  const confirmado = ocupantes.some(c => c.precinto_codigo);
+                                  const libre = ocupantes.length === 0;
+                                  const sel = orden.puertoNap === puerto;
+                                  const puedeAsignar = (esGestorSesion || esAdminSesion) && libre;
+                                  const colorOverride = sel ? "#1d4ed8" : !libre && !confirmado ? "#f59e0b" : undefined;
+                                  const titulo = libre ? `Puerto ${puerto} — libre` : `Puerto ${puerto} — ${ocupantes.map(c => c.nombre).join(", ")}${confirmado ? " (confirmado en campo)" : " (sin confirmar)"}`;
+                                  return (
+                                    <div
+                                      key={puerto}
+                                      className={`borne-tile-wrap ${libre ? "libre" : ""} ${sel ? "sel" : ""}`}
+                                      title={titulo}
+                                      onClick={() => { if (puedeAsignar) handleChange("puertoNap", sel ? "" : puerto); }}
+                                      style={{ animationDelay: `${Math.min(idx, 24) * 22}ms`, display: "flex", flexDirection: "column", alignItems: "center", cursor: puedeAsignar ? "pointer" : "default" }}
+                                    >
+                                      <div className="borne-icon" style={{
+                                        width: 36, height: 42, position: "relative",
+                                        filter: sel ? "drop-shadow(0 0 0 2px #1d4ed8)" : "none",
+                                      }}>
+                                        <PortIconWeb ocupado={!libre} colorOverride={colorOverride} />
+                                      </div>
+                                      <span style={{ fontSize: 10, fontWeight: 800, color: sel ? "#93c5fd" : !libre ? "#e2e8f0" : "#8d93a3", marginTop: 2 }}>{puerto}</span>
+                                      {!libre && (
+                                        <span style={{ fontSize: 8.5, fontWeight: 600, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#aab1c2" }}>
+                                          {ocupantes[0].nombre?.split(" ")[0] || "—"}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 11, color: "#64748b" }}>
                               <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#16a34a", display: "inline-block" }} />Confirmado en campo</span>
