@@ -2584,7 +2584,13 @@ const server = http.createServer(async (req, res) => {
             };
 
             if (usuario) {
-              const filas = await fetchSupabaseRows("clientes", `usuario_nodo=eq.${encodeURIComponent(usuario)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap,ubicacion,foto_fachada,fotos_liquidacion`);
+              // precinto_codigo/puerto_sub se agregan al select: sin esto, el
+              // tecnico siempre veia el campo de precinto en blanco al escanear
+              // un cliente YA etiquetado antes (el endpoint nunca devolvia ese
+              // dato), lo que lo hacia re-escribir un numero nuevo/vacio sobre
+              // un precinto que ya estaba bien confirmado -- bug real: precintos
+              // que "se borraban solos" al volver a escanear la misma caja.
+              const filas = await fetchSupabaseRows("clientes", `usuario_nodo=eq.${encodeURIComponent(usuario)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap,puerto_sub,precinto_codigo,ubicacion,foto_fachada,fotos_liquidacion`);
               cliente = filas?.[0] || null;
             }
           }
