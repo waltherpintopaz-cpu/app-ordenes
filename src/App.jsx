@@ -24441,14 +24441,26 @@ export default function App() {
                           })}
                         </tr>
                       </thead>
+                      <style>{`
+                        @keyframes cliRowFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+                      `}</style>
                       <tbody>
                         {clientesPaginados.map((cliente, idx) => {
                           const est = String(cliente.estadoServicio || "DESCONOCIDO").toUpperCase();
                           const estCfg = { ACTIVO: { c: "#16a34a", bg: "#dcfce7", l: "Activo" }, SUSPENDIDO: { c: "#dc2626", bg: "#fee2e2", l: "Suspendido" }, INACTIVO: { c: "#6b7280", bg: "#f3f4f6", l: "Inactivo" }, DESCONOCIDO: { c: "#d97706", bg: "#fef3c7", l: "Desc." } }[est] || { c: "#6b7280", bg: "#f3f4f6", l: est };
                           return (
-                            <tr key={cliente.id || idx} style={{ borderTop: isDark ? "1px solid #16213a" : "1px solid #f8fafc", cursor: "default" }}
+                            <tr key={cliente.id || idx}
+                              onClick={() => void abrirDetalleCliente(cliente)}
+                              title="Ver ficha del cliente"
+                              style={{
+                                borderTop: isDark ? "1px solid #16213a" : "1px solid #f8fafc", cursor: "pointer",
+                                transition: "background .15s ease, transform .1s ease",
+                                animation: "cliRowFadeIn .25s ease backwards", animationDelay: `${Math.min(idx, 20) * 18}ms`,
+                              }}
                               onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#fafbff"}
-                              onMouseLeave={e => e.currentTarget.style.background = ""}>
+                              onMouseLeave={e => e.currentTarget.style.background = ""}
+                              onMouseDown={e => e.currentTarget.style.transform = "scale(0.997)"}
+                              onMouseUp={e => e.currentTarget.style.transform = "scale(1)"}>
                               {colsClientesVisibles.cliente && (
                               <td style={{ padding: "11px 14px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -24466,7 +24478,7 @@ export default function App() {
                                       )}
                                       {cliente.iptv_usuario && (
                                         <span
-                                          onClick={() => abrirModalIptv(cliente)}
+                                          onClick={(e) => { e.stopPropagation(); abrirModalIptv(cliente); }}
                                           title={`IPTV: ${cliente.iptv_usuario}${cliente.iptv_perfil ? ` — ${cliente.iptv_perfil}` : ""}`}
                                           style={{ background: "#f5f3ff", color: "#7c3aed", borderRadius: 999, padding: "1px 7px", fontSize: 9, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
                                           📺 {cliente.iptv_usuario}
@@ -24553,7 +24565,7 @@ export default function App() {
                                 const level = rxOk ? (rx >= -18 ? 4 : rx >= -22 ? 3 : rx >= -25 ? 2 : 1) : 0;
                                 const color = rxOk ? (rx >= -22 ? "#16a34a" : rx >= -25 ? "#d97706" : "#dc2626") : (hasErr ? "#dc2626" : "#cbd5e1");
                                 const dim   = "#e2e8f0";
-                                const handleClick = () => isHuawei ? void consultarSenalHuaweiTabla(cliente) : void consultarSenalOltSshTabla(cliente);
+                                const handleClick = (e) => { e.stopPropagation(); isHuawei ? void consultarSenalHuaweiTabla(cliente) : void consultarSenalOltSshTabla(cliente); };
                                 return (
                                   <td style={{ padding: "6px 14px", textAlign: "center" }}>
                                     <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "pointer" }} onClick={handleClick} title={rxOk ? `${rx} dBm — clic para actualizar` : "Clic para consultar señal"}>
@@ -24574,7 +24586,7 @@ export default function App() {
                                   </td>
                                 );
                               })()}
-                              <td style={{ padding: "8px 14px" }}>
+                              <td style={{ padding: "8px 14px" }} onClick={(e) => e.stopPropagation()}>
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
                                   {/* Button group: Ver | +Orden | SN señal */}
                                   <div style={{ display: "inline-flex", alignItems: "stretch", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
