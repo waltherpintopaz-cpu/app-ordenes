@@ -2249,6 +2249,7 @@ function GraficoTrafico({ sn, sinMargen }) {
 // integrado a bytes por el gap real entre lecturas, tope 30min).
 function ResumenConsumo({ sn }) {
   const [filas, setFilas] = useState([]);
+  const [abierto, setAbierto] = useState(false);
   useEffect(() => {
     if (!sn) return;
     let cancelado = false;
@@ -2299,28 +2300,37 @@ function ResumenConsumo({ sn }) {
   if (!resumen) return null;
   return (
     <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "14px 16px", marginTop: 12 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-        📊 Resumen de consumo
+      <div
+        onClick={() => setAbierto(v => !v)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          📊 Resumen de consumo
+        </span>
+        <span style={{ fontSize: 12, color: "#6b7280" }}>{abierto ? "▲ Ocultar" : "▼ Ver"}</span>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-        <thead>
-          <tr>
-            {["", "Download", "Upload", "Total"].map((h, i) => (
-              <th key={i} style={{ textAlign: i === 0 ? "left" : "right", padding: "3px 6px", color: "#9ca3af", fontWeight: 700, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {[["Hoy", resumen.hoy], ["Ayer", resumen.ayer], ["Esta semana", resumen.semana], ["Este mes", resumen.mes], ["Mes pasado", resumen.mesPasado], ["Este año", resumen.anio]].map(([label, b]) => (
-            <tr key={label} style={{ borderTop: "1px solid #f3f4f6" }}>
-              <td style={{ padding: "5px 6px", color: "#374151" }}>{label}</td>
-              <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.down)}</td>
-              <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.up)}</td>
-              <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151", fontWeight: 700 }}>{fmtBytes(b.down + b.up)}</td>
+      <style>{`@keyframes resumenConsumoFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      {abierto && (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 10, animation: "resumenConsumoFadeIn .25s ease" }}>
+          <thead>
+            <tr>
+              {["", "Download", "Upload", "Total"].map((h, i) => (
+                <th key={i} style={{ textAlign: i === 0 ? "left" : "right", padding: "3px 6px", color: "#9ca3af", fontWeight: 700, fontSize: 10, textTransform: "uppercase" }}>{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {[["Hoy", resumen.hoy], ["Ayer", resumen.ayer], ["Esta semana", resumen.semana], ["Este mes", resumen.mes], ["Mes pasado", resumen.mesPasado], ["Este año", resumen.anio]].map(([label, b]) => (
+              <tr key={label} style={{ borderTop: "1px solid #f3f4f6" }}>
+                <td style={{ padding: "5px 6px", color: "#374151" }}>{label}</td>
+                <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.down)}</td>
+                <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151" }}>{fmtBytes(b.up)}</td>
+                <td style={{ padding: "5px 6px", textAlign: "right", color: "#374151", fontWeight: 700 }}>{fmtBytes(b.down + b.up)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -26423,6 +26433,94 @@ export default function App() {
                 </div>
               )}
 
+              {/* ── Info grid ── (subido arriba de Señal/Gráficos: nombre,
+                  direccion, plan, usuario PPPoE, caja NAP son lo que mas se
+                  consulta en el dia a dia -- antes quedaban despues de todo
+                  el bloque tecnico, obligando a hacer scroll para verlos) */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16 }}>
+
+                {/* Datos personales */}
+                <div style={cardDet}>
+                  <span style={secLabel}>Datos personales</span>
+                  {infoRow("Nombre", cli.nombre)}
+                  {infoRow("DNI", cli.dni, true, true)}
+                  {infoRow("Dirección", cli.direccion)}
+                  {infoRow("Celular", cli.celular)}
+                  {infoRow("Email", cli.email)}
+                  {infoRow("Contacto", cli.contacto)}
+                  {infoRow("Empresa", cli.empresa)}
+                </div>
+
+                {/* Servicio */}
+                <div style={cardDet}>
+                  <span style={secLabel}>Servicio</span>
+                  {infoRow("Código abonado", cli.codigoCliente || cli.codigoAbonado, true)}
+                  {infoRow("Plan", cli.velocidad)}
+                  {infoRow("Precio", cli.precioPlan)}
+                  {infoRow("Nodo", cli.nodo)}
+                  {infoRow("Usuario PPPoE", cli.usuarioNodo, true, true)}
+                  {infoRow("Contraseña", cli.passwordUsuario, true, true)}
+                  {infoRow("Cód. etiqueta", cli.precintoCodigo || cli.codigoEtiqueta)}
+                  {infoRow("SN ONU", cli.snOnu, true)}
+                  {cli.vlan && infoRow("VLAN", `${cli.vlan} — ${cli.vlan == 500 ? "Nod_06_A" : cli.vlan == 100 ? "Nod_06_B" : cli.vlan == 200 ? "Nod_04_A" : cli.vlan}`)}
+                </div>
+
+                {/* NAP */}
+                {(cli.cajaNap || cli.puertoNap) && (
+                  <div style={{ ...cardDet, background: "linear-gradient(135deg,#fff7ed,#ffedd5)", border: "1.5px solid #fed7aa" }}>
+                    <span style={{ ...secLabel, color: "#c2410c" }}>Infraestructura NAP</span>
+                    {cli.cajaNap && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                        <span style={{ fontSize: 32 }}>📦</span>
+                        <div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: "#9a3412" }}>{cli.cajaNap}</div>
+                          <div style={{ fontSize: 11, color: "#c2410c", marginTop: 2 }}>Caja NAP asignada</div>
+                        </div>
+                      </div>
+                    )}
+                    {infoRow("Puerto NAP", cli.puertoNap, true)}
+                  </div>
+                )}
+
+                {/* Registro */}
+                <div style={cardDet}>
+                  <span style={secLabel}>Registro</span>
+                  {infoRow("Técnico", cli.tecnico)}
+                  {infoRow("Autor", cli.autorOrden)}
+                  {infoRow("Descripción", cli.descripcion)}
+                  {infoRow("Registrado", cli.fechaRegistro ? formatFechaFlexible(cli.fechaRegistro) : "")}
+                  {infoRow("Últ. actualización", cli.ultimaActualizacion ? formatFechaFlexible(cli.ultimaActualizacion) : "")}
+                </div>
+
+                {/* Ubicación — mapa */}
+                {(() => {
+                  const coords = String(cli.ubicacion || "").trim();
+                  const parts = coords.split(",").map(s => parseFloat(s.trim()));
+                  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+                  const lat = parts[0], lng = parts[1];
+                  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.002},${lat - 0.002},${lng + 0.002},${lat + 0.002}&layer=mapnik&marker=${lat},${lng}`;
+                  const gmUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+                  return (
+                    <div style={{ ...cardDet, gridColumn: "1 / -1", padding: 0, overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #e8edf5" }}>
+                        <span style={secLabel}>Ubicación</span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span onClick={() => copyText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)} title="Clic para copiar coordenadas" style={{ fontSize: 11, color: "#2563eb", fontFamily: "monospace", cursor: "pointer" }}>{lat.toFixed(6)}, {lng.toFixed(6)}</span>
+                          <a href={gmUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 7, padding: "3px 10px", textDecoration: "none" }}>Ver en Google Maps</a>
+                        </div>
+                      </div>
+                      <iframe
+                        title="ubicacion-cliente"
+                        src={mapUrl}
+                        style={{ width: "100%", height: 220, border: "none", display: "block" }}
+                        loading="lazy"
+                      />
+                      <StreetViewThumb coordenadas={coords} height={200} style={{ borderRadius: 0 }} />
+                    </div>
+                  );
+                })()}
+              </div>
+
               {/* ── Señal ONU — VSOL/SSH ── */}
               {cli.snOnu && nodoUsaOltSsh(cli.nodo) && (
                 <div style={{ background: "linear-gradient(135deg,#f0f9ff,#e0f2fe)", border: "1.5px solid #7dd3fc", borderRadius: 16, padding: "14px 18px" }}>
@@ -26557,91 +26655,6 @@ export default function App() {
                   <FichaOnuHuawei sn={cli.snOnu} />
                 </div>
               )}
-
-              {/* ── Info grid ── */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 16 }}>
-
-                {/* Datos personales */}
-                <div style={cardDet}>
-                  <span style={secLabel}>Datos personales</span>
-                  {infoRow("Nombre", cli.nombre)}
-                  {infoRow("DNI", cli.dni, true, true)}
-                  {infoRow("Dirección", cli.direccion)}
-                  {infoRow("Celular", cli.celular)}
-                  {infoRow("Email", cli.email)}
-                  {infoRow("Contacto", cli.contacto)}
-                  {infoRow("Empresa", cli.empresa)}
-                </div>
-
-                {/* Servicio */}
-                <div style={cardDet}>
-                  <span style={secLabel}>Servicio</span>
-                  {infoRow("Código abonado", cli.codigoCliente || cli.codigoAbonado, true)}
-                  {infoRow("Plan", cli.velocidad)}
-                  {infoRow("Precio", cli.precioPlan)}
-                  {infoRow("Nodo", cli.nodo)}
-                  {infoRow("Usuario PPPoE", cli.usuarioNodo, true, true)}
-                  {infoRow("Contraseña", cli.passwordUsuario, true, true)}
-                  {infoRow("Cód. etiqueta", cli.precintoCodigo || cli.codigoEtiqueta)}
-                  {infoRow("SN ONU", cli.snOnu, true)}
-                  {cli.vlan && infoRow("VLAN", `${cli.vlan} — ${cli.vlan == 500 ? "Nod_06_A" : cli.vlan == 100 ? "Nod_06_B" : cli.vlan == 200 ? "Nod_04_A" : cli.vlan}`)}
-                </div>
-
-                {/* NAP */}
-                {(cli.cajaNap || cli.puertoNap) && (
-                  <div style={{ ...cardDet, background: "linear-gradient(135deg,#fff7ed,#ffedd5)", border: "1.5px solid #fed7aa" }}>
-                    <span style={{ ...secLabel, color: "#c2410c" }}>Infraestructura NAP</span>
-                    {cli.cajaNap && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
-                        <span style={{ fontSize: 32 }}>📦</span>
-                        <div>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: "#9a3412" }}>{cli.cajaNap}</div>
-                          <div style={{ fontSize: 11, color: "#c2410c", marginTop: 2 }}>Caja NAP asignada</div>
-                        </div>
-                      </div>
-                    )}
-                    {infoRow("Puerto NAP", cli.puertoNap, true)}
-                  </div>
-                )}
-
-                {/* Registro */}
-                <div style={cardDet}>
-                  <span style={secLabel}>Registro</span>
-                  {infoRow("Técnico", cli.tecnico)}
-                  {infoRow("Autor", cli.autorOrden)}
-                  {infoRow("Descripción", cli.descripcion)}
-                  {infoRow("Registrado", cli.fechaRegistro ? formatFechaFlexible(cli.fechaRegistro) : "")}
-                  {infoRow("Últ. actualización", cli.ultimaActualizacion ? formatFechaFlexible(cli.ultimaActualizacion) : "")}
-                </div>
-
-                {/* Ubicación — mapa */}
-                {(() => {
-                  const coords = String(cli.ubicacion || "").trim();
-                  const parts = coords.split(",").map(s => parseFloat(s.trim()));
-                  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
-                  const lat = parts[0], lng = parts[1];
-                  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.002},${lat - 0.002},${lng + 0.002},${lat + 0.002}&layer=mapnik&marker=${lat},${lng}`;
-                  const gmUrl = `https://www.google.com/maps?q=${lat},${lng}`;
-                  return (
-                    <div style={{ ...cardDet, gridColumn: "1 / -1", padding: 0, overflow: "hidden" }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid #e8edf5" }}>
-                        <span style={secLabel}>Ubicación</span>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <span onClick={() => copyText(`${lat.toFixed(6)}, ${lng.toFixed(6)}`)} title="Clic para copiar coordenadas" style={{ fontSize: 11, color: "#2563eb", fontFamily: "monospace", cursor: "pointer" }}>{lat.toFixed(6)}, {lng.toFixed(6)}</span>
-                          <a href={gmUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 7, padding: "3px 10px", textDecoration: "none" }}>Ver en Google Maps</a>
-                        </div>
-                      </div>
-                      <iframe
-                        title="ubicacion-cliente"
-                        src={mapUrl}
-                        style={{ width: "100%", height: 220, border: "none", display: "block" }}
-                        loading="lazy"
-                      />
-                      <StreetViewThumb coordenadas={coords} height={200} style={{ borderRadius: 0 }} />
-                    </div>
-                  );
-                })()}
-              </div>
 
               {/* ── Fotos ── */}
               <div style={cardDet}>
