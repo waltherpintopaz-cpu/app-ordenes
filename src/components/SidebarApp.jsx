@@ -1275,7 +1275,12 @@ export default function SidebarApp() {
   // ── Cargar datos completos a partir de una row de mikrowisp_clientes ────────
   async function cargarDesdeRow(row) {
     const nodoNum = Number(row.nodo);
-    const empresa = nodoNum === 5 ? "dimfiber" : nodoNum === 11 ? "nod06" : "americanet";
+    // Nod_05 (router 11) y Nod_06 (router 12) -- ver nodos_config / nodos.js.
+    // Antes esto estaba hardcodeado al reves (11="nod06"), lo que hacia que
+    // un cliente de Nod_06 (router 12) cayera en el "else" y se mostrara
+    // como si fuera de Americanet. Usamos el mapa dinamico MW_NODO_MAP para
+    // no volver a hardcodear un numero que ya cambio una vez en produccion.
+    const empresa = nodoNum === 5 ? "dimfiber" : nodoNum === MW_NODO_MAP["Nod_06"] ? "nod06" : "americanet";
     const cli = { ...row, empresa };
     setCliente(cli);
     setError(null);
@@ -1361,7 +1366,7 @@ export default function SidebarApp() {
   // ── Cargar cliente que no tiene cuenta en MikroWisp (solo datos internos) ──
   async function cargarDesdeClienteLocal(row) {
     const nodoNum = Number(row.nodo);
-    const empresa = row.empresa || (nodoNum === 5 ? "dimfiber" : nodoNum === 11 ? "nod06" : "americanet");
+    const empresa = row.empresa || (nodoNum === 5 ? "dimfiber" : nodoNum === MW_NODO_MAP["Nod_06"] ? "nod06" : "americanet");
     const cli = {
       mikrowisp_id: null,
       sinMikrowisp: true,
