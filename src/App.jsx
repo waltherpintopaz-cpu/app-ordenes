@@ -1941,6 +1941,38 @@ const RANGOS_SENAL_HISTORIAL = [
   { key: "anio", label: "Anual", horas: 24 * 365 },
 ];
 
+// Curva suave (Catmull-Rom -> Bezier) en vez de tramos rectos -- con los
+// graficos ahora ocupando todo el ancho disponible (ver fix de espacio
+// desperdiciado), una linea recta entre pocos puntos se ve "estirada" y
+// poco pulida; una curva suave disimula eso y se ve mucho mas profesional.
+function pathSuavizado(pts) {
+  if (!pts.length) return "";
+  if (pts.length === 1) return `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+// Animacion de "dibujado" al cargar (stroke-dasharray/offset normalizado a 1
+// via pathLength="1", asi funciona igual sin importar el largo real de la
+// curva) + fade-in del relleno -- mismo <style> reutilizado por los 2
+// graficos de esta pantalla.
+const ESTILO_GRAFICO_ANIM = `
+  @keyframes dibujarLineaGrafico { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes fadeInGrafico { from { opacity: 0; } to { opacity: 1; } }
+  .grafico-linea-dibujo { stroke-dasharray: 1; stroke-dashoffset: 1; animation: dibujarLineaGrafico 1s cubic-bezier(.22,1,.36,1) forwards; }
+  .grafico-area-fade { opacity: 0; animation: fadeInGrafico .7s ease .3s forwards; }
+`;
+
 function GraficoSenalHistorial({ sn, sinMargen }) {
   const [rango, setRango] = useState("dia");
   const [filas, setFilas] = useState([]);
@@ -1987,7 +2019,7 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
     const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
     const x = (t) => PAD_L + ((t - tMin) / (tMax - tMin || 1)) * (W - PAD_L - PAD_R);
     const y = (rx) => PAD_T + (1 - (rx - min) / (max - min)) * (H - PAD_T - PAD_B);
-    const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p.rx).toFixed(1)}`).join(" ");
+    const d = pathSuavizado(puntos.map(p => [x(p.t), y(p.rx)]));
     const yTicks = [min, min + (max - min) / 2, max].map(v => ({ v, y: y(v) }));
     const xTickCount = 4;
     const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
@@ -2039,6 +2071,7 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
       )}
       {!loading && !error && puntos.length >= 2 && (
         <>
+          <style>{ESTILO_GRAFICO_ANIM}</style>
           <div style={{ width: "100%", height: 170 }}>
             <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
               <defs>
@@ -2056,8 +2089,8 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
               {ticksX.map((t, i) => (
                 <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
               ))}
-              {pathD && <path d={`${pathD} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill="url(#gradSenalHist)" stroke="none" />}
-              <path d={pathD} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              {pathD && <path className="grafico-area-fade" d={`${pathD} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill="url(#gradSenalHist)" stroke="none" />}
+              <path key={pathD} className="grafico-linea-dibujo" pathLength="1" d={pathD} fill="none" stroke="#f97316" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4 }}>
@@ -2110,8 +2143,8 @@ function GraficoTrafico({ sn, sinMargen }) {
 
   const W = 640, H = 180, PAD_L = 44, PAD_R = 12, PAD_T = 14, PAD_B = 28;
 
-  const { dUp, dDown, ticksY, ticksX, ultimoUp, ultimoDown, maxDown } = useMemo(() => {
-    if (puntos.length < 2) return { dUp: "", dDown: "", ticksY: [], ticksX: [], ultimoUp: null, ultimoDown: null, maxDown: 0 };
+  const { dUp, dDown, dDownArea, ticksY, ticksX, ultimoUp, ultimoDown, maxDown } = useMemo(() => {
+    if (puntos.length < 2) return { dUp: "", dDown: "", dDownArea: "", ticksY: [], ticksX: [], ultimoUp: null, ultimoDown: null, maxDown: 0 };
     const todos = puntos.flatMap(p => [p.up, p.down]).filter(v => v != null);
     let max = (todos.length ? Math.max(...todos) : 0.1) * 1.15 || 0.1;
     const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
@@ -2120,8 +2153,13 @@ function GraficoTrafico({ sn, sinMargen }) {
     const lineaDe = (campo) => {
       const pts = puntos.filter(p => p[campo] != null);
       if (pts.length < 2) return "";
-      return pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)},${y(p[campo]).toFixed(1)}`).join(" ");
+      return pathSuavizado(pts.map(p => [x(p.t), y(p[campo])]));
     };
+    const baseY = (H - PAD_B).toFixed(1);
+    const ptsDown = puntos.filter(p => p.down != null);
+    const areaDown = ptsDown.length >= 2
+      ? `${pathSuavizado(ptsDown.map(p => [x(p.t), y(p.down)]))} L${x(ptsDown[ptsDown.length - 1].t).toFixed(1)},${baseY} L${x(ptsDown[0].t).toFixed(1)},${baseY} Z`
+      : "";
     const yTicks = [0, max / 2, max].map(v => ({ v, y: y(v) }));
     const xTickCount = 4;
     const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) => {
@@ -2130,7 +2168,7 @@ function GraficoTrafico({ sn, sinMargen }) {
     });
     const ultUp = [...puntos].reverse().find(p => p.up != null)?.up ?? null;
     const ultDown = [...puntos].reverse().find(p => p.down != null)?.down ?? null;
-    return { dUp: lineaDe("up"), dDown: lineaDe("down"), ticksY: yTicks, ticksX: xTicks, ultimoUp: ultUp, ultimoDown: ultDown, maxDown: Math.max(...puntos.map(p => p.down || 0)) };
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), dDownArea: areaDown, ticksY: yTicks, ticksX: xTicks, ultimoUp: ultUp, ultimoDown: ultDown, maxDown: Math.max(...puntos.map(p => p.down || 0)) };
   }, [puntos]);
 
   const fmtFecha = (t) => {
@@ -2172,8 +2210,15 @@ function GraficoTrafico({ sn, sinMargen }) {
       )}
       {!loading && !error && puntos.length >= 2 && (
         <>
+          <style>{ESTILO_GRAFICO_ANIM}</style>
           <div style={{ width: "100%", height: 170 }}>
             <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+              <defs>
+                <linearGradient id="gradTraficoDown" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.18" />
+                  <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                </linearGradient>
+              </defs>
               {ticksY.map((t, i) => (
                 <g key={i}>
                   <line x1={PAD_L} x2={W - PAD_R} y1={t.y} y2={t.y} stroke="#e5e7eb" strokeWidth="1" />
@@ -2183,8 +2228,9 @@ function GraficoTrafico({ sn, sinMargen }) {
               {ticksX.map((t, i) => (
                 <text key={i} x={t.x} y={H - 8} textAnchor="middle" fontSize="9" fill="#9ca3af">{fmtFecha(t.t)}</text>
               ))}
-              <path d={dDown} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d={dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              {dDownArea && <path className="grafico-area-fade" d={dDownArea} fill="url(#gradTraficoDown)" stroke="none" />}
+              <path key={`down-${dDown}`} className="grafico-linea-dibujo" pathLength="1" d={dDown} fill="none" stroke="#3b82f6" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
+              <path key={`up-${dUp}`} className="grafico-linea-dibujo" pathLength="1" d={dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animationDelay: "120ms" }} />
             </svg>
           </div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4, flexWrap: "wrap" }}>
