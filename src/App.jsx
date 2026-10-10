@@ -891,6 +891,7 @@ const buildInitialOrder = () => ({
   ubicacion: "",
   ubicacionReferencial: false,
   cajaNap: "",
+  puertoNap: "",
   descripcion: "",
   fotoFachada: "",
 
@@ -941,6 +942,7 @@ function serializeOrderToSupabase(orderItem = {}, opts = {}) {
     codigo_abonado: String(orderItem.codigoAbonado || "").trim() || null,
     ubicacion: String(orderItem.ubicacion || "").trim(),
     caja_nap: String(orderItem.cajaNap || "").trim(),
+    puerto_nap: String(orderItem.puertoNap || "").trim() || null,
     descripcion: String(orderItem.descripcion || "").trim(),
     foto_fachada: String(orderItem.fotoFachada || "").trim(),
     solicitar_pago: String(orderItem.solicitarPago || "SI").trim(),
@@ -986,6 +988,7 @@ function sanitizeOrderPayloadForSupabase(rawPayload = {}) {
     "codigo_abonado",
     "ubicacion",
     "caja_nap",
+    "puerto_nap",
     "descripcion",
     "foto_fachada",
     "solicitar_pago",
@@ -1040,6 +1043,7 @@ function deserializeOrderFromSupabase(row = {}) {
       row.ubicacion_referencial === 1 ||
       String(row.ubicacion_referencial || "").trim().toLowerCase() === "true",
     cajaNap: String(row.caja_nap || "").trim(),
+    puertoNap: String(row.puerto_nap || "").trim(),
     descripcion: String(row.descripcion || "").trim(),
     fotoFachada: String(row.foto_fachada || "").trim(),
     solicitarPago: String(row.solicitar_pago || "SI").trim(),
@@ -3171,6 +3175,12 @@ export default function App() {
   const [napCajasNearby, setNapCajasNearby] = useState([]);
   const [napCajasTop20, setNapCajasTop20] = useState([]);
   const [napRoutes, setNapRoutes] = useState({});
+
+  // Bornes/puertos de la caja NAP elegida en Crear Orden -- deja ver que
+  // clientes ocupan cada puerto y, para gestor/admin, elegir uno libre para
+  // dejarlo pre-asignado en la orden (el tecnico lo confirma en campo igual).
+  const [cajaBornesInfo, setCajaBornesInfo] = useState(null); // { capacidad, porPuerto: {puerto: cliente[]} }
+  const [cajaBornesLoading, setCajaBornesLoading] = useState(false);
 
   const mapaRef = useRef(null);
   const mapaInstanciaRef = useRef(null);
@@ -16669,6 +16679,31 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orden.ubicacion, napCajasMapData]);
 
+  // Bornes/puertos de la caja elegida -- quien clientes ocupa cada puerto
+  useEffect(() => {
+    const codigo = String(orden.cajaNap || "").trim();
+    if (!codigo) { setCajaBornesInfo(null); return; }
+    let cancelado = false;
+    setCajaBornesLoading(true);
+    Promise.all([
+      supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).limit(1).maybeSingle(),
+      supabase.from("clientes").select("nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap").ilike("caja_nap", codigo),
+    ]).then(([cajaRes, cliRes]) => {
+      if (cancelado) return;
+      const codigoNorm = codigo.toLowerCase();
+      const lista = (cliRes.data || []).filter(c => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
+      const porPuerto = {};
+      lista.forEach(c => {
+        const p = String(c.puerto_nap || "").trim();
+        if (!p) return;
+        if (!porPuerto[p]) porPuerto[p] = [];
+        porPuerto[p].push(c);
+      });
+      setCajaBornesInfo({ capacidad: Number(cajaRes.data?.capacidad) || 8, porPuerto, sinPuerto: lista.filter(c => !String(c.puerto_nap || "").trim()) });
+    }).finally(() => { if (!cancelado) setCajaBornesLoading(false); });
+    return () => { cancelado = true; };
+  }, [orden.cajaNap]);
+
   // Dibujar líneas rectas cliente → cajas NAP cercanas
   useEffect(() => {
     napRouteLayersRef.current.forEach(l => l.remove());
@@ -18798,6 +18833,83 @@ export default function App() {
                           ))}
                       </select>
                     </div>
+
+                    {/* Bornes/puertos de la caja elegida -- quienes clientes la ocupan
+                        y, para gestor/admin, elegir un puerto libre para la orden. */}
+                    {orden.cajaNap && (
+                      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #eef2f7" }}>
+                        <style>{`
+                          @keyframes borneFadeIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
+                          .borne-tile { transition: transform .12s ease, box-shadow .12s ease; animation: borneFadeIn .22s ease backwards; }
+                          .borne-tile.libre:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 3px 10px rgba(15,23,42,0.12); }
+                          .borne-tile.libre:active { transform: scale(0.95); }
+                        `}</style>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                          <label style={labelStyle}>Bornes de {orden.cajaNap}</label>
+                          {orden.puertoNap && (
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, background: "#eff6ff", color: "#1d4ed8", borderRadius: 8, padding: "2px 10px", fontSize: 12, fontWeight: 700 }}>
+                              Puerto {orden.puertoNap} asignado
+                              {(esGestorSesion || esAdminSesion) && (
+                                <button type="button" onClick={() => handleChange("puertoNap", "")} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 800, padding: 0, fontSize: 13 }}>✕</button>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        {cajaBornesLoading ? (
+                          <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando bornes…</div>
+                        ) : cajaBornesInfo ? (
+                          <>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: 8, maxWidth: 520 }}>
+                              {Array.from({ length: cajaBornesInfo.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
+                                const ocupantes = cajaBornesInfo.porPuerto[puerto] || [];
+                                const confirmado = ocupantes.some(c => c.precinto_codigo);
+                                const libre = ocupantes.length === 0;
+                                const sel = orden.puertoNap === puerto;
+                                const puedeAsignar = (esGestorSesion || esAdminSesion) && libre;
+                                const bg = sel ? "#1d4ed8" : confirmado ? "#16a34a" : !libre ? "#f59e0b" : "#f1f5f9";
+                                const fg = sel || confirmado || !libre ? "#fff" : "#64748b";
+                                const titulo = libre ? `Puerto ${puerto} — libre` : `Puerto ${puerto} — ${ocupantes.map(c => c.nombre).join(", ")}${confirmado ? " (confirmado en campo)" : " (sin confirmar)"}`;
+                                return (
+                                  <div
+                                    key={puerto}
+                                    className={`borne-tile ${libre ? "libre" : ""}`}
+                                    title={titulo}
+                                    onClick={() => { if (puedeAsignar) handleChange("puertoNap", sel ? "" : puerto); }}
+                                    style={{
+                                      animationDelay: `${Math.min(idx, 24) * 15}ms`,
+                                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                                      height: 52, borderRadius: 10, background: bg, color: fg,
+                                      border: sel ? "2px solid #1e3a8a" : "1px solid rgba(15,23,42,0.06)",
+                                      cursor: puedeAsignar ? "pointer" : "default",
+                                      boxShadow: sel ? "0 0 0 3px rgba(29,78,216,0.18)" : "none",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: 13, fontWeight: 800 }}>{puerto}</span>
+                                    {!libre && (
+                                      <span style={{ fontSize: 9, fontWeight: 600, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                        {ocupantes[0].nombre?.split(" ")[0] || "—"}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, fontSize: 11, color: "#64748b" }}>
+                              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#16a34a", display: "inline-block" }} />Confirmado en campo</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#f59e0b", display: "inline-block" }} />Ocupado sin confirmar</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#f1f5f9", border: "1px solid #e2e8f0", display: "inline-block" }} />Libre{(esGestorSesion || esAdminSesion) ? " — clic para asignar" : ""}</span>
+                            </div>
+                            {cajaBornesInfo.sinPuerto.length > 0 && (
+                              <div style={{ fontSize: 11, color: "#92400e", marginTop: 6 }}>
+                                ⚠ {cajaBornesInfo.sinPuerto.length} cliente{cajaBornesInfo.sinPuerto.length === 1 ? "" : "s"} en esta caja sin puerto registrado todavía: {cajaBornesInfo.sinPuerto.map(c => c.nombre).join(", ")}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos de bornes para esta caja.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div style={fullWidth}>
