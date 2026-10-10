@@ -3083,6 +3083,31 @@ export default function App() {
   const [fillSnMsg, setFillSnMsg] = useState("");
   const [mikrowisp_loading, setMikrowispLoading] = useState({});  // { [clienteId]: bool }
   const [mikrowisp_ok, setMikrowispOk] = useState({});            // { [clienteId]: bool } — ya agregado esta sesión
+  // Modal de confirm/alert propio, animado -- reemplaza window.confirm/alert
+  // (el cuadro feo y estatico del navegador) en las pantallas mas usadas.
+  // Promise-based para que cada call site solo tenga que cambiar
+  // "window.confirm(x)" por "await dialogConfirm(x)" sin reescribir toda
+  // la logica alrededor.
+  const [dialogState, setDialogState] = useState(null); // { tipo: "confirm"|"alert", titulo, mensaje, variante }
+  const dialogResolveRef = useRef(null);
+  const dialogConfirm = useCallback((mensaje, opts = {}) => {
+    return new Promise((resolve) => {
+      dialogResolveRef.current = resolve;
+      setDialogState({ tipo: "confirm", mensaje, titulo: opts.titulo || "Confirmar", variante: opts.variante || "normal", textoOk: opts.textoOk || "Continuar", textoCancelar: opts.textoCancelar || "Cancelar" });
+    });
+  }, []);
+  const dialogAlert = useCallback((mensaje, opts = {}) => {
+    return new Promise((resolve) => {
+      dialogResolveRef.current = resolve;
+      setDialogState({ tipo: "alert", mensaje, titulo: opts.titulo || "Aviso", variante: opts.variante || "normal", textoOk: opts.textoOk || "Entendido" });
+    });
+  }, []);
+  const dialogCerrar = useCallback((resultado) => {
+    const resolve = dialogResolveRef.current;
+    dialogResolveRef.current = null;
+    setDialogState(null);
+    if (resolve) resolve(resultado);
+  }, []);
   const [modalEditarCliente, setModalEditarCliente] = useState(false);
   const [modalNuevoCliente, setModalNuevoCliente] = useState(false);
   const [formEditarCliente, setFormEditarCliente] = useState({});
@@ -5411,10 +5436,10 @@ export default function App() {
   // para forzar un refresh puntual sin esperar al horario automatico.
   const actualizarEstadoMasivoMikrowisp = async () => {
     if (!DIAGNOSTICO_INTERNAL_TOKEN) {
-      window.alert("Falta configurar VITE_DIAGNOSTICO_INTERNAL_TOKEN en este panel.");
+      await dialogAlert("Falta configurar VITE_DIAGNOSTICO_INTERNAL_TOKEN en este panel.", { variante: "peligro" });
       return;
     }
-    const ok = window.confirm("Se va a sincronizar el estado (ACTIVO/SUSPENDIDO) de todos los clientes de Nod_01/02/03 contra Mikrowisp. Puede tardar varios minutos. ¿Continuar?");
+    const ok = await dialogConfirm("Se va a sincronizar el estado (ACTIVO/SUSPENDIDO) de todos los clientes de Nod_01/02/03 contra Mikrowisp. Puede tardar varios minutos. ¿Continuar?", { titulo: "Sync MikroTik", textoOk: "Sincronizar" });
     if (!ok) return;
 
     setActualizarEstadoMasivoLoading(true);
@@ -5428,16 +5453,16 @@ export default function App() {
       if (!body?.ok) throw new Error(body?.error || `HTTP ${res.status}`);
       const r = body.resumen || {};
       await cargarClientesDesdeSupabase({ silent: true });
-      window.alert(
-        `Sincronización completada.\n\n` +
+      await dialogAlert(
         `Clientes revisados: ${r.total_filas ?? "-"}\n` +
         `Actualizados: ${r.actualizados ?? 0}\n` +
         `Sin cambios: ${r.sin_cambios ?? 0}\n` +
         `Sin poder emparejar (revisar a mano): ${r.sin_match ?? 0}\n` +
-        `Errores de conexión: ${r.errores ?? 0}`
+        `Errores de conexión: ${r.errores ?? 0}`,
+        { titulo: "Sincronización completada", variante: "exito" }
       );
     } catch (e) {
-      window.alert("No se pudo sincronizar: " + (e.message || String(e)));
+      await dialogAlert("No se pudo sincronizar: " + (e.message || String(e)), { variante: "peligro" });
     }
     setActualizarEstadoMasivoLoading(false);
   };
@@ -13877,7 +13902,7 @@ export default function App() {
           .limit(1);
         const otroPrecintoEdit = otrosPrecintoEdit?.[0];
         if (otroPrecintoEdit) {
-          const seguir = window.confirm(`Este código de precinto ya está en uso por "${otroPrecintoEdit.nombre || otroPrecintoEdit.dni || "otro cliente"}". ¿Guardar de todas formas?`);
+          const seguir = await dialogConfirm(`Este código de precinto ya está en uso por "${otroPrecintoEdit.nombre || otroPrecintoEdit.dni || "otro cliente"}". ¿Guardar de todas formas?`, { titulo: "Precinto repetido", variante: "peligro", textoOk: "Guardar igual" });
           if (!seguir) return;
         }
       } catch (_) {
@@ -13921,7 +13946,7 @@ export default function App() {
       setClientes(prev => prev.map(c => (c.id === updated.id || c.dni === updated.dni) ? { ...c, ...updated } : c));
       setModalEditarCliente(false);
     } catch (e) {
-      alert("Error al guardar: " + (e?.message || "desconocido"));
+      await dialogAlert("Error al guardar: " + (e?.message || "desconocido"), { variante: "peligro" });
     } finally {
       setGuardandoCliente(false);
     }
@@ -13929,7 +13954,7 @@ export default function App() {
 
   const sincronizarCajasNapDesdeHistorial = async () => {
     if (!isSupabaseConfigured) return;
-    const ok = window.confirm("Esto actualizará la caja NAP de cada cliente con la más reciente de su historial de liquidaciones. ¿Continuar?");
+    const ok = await dialogConfirm("Esto actualizará la caja NAP de cada cliente con la más reciente de su historial de liquidaciones. ¿Continuar?", { titulo: "Sync Cajas NAP", textoOk: "Sincronizar" });
     if (!ok) return;
     setSyncCajasNapLoading(true);
     try {
@@ -13961,7 +13986,7 @@ export default function App() {
         }
       }
       if (cajasPorDni.size === 0) {
-        window.alert("No se encontraron liquidaciones con caja NAP registrada.");
+        await dialogAlert("No se encontraron liquidaciones con caja NAP registrada.");
         return;
       }
       // 3. Actualizar clientes en Supabase — solo registros SIN caja_nap, por id individual
@@ -13984,9 +14009,9 @@ export default function App() {
           }
         }
       }
-      window.alert(`✅ Sync completado. Se actualizaron ${actualizados} clientes con su caja NAP más reciente.`);
+      await dialogAlert(`Se actualizaron ${actualizados} clientes con su caja NAP más reciente.`, { titulo: "Sync completado", variante: "exito" });
     } catch (e) {
-      window.alert("Error al sincronizar: " + (e?.message || String(e)));
+      await dialogAlert("Error al sincronizar: " + (e?.message || String(e)), { variante: "peligro" });
     } finally {
       setSyncCajasNapLoading(false);
     }
@@ -13994,7 +14019,7 @@ export default function App() {
 
   const sincronizarEquiposDesdeAppsheet = async () => {
     if (!isSupabaseConfigured) return;
-    const ok = window.confirm("Esto importará los equipos del historial AppSheet a cada cliente. Solo se insertan equipos nuevos (no duplica). ¿Continuar?");
+    const ok = await dialogConfirm("Esto importará los equipos del historial AppSheet a cada cliente. Solo se insertan equipos nuevos (no duplica). ¿Continuar?", { titulo: "Sync Equipos AppSheet", textoOk: "Sincronizar" });
     if (!ok) return;
     setSyncEquiposAppsheetLoading(true);
     setSyncEquiposAppsheetInfo("Cargando historial AppSheet...");
@@ -14018,7 +14043,7 @@ export default function App() {
         offset += pageSize;
       }
       if (!allOnus.length) {
-        window.alert("No se encontraron equipos en el historial AppSheet.");
+        await dialogAlert("No se encontraron equipos en el historial AppSheet.");
         return;
       }
       setSyncEquiposAppsheetInfo(`Procesando ${allOnus.length} equipos...`);
@@ -14055,7 +14080,7 @@ export default function App() {
       }
 
       if (!filas.length) {
-        window.alert("Todos los equipos del historial AppSheet ya estaban importados.");
+        await dialogAlert("Todos los equipos del historial AppSheet ya estaban importados.");
         return;
       }
 
@@ -14069,9 +14094,9 @@ export default function App() {
       }
 
       setSyncEquiposAppsheetInfo("");
-      window.alert(`✅ Sync completado. Se importaron ${insertados} equipos desde AppSheet.`);
+      await dialogAlert(`Se importaron ${insertados} equipos desde AppSheet.`, { titulo: "Sync completado", variante: "exito" });
     } catch (e) {
-      window.alert("Error al sincronizar equipos: " + (e?.message || String(e)));
+      await dialogAlert("Error al sincronizar equipos: " + (e?.message || String(e)), { variante: "peligro" });
       setSyncEquiposAppsheetInfo("");
     } finally {
       setSyncEquiposAppsheetLoading(false);
@@ -14085,8 +14110,8 @@ export default function App() {
 
   const guardarNuevoCliente = async () => {
     const f = formEditarCliente;
-    if (!f.nombre?.trim()) return alert("El nombre es obligatorio.");
-    if (!f.dni?.trim()) return alert("El DNI es obligatorio.");
+    if (!f.nombre?.trim()) return dialogAlert("El nombre es obligatorio.", { variante: "peligro" });
+    if (!f.dni?.trim()) return dialogAlert("El DNI es obligatorio.", { variante: "peligro" });
     setGuardandoCliente(true);
     try {
       const nuevo = {
@@ -14120,7 +14145,7 @@ export default function App() {
       setClientes(prev => [insertado, ...prev]);
       setModalNuevoCliente(false);
     } catch (e) {
-      alert("Error al crear cliente: " + (e?.message || "desconocido"));
+      await dialogAlert("Error al crear cliente: " + (e?.message || "desconocido"), { variante: "peligro" });
     } finally {
       setGuardandoCliente(false);
     }
@@ -14128,11 +14153,11 @@ export default function App() {
 
   const eliminarCliente = async (cliente = {}) => {
     if (!esAdminSesion) {
-      alert("Solo un administrador puede eliminar clientes.");
+      await dialogAlert("Solo un administrador puede eliminar clientes.", { variante: "peligro" });
       return;
     }
     const nombre = String(cliente?.nombre || cliente?.dni || "cliente").trim();
-    const confirmar = window.confirm(`¿Eliminar cliente "${nombre}"?\nEsta acción no se puede deshacer.`);
+    const confirmar = await dialogConfirm(`¿Eliminar cliente "${nombre}"?\nEsta acción no se puede deshacer.`, { titulo: "Eliminar cliente", variante: "peligro", textoOk: "Eliminar" });
     if (!confirmar) return;
 
     const clienteId = Number(cliente?.id);
@@ -14169,9 +14194,9 @@ export default function App() {
         setVistaActiva("clientes");
       }
 
-      alert("Cliente eliminado.");
+      await dialogAlert("Cliente eliminado.", { variante: "exito" });
     } catch (e) {
-      alert(`No se pudo eliminar el cliente: ${String(e?.message || "error desconocido")}`);
+      await dialogAlert(`No se pudo eliminar el cliente: ${String(e?.message || "error desconocido")}`, { variante: "peligro" });
     }
   };
 
@@ -30678,6 +30703,60 @@ export default function App() {
                 <button onClick={() => void confirmarEnvioNotificacion()} disabled={!notifModal.mensaje?.trim()}
                   style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: notifModal.mensaje?.trim() ? "#1d4ed8" : "#93c5fd", color: "#fff", fontSize: 13, fontWeight: 700, cursor: notifModal.mensaje?.trim() ? "pointer" : "default", boxShadow: "0 4px 14px rgba(29,78,216,0.3)" }}>
                   Enviar por WhatsApp →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirm/alert propio -- reemplaza window.confirm/alert
+            (dialogo feo y estatico del navegador) con una entrada animada. */}
+        {dialogState && (
+          <div
+            onClick={() => dialogState.tipo === "confirm" && dialogCerrar(false)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 4000, background: "rgba(15,23,42,0.5)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+              animation: "dialogOverlayIn .15s ease",
+            }}
+          >
+            <style>{`
+              @keyframes dialogOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes dialogCardIn { from { opacity: 0; transform: scale(.9) translateY(14px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+            `}</style>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: isDark ? "#182236" : "#fff", borderRadius: 18, padding: "26px 26px 20px", maxWidth: 420, width: "100%",
+                boxShadow: "0 24px 60px rgba(0,0,0,0.3)", animation: "dialogCardIn .22s cubic-bezier(.34,1.56,.64,1)",
+                border: isDark ? "1px solid #2c3c58" : "1px solid #eef2f7",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <span style={{
+                  width: 38, height: 38, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                  background: dialogState.variante === "peligro" ? "#fef2f2" : dialogState.variante === "exito" ? "#f0fdf4" : "#eff6ff",
+                  color: dialogState.variante === "peligro" ? "#dc2626" : dialogState.variante === "exito" ? "#16a34a" : "#1d4ed8",
+                }}>
+                  {dialogState.variante === "peligro" ? "⚠️" : dialogState.variante === "exito" ? "✅" : "ℹ️"}
+                </span>
+                <div style={{ fontSize: 16, fontWeight: 800, color: isDark ? "#e6ecf7" : "#0f172a" }}>{dialogState.titulo}</div>
+              </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: isDark ? "#c3d3ee" : "#475569", whiteSpace: "pre-wrap" }}>{dialogState.mensaje}</div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 22 }}>
+                {dialogState.tipo === "confirm" && (
+                  <button onClick={() => dialogCerrar(false)}
+                    style={{ padding: "10px 18px", borderRadius: 10, border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", background: "transparent", color: isDark ? "#93a2bd" : "#64748b", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    {dialogState.textoCancelar}
+                  </button>
+                )}
+                <button onClick={() => dialogCerrar(true)} autoFocus
+                  style={{
+                    padding: "10px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", color: "#fff",
+                    background: dialogState.variante === "peligro" ? "#dc2626" : "#1d4ed8",
+                    boxShadow: dialogState.variante === "peligro" ? "0 4px 14px rgba(220,38,38,0.3)" : "0 4px 14px rgba(29,78,216,0.3)",
+                  }}>
+                  {dialogState.textoOk}
                 </button>
               </div>
             </div>

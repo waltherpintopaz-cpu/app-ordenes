@@ -169,6 +169,13 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   const [puertoOriginal, setPuertoOriginal] = useState(null); // puerto que YA tenia el cliente antes de tocar nada, para poder decir "Cambiar" en vez de "Elegir"
   const [mostrarSelectorPuerto, setMostrarSelectorPuerto] = useState(false);
   const [mostrarSenalCliente, setMostrarSenalCliente] = useState(false);
+  // Confirm propio, animado -- reemplaza window.confirm (el cuadro feo y
+  // estatico del navegador) en las acciones de asignar/desvincular.
+  const [confirmDialog, setConfirmDialog] = useState(null); // { mensaje, resolve }
+  const dialogConfirm = useCallback((mensaje) => new Promise((resolve) => setConfirmDialog({ mensaje, resolve })), []);
+  const cerrarConfirmDialog = useCallback((resultado) => {
+    setConfirmDialog((prev) => { if (prev?.resolve) prev.resolve(resultado); return null; });
+  }, []);
   // Virtualizacion manual de la lista de clientes: con cientos/miles de
   // filas, montar un <div> por cada una (aunque no se vea) es lo que hacia
   // sentir pesado el scroll. Solo se renderizan las filas realmente
@@ -729,7 +736,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
   const quitarCaja = async () => {
     if (clientesSeleccionados.size === 0) return showToast("Selecciona clientes para desvincular", false);
-    if (!window.confirm(`¿Quitar caja NAP a ${clientesSeleccionados.size} cliente(s)?`)) return;
+    if (!(await dialogConfirm(`¿Quitar caja NAP a ${clientesSeleccionados.size} cliente(s)?`))) return;
     setSaving(true);
     try {
       const ids = Array.from(clientesSeleccionados);
@@ -815,7 +822,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
   };
 
   const quitarClienteIndividual = async (cli) => {
-    if (!window.confirm(`¿Desvincular a ${cli.nombre} de ${cli.caja_nap}?`)) return;
+    if (!(await dialogConfirm(`¿Desvincular a ${cli.nombre} de ${cli.caja_nap}?`))) return;
     setSaving(true);
     try {
       const { error } = await supabase.from("clientes").update({ caja_nap: null }).eq("id", cli.id);
@@ -1285,6 +1292,29 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
           />
         );
       })()}
+
+      {confirmDialog && (
+        <div
+          onClick={() => cerrarConfirmDialog(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 4000, background: "rgba(15,23,42,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, animation: "napDialogOverlayIn .15s ease" }}
+        >
+          <style>{`
+            @keyframes napDialogOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes napDialogCardIn { from { opacity: 0; transform: scale(.9) translateY(14px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+          `}</style>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "26px 26px 20px", maxWidth: 380, width: "100%", boxShadow: "0 24px 60px rgba(0,0,0,0.3)", animation: "napDialogCardIn .22s cubic-bezier(.34,1.56,.64,1)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <span style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, background: "#fef2f2", color: "#dc2626" }}>⚠️</span>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>Confirmar</div>
+            </div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "#475569" }}>{confirmDialog.mensaje}</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 22 }}>
+              <button onClick={() => cerrarConfirmDialog(false)} style={{ padding: "10px 18px", borderRadius: 10, border: "1px solid #e2e8f0", background: "transparent", color: "#64748b", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+              <button onClick={() => cerrarConfirmDialog(true)} autoFocus style={{ padding: "10px 20px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", color: "#fff", background: "#dc2626", boxShadow: "0 4px 14px rgba(220,38,38,0.3)" }}>Confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
