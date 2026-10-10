@@ -1789,7 +1789,7 @@ export default function SidebarApp() {
         }
         const nodoEtiqueta = normalizarEtiquetaNodo(cliente.nodo);
         const ordenPayload = {
-          empresa: cliente.empresa === "dimfiber" ? "DIM" : "Americanet",
+          empresa: (cliente.empresa === "dimfiber" || cliente.empresa === "nod06") ? "DIM" : "Americanet",
           codigo,
           generar_usuario: "NO",
           orden_tipo: "ORDEN DE SERVICIO",
@@ -3463,7 +3463,7 @@ export default function SidebarApp() {
       const snOnuFinal = esInstalacion ? ordenForm.snOnu.trim() : esTraslado ? (ordenForm.snOnu.trim() || (cliente ? (snOnu || "") : "")) : (cliente ? (snOnu || "") : ordenForm.snOnu.trim());
       const empresaOrden = usaDatosDelFormulario && ordenForm.nodo.trim()
         ? empresaPorNodo(ordenForm.nodo)
-        : (cliente ? (cliente.empresa === "dimfiber" ? "DIM" : "Americanet") : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa));
+        : (cliente ? ((cliente.empresa === "dimfiber" || cliente.empresa === "nod06") ? "DIM" : "Americanet") : (ordenForm.nodo ? empresaPorNodo(ordenForm.nodo) : ordenForm.empresa));
 
       // Crear cuenta IPTV junto con la orden (si se marcó la opción)
       let iptvInfo = null;
@@ -5292,7 +5292,7 @@ export default function SidebarApp() {
                 <span style={{ fontSize:11, color:T.muted }}>Nodo <strong style={{ color:T.navy }}>{cliente.nodo}</strong></span>
                 <span style={{ fontSize:11, color:T.muted }}>
                   <strong style={{ color:T.navy, textTransform:"capitalize" }}>
-                    {cliente.empresa === "dimfiber" ? "DimFiber" : "Americanet"}
+                    {cliente.empresa === "dimfiber" ? "DimFiber" : cliente.empresa === "nod06" ? "DIM" : "Americanet"}
                   </strong>
                 </span>
                 {cliente.cedula && (
@@ -6317,7 +6317,7 @@ export default function SidebarApp() {
               Para <strong style={{ color:T.navy }}>{cliente.nombre}</strong> · #{cliente.mikrowisp_id}
             </div>
             <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
-              {[["Nodo", String(cliente.nodo)], ["Empresa", cliente.empresa]].map(([l, v], i, arr) => (
+              {[["Nodo", String(cliente.nodo)], ["Empresa", cliente.empresa === "dimfiber" ? "DimFiber" : cliente.empresa === "nod06" ? "DIM" : "Americanet"]].map(([l, v], i, arr) => (
                 <div key={l} style={{ display:"grid", gridTemplateColumns:"110px 1fr",
                   borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none" }}>
                   <div style={{ padding:"6px 10px", background:T.bg, borderRight:`1px solid ${T.border}`, fontSize:11, fontWeight:600, color:T.muted }}>{l}</div>
@@ -6487,7 +6487,7 @@ export default function SidebarApp() {
             {/* Datos pre-llenados del cliente */}
             <div style={{ border:`1px solid ${T.border}`, borderRadius:5, overflow:"hidden", marginBottom:12 }}>
               {[
-                ["Empresa",   cliente.empresa === "dimfiber" ? "DIM" : "Americanet"],
+                ["Empresa",   (cliente.empresa === "dimfiber" || cliente.empresa === "nod06") ? "DIM" : "Americanet"],
                 ["Nodo",      String(cliente.nodo)],
                 ["Dirección", detalle?.direccion_principal || "—"],
                 ["Celular",   detalle?.movil || contact?.phone_number || "—"],
