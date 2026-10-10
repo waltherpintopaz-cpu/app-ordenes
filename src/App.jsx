@@ -3219,6 +3219,7 @@ export default function App() {
   // dejarlo pre-asignado en la orden (el tecnico lo confirma en campo igual).
   const [cajaBornesInfo, setCajaBornesInfo] = useState(null); // { capacidad, porPuerto: {puerto: cliente[]} }
   const [cajaBornesLoading, setCajaBornesLoading] = useState(false);
+  const [bornesPanelAbierto, setBornesPanelAbierto] = useState(false);
 
   const mapaRef = useRef(null);
   const mapaInstanciaRef = useRef(null);
@@ -18874,35 +18875,62 @@ export default function App() {
 
                     {/* Bornes/puertos de la caja elegida -- quienes clientes la ocupan
                         y, para gestor/admin, elegir un puerto libre para la orden.
-                        Mismo lenguaje visual (bandeja + iconos de adaptador SC/APC +
-                        entrada escalonada con resorte) que SelectorPuertoCaja.js en
-                        la app movil (Etiquetado de ONUs / Liquidacion). */}
+                        Se despliega con un boton (no como bloque fijo pegado al
+                        selector/mapa) para que se sienta una revelacion, no un
+                        bloque estatico mas en la pagina. Mismo lenguaje visual
+                        (bandeja + iconos de adaptador SC/APC + entrada escalonada
+                        con resorte) que SelectorPuertoCaja.js en la app movil
+                        (Etiquetado de ONUs / Liquidacion). */}
                     {orden.cajaNap && (
                       <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #eef2f7" }}>
                         <style>{`
                           @keyframes borneFadeIn { from { opacity: 0; transform: scale(.5) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+                          @keyframes bornesPanelIn { from { opacity: 0; transform: translateY(-10px) scaleY(.92); } to { opacity: 1; transform: translateY(0) scaleY(1); } }
                           .borne-tile-wrap { animation: borneFadeIn .36s cubic-bezier(.34,1.56,.64,1) backwards; }
                           .borne-icon { transition: transform .15s cubic-bezier(.34,1.56,.64,1), box-shadow .15s ease; }
                           .borne-tile-wrap.libre:hover .borne-icon { transform: scale(1.12) translateY(-2px); box-shadow: 0 4px 12px rgba(15,23,42,0.15); }
                           .borne-tile-wrap.libre:active .borne-icon { transform: scale(0.94); }
                           .borne-tile-wrap.sel .borne-icon { transform: scale(1.1); }
+                          .bornes-toggle-btn { transition: transform .15s cubic-bezier(.34,1.56,.64,1), box-shadow .15s ease, background .15s ease; }
+                          .bornes-toggle-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(29,78,216,0.18); }
+                          .bornes-toggle-btn:active { transform: scale(0.98); }
+                          .bornes-toggle-chevron { transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
+                          .bornes-panel-open { animation: bornesPanelIn .28s cubic-bezier(.22,1,.36,1); transform-origin: top; }
                         `}</style>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                          <label style={labelStyle}>Bornes de {orden.cajaNap}</label>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: bornesPanelAbierto ? 8 : 0 }}>
+                          <button
+                            type="button"
+                            className="bornes-toggle-btn"
+                            onClick={() => setBornesPanelAbierto(v => !v)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderRadius: 12,
+                              border: "1px solid #dbe4fb", background: bornesPanelAbierto ? "#eff6ff" : "#f8faff", cursor: "pointer",
+                            }}
+                          >
+                            <span style={{ fontSize: 18 }}>🔌</span>
+                            <span style={{ textAlign: "left" }}>
+                              <span style={{ display: "block", fontSize: 13, fontWeight: 800, color: "#1e293b" }}>Bornes de {orden.cajaNap}</span>
+                              <span style={{ display: "block", fontSize: 11, color: "#64748b" }}>
+                                {cajaBornesLoading ? "Cargando…" : cajaBornesInfo ? `${Object.keys(cajaBornesInfo.porPuerto).length}/${cajaBornesInfo.capacidad} ocupados` : "Ver ocupación"}
+                                {orden.puertoNap ? ` · Puerto ${orden.puertoNap} asignado` : ""}
+                              </span>
+                            </span>
+                            <span className="bornes-toggle-chevron" style={{ fontSize: 13, color: "#1d4ed8", transform: bornesPanelAbierto ? "rotate(180deg)" : "none" }}>▾</span>
+                          </button>
                           {orden.puertoNap && (
                             <span style={{ display: "flex", alignItems: "center", gap: 6, background: "#eff6ff", color: "#1d4ed8", borderRadius: 8, padding: "2px 10px", fontSize: 12, fontWeight: 700 }}>
-                              Puerto {orden.puertoNap} asignado
+                              Puerto {orden.puertoNap}
                               {(esGestorSesion || esAdminSesion) && (
                                 <button type="button" onClick={() => handleChange("puertoNap", "")} style={{ background: "none", border: "none", color: "#1d4ed8", cursor: "pointer", fontWeight: 800, padding: 0, fontSize: 13 }}>✕</button>
                               )}
                             </span>
                           )}
                         </div>
-                        {cajaBornesLoading ? (
-                          <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando bornes…</div>
+                        {bornesPanelAbierto && (cajaBornesLoading ? (
+                          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>Cargando bornes…</div>
                         ) : cajaBornesInfo ? (
-                          <>
-                            <div style={{ position: "relative", background: "#2b2f38", borderRadius: 14, padding: "20px 16px 14px", maxWidth: 560 }}>
+                          <div className="bornes-panel-open">
+                            <div style={{ position: "relative", background: "#2b2f38", borderRadius: 14, padding: "20px 16px 14px", maxWidth: 560, marginTop: 10 }}>
                               <div style={{ position: "absolute", top: 8, left: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a" }} />
                               <div style={{ position: "absolute", top: 8, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a" }} />
                               <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#8d93a3", marginBottom: 10 }}>
@@ -18952,10 +18980,10 @@ export default function App() {
                                 ⚠ {cajaBornesInfo.sinPuerto.length} cliente{cajaBornesInfo.sinPuerto.length === 1 ? "" : "s"} en esta caja sin puerto registrado todavía: {cajaBornesInfo.sinPuerto.map(c => c.nombre).join(", ")}
                               </div>
                             )}
-                          </>
+                          </div>
                         ) : (
-                          <div style={{ fontSize: 12, color: "#94a3b8" }}>Sin datos de bornes para esta caja.</div>
-                        )}
+                          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>Sin datos de bornes para esta caja.</div>
+                        ))}
                       </div>
                     )}
                   </div>
