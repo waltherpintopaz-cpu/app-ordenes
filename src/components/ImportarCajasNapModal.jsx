@@ -28,6 +28,23 @@ function esInformativo(codigo, styleUrl) {
   return false;
 }
 
+// Codigos repetidos DENTRO de la misma lista (ignorando mayus/minus) -- si
+// se dejan pasar, el importador cree que son la misma caja y se queda solo
+// con la ultima, perdiendo las demas en silencio (caso real: 3 pines
+// "P12-ampli." en 3 ubicaciones distintas del mismo sector). Devuelve el
+// Set de codigos (en minuscula) que estan duplicados, para omitirlos del
+// import en vez de bloquear todo el archivo por unos pocos pines mal
+// nombrados.
+function codigosDuplicadosInternos(lista) {
+  const porCodigo = new Map();
+  lista.forEach((p) => {
+    const k = p.codigo.trim().toLowerCase();
+    if (!porCodigo.has(k)) porCodigo.set(k, []);
+    porCodigo.get(k).push(p);
+  });
+  return new Map([...porCodigo.entries()].filter(([, l]) => l.length > 1));
+}
+
 function tagText(scope, tag) {
   const el = scope.getElementsByTagName(tag)[0];
   return el ? el.textContent.trim() : "";
@@ -115,6 +132,11 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [incluirInformativos, setIncluirInformativos] = useState(false);
+  // Por defecto se omiten los codigos repetidos dentro del mismo archivo
+  // (mas seguro: evita perder cajas en silencio). El admin puede destildar
+  // esto si de verdad quiere forzar la importacion tal cual, sabiendo que
+  // solo se va a quedar con la ultima ubicacion de cada nombre repetido.
+  const [omitirDuplicados, setOmitirDuplicados] = useState(true);
 
   const previsualizar = async () => {
     setError(""); setOk(""); setPreview(null);
@@ -162,7 +184,14 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
     setGuardando(true);
     setError("");
     try {
-      const puntosAImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo, p.styleUrl));
+      let puntosAImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo, p.styleUrl));
+      let omitidasPorDuplicado = 0;
+      if (omitirDuplicados) {
+        const duplicados = codigosDuplicadosInternos(puntosAImportar);
+        const antes = puntosAImportar.length;
+        puntosAImportar = puntosAImportar.filter((p) => !duplicados.has(p.codigo.trim().toLowerCase()));
+        omitidasPorDuplicado = antes - puntosAImportar.length;
+      }
       // Se trae TODO lo que ya existe en Supabase para este nodo y se
       // compara en minusculas en JS, en vez de pedirle a Supabase ".in(codigo,
       // [...])" con el texto tal cual vino del KML -- ese "in" compara exacto
@@ -211,7 +240,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
         }
       }
 
-      setOk(`Listo: ${creadas} caja${creadas !== 1 ? "s" : ""} nueva${creadas !== 1 ? "s" : ""}, ${actualizadas} actualizada${actualizadas !== 1 ? "s" : ""}.`);
+      setOk(`Listo: ${creadas} caja${creadas !== 1 ? "s" : ""} nueva${creadas !== 1 ? "s" : ""}, ${actualizadas} actualizada${actualizadas !== 1 ? "s" : ""}.${omitidasPorDuplicado > 0 ? ` (${omitidasPorDuplicado} omitidas por nombre repetido -- corrígelas en el mapa y vuelve a subir el archivo para traerlas.)` : ""}`);
       setPreview(null);
       setUrl("");
       setNombreArchivo("");
@@ -279,20 +308,17 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
               {(() => {
                 const informativos = preview.puntos.filter((p) => esInformativo(p.codigo, p.styleUrl));
                 const aImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo, p.styleUrl));
-                // Mismo nombre repetido DENTRO de este archivo, a propósito
-                // ignorando mayús/minús -- si se dejan pasar, el importador
-                // va a creer que son la misma caja y se va a quedar solo con
-                // la última, perdiendo las demás en silencio (caso real
-                // encontrado: 3 pines "P12-ampli." en 3 ubicaciones
-                // distintas del mismo sector). Se bloquea el boton hasta que
-                // se corrija el KMZ.
-                const porCodigo = new Map();
-                aImportar.forEach((p) => {
-                  const k = p.codigo.trim().toLowerCase();
-                  if (!porCodigo.has(k)) porCodigo.set(k, []);
-                  porCodigo.get(k).push(p);
-                });
-                const duplicados = [...porCodigo.entries()].filter(([, l]) => l.length > 1);
+                // Mismo nombre repetido DENTRO de este archivo (ignorando
+                // mayús/minús) -- si se dejan pasar tal cual, el importador
+                // cree que son la misma caja y se queda solo con la última,
+                // perdiendo las demás en silencio (caso real: 3 pines
+                // "P12-ampli." en 3 ubicaciones distintas del mismo
+                // sector). No se bloquea el import entero por esto -- se
+                // avisa y se da la opción de omitirlas (por defecto SÍ se
+                // omiten, es lo seguro) para poder importar el resto ya.
+                const duplicados = [...codigosDuplicadosInternos(aImportar).entries()];
+                const codigosDupSet = new Set(duplicados.map(([k]) => k));
+                const aImportarFinal = omitirDuplicados ? aImportar.filter((p) => !codigosDupSet.has(p.codigo.trim().toLowerCase())) : aImportar;
                 return (
                   <>
                     <div style={s.previewCount}>
@@ -317,7 +343,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
                     </div>
                     {duplicados.length > 0 && (
                       <div style={{ ...s.error, marginTop: 10 }}>
-                        ⚠ {duplicados.length} código{duplicados.length !== 1 ? "s" : ""} está{duplicados.length !== 1 ? "n" : ""} repetido{duplicados.length !== 1 ? "s" : ""} en este archivo, en ubicaciones distintas. Si se importa así, solo se guarda la última de cada una y las demás se pierden. Corrige los nombres en Google My Maps (ej. agregales "-1", "-2") y vuelve a subir el archivo:
+                        ⚠ {duplicados.length} código{duplicados.length !== 1 ? "s" : ""} está{duplicados.length !== 1 ? "n" : ""} repetido{duplicados.length !== 1 ? "s" : ""} en este archivo, en ubicaciones distintas:
                         <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
                           {duplicados.map(([, l]) => (
                             <span key={l[0].codigo} style={{ ...s.previewChip, background: "#fff", borderColor: "#dc2626", color: "#dc2626" }}>
@@ -325,10 +351,19 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
                             </span>
                           ))}
                         </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#991b1b", marginTop: 8, cursor: "pointer", fontWeight: 700 }}>
+                          <input type="checkbox" checked={omitirDuplicados} onChange={(e) => setOmitirDuplicados(e.target.checked)} />
+                          Omitir estas {duplicados.length} del import (recomendado) — corrígelas en Google My Maps y vuelve a subir el archivo después para traerlas.
+                        </label>
+                        {!omitirDuplicados && (
+                          <div style={{ marginTop: 6, fontSize: 10 }}>
+                            Sin omitir: se va a guardar solo la última ubicación de cada una, las demás se pierden sin aviso.
+                          </div>
+                        )}
                       </div>
                     )}
-                    <button onClick={confirmarImportacion} disabled={guardando || duplicados.length > 0} style={{ ...s.btn("#16a34a"), width: "100%", marginTop: 10, opacity: (guardando || duplicados.length > 0) ? 0.6 : 1 }}>
-                      {guardando ? "Guardando..." : duplicados.length > 0 ? "Corrige los duplicados antes de importar" : `Importar ${aImportar.length} caja${aImportar.length !== 1 ? "s" : ""}`}
+                    <button onClick={confirmarImportacion} disabled={guardando || aImportarFinal.length === 0} style={{ ...s.btn("#16a34a"), width: "100%", marginTop: 10, opacity: (guardando || aImportarFinal.length === 0) ? 0.6 : 1 }}>
+                      {guardando ? "Guardando..." : `Importar ${aImportarFinal.length} caja${aImportarFinal.length !== 1 ? "s" : ""}`}
                     </button>
                   </>
                 );
