@@ -25047,16 +25047,11 @@ export default function App() {
                               })()}
                               <td style={{ padding: "8px 14px" }} onClick={(e) => e.stopPropagation()}>
                                 <div style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
-                                  {/* Button group: Ver | +Orden | SN señal */}
+                                  {/* Button group: +Orden | SN señal */}
                                   <div style={{ display: "inline-flex", alignItems: "stretch", border: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
-                                    {/* Ver */}
-                                    <button onClick={() => void abrirDetalleCliente(cliente)}
-                                      style={{ padding: "0 13px", height: 30, background: isDark ? "#16213a" : "#fff", color: isDark ? "#c3d3ee" : "#374151", border: "none", borderRight: isDark ? "1px solid #2c3c58" : "1px solid #e2e8f0", borderRadius: "7px 0 0 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                      Ver
-                                    </button>
                                     {/* + Orden */}
                                     <button onClick={() => crearOrdenDesdeCliente(cliente)}
-                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: (nodoUsaHuawei(cliente.nodo) || nodoUsaOltSsh(cliente.nodo)) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: (nodoUsaHuawei(cliente.nodo) || nodoUsaOltSsh(cliente.nodo)) && cliente.snOnu ? 0 : "0 7px 7px 0", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      style={{ padding: "0 13px", height: 30, background: "#1e3a8a", color: "#fff", border: "none", borderRight: (nodoUsaHuawei(cliente.nodo) || nodoUsaOltSsh(cliente.nodo)) && cliente.snOnu ? "1px solid #1e40af" : "none", borderRadius: (nodoUsaHuawei(cliente.nodo) || nodoUsaOltSsh(cliente.nodo)) && cliente.snOnu ? "7px 0 0 7px" : 7, fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       + Orden
                                     </button>
                                     {/* Señal OLT SSH — ↺ actualizar individual */}
