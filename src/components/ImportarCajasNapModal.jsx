@@ -15,8 +15,17 @@ function extraerMid(input) {
 // Pines que no son cajas NAP reales (mufas/empalmes, o etiquetas de tramo de
 // cable troncal) -- se muestran en el mapa con icono distinto y, por
 // defecto, no se importan salvo que el admin marque "incluir".
-function esInformativo(codigo) {
-  return /mufa|troncal/i.test(String(codigo || ""));
+//
+// Se detectan por DOS señales, no solo el texto: si el codigo final dice
+// "mufa"/"troncal" (lo de siempre), O si el icono que le pusieron en Google
+// My Maps es el de mufa ("mufaa" en el styleUrl) aunque el nombre del pin no
+// diga nada (ej. un pin "m01" dentro de un sector normal, sin carpeta
+// "MUFA" que lo delate por texto) -- confirmado con casos reales que el
+// chequeo de solo texto se perdia.
+function esInformativo(codigo, styleUrl) {
+  if (/mufa|troncal/i.test(String(codigo || ""))) return true;
+  if (/mufaa/i.test(String(styleUrl || ""))) return true;
+  return false;
 }
 
 function tagText(scope, tag) {
@@ -61,12 +70,18 @@ function parseKmlPuntos(xmlText) {
     const nombrePropio = tagText(pm, "name").trim();
     if (!nombrePropio) return;
     const carpeta = nombreCarpeta(pm).trim();
-    // Si el nombre propio ya parece un codigo completo (trae letras y numero,
-    // ej. "NAP-026"), no lo prefijamos de nuevo para no duplicar el sector.
-    const yaCompleto = /^[a-z]+[.\- ]?\d+/i.test(nombrePropio) && nombrePropio.length > 4;
-    const codigo = carpeta && !yaCompleto ? `${carpeta}-${nombrePropio}` : nombrePropio;
+    // Siempre se prefija con la carpeta/sector cuando existe -- antes se
+    // intentaba "adivinar" si el nombre ya venia completo (por longitud),
+    // y esa regla fallaba justo con los pines de doble digito (ej. "p1-10"),
+    // dejandolos sin prefijo y causando que sectores distintos (ej. dos
+    // mapas de zonas separadas) terminaran con el mismo codigo final y se
+    // pisaran la ubicacion entre si al importar. Confirmado con casos
+    // reales: 53 codigos chocaban entre dos mapas de sectores distintos por
+    // esta regla.
+    const codigo = carpeta ? `${carpeta}-${nombrePropio}` : nombrePropio;
     const descripcion = tagText(pm, "description").trim();
-    puntos.push({ codigo, lat, lng, descripcion });
+    const styleUrl = tagText(pm, "styleUrl");
+    puntos.push({ codigo, lat, lng, descripcion, styleUrl });
   });
 
   return { docName, puntos };
@@ -147,12 +162,17 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
     setGuardando(true);
     setError("");
     try {
-      const puntosAImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo));
-      const codigos = puntosAImportar.map((p) => p.codigo);
+      const puntosAImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo, p.styleUrl));
+      // Se trae TODO lo que ya existe en Supabase para este nodo y se
+      // compara en minusculas en JS, en vez de pedirle a Supabase ".in(codigo,
+      // [...])" con el texto tal cual vino del KML -- ese "in" compara exacto
+      // (sensible a mayusculas), asi que una caja guardada como "NAP-026" no
+      // aparecia si el KML traia "Nap-026", y el importador la creaba de
+      // nuevo duplicada en vez de solo actualizar su ubicacion.
       const { data: existentes, error: buscarErr } = await supabase
         .from("nap_cajas")
         .select("id,codigo")
-        .in("codigo", codigos);
+        .eq("nodo", nodo);
       if (buscarErr) throw buscarErr;
       const idPorCodigo = new Map((existentes || []).map((r) => [String(r.codigo || "").trim().toLowerCase(), r.id]));
 
@@ -257,8 +277,22 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
                 </div>
               </div>
               {(() => {
-                const informativos = preview.puntos.filter((p) => esInformativo(p.codigo));
-                const aImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo));
+                const informativos = preview.puntos.filter((p) => esInformativo(p.codigo, p.styleUrl));
+                const aImportar = incluirInformativos ? preview.puntos : preview.puntos.filter((p) => !esInformativo(p.codigo, p.styleUrl));
+                // Mismo nombre repetido DENTRO de este archivo, a propósito
+                // ignorando mayús/minús -- si se dejan pasar, el importador
+                // va a creer que son la misma caja y se va a quedar solo con
+                // la última, perdiendo las demás en silencio (caso real
+                // encontrado: 3 pines "P12-ampli." en 3 ubicaciones
+                // distintas del mismo sector). Se bloquea el boton hasta que
+                // se corrija el KMZ.
+                const porCodigo = new Map();
+                aImportar.forEach((p) => {
+                  const k = p.codigo.trim().toLowerCase();
+                  if (!porCodigo.has(k)) porCodigo.set(k, []);
+                  porCodigo.get(k).push(p);
+                });
+                const duplicados = [...porCodigo.entries()].filter(([, l]) => l.length > 1);
                 return (
                   <>
                     <div style={s.previewCount}>
@@ -267,7 +301,7 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
                     </div>
                     <div style={s.previewList}>
                       {preview.puntos.map((p, i) => (
-                        <span key={i} style={esInformativo(p.codigo) ? { ...s.previewChip, background: "#FEF3C7", color: "#92400E", borderColor: "#FDE68A" } : s.previewChip}>
+                        <span key={i} style={esInformativo(p.codigo, p.styleUrl) ? { ...s.previewChip, background: "#FEF3C7", color: "#92400E", borderColor: "#FDE68A" } : s.previewChip}>
                           {p.codigo}
                         </span>
                       ))}
@@ -281,8 +315,20 @@ export default function ImportarCajasNapModal({ onClose, onImportado }) {
                     <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>
                       Las que ya existan (mismo código) solo actualizan su ubicación — no tocan capacidad, puertos ocupados ni fotos.
                     </div>
-                    <button onClick={confirmarImportacion} disabled={guardando} style={{ ...s.btn("#16a34a"), width: "100%", marginTop: 10, opacity: guardando ? 0.6 : 1 }}>
-                      {guardando ? "Guardando..." : `Importar ${aImportar.length} caja${aImportar.length !== 1 ? "s" : ""}`}
+                    {duplicados.length > 0 && (
+                      <div style={{ ...s.error, marginTop: 10 }}>
+                        ⚠ {duplicados.length} código{duplicados.length !== 1 ? "s" : ""} está{duplicados.length !== 1 ? "n" : ""} repetido{duplicados.length !== 1 ? "s" : ""} en este archivo, en ubicaciones distintas. Si se importa así, solo se guarda la última de cada una y las demás se pierden. Corrige los nombres en Google My Maps (ej. agregales "-1", "-2") y vuelve a subir el archivo:
+                        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {duplicados.map(([, l]) => (
+                            <span key={l[0].codigo} style={{ ...s.previewChip, background: "#fff", borderColor: "#dc2626", color: "#dc2626" }}>
+                              {l[0].codigo} ×{l.length}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <button onClick={confirmarImportacion} disabled={guardando || duplicados.length > 0} style={{ ...s.btn("#16a34a"), width: "100%", marginTop: 10, opacity: (guardando || duplicados.length > 0) ? 0.6 : 1 }}>
+                      {guardando ? "Guardando..." : duplicados.length > 0 ? "Corrige los duplicados antes de importar" : `Importar ${aImportar.length} caja${aImportar.length !== 1 ? "s" : ""}`}
                     </button>
                   </>
                 );
