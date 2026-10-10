@@ -2511,6 +2511,38 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/onu-diagnostico-completo") {
       const sn = new URL(req.url, "http://localhost").searchParams.get("sn");
       if (!sn) { writeJson(res, 400, { ok: false, error: "Falta sn" }); return; }
+
+      // VSOL (DIM) no tiene un servicio equivalente al cruce SN->MAC->
+      // MikroTik que usa Huawei -- olt-signal-dim no expone la MAC de la
+      // ONU por ningun endpoint (se probo onu-macs-puerto/onu-info/mac,
+      // ninguno existe ahi). Pero la OLT VSOL ya trae el nombre real del
+      // cliente en la descripcion de la ONU desde ANTES del etiquetado
+      // (confirmado en produccion: un cliente con caja_nap/puerto_nap aun
+      // en null ya tenia sn_onu guardado y el evento de la OLT ya devolvia
+      // su nombre correcto) -- alcanza con buscar directo por
+      // clientes.sn_onu, sin Mikrotik de por medio.
+      if (OLT_SIGNAL_PROVIDER === "vsol") {
+        try {
+          const filas = await fetchSupabaseRows("clientes", `sn_onu=eq.${encodeURIComponent(sn)}&select=id,nombre,dni,direccion,celular,email,nodo,codigo_cliente,codigo_abonado,estado_servicio,sn_onu,caja_nap,puerto_nap,puerto_sub,precinto_codigo,ubicacion,foto_fachada,fotos_liquidacion`);
+          const cliente = filas?.[0] || null;
+          if (!cliente) {
+            writeJson(res, 200, { ok: false, error: "No se encontró ningún cliente con ese SN de ONU (sn_onu no coincide con ningún registro)." });
+            return;
+          }
+          // Tarjeta/puerto + señal en vivo -- no critico, si falla igual se
+          // devuelve el cliente (el match ya es valido sin esto).
+          let ficha = null;
+          try {
+            const sig = await fetch(`${OLT_SSH_API}/signal?sn=${encodeURIComponent(sn)}&nodo=${encodeURIComponent(cliente.nodo || "")}`).then((r) => r.json());
+            if (sig?.ok) ficha = { board: sig.slot ?? null, port: sig.port ?? null, rxPower: sig.rxPower ?? null, txPower: sig.txPower ?? null };
+          } catch (_) { /* no critico */ }
+          writeJson(res, 200, { ok: true, sn, mac: null, ficha, mikrotik: null, cliente });
+        } catch (e) {
+          writeJson(res, 200, { ok: false, error: e.message || String(e) });
+        }
+        return;
+      }
+
       let connection = null;
       try {
         const ficha = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(sn)}`).then((r) => r.json());
