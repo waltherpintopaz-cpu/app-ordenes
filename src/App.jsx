@@ -2009,8 +2009,8 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
 
   const W = 640, H = 180, PAD_L = 44, PAD_R = 12, PAD_T = 14, PAD_B = 28;
 
-  const { pathD, ticksY, ticksX, minRx, maxRx } = useMemo(() => {
-    if (puntos.length < 2) return { pathD: "", ticksY: [], ticksX: [], minRx: 0, maxRx: 0 };
+  const { pathD, ticksY, ticksX, minRx, maxRx, puntosXY } = useMemo(() => {
+    if (puntos.length < 2) return { pathD: "", ticksY: [], ticksX: [], minRx: 0, maxRx: 0, puntosXY: [] };
     const rxVals = puntos.map(p => p.rx);
     let min = Math.min(...rxVals), max = Math.max(...rxVals);
     if (min === max) { min -= 1; max += 1; }
@@ -2026,7 +2026,8 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
       const t = tMin + ((tMax - tMin) * i) / xTickCount;
       return { t, x: x(t) };
     });
-    return { pathD: d, ticksY: yTicks, ticksX: xTicks, minRx: min, maxRx: max };
+    const pxy = puntos.map(p => ({ ...p, x: x(p.t), y: y(p.rx) }));
+    return { pathD: d, ticksY: yTicks, ticksX: xTicks, minRx: min, maxRx: max, puntosXY: pxy };
   }, [puntos]);
 
   const fmtFecha = (t) => {
@@ -2035,9 +2036,30 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
     if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
     return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
   };
+  const fmtFechaCompleta = (t) => new Date(t).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
   const ultimo = puntos[puntos.length - 1];
   const maxAbs = puntos.length ? Math.max(...puntos.map(p => p.rx)) : null;
+
+  // Tooltip al pasar el mouse -- muestra el valor exacto en ese punto de la
+  // curva, no solo "Actual"/"Máximo" fijos. fracX (0..1) se usa tanto para
+  // ubicar la linea guia en coordenadas del viewBox como para posicionar el
+  // tooltip HTML (mismo numero, dos sistemas de coordenadas distintos).
+  const [hover, setHover] = useState(null); // { fracX, punto }
+  const svgRef = useRef(null);
+  const manejarMouseMove = (e) => {
+    if (!puntosXY.length || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const fracX = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const svgX = fracX * W;
+    let nearest = puntosXY[0], minDist = Infinity;
+    for (const p of puntosXY) {
+      const dist = Math.abs(p.x - svgX);
+      if (dist < minDist) { minDist = dist; nearest = p; }
+    }
+    setHover({ fracX, punto: nearest });
+  };
+  const manejarMouseLeave = () => setHover(null);
 
   return (
     <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginTop: sinMargen ? 0 : 12 }}>
@@ -2072,8 +2094,9 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
       {!loading && !error && puntos.length >= 2 && (
         <>
           <style>{ESTILO_GRAFICO_ANIM}</style>
-          <div style={{ width: "100%", height: 170 }}>
-            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+          <div style={{ width: "100%", height: 170, position: "relative" }}>
+            <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block", cursor: "crosshair" }}
+              onMouseMove={manejarMouseMove} onMouseLeave={manejarMouseLeave}>
               <defs>
                 <linearGradient id="gradSenalHist" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
@@ -2091,7 +2114,22 @@ function GraficoSenalHistorial({ sn, sinMargen }) {
               ))}
               {pathD && <path className="grafico-area-fade" d={`${pathD} L${(W - PAD_R).toFixed(1)},${(H - PAD_B).toFixed(1)} L${PAD_L},${(H - PAD_B).toFixed(1)} Z`} fill="url(#gradSenalHist)" stroke="none" />}
               <path key={pathD} className="grafico-linea-dibujo" pathLength="1" d={pathD} fill="none" stroke="#f97316" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
+              {hover && (
+                <g>
+                  <line x1={hover.punto.x} x2={hover.punto.x} y1={PAD_T} y2={H - PAD_B} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3,3" />
+                  <circle cx={hover.punto.x} cy={hover.punto.y} r="4" fill="#f97316" stroke="#fff" strokeWidth="1.5" />
+                </g>
+              )}
             </svg>
+            {hover && (
+              <div style={{
+                position: "absolute", top: 4, left: `${hover.fracX * 100}%`, transform: `translateX(${hover.fracX > 0.75 ? "-100%" : hover.fracX < 0.1 ? "0%" : "-50%"})`,
+                background: "#1e293b", color: "#fff", borderRadius: 8, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.2)", zIndex: 5,
+              }}>
+                <div style={{ fontWeight: 800 }}>{hover.punto.rx.toFixed(2)} dBm</div>
+                <div style={{ fontSize: 10, opacity: 0.75 }}>{fmtFechaCompleta(hover.punto.t)}</div>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4 }}>
             <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Rx ONU (dBm)</span>
@@ -2143,8 +2181,8 @@ function GraficoTrafico({ sn, sinMargen }) {
 
   const W = 640, H = 180, PAD_L = 44, PAD_R = 12, PAD_T = 14, PAD_B = 28;
 
-  const { dUp, dDown, dDownArea, ticksY, ticksX, ultimoUp, ultimoDown, maxDown } = useMemo(() => {
-    if (puntos.length < 2) return { dUp: "", dDown: "", dDownArea: "", ticksY: [], ticksX: [], ultimoUp: null, ultimoDown: null, maxDown: 0 };
+  const { dUp, dDown, dDownArea, ticksY, ticksX, ultimoUp, ultimoDown, maxDown, puntosXY } = useMemo(() => {
+    if (puntos.length < 2) return { dUp: "", dDown: "", dDownArea: "", ticksY: [], ticksX: [], ultimoUp: null, ultimoDown: null, maxDown: 0, puntosXY: [] };
     const todos = puntos.flatMap(p => [p.up, p.down]).filter(v => v != null);
     let max = (todos.length ? Math.max(...todos) : 0.1) * 1.15 || 0.1;
     const tMin = puntos[0].t, tMax = puntos[puntos.length - 1].t;
@@ -2168,7 +2206,8 @@ function GraficoTrafico({ sn, sinMargen }) {
     });
     const ultUp = [...puntos].reverse().find(p => p.up != null)?.up ?? null;
     const ultDown = [...puntos].reverse().find(p => p.down != null)?.down ?? null;
-    return { dUp: lineaDe("up"), dDown: lineaDe("down"), dDownArea: areaDown, ticksY: yTicks, ticksX: xTicks, ultimoUp: ultUp, ultimoDown: ultDown, maxDown: Math.max(...puntos.map(p => p.down || 0)) };
+    const pxy = puntos.map(p => ({ ...p, x: x(p.t), yUp: p.up != null ? y(p.up) : null, yDown: p.down != null ? y(p.down) : null }));
+    return { dUp: lineaDe("up"), dDown: lineaDe("down"), dDownArea: areaDown, ticksY: yTicks, ticksX: xTicks, ultimoUp: ultUp, ultimoDown: ultDown, maxDown: Math.max(...puntos.map(p => p.down || 0)), puntosXY: pxy };
   }, [puntos]);
 
   const fmtFecha = (t) => {
@@ -2177,6 +2216,23 @@ function GraficoTrafico({ sn, sinMargen }) {
     if (rango === "semana" || rango === "mes") return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
     return d.toLocaleDateString("es-PE", { month: "short", year: "2-digit" });
   };
+  const fmtFechaCompleta = (t) => new Date(t).toLocaleString("es-PE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+  const [hover, setHover] = useState(null); // { fracX, punto }
+  const svgRef = useRef(null);
+  const manejarMouseMove = (e) => {
+    if (!puntosXY.length || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const fracX = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const svgX = fracX * W;
+    let nearest = puntosXY[0], minDist = Infinity;
+    for (const p of puntosXY) {
+      const dist = Math.abs(p.x - svgX);
+      if (dist < minDist) { minDist = dist; nearest = p; }
+    }
+    setHover({ fracX, punto: nearest });
+  };
+  const manejarMouseLeave = () => setHover(null);
 
   return (
     <div style={{ background: "#fff", border: "1.5px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", marginTop: sinMargen ? 0 : 12 }}>
@@ -2211,8 +2267,9 @@ function GraficoTrafico({ sn, sinMargen }) {
       {!loading && !error && puntos.length >= 2 && (
         <>
           <style>{ESTILO_GRAFICO_ANIM}</style>
-          <div style={{ width: "100%", height: 170 }}>
-            <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
+          <div style={{ width: "100%", height: 170, position: "relative" }}>
+            <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block", cursor: "crosshair" }}
+              onMouseMove={manejarMouseMove} onMouseLeave={manejarMouseLeave}>
               <defs>
                 <linearGradient id="gradTraficoDown" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.18" />
@@ -2231,7 +2288,27 @@ function GraficoTrafico({ sn, sinMargen }) {
               {dDownArea && <path className="grafico-area-fade" d={dDownArea} fill="url(#gradTraficoDown)" stroke="none" />}
               <path key={`down-${dDown}`} className="grafico-linea-dibujo" pathLength="1" d={dDown} fill="none" stroke="#3b82f6" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
               <path key={`up-${dUp}`} className="grafico-linea-dibujo" pathLength="1" d={dUp} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animationDelay: "120ms" }} />
+              {hover && (
+                <g>
+                  <line x1={hover.punto.x} x2={hover.punto.x} y1={PAD_T} y2={H - PAD_B} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3,3" />
+                  {hover.punto.yDown != null && <circle cx={hover.punto.x} cy={hover.punto.yDown} r="4" fill="#3b82f6" stroke="#fff" strokeWidth="1.5" />}
+                  {hover.punto.yUp != null && <circle cx={hover.punto.x} cy={hover.punto.yUp} r="4" fill="#f97316" stroke="#fff" strokeWidth="1.5" />}
+                </g>
+              )}
             </svg>
+            {hover && (
+              <div style={{
+                position: "absolute", top: 4, left: `${hover.fracX * 100}%`, transform: `translateX(${hover.fracX > 0.75 ? "-100%" : hover.fracX < 0.1 ? "0%" : "-50%"})`,
+                background: "#1e293b", color: "#fff", borderRadius: 8, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.2)", zIndex: 5,
+              }}>
+                <div style={{ fontWeight: 800 }}>
+                  {hover.punto.down != null && <span style={{ color: "#93c5fd" }}>↓ {hover.punto.down.toFixed(2)} Mbps</span>}
+                  {hover.punto.down != null && hover.punto.up != null && "  "}
+                  {hover.punto.up != null && <span style={{ color: "#fdba74" }}>↑ {hover.punto.up.toFixed(2)} Mbps</span>}
+                </div>
+                <div style={{ fontSize: 10, opacity: 0.75 }}>{fmtFechaCompleta(hover.punto.t)}</div>
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#6b7280", marginTop: 4, flexWrap: "wrap" }}>
             <span><span style={{ display: "inline-block", width: 8, height: 8, background: "#f97316", borderRadius: 2, marginRight: 4 }} />Upload: <strong style={{ color: "#374151" }}>{ultimoUp != null ? `${ultimoUp.toFixed(2)} Mbps` : "—"}</strong></span>
