@@ -3220,6 +3220,7 @@ export default function App() {
   const [cajaBornesInfo, setCajaBornesInfo] = useState(null); // { capacidad, porPuerto: {puerto: cliente[]} }
   const [cajaBornesLoading, setCajaBornesLoading] = useState(false);
   const [bornesPanelAbierto, setBornesPanelAbierto] = useState(false);
+  const [bornePuertoInfo, setBornePuertoInfo] = useState(null); // puerto ocupado tocado, para ver etiqueta/señal/suspensión
 
   const mapaRef = useRef(null);
   const mapaInstanciaRef = useRef(null);
@@ -16721,12 +16722,13 @@ export default function App() {
   // Bornes/puertos de la caja elegida -- quien clientes ocupa cada puerto
   useEffect(() => {
     const codigo = String(orden.cajaNap || "").trim();
+    setBornePuertoInfo(null);
     if (!codigo) { setCajaBornesInfo(null); return; }
     let cancelado = false;
     setCajaBornesLoading(true);
     Promise.all([
       supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).limit(1).maybeSingle(),
-      supabase.from("clientes").select("nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap").ilike("caja_nap", codigo),
+      supabase.from("clientes").select("id,nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap,sn_onu,nodo,vlan,rx_signal,signal_updated_at,fecha_suspendido").ilike("caja_nap", codigo),
     ]).then(([cajaRes, cliRes]) => {
       if (cancelado) return;
       const codigoNorm = codigo.toLowerCase();
@@ -18920,7 +18922,7 @@ export default function App() {
                         {bornesPanelAbierto && (
                           <div
                             className="bornes-overlay"
-                            onClick={() => setBornesPanelAbierto(false)}
+                            onClick={() => { setBornesPanelAbierto(false); setBornePuertoInfo(null); }}
                             style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
                           >
                             <div className="bornes-modal-card" onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, padding: "20px 22px 18px", maxWidth: 600, width: "100%", maxHeight: "86vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.3)" }}>
@@ -18929,7 +18931,7 @@ export default function App() {
                                   <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>Elegir puerto</div>
                                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Caja {orden.cajaNap}</div>
                                 </div>
-                                <button type="button" onClick={() => setBornesPanelAbierto(false)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8", lineHeight: 1 }}>✕</button>
+                                <button type="button" onClick={() => { setBornesPanelAbierto(false); setBornePuertoInfo(null); }} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8", lineHeight: 1 }}>✕</button>
                               </div>
 
                               {orden.puertoNap && (
@@ -18955,28 +18957,36 @@ export default function App() {
                                       {Array.from({ length: cajaBornesInfo.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
                                         const ocupantes = cajaBornesInfo.porPuerto[puerto] || [];
                                         const confirmado = ocupantes.some(c => c.precinto_codigo);
+                                        const suspendido = ocupantes.some(c => String(c.estado_servicio || "").toUpperCase() === "SUSPENDIDO");
                                         const libre = ocupantes.length === 0;
                                         const sel = orden.puertoNap === puerto;
+                                        const infoAbierta = bornePuertoInfo === puerto;
                                         const puedeAsignar = (esGestorSesion || esAdminSesion) && libre;
                                         const colorOverride = sel ? "#1d4ed8" : !libre && !confirmado ? "#f59e0b" : undefined;
-                                        const titulo = libre ? `Puerto ${puerto} — libre` : `Puerto ${puerto} — ${ocupantes.map(c => c.nombre).join(", ")}${confirmado ? " (confirmado en campo)" : " (sin confirmar)"}`;
+                                        const titulo = libre ? `Puerto ${puerto} — libre` : `Puerto ${puerto} — ${ocupantes.map(c => c.nombre).join(", ")}${confirmado ? " (confirmado en campo)" : " (sin confirmar)"}${suspendido ? " · SUSPENDIDO" : ""}`;
                                         return (
                                           <div
                                             key={puerto}
                                             className={`borne-tile-wrap ${libre ? "libre" : ""} ${sel ? "sel" : ""}`}
                                             title={titulo}
-                                            onClick={() => { if (puedeAsignar) handleChange("puertoNap", sel ? "" : puerto); }}
-                                            style={{ animationDelay: `${Math.min(idx, 24) * 22}ms`, display: "flex", flexDirection: "column", alignItems: "center", cursor: puedeAsignar ? "pointer" : "default" }}
+                                            onClick={() => {
+                                              if (libre) { if (puedeAsignar) handleChange("puertoNap", sel ? "" : puerto); return; }
+                                              setBornePuertoInfo(infoAbierta ? null : puerto);
+                                            }}
+                                            style={{ animationDelay: `${Math.min(idx, 24) * 22}ms`, display: "flex", flexDirection: "column", alignItems: "center", cursor: puedeAsignar || !libre ? "pointer" : "default" }}
                                           >
                                             <div className="borne-icon" style={{
                                               width: 36, height: 42, position: "relative",
-                                              filter: sel ? "drop-shadow(0 0 0 2px #1d4ed8)" : "none",
+                                              filter: sel || infoAbierta ? "drop-shadow(0 0 0 2px #1d4ed8)" : "none",
                                             }}>
                                               <PortIconWeb ocupado={!libre} colorOverride={colorOverride} />
+                                              {suspendido && (
+                                                <span style={{ position: "absolute", top: -2, right: -2, width: 10, height: 10, borderRadius: "50%", background: "#dc2626", border: "2px solid #2b2f38" }} title="Suspendido" />
+                                              )}
                                             </div>
                                             <span style={{ fontSize: 10, fontWeight: 800, color: sel ? "#93c5fd" : !libre ? "#e2e8f0" : "#8d93a3", marginTop: 2 }}>{puerto}</span>
                                             {!libre && (
-                                              <span style={{ fontSize: 8.5, fontWeight: 600, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#aab1c2" }}>
+                                              <span style={{ fontSize: 8.5, fontWeight: 600, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: suspendido ? "#fca5a5" : "#aab1c2" }}>
                                                 {ocupantes[0].nombre?.split(" ")[0] || "—"}
                                               </span>
                                             )}
@@ -18985,9 +18995,64 @@ export default function App() {
                                       })}
                                     </div>
                                   </div>
+
+                                  {/* Detalle del puerto ocupado tocado -- etiqueta (precinto),
+                                      señal, y si el cliente esta suspendido desde cuando. */}
+                                  {bornePuertoInfo && (cajaBornesInfo.porPuerto[bornePuertoInfo] || []).length > 0 && (() => {
+                                    const cli = cajaBornesInfo.porPuerto[bornePuertoInfo][0];
+                                    const susp = String(cli.estado_servicio || "").toUpperCase() === "SUSPENDIDO";
+                                    const senalViva = cliSenalData[cli.id];
+                                    const senalCargando = !!cliSenalLoading[cli.id];
+                                    const senalError = cliSenalError[cli.id];
+                                    const rxMostrar = senalViva?.rx ?? cli.rx_signal ?? null;
+                                    const puedeConsultar = !!cli.sn_onu && (nodoUsaHuawei(cli.nodo) || nodoUsaOltSsh(cli.nodo));
+                                    const consultar = () => nodoUsaHuawei(cli.nodo) ? consultarSenalHuaweiTabla({ id: cli.id, snOnu: cli.sn_onu }) : consultarSenalOltSshTabla({ id: cli.id, snOnu: cli.sn_onu, nodo: cli.nodo, vlan: cli.vlan });
+                                    return (
+                                      <div className="borne-tile-wrap" style={{ marginTop: 12, background: "#1c2029", borderRadius: 12, padding: "12px 14px" }}>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                          <div>
+                                            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{cli.nombre || "—"}</div>
+                                            <div style={{ fontSize: 11, color: "#8d93a3" }}>Puerto {bornePuertoInfo} · DNI {cli.dni || "—"}</div>
+                                          </div>
+                                          <button type="button" onClick={() => setBornePuertoInfo(null)} style={{ background: "none", border: "none", color: "#8d93a3", cursor: "pointer", fontSize: 16 }}>✕</button>
+                                        </div>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                                          <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: cli.precinto_codigo ? "rgba(22,163,74,0.18)" : "rgba(245,158,11,0.18)", color: cli.precinto_codigo ? "#4ade80" : "#fbbf24" }}>
+                                            🏷️ {cli.precinto_codigo ? `Etiqueta ${cli.precinto_codigo}` : "Sin etiqueta confirmada"}
+                                          </span>
+                                          {susp ? (
+                                            <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: "rgba(220,38,38,0.18)", color: "#f87171" }}>
+                                              ⛔ Suspendido{cli.fecha_suspendido ? ` el ${new Date(cli.fecha_suspendido).toLocaleDateString("es-PE")}` : ""}
+                                            </span>
+                                          ) : (
+                                            <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: "rgba(22,163,74,0.18)", color: "#4ade80" }}>✓ {cli.estado_servicio || "ACTIVO"}</span>
+                                          )}
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                                          {senalCargando ? (
+                                            <span style={{ fontSize: 12, color: "#8d93a3" }}>Consultando señal…</span>
+                                          ) : senalError ? (
+                                            <span style={{ fontSize: 12, color: "#f87171" }}>{senalError}</span>
+                                          ) : rxMostrar != null ? (
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: Number(rxMostrar) >= -22 ? "#4ade80" : Number(rxMostrar) >= -25 ? "#fbbf24" : "#f87171" }}>
+                                              📶 {rxMostrar} dBm{cli.signal_updated_at && !senalViva ? ` (hace ${Math.max(0, Math.floor((Date.now() - new Date(cli.signal_updated_at).getTime()) / 60000))} min)` : ""}
+                                            </span>
+                                          ) : (
+                                            <span style={{ fontSize: 12, color: "#8d93a3" }}>Sin señal registrada</span>
+                                          )}
+                                          {puedeConsultar && (
+                                            <button type="button" onClick={consultar} disabled={senalCargando} style={{ fontSize: 11, fontWeight: 700, color: "#93c5fd", background: "none", border: "none", cursor: senalCargando ? "wait" : "pointer" }}>
+                                              ↺ {rxMostrar != null ? "Actualizar" : "Consultar"}
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                   <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, fontSize: 11, color: "#64748b" }}>
                                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#16a34a", display: "inline-block" }} />Confirmado en campo</span>
                                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#f59e0b", display: "inline-block" }} />Ocupado sin confirmar</span>
+                                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: "50%", background: "#dc2626", display: "inline-block" }} />Suspendido</span>
                                     <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: "#f1f5f9", border: "1px solid #e2e8f0", display: "inline-block" }} />Libre{(esGestorSesion || esAdminSesion) ? " — clic para asignar" : ""}</span>
                                   </div>
                                   {cajaBornesInfo.sinPuerto.length > 0 && (
@@ -18997,7 +19062,7 @@ export default function App() {
                                   )}
                                   <button
                                     type="button"
-                                    onClick={() => setBornesPanelAbierto(false)}
+                                    onClick={() => { setBornesPanelAbierto(false); setBornePuertoInfo(null); }}
                                     style={{ marginTop: 16, width: "100%", padding: "12px 0", background: orden.puertoNap ? "#1d4ed8" : "#e2e8f0", color: orden.puertoNap ? "#fff" : "#94a3b8", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: "pointer" }}
                                   >
                                     {orden.puertoNap ? `Usar puerto ${orden.puertoNap}` : "Toca un puerto libre"}
