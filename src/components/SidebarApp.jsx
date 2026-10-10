@@ -573,11 +573,16 @@ async function buscarDniORuc(documento) {
   }
 }
 
-async function mkwProxy(nodo, accion, payload, token) {
+// esDim: opcional -- el numero de router "12" es ambiguo entre el Mikrowisp
+// de DimFiber (Nod_06) y el de Americanet (Nod_03 migrado), asi que el
+// backend solo puede adivinar la instancia correcta a partir del numero
+// cuando no se le dice explicitamente. Pasar esDim cuando el llamador ya
+// sabe (por el "empresa" ya resuelto) a que instancia pertenece el dato.
+async function mkwProxy(nodo, accion, payload, token, esDim) {
   const r = await fetchConTimeout(PROXY_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nodo, accion, payload, ...(token ? { token } : {}) }),
+    body: JSON.stringify({ nodo, accion, payload, ...(token ? { token } : {}), ...(typeof esDim === "boolean" ? { esDim } : {}) }),
   });
   const json = await r.json();
   return json.data ?? json;
@@ -878,6 +883,11 @@ export default function SidebarApp() {
   const [convId,  setConvId]      = useState(null);
   const [acctId,  setAcctId]      = useState("1");
   const [cliente, setCliente]     = useState(null);  // datos Supabase/Mikrowisp
+  // nodo 12 es ambiguo entre Nod_06 (DimFiber) y Nod_03 migrado (Americanet)
+  // en la instancia de Mikrowisp -- usar el "empresa" ya resuelto (via
+  // MW_NODO_MAP en cargarDesdeRow) en vez de dejar que el backend adivine
+  // por numero en cada llamada a mkwProxy sobre el cliente cargado.
+  const esDimCliente = cliente?.empresa === "dimfiber" || cliente?.empresa === "nod06";
   const [recojoInfo, setRecojoInfo] = useState(null); // ultimo recojo de equipo completado del cliente (si existe)
   const [fotoZoomUrl, setFotoZoomUrl] = useState(null); // foto de liquidacion ampliada en pantalla completa
   const [serviciosTelefono, setServiciosTelefono] = useState([]); // [{tipo:"mikrowisp"|"local", row}] cuando el telefono tiene 2+ servicios
@@ -1286,9 +1296,10 @@ export default function SidebarApp() {
     setError(null);
 
     const id = parseInt(cli.mikrowisp_id, 10);
+    const esDimCli = empresa === "dimfiber" || empresa === "nod06";
     const [detRes, invRes] = await Promise.all([
-      mkwProxy(nodoNum, "GetClientsDetails", { idcliente: id }).catch(() => null),
-      mkwProxy(nodoNum, "GetInvoices",       { idcliente: id }).catch(() => null),
+      mkwProxy(nodoNum, "GetClientsDetails", { idcliente: id }, null, esDimCli).catch(() => null),
+      mkwProxy(nodoNum, "GetInvoices",       { idcliente: id }, null, esDimCli).catch(() => null),
     ]);
 
     const clientes = detRes?.clientes || detRes?.datos || [];
@@ -1558,7 +1569,7 @@ export default function SidebarApp() {
         idfactura: parseInt(formPago.idfactura, 10),
         pasarela:  formPago.pasarela,
         cantidad:  parseFloat(formPago.monto),
-      }, tkn);
+      }, tkn, esDimCliente);
       const estado = (res?.estado || res?.result || res?.status || "").toLowerCase();
       const msgRes = (res?.message || res?.mensaje || "").toLowerCase();
       const esError = estado === "error" || estado === "failed" || msgRes.includes("error") || msgRes.includes("no existe") || msgRes.includes("menor al total");
@@ -1585,7 +1596,7 @@ export default function SidebarApp() {
         try {
           const invRes = await mkwProxy(Number(cliente.nodo), "GetInvoice", {
             idfactura: parseInt(formPago.idfactura, 10),
-          }, tkn);
+          }, tkn, esDimCliente);
           urlPdf = invRes?.factura?.urlpdf || invRes?.urlpdf || "";
         } catch { /* silencioso */ }
 
@@ -1619,7 +1630,7 @@ export default function SidebarApp() {
       const res = await mkwProxy(Number(cliente.nodo), "CreateInvoice", {
         idcliente:  parseInt(cliente.mikrowisp_id, 10),
         vencimiento: factForm.vencimiento,
-      }, tkn);
+      }, tkn, esDimCliente);
       const ok = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || "Rechazado"), false); setCreando(false); return; }
       notify(`✅ Factura #${res.idfactura} creada correctamente`);
@@ -1644,7 +1655,7 @@ export default function SidebarApp() {
       if (editForm.cedula)            datos.cedula            = editForm.cedula.trim();
       if (editForm.direccion_principal) datos.direccion_principal = editForm.direccion_principal.trim();
       if (!Object.keys(datos).length) { notify("No hay cambios que guardar", false); setGuardando(false); return; }
-      const res = await mkwProxy(Number(cliente.nodo), "UpdateUser", { idcliente: parseInt(cliente.mikrowisp_id, 10), datos }, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "UpdateUser", { idcliente: parseInt(cliente.mikrowisp_id, 10), datos }, tkn, esDimCliente);
       const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("✅ Datos actualizados correctamente"); await buscarCliente(contact?.phone_number || ""); setTab("info"); }
@@ -1680,7 +1691,8 @@ export default function SidebarApp() {
       const tkn = getToken(titularExito.empresa, agente);
       const dni = String(titularExito.dni || "").replace(/\D/g, "");
       const msg = `BIENVENIDA ${String(titularExito.nombre || "").trim()} ${dni} ${dni}`;
-      const res = await mkwProxy(titularExito.nodo, "NewSMS", { idcliente: parseInt(titularExito.mkwId, 10), mensaje: msg }, tkn);
+      const esDimTitular = titularExito.empresa === "dimfiber" || titularExito.empresa === "nod06";
+      const res = await mkwProxy(titularExito.nodo, "NewSMS", { idcliente: parseInt(titularExito.mkwId, 10), mensaje: msg }, tkn, esDimTitular);
       const ok = res?.estado === "exito" || res?.success === true || String(res?.code) === "200" || res?.id;
       if (ok) {
         setTitularSmsEnviado(true);
@@ -1723,7 +1735,7 @@ export default function SidebarApp() {
       const datos = { nombre: nombreNuevo, cedula: dniNuevo };
       if (titularForm.celular.trim()) datos.movil = titularForm.celular.trim();
       if (titularForm.correo.trim()) datos.correo = titularForm.correo.trim();
-      const res = await mkwProxy(Number(cliente.nodo), "UpdateUser", { idcliente: parseInt(cliente.mikrowisp_id, 10), datos }, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "UpdateUser", { idcliente: parseInt(cliente.mikrowisp_id, 10), datos }, tkn, esDimCliente);
       const ok = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) {
         notify("Error actualizando Mikrowisp: " + (res?.mensaje || res?.message || JSON.stringify(res)), false);
@@ -1867,7 +1879,7 @@ export default function SidebarApp() {
     setErrorPerf(false);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      const res = await mkwProxy(Number(cliente.nodo), "GetPerfiles", {}, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "GetPerfiles", {}, tkn, esDimCliente);
       const lista = res?.datos || res?.perfiles || (Array.isArray(res) ? res : []);
       if (!lista.length) { setErrorPerf(true); }
       else setPerfiles(lista.filter(p => p.estado === "ACTIVADO"));
@@ -1891,7 +1903,7 @@ export default function SidebarApp() {
       if (svcForm.pppuser.trim()) payload.userppp = svcForm.pppuser.trim();
       if (svcForm.ppppass.trim()) payload.passppp = svcForm.ppppass.trim();
       if (svcForm.ip.trim())      payload.ip      = svcForm.ip.trim();
-      const res = await mkwProxy(Number(cliente.nodo), "EditService", payload, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "EditService", payload, tkn, esDimCliente);
       const ok = (res?.estado || res?.code || "").toString().toLowerCase() === "exito"
                || (res?.estado || res?.code || "").toString() === "200";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
@@ -1910,7 +1922,7 @@ export default function SidebarApp() {
     setActivando(true);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      const res = await mkwProxy(Number(cliente.nodo), "ActiveService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "ActiveService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn, esDimCliente);
       const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("✅ Servicio activado correctamente"); await buscarCliente(contact?.phone_number || ""); }
@@ -1924,7 +1936,7 @@ export default function SidebarApp() {
     setSuspendiendo(true);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      const res = await mkwProxy(Number(cliente.nodo), "SuspendService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "SuspendService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn, esDimCliente);
       const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("⚠️ Servicio suspendido"); await buscarCliente(contact?.phone_number || ""); }
@@ -1938,7 +1950,7 @@ export default function SidebarApp() {
     setDeletingFact(fid);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      const res = await mkwProxy(Number(cliente.nodo), "DeleteInvoice", { idfactura: parseInt(fid, 10) }, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "DeleteInvoice", { idfactura: parseInt(fid, 10) }, tkn, esDimCliente);
       const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("✅ Factura #" + fid + " eliminada"); setFactExpand(null); await buscarCliente(contact?.phone_number || ""); }
@@ -1952,7 +1964,7 @@ export default function SidebarApp() {
     setDeletingPago(fid);
     try {
       const tkn = getToken(cliente.empresa, agente);
-      const res = await mkwProxy(Number(cliente.nodo), "DeleteTransaccion", { factura: parseInt(fid, 10) }, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "DeleteTransaccion", { factura: parseInt(fid, 10) }, tkn, esDimCliente);
       const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
       else { notify("✅ Pago de factura #" + fid + " eliminado"); await buscarCliente(contact?.phone_number || ""); }
@@ -2479,14 +2491,18 @@ export default function SidebarApp() {
       try {
         const idcliente = parseInt(row.mikrowisp_id, 10);
         const nodoNum = Number(row.nodo);
-        const det = await mkwProxy(nodoNum, "GetClientsDetails", { idcliente });
+        // nodo 12 es ambiguo (Nod_06 DIM vs Nod_03 Americanet) -- usar el
+        // "empresa" que ya viene en la fila cuando esta disponible (lo pone
+        // cargarDesdeRow), en vez de dejar que el backend adivine por numero.
+        const esDimRow = row.empresa === "dimfiber" || row.empresa === "nod06" || (row.empresa == null && (nodoNum === 5 || nodoNum === MW_NODO_MAP["Nod_06"]));
+        const det = await mkwProxy(nodoNum, "GetClientsDetails", { idcliente }, null, esDimRow);
         const clientes = det?.clientes || det?.datos || [];
         const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
         const movilActual = String(detCliente?.movil || "").trim();
         const yaEsta = movilActual.split(",").map(s => s.trim()).includes(rawPhone);
         if (!yaEsta) {
           const nuevoMovil = movilActual ? `${movilActual},${rawPhone}` : rawPhone;
-          const res = await mkwProxy(nodoNum, "UpdateUser", { idcliente, datos: { movil: nuevoMovil } });
+          const res = await mkwProxy(nodoNum, "UpdateUser", { idcliente, datos: { movil: nuevoMovil } }, null, esDimRow);
           const ok = (res?.estado || "").toLowerCase() === "exito" || String(res?.code) === "200";
           if (!ok) throw new Error(res?.mensaje || res?.message || "Mikrowisp rechazó la actualización");
         }
@@ -2788,7 +2804,7 @@ export default function SidebarApp() {
         idfactura:   parseInt(prorrInfo.idfactura, 10),
         fechalimite: fechaStr,
         descripcion: `Prórroga ${esExt ? "extendida" : "registrada"} por ${agente || "agente"} vía Chatwoot`,
-      }, tkn);
+      }, tkn, esDimCliente);
       const ok = (res?.estado || res?.result || res?.status || "").toLowerCase() !== "error";
       if (!ok) { notify("Mikrowisp rechazó la prórroga: " + (res?.message || res?.mensaje || ""), false); setProrrando(false); return; }
       notify(`✅ Prórroga registrada hasta ${fechaStr}`);
@@ -2983,7 +2999,7 @@ export default function SidebarApp() {
         id_perfil:   Number(svc.idperfil || svc.id_perfil),
         coordenadas: coord,
       };
-      const res = await mkwProxy(Number(cliente.nodo), "EditService", payload, tkn);
+      const res = await mkwProxy(Number(cliente.nodo), "EditService", payload, tkn, esDimCliente);
       const ok = (res?.estado || res?.code || "").toString().toLowerCase() === "exito"
                || (res?.estado || res?.code || "").toString() === "200";
       if (!ok) { notify("Error al guardar en MikroWisp: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }

@@ -1574,9 +1574,15 @@ const MKW_PROXY_ACCIONES = new Set([
 const MKW_PROXY_DEFAULT_TOKEN_DIM = "SE8xNXBlNzBvR2NFTFlQVWl0Y0psZz09";
 const MKW_PROXY_DEFAULT_TOKEN_AMN = "LzNXSERnUHBMMS91b0NzUGFTVkFkZz09";
 
-const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride, baseOverride) => {
+const handleMkwProxyAccion = async (accion, nodo, payload, tokenOverride, baseOverride, esDimOverride) => {
   if (!MKW_PROXY_ACCIONES.has(accion)) throw new Error("Accion no permitida: " + accion);
-  const isDim = MKW_PROXY_NODOS_DIM.has(Number(nodo || 0));
+  // esDimOverride: nodo=12 es ambiguo (Nod_06 de DimFiber Y Nod_03 migrado de
+  // Americanet usan ese mismo numero en sus respectivas instancias de
+  // Mikrowisp -- ver comentario de MKW_PROXY_NODOS_DIM). Cuando el que llama
+  // YA SABE a que cliente/instancia pertenece el dato (ej: SidebarApp leyendo
+  // una fila de mikrowisp_clientes cuyo "empresa" ya resolvio como "nod06"),
+  // manda este flag explicito en vez de confiar en la adivinanza por numero.
+  const isDim = typeof esDimOverride === "boolean" ? esDimOverride : MKW_PROXY_NODOS_DIM.has(Number(nodo || 0));
   // baseOverride: permite que un cliente (via CRM/tenant_config) mande su
   // propia URL de Mikrowisp sin que el servidor tenga que conocerla de
   // antemano -- asi un tenant nuevo funciona sin tocar este archivo.
@@ -1778,7 +1784,7 @@ const proxyMikrowispGenerico = async (req) => {
       const data = await handleSmartOltSignal(body.sn || "");
       return { status: 200, json: { ok: true, data } };
     }
-    const data = await handleMkwProxyAccion(accion, body.nodo, body.payload, body.token, body.apiBase);
+    const data = await handleMkwProxyAccion(accion, body.nodo, body.payload, body.token, body.apiBase, body.esDim);
     return { status: 200, json: { ok: true, data } };
   } catch (e) {
     return { status: 200, json: { ok: false, error: e.message } };
