@@ -1187,6 +1187,7 @@ export default function InventarioPanel({ initialTab = "catalogo", sessionUser =
         estadoRetorno: String(r.estado_retorno || "BUENO").toUpperCase(),
         motivo: String(r.motivo || ""),
         tecnico: resolverTecnicoActivoNombre(r.tecnico),
+        tecnicoDestino: resolverTecnicoActivoNombre(r.tecnico_destino),
         actorSolicita: String(r.actor_solicita || ""),
         estado: String(r.estado || "PENDIENTE").toUpperCase(),
         aprobadoPor: String(r.aprobado_por || ""),
@@ -1814,9 +1815,22 @@ ${filasNodos}
     return (solicitudesDevolucion || []).filter(
       (s) =>
         personaKey(s.tecnico || "") === personaKey(tecnicoSesion || "") ||
-        personaKey(s.actorSolicita || "") === personaKey(tecnicoSesion || "")
+        personaKey(s.actorSolicita || "") === personaKey(tecnicoSesion || "") ||
+        personaKey(s.tecnicoDestino || "") === personaKey(tecnicoSesion || "")
     );
   }, [esTecnico, solicitudesDevolucion, tecnicoSesion]);
+  // Una transferencia que el receptor nunca confirmo ni rechazo en 72h se
+  // considera vencida -- cualquiera de los 2 lados (quien la mando o quien
+  // la iba a recibir) puede cancelarla desde ahi en vez de quedar bloqueada
+  // para siempre esperando una respuesta que no va a llegar.
+  const TRANSFERENCIA_VENCE_MS = 72 * 60 * 60 * 1000;
+  const transferenciaVencida = useCallback((s) => {
+    if (String(s?.tipoSolicitud || "").toUpperCase() !== "TRANSFERENCIA") return false;
+    if (String(s?.estado || "").toUpperCase() !== "PENDIENTE") return false;
+    const creado = new Date(s?.createdAt || "").getTime();
+    if (!Number.isFinite(creado)) return false;
+    return Date.now() - creado > TRANSFERENCIA_VENCE_MS;
+  }, []);
   const kardex = useMemo(() => {
     const base = esTecnico
       ? movimientos.filter((m) => personaKey(m.tecnico || m.actor) === personaKey(tecnicoSesion))
@@ -2523,6 +2537,7 @@ ${filasNodos}
         estado_retorno: String(payload?.estado_retorno || "BUENO").toUpperCase(),
         motivo: String(payload?.motivo || ""),
         tecnico: String(payload?.tecnico || ""),
+        tecnico_destino: String(payload?.tecnico_destino || ""),
         actor_solicita: String(payload?.actor_solicita || ""),
         estado: "PENDIENTE",
         movimiento_ref: String(payload?.movimiento_ref || ""),
@@ -2772,6 +2787,239 @@ ${filasNodos}
       }
     },
     [esTecnico, pendienteMaterialPorAsignacion, registrarSolicitudDevolucionInventario, resolverNombreTecnico, sessionUser?.nombre, sessionUser?.username, tecnicoSesion]
+  );
+
+  // Pide el tecnico destino por prompt (igual patron que "Asignacion de
+  // materiales", que ya valida nombre contra la lista de tecnicos activos) y
+  // devuelve el nombre resuelto, o null si se cancelo / no es valido / es
+  // el mismo tecnico que esta transfiriendo.
+  const pedirTecnicoDestino = useCallback(
+    (origen) => {
+      const raw = String(window.prompt("Nombre exacto del tecnico que va a RECIBIR (debe estar activo)") || "").trim();
+      if (!raw) return null;
+      if (!esTecnicoRegistrado(raw)) {
+        window.alert(`"${raw}" no es un tecnico activo registrado.`);
+        return null;
+      }
+      const destino = resolverNombreTecnico(raw);
+      if (personaKey(destino) === personaKey(origen)) {
+        window.alert("No puedes transferirte algo a ti mismo.");
+        return null;
+      }
+      return destino;
+    },
+    [esTecnicoRegistrado, resolverNombreTecnico]
+  );
+
+  // Push al tecnico destino reusando la misma funcion de Supabase que ya usa
+  // "Solicitud de devolucion" para avisar a almacen (send-push-notification) --
+  // aqui el receptor es el tecnico destino en vez de Administrador/Almacen.
+  const notificarTransferenciaPendiente = useCallback(async (tecnicoDestino, itemLabel) => {
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          tecnico_nombre: tecnicoDestino,
+          title: "Transferencia de inventario",
+          body: `Te estan transfiriendo: ${itemLabel}. Entra a Inventario para confirmar.`,
+          data: { tipo: "transferencia_inventario" },
+        },
+      });
+    } catch {
+      /* no interrumpir el flujo si falla el push */
+    }
+  }, []);
+
+  const solicitarTransferenciaEquipo = useCallback(
+    async (item) => {
+      if (!esTecnico) {
+        window.alert("Solo el tecnico asignado puede transferir sus equipos.");
+        return;
+      }
+      const itemId = String(item?.id || "").trim();
+      if (!itemId) return;
+      if (solicitudesPendientesPorEquipo.has(itemId)) {
+        window.alert("Ya existe una solicitud pendiente para este equipo.");
+        return;
+      }
+      const tecnicoOrigen = resolverNombreTecnico(item?.tecnico || tecnicoSesion);
+      const destino = pedirTecnicoDestino(tecnicoOrigen);
+      if (!destino) return;
+      const ok = await registrarSolicitudDevolucionInventario({
+        tipo_solicitud: "TRANSFERENCIA",
+        tipo_item: "equipo",
+        equipo_id: itemId,
+        codigo_qr: String(item?.codigo || ""),
+        motivo: `Transferencia a ${destino}`,
+        tecnico: tecnicoOrigen,
+        tecnico_destino: destino,
+        actor_solicita: String(sessionUser?.nombre || sessionUser?.username || tecnicoOrigen || "").trim(),
+      });
+      if (ok) {
+        window.alert(`Transferencia a ${destino} enviada. Queda bloqueado hasta que ${destino} la confirme (o venza en 72h).`);
+        void notificarTransferenciaPendiente(destino, `${item?.tipo || "Equipo"} - ${item?.codigo || ""}`);
+      }
+    },
+    [esTecnico, notificarTransferenciaPendiente, pedirTecnicoDestino, registrarSolicitudDevolucionInventario, resolverNombreTecnico, sessionUser?.nombre, sessionUser?.username, solicitudesPendientesPorEquipo, tecnicoSesion]
+  );
+
+  const solicitarTransferenciaMaterial = useCallback(
+    async (item) => {
+      if (!esTecnico) {
+        window.alert("Solo el tecnico asignado puede transferir su material.");
+        return;
+      }
+      const rowId = String(item?.id || "").trim();
+      if (!rowId) return;
+      const disponible = num(item?.disponible, 0);
+      const pendienteAcumulado = num(pendienteMaterialPorAsignacion.get(rowId), 0);
+      const maxDisponible = Math.max(0, disponible - pendienteAcumulado);
+      if (maxDisponible <= 0) {
+        window.alert("Sin saldo disponible para transferir (o ya tiene una solicitud pendiente por todo el saldo).");
+        return;
+      }
+      const tecnicoOrigen = resolverNombreTecnico(item?.tecnico || tecnicoSesion);
+      const destino = pedirTecnicoDestino(tecnicoOrigen);
+      if (!destino) return;
+      const cantidadRaw = window.prompt(
+        `Cantidad a transferir (max ${maxDisponible.toFixed(2)} ${item?.unidad || "unidad"})`,
+        String(maxDisponible)
+      );
+      if (cantidadRaw === null) return;
+      const cantidad = num(cantidadRaw, -1);
+      if (cantidad <= 0 || cantidad > maxDisponible) {
+        window.alert(`Cantidad invalida. Maximo ${maxDisponible.toFixed(2)} ${item?.unidad || "unidad"}.`);
+        return;
+      }
+      const ok = await registrarSolicitudDevolucionInventario({
+        tipo_solicitud: "TRANSFERENCIA",
+        tipo_item: "material",
+        material_asig_id: rowId,
+        material_id: String(item?.materialId || ""),
+        material_nombre: String(item?.materialNombre || item?.material || ""),
+        cantidad,
+        unidad: String(item?.unidad || "unidad"),
+        motivo: `Transferencia a ${destino}`,
+        tecnico: tecnicoOrigen,
+        tecnico_destino: destino,
+        actor_solicita: String(sessionUser?.nombre || sessionUser?.username || tecnicoOrigen || "").trim(),
+      });
+      if (ok) {
+        window.alert(`Transferencia a ${destino} enviada. Queda bloqueado hasta que ${destino} la confirme (o venza en 72h).`);
+        void notificarTransferenciaPendiente(destino, `${item?.materialNombre || item?.material || "Material"} (${cantidad} ${item?.unidad || "unidad"})`);
+      }
+    },
+    [esTecnico, notificarTransferenciaPendiente, pedirTecnicoDestino, pendienteMaterialPorAsignacion, registrarSolicitudDevolucionInventario, resolverNombreTecnico, sessionUser?.nombre, sessionUser?.username, tecnicoSesion]
+  );
+
+  // Rechazo (del receptor) o cancelacion (de quien la mando) -- mismo efecto:
+  // no se mueve nada, solo queda marcada RECHAZADA para que deje de bloquear
+  // el equipo/material. A diferencia de rechazarSolicitudDevolucionInventario
+  // (gateada a "no tecnico"/almacen), aqui puede actuar cualquiera de los 2
+  // tecnicos involucrados en ESTA solicitud puntual.
+  const rechazarTransferencia = useCallback(
+    async (sol, motivoForzado) => {
+      const id = String(sol?.id || "").trim();
+      if (!id) return;
+      const esDestino = personaKey(sol?.tecnicoDestino || "") === personaKey(tecnicoSesion || "");
+      const esOrigen = personaKey(sol?.tecnico || "") === personaKey(tecnicoSesion || "");
+      if (!esDestino && !esOrigen) {
+        window.alert("Solo los tecnicos involucrados en esta transferencia pueden rechazarla/cancelarla.");
+        return;
+      }
+      const motivo = motivoForzado || String(window.prompt(esDestino ? "Motivo de rechazo" : "Motivo de cancelacion") || "").trim();
+      if (!motivo) return;
+      setSolicitudProcesandoId(id);
+      try {
+        const updSol = await updateByIdWithColumnFallback(INVENTARIO_DEV_SOL_TABLE, id, {
+          estado: "RECHAZADA",
+          aprobado_por: String(sessionUser?.nombre || sessionUser?.username || "").trim(),
+          aprobado_at: new Date().toISOString(),
+          rechazo_motivo: motivo,
+        });
+        if (!updSol.ok) throw updSol.error;
+        await cargar();
+        window.alert(esDestino ? "Transferencia rechazada." : "Transferencia cancelada.");
+      } catch (e) {
+        window.alert(String(e?.message || "No se pudo procesar."));
+      } finally {
+        setSolicitudProcesandoId("");
+      }
+    },
+    [cargar, sessionUser?.nombre, sessionUser?.username, tecnicoSesion, updateByIdWithColumnFallback]
+  );
+
+  // El receptor confirma: recien aqui se mueve el inventario de verdad
+  // (hasta este momento el equipo/material seguia tecnicamente en poder de
+  // quien lo transfirio -- bloqueado para liquidar u ofrecer en otra
+  // transferencia por solicitudesPendientesPorEquipo/pendienteMaterialPorAsignacion,
+  // que ya cuentan las TRANSFERENCIA pendientes igual que las DEVOLUCION).
+  const confirmarTransferencia = useCallback(
+    async (sol) => {
+      const id = String(sol?.id || "").trim();
+      if (!id) return;
+      if (personaKey(sol?.tecnicoDestino || "") !== personaKey(tecnicoSesion || "")) {
+        window.alert("Solo el tecnico destino puede confirmar esta transferencia.");
+        return;
+      }
+      setSolicitudProcesandoId(id);
+      try {
+        const estadoActualRes = await supabase.from(INVENTARIO_DEV_SOL_TABLE).select("estado").eq("id", id).maybeSingle();
+        const estadoActual = String(estadoActualRes.data?.estado || "").trim().toUpperCase();
+        if (estadoActual && estadoActual !== "PENDIENTE") {
+          window.alert("Esta transferencia ya fue procesada, se refresca la lista.");
+          void cargar();
+          return;
+        }
+        if (transferenciaVencida(sol)) {
+          window.alert("Esta transferencia ya vencio (pasaron mas de 72h) -- se cancela en vez de confirmarse.");
+          await rechazarTransferencia(sol, "Vencida (72h sin confirmar)");
+          return;
+        }
+        const tipo = String(sol?.tipoItem || "").toLowerCase();
+        if (tipo === "equipo") {
+          const equipoId = String(sol?.equipoId || "").trim();
+          const item = equipos.find((e) => String(e.id) === equipoId);
+          if (!item) throw new Error("Equipo no encontrado para confirmar la transferencia.");
+          if (personaKey(item?.tecnico || "") !== personaKey(sol?.tecnico || "")) {
+            throw new Error(`Este equipo ya no esta en poder de ${sol?.tecnico} (lo movieron entremedio) -- no se puede transferir.`);
+          }
+          const upd = await supabase.from("equipos_catalogo").update({ tecnico_asignado: sol.tecnicoDestino }).eq("id", item.id).eq("tecnico_asignado", sol.tecnico).select("id");
+          if (upd.error || !upd.data?.length) throw new Error("No se pudo mover el equipo (puede que ya no fuera de quien lo transfirio).");
+          await registrarMov({ tipoItem: "equipo", movimiento: "transferencia_salida", motivo: `Transferido a ${sol.tecnicoDestino}: ${sol.motivo || ""}`, itemNombre: equipoNombre(item), referencia: String(sol?.codigoQr || item?.codigo || ""), cantidad: 1, unidad: "unidad", costoUnitario: item?.precio || 0, tecnico: sol.tecnico });
+          await registrarMov({ tipoItem: "equipo", movimiento: "transferencia_entrada", motivo: `Recibido de ${sol.tecnico}: ${sol.motivo || ""}`, itemNombre: equipoNombre(item), referencia: String(sol?.codigoQr || item?.codigo || ""), cantidad: 1, unidad: "unidad", costoUnitario: item?.precio || 0, tecnico: sol.tecnicoDestino });
+        } else if (tipo === "material") {
+          const asigId = String(sol?.materialAsigId || "").trim();
+          const asig = materialesAsig.find((m) => String(m.id) === asigId);
+          if (!asig) throw new Error("Asignacion de material no encontrada.");
+          const cantidad = num(sol?.cantidad, -1);
+          if (cantidad <= 0) throw new Error("Cantidad invalida en la solicitud.");
+          const freshAsig = await supabase.from("materiales_asignados_tecnicos").select("cantidad_disponible").eq("id", asigId).maybeSingle();
+          const disponibleReal = num(freshAsig.data?.cantidad_disponible, 0);
+          if (cantidad > disponibleReal) throw new Error(`${sol.tecnico} ya no tiene suficiente saldo (disponible actual: ${disponibleReal.toFixed(2)}).`);
+          const { error: errOrigen } = await supabase.rpc("ajustar_material_tecnico", { p_tecnico: sol.tecnico, p_material_id: Number.isFinite(Number(asig.materialId)) ? Number(asig.materialId) : null, p_material_nombre: asig.material, p_unidad: asig.unidad, p_delta_disponible: -cantidad, p_delta_asignado: -cantidad });
+          if (errOrigen) throw errOrigen;
+          const { error: errDestino } = await supabase.rpc("ajustar_material_tecnico", { p_tecnico: sol.tecnicoDestino, p_material_id: Number.isFinite(Number(asig.materialId)) ? Number(asig.materialId) : null, p_material_nombre: asig.material, p_unidad: asig.unidad, p_delta_disponible: cantidad, p_delta_asignado: cantidad });
+          if (errDestino) throw errDestino;
+          await registrarMov({ tipoItem: "material", movimiento: "transferencia_salida", motivo: `Transferido a ${sol.tecnicoDestino}: ${sol.motivo || ""}`, itemNombre: String(sol?.materialNombre || asig?.material || "-"), referencia: materialRef(sol?.materialId || asig?.materialId), cantidad, unidad: String(sol?.unidad || asig?.unidad || "unidad"), costoUnitario: 0, tecnico: sol.tecnico });
+          await registrarMov({ tipoItem: "material", movimiento: "transferencia_entrada", motivo: `Recibido de ${sol.tecnico}: ${sol.motivo || ""}`, itemNombre: String(sol?.materialNombre || asig?.material || "-"), referencia: materialRef(sol?.materialId || asig?.materialId), cantidad, unidad: String(sol?.unidad || asig?.unidad || "unidad"), costoUnitario: 0, tecnico: sol.tecnicoDestino });
+        } else {
+          throw new Error("Tipo de transferencia no soportado.");
+        }
+        const updSol = await updateByIdWithColumnFallback(INVENTARIO_DEV_SOL_TABLE, id, {
+          estado: "APROBADA",
+          aprobado_por: String(sessionUser?.nombre || sessionUser?.username || "").trim(),
+          aprobado_at: new Date().toISOString(),
+        });
+        if (!updSol.ok) throw updSol.error;
+        await cargar();
+        window.alert("Transferencia confirmada.");
+      } catch (e) {
+        window.alert(String(e?.message || "No se pudo confirmar la transferencia."));
+      } finally {
+        setSolicitudProcesandoId("");
+      }
+    },
+    [cargar, equipos, materialesAsig, rechazarTransferencia, registrarMov, sessionUser?.nombre, sessionUser?.username, tecnicoSesion, transferenciaVencida, updateByIdWithColumnFallback]
   );
 
   const aprobarSolicitudDevolucionInventario = useCallback(
@@ -4911,6 +5159,14 @@ ${filasNodos}
                         >
                           Solicitar devolucion daniada
                         </button>
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          disabled={solicitudesPendientesPorEquipo.has(String(item?.id || ""))}
+                          onClick={() => void solicitarTransferenciaEquipo(item)}
+                        >
+                          Transferir a otro tecnico
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -4951,6 +5207,14 @@ ${filasNodos}
                         onClick={() => void devolverMaterialTecnico(m, "MERMA")}
                       >
                         Solicitar merma
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-btn small"
+                        disabled={num(m.disponible) - num(pendienteMaterialPorAsignacion.get(String(m?.id || "")), 0) <= 0}
+                        onClick={() => void solicitarTransferenciaMaterial(m)}
+                      >
+                        Transferir a otro tecnico
                       </button>
                     </div>
                   ) : null}
@@ -5204,10 +5468,10 @@ ${filasNodos}
                       <span className={`inv-state ${String(s.estado || "").toUpperCase() === "APROBADA" ? "almacen" : String(s.estado || "").toUpperCase() === "RECHAZADA" ? "asignado" : ""}`}>{s.estado || "-"}</span>
                     </div>
                     <p className="inv-row-meta">
-                      Tecnico: {s.tecnico || "-"} | Solicita: {s.actorSolicita || "-"} | Estado retorno: {s.estadoRetorno || "-"}
+                      Tecnico: {s.tecnico || "-"}{s.tecnicoDestino ? ` → ${s.tecnicoDestino}` : ""} | Solicita: {s.actorSolicita || "-"} | Estado retorno: {s.estadoRetorno || "-"}
                     </p>
                     <p className="inv-row-meta">
-                      Tipo solicitud: {tipoSolicitud === "MERMA" ? "Merma" : tipoSolicitud === "RECUPERACION" ? "Recuperacion" : "Devolucion"}
+                      Tipo solicitud: {tipoSolicitud === "MERMA" ? "Merma" : tipoSolicitud === "RECUPERACION" ? "Recuperacion" : tipoSolicitud === "TRANSFERENCIA" ? "Transferencia entre tecnicos" : "Devolucion"}
                       {s.nodoOrigen ? ` | Nodo origen: ${s.nodoOrigen}` : ""}
                     </p>
                     <p className="inv-row-meta">
@@ -5219,7 +5483,10 @@ ${filasNodos}
                     {s.identificadorAlterno ? <p className="inv-row-meta">Identificador alterno: {s.identificadorAlterno}</p> : null}
                     <p className="inv-row-meta">Motivo: {s.motivo || "-"}</p>
                     {s.rechazoMotivo ? <p className="warn-text">Rechazo: {s.rechazoMotivo}</p> : null}
-                    {!esTecnico && String(s.estado || "").toUpperCase() === "PENDIENTE" ? (
+                    {tipoSolicitud === "TRANSFERENCIA" && transferenciaVencida(s) ? (
+                      <p className="warn-text">Vencida (mas de 72h sin respuesta) -- se puede cancelar.</p>
+                    ) : null}
+                    {!esTecnico && tipoSolicitud !== "TRANSFERENCIA" && String(s.estado || "").toUpperCase() === "PENDIENTE" ? (
                       <div className="inv-actions">
                         <button
                           type="button"
@@ -5236,6 +5503,38 @@ ${filasNodos}
                           disabled={Boolean(solicitudProcesandoId)}
                         >
                           {enProceso ? "Procesando..." : "Rechazar"}
+                        </button>
+                      </div>
+                    ) : null}
+                    {esTecnico && tipoSolicitud === "TRANSFERENCIA" && String(s.estado || "").toUpperCase() === "PENDIENTE" && personaKey(s.tecnicoDestino || "") === personaKey(tecnicoSesion || "") ? (
+                      <div className="inv-actions">
+                        <button
+                          type="button"
+                          className="primary-btn small"
+                          onClick={() => void confirmarTransferencia(s)}
+                          disabled={Boolean(solicitudProcesandoId)}
+                        >
+                          {enProceso ? "Procesando..." : "Confirmar recepcion"}
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          onClick={() => void rechazarTransferencia(s)}
+                          disabled={Boolean(solicitudProcesandoId)}
+                        >
+                          {enProceso ? "Procesando..." : "Rechazar"}
+                        </button>
+                      </div>
+                    ) : null}
+                    {esTecnico && tipoSolicitud === "TRANSFERENCIA" && String(s.estado || "").toUpperCase() === "PENDIENTE" && personaKey(s.tecnico || "") === personaKey(tecnicoSesion || "") ? (
+                      <div className="inv-actions">
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          onClick={() => void rechazarTransferencia(s)}
+                          disabled={Boolean(solicitudProcesandoId)}
+                        >
+                          {enProceso ? "Procesando..." : "Cancelar transferencia"}
                         </button>
                       </div>
                     ) : null}
