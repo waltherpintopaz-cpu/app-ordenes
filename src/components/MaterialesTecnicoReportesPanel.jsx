@@ -43,6 +43,8 @@ export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitle
   const [filtroMaterial, setFiltroMaterial] = useState("todos");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
+  const [modoFecha, setModoFecha] = useState("rango"); // "rango" | "corte"
+  const [fechaCorte, setFechaCorte] = useState("");
   const [expandido, setExpandido] = useState({});
   const [preciosLocal, setPreciosLocal] = useState(loadPreciosLS);
   const [showConfig, setShowConfig] = useState(false);
@@ -170,7 +172,17 @@ export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitle
     setTimeout(() => { setSaveMsg(""); setShowConfig(false); }, 1500);
   }
 
+  // "rango": solo cuenta eventos entre Desde y Hasta (para "material usado en
+  // tal periodo"). "corte": cuenta TODO desde el inicio hasta la fecha de
+  // corte (para "cuanto tenia disponible a tal fecha") -- es la misma logica
+  // de auditoria (asignado - liquidado) pero cortada en una fecha pasada en
+  // vez de en "hoy".
   const fechaEnRango = (fecha) => {
+    if (modoFecha === "corte") {
+      if (!fechaCorte) return true;
+      if (!fecha) return false;
+      return String(fecha).slice(0, 10) <= fechaCorte;
+    }
     if (!filtroFechaDesde && !filtroFechaHasta) return true;
     if (!fecha) return false;
     const f = String(fecha).slice(0, 10);
@@ -227,7 +239,7 @@ export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitle
     }
     entries = entries.filter(([, mats]) => mats.length > 0);
     return entries.sort(([a], [b]) => a.localeCompare(b));
-  }, [movimientos, liqMateriales, liqPorId, filtroTecnico, filtroMaterial, filtroFechaDesde, filtroFechaHasta, preciosLocal, costoDefaultPorMaterial]);
+  }, [movimientos, liqMateriales, liqPorId, filtroTecnico, filtroMaterial, filtroFechaDesde, filtroFechaHasta, modoFecha, fechaCorte, preciosLocal, costoDefaultPorMaterial]);
 
   const tecnicos = useMemo(
     () => ["todos", ...new Set(movimientos.map((m) => m.tecnico).filter(Boolean))].sort(),
@@ -432,7 +444,9 @@ ${secciones}
       <div style={cardStyle}>
         <h2 style={sectionTitleStyle}>Materiales por Técnico — Asignado / Liquidado / En su poder</h2>
         <p style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>
-          Cuánto material se le asignó a cada técnico, cuánto ya liquidó (usó en órdenes), y cuánto tiene actualmente en su poder.
+          {modoFecha === "corte"
+            ? "Cuánto material tenía cada técnico en su poder a una fecha pasada (sumando todo lo asignado y liquidado desde el inicio hasta esa fecha)."
+            : "Cuánto material se le asignó a cada técnico, cuánto ya liquidó (usó en órdenes), y cuánto tiene actualmente en su poder, dentro del período elegido."}
         </p>
 
         <div style={{ display: "flex", gap: 12, margin: "16px 0", flexWrap: "wrap" }}>
@@ -475,18 +489,52 @@ ${secciones}
               {materialesLista.map((m) => <option key={m} value={m}>{m === "todos" ? "Todos" : m}</option>)}
             </select>
           </label>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-            Desde{" "}
-            <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
-          </label>
-          <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-            Hasta{" "}
-            <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
-          </label>
-          {(filtroFechaDesde || filtroFechaHasta) && (
-            <button type="button" onClick={() => { setFiltroFechaDesde(""); setFiltroFechaHasta(""); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
-              ✕ Limpiar fecha
+          <div style={{ display: "flex", borderRadius: 6, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+            <button
+              type="button"
+              onClick={() => setModoFecha("rango")}
+              title="Cuanto material se uso en un periodo"
+              style={{ padding: "6px 12px", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", background: modoFecha === "rango" ? "#1E4F9C" : "#f8fafc", color: modoFecha === "rango" ? "#fff" : "#64748b" }}
+            >
+              Movimientos en un período
             </button>
+            <button
+              type="button"
+              onClick={() => setModoFecha("corte")}
+              title="Cuanto tenia disponible a una fecha pasada"
+              style={{ padding: "6px 12px", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", background: modoFecha === "corte" ? "#1E4F9C" : "#f8fafc", color: modoFecha === "corte" ? "#fff" : "#64748b" }}
+            >
+              Saldo a una fecha de corte
+            </button>
+          </div>
+          {modoFecha === "rango" ? (
+            <>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                Desde{" "}
+                <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+              </label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                Hasta{" "}
+                <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+              </label>
+              {(filtroFechaDesde || filtroFechaHasta) && (
+                <button type="button" onClick={() => { setFiltroFechaDesde(""); setFiltroFechaHasta(""); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+                  ✕ Limpiar fecha
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                Fecha de corte{" "}
+                <input type="date" value={fechaCorte} onChange={(e) => setFechaCorte(e.target.value)} style={{ marginLeft: 8, padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+              </label>
+              {fechaCorte && (
+                <button type="button" onClick={() => setFechaCorte("")} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+                  ✕ Limpiar fecha
+                </button>
+              )}
+            </>
           )}
           <button
             type="button"
@@ -535,13 +583,13 @@ ${secciones}
                     <tr style={{ textAlign: "left", color: "#64748b" }}>
                       <th style={{ padding: "6px 8px" }}>Material</th>
                       <th style={{ padding: "6px 8px" }}>Precio S/ (por unidad de medida)</th>
-                      <th style={{ padding: "6px 8px" }}>Asignado</th>
-                      <th style={{ padding: "6px 8px" }}>Liquidado</th>
-                      <th style={{ padding: "6px 8px" }}>En su poder</th>
+                      <th style={{ padding: "6px 8px" }}>{modoFecha === "corte" ? "Asignado hasta esa fecha" : "Asignado"}</th>
+                      <th style={{ padding: "6px 8px" }}>{modoFecha === "corte" ? "Liquidado hasta esa fecha" : "Liquidado"}</th>
+                      <th style={{ padding: "6px 8px" }}>{modoFecha === "corte" ? "Disponible a esa fecha" : "En su poder"}</th>
                       <th style={{ padding: "6px 8px" }}>Valor liquidado</th>
                       <th style={{ padding: "6px 8px" }}>Valor en poder</th>
                       <th style={{ padding: "6px 8px" }}>Valor total</th>
-                      <th style={{ padding: "6px 8px" }}>Saldo en sistema hoy</th>
+                      {modoFecha === "rango" && <th style={{ padding: "6px 8px" }}>Saldo en sistema hoy</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -562,6 +610,7 @@ ${secciones}
                         <td style={{ padding: "6px 8px" }}>S/ {m.valorLiquidado.toFixed(2)}</td>
                         <td style={{ padding: "6px 8px", fontWeight: 700, color: m.enPoder > 0 ? "#d97706" : "#16a34a" }}>S/ {m.valorEnPoder.toFixed(2)}</td>
                         <td style={{ padding: "6px 8px", fontWeight: 700 }}>S/ {m.valorAsignado.toFixed(2)}</td>
+                        {modoFecha === "rango" && (
                         <td style={{ padding: "6px 8px" }}>
                           {!desinc ? (
                             <span style={{ color: "#94a3b8" }}>—</span>
@@ -587,6 +636,7 @@ ${secciones}
                             </div>
                           )}
                         </td>
+                        )}
                       </tr>
                       );
                     })}
