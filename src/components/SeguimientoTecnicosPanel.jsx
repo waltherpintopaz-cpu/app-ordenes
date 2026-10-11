@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
+import { PERFILES_REGISTRO } from "../utils/volanteoPerfiles";
+
+// Perfil por defecto para tecnicos (vehiculo entre ordenes, no a pie como
+// volanteadores) -- mismos valores que PERFIL_DEFECTO_TECNICO en
+// TecnicoTrackingAgent.js (app movil), para que "Personalizado" en este
+// panel arranque igual que lo que ya trae el tecnico por defecto.
+const PERFIL_DEFECTO_TECNICO = {
+  perfil: "personalizado",
+  frecuencia_seg: 30,
+  precision_m: 60,
+  distancia_minima_m: 20,
+  distancia_maxima_m: 2000,
+  filtrado_adicional: false,
+};
 
 const GOOGLE_MAPS_API_KEY = String(
   import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
@@ -302,6 +316,94 @@ export default function SeguimientoTecnicosPanel({
   // bloqueado de ver/trabajar sus ordenes por un tema tecnico que no es su
   // culpa. Solo aplica a Tecnico (Volanteador tiene su propio mecanismo via
   // usuarios.volanteo_forzar_fin).
+  // Ajustes de seguimiento por tecnico (habilitado, modo de turno y perfil
+  // de registro GPS) -- mismo patron que "Ajustes de registro GPS" de
+  // SeguimientoVolanteadoresPanel.jsx, pero por tecnico en vez de una sola
+  // fila compartida (tecnico_seguimiento_config tiene una fila por tecnico).
+  const [ajustesTecnico, setAjustesTecnico] = useState(null);
+  const [ajustesCargando, setAjustesCargando] = useState(false);
+  const [ajustesGuardando, setAjustesGuardando] = useState(false);
+  const [ajustesError, setAjustesError] = useState("");
+  const [cfgHabilitado, setCfgHabilitado] = useState(true);
+  const [cfgModoTurno, setCfgModoTurno] = useState("manual");
+  const [cfgPerfil, setCfgPerfil] = useState(PERFIL_DEFECTO_TECNICO.perfil);
+  const [cfgFrecuencia, setCfgFrecuencia] = useState(String(PERFIL_DEFECTO_TECNICO.frecuencia_seg));
+  const [cfgPrecision, setCfgPrecision] = useState(String(PERFIL_DEFECTO_TECNICO.precision_m));
+  const [cfgDistMin, setCfgDistMin] = useState(String(PERFIL_DEFECTO_TECNICO.distancia_minima_m));
+  const [cfgDistMax, setCfgDistMax] = useState(String(PERFIL_DEFECTO_TECNICO.distancia_maxima_m));
+  const [cfgFiltrado, setCfgFiltrado] = useState(PERFIL_DEFECTO_TECNICO.filtrado_adicional);
+
+  const abrirAjustesTecnico = useCallback(async (tecnico) => {
+    if (!tecnico?.id) return;
+    setAjustesTecnico(tecnico);
+    setAjustesCargando(true);
+    setAjustesError("");
+    try {
+      const { data } = await supabase
+        .from("tecnico_seguimiento_config")
+        .select("*")
+        .eq("tecnico_id", tecnico.id)
+        .maybeSingle();
+      setCfgHabilitado(data?.habilitado !== false);
+      setCfgModoTurno(data?.modo_turno === "auto" ? "auto" : "manual");
+      const perfilGuardado = toText(data?.perfil);
+      // "general_tecnico" es el valor que escribe la app movil cuando el
+      // tecnico aun no tiene fila -- equivale a "Personalizado" aqui.
+      setCfgPerfil(perfilGuardado && perfilGuardado !== "general_tecnico" ? perfilGuardado : "personalizado");
+      setCfgFrecuencia(String(data?.frecuencia_seg ?? PERFIL_DEFECTO_TECNICO.frecuencia_seg));
+      setCfgPrecision(String(data?.precision_m ?? PERFIL_DEFECTO_TECNICO.precision_m));
+      setCfgDistMin(String(data?.distancia_minima_m ?? PERFIL_DEFECTO_TECNICO.distancia_minima_m));
+      setCfgDistMax(String(data?.distancia_maxima_m ?? PERFIL_DEFECTO_TECNICO.distancia_maxima_m));
+      setCfgFiltrado(data?.filtrado_adicional === true);
+    } catch (e) {
+      setAjustesError(String(e?.message || "No se pudo cargar la configuracion."));
+    } finally {
+      setAjustesCargando(false);
+    }
+  }, []);
+
+  const elegirPerfilTecnico = useCallback((key) => {
+    setCfgPerfil(key);
+    if (key === "personalizado") return;
+    const p = PERFILES_REGISTRO[key];
+    if (!p) return;
+    setCfgFrecuencia(String(p.frecuencia_seg));
+    setCfgPrecision(String(p.precision_m));
+    setCfgDistMin(String(p.distancia_minima_m));
+    setCfgDistMax(String(p.distancia_maxima_m));
+    setCfgFiltrado(p.filtrado_adicional);
+  }, []);
+
+  const guardarAjustesTecnico = useCallback(async () => {
+    if (!ajustesTecnico?.id) return;
+    setAjustesGuardando(true);
+    setAjustesError("");
+    try {
+      const { error: err } = await supabase.from("tecnico_seguimiento_config").upsert({
+        tecnico_id: ajustesTecnico.id,
+        tecnico_nombre: ajustesTecnico.nombre,
+        habilitado: cfgHabilitado,
+        modo_turno: cfgModoTurno,
+        perfil: cfgPerfil,
+        frecuencia_seg: Number(cfgFrecuencia) || PERFIL_DEFECTO_TECNICO.frecuencia_seg,
+        precision_m: Number(cfgPrecision) || PERFIL_DEFECTO_TECNICO.precision_m,
+        distancia_minima_m: Number(cfgDistMin) || PERFIL_DEFECTO_TECNICO.distancia_minima_m,
+        distancia_maxima_m: Number(cfgDistMax) || PERFIL_DEFECTO_TECNICO.distancia_maxima_m,
+        filtrado_adicional: cfgFiltrado,
+      });
+      if (err) throw err;
+      setConfigByTech((prev) => ({
+        ...prev,
+        [ajustesTecnico.id]: { ...prev[ajustesTecnico.id], habilitado: cfgHabilitado, modo_turno: cfgModoTurno },
+      }));
+      setAjustesTecnico(null);
+    } catch (e) {
+      setAjustesError(String(e?.message || "No se pudo guardar."));
+    } finally {
+      setAjustesGuardando(false);
+    }
+  }, [ajustesTecnico, cfgHabilitado, cfgModoTurno, cfgPerfil, cfgFrecuencia, cfgPrecision, cfgDistMin, cfgDistMax, cfgFiltrado]);
+
   const [forzandoId, setForzandoId] = useState("");
   const forzarJornadaActiva = useCallback(
     async (tecnico) => {
@@ -1099,6 +1201,14 @@ export default function SeguimientoTecnicosPanel({
                             {forzandoId === tecnico.id ? "Activando..." : "▶ Forzar jornada"}
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          style={{ minWidth: 100 }}
+                          onClick={(e) => { e.stopPropagation(); void abrirAjustesTecnico(tecnico); }}
+                        >
+                          ⚙️ Ajustes
+                        </button>
                         {tecnico.celular ? (
                           <>
                             <button
@@ -1224,6 +1334,127 @@ export default function SeguimientoTecnicosPanel({
           </>
         )}
       </section>
+
+      {ajustesTecnico ? (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
+          }}
+          onClick={() => setAjustesTecnico(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto" }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4, color: "#1e293b" }}>⚙️ Ajustes de seguimiento</h3>
+            <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 14 }}>
+              {ajustesTecnico.nombre} -- el celular revisa esta configuracion y la aplica sin que el tecnico tenga que reabrir la app.
+            </p>
+
+            {ajustesCargando ? (
+              <p style={{ textAlign: "center", color: "#94a3b8", padding: "20px 0" }}>Cargando...</p>
+            ) : (
+              <>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#475569", cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfgHabilitado} onChange={(e) => setCfgHabilitado(e.target.checked)} />
+                  Seguimiento habilitado
+                </label>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 14px" }}>
+                  Si se apaga, el tecnico ya no reporta ubicacion aunque inicie jornada.
+                </p>
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Inicio de jornada</label>
+                <div style={{ display: "flex", gap: 6, marginTop: 6, marginBottom: 14 }}>
+                  {[
+                    { key: "manual", label: "Manual (el tecnico toca Iniciar)" },
+                    { key: "auto", label: "Automatico" },
+                  ].map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => setCfgModoTurno(m.key)}
+                      style={{
+                        padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1.5px solid ${cfgModoTurno === m.key ? "#111827" : "#e2e8f0"}`,
+                        background: cfgModoTurno === m.key ? "#F3F4F6" : "#fff",
+                        color: cfgModoTurno === m.key ? "#111827" : "#64748b",
+                      }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Perfil</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, marginBottom: 14 }}>
+                  {[
+                    { key: "preciso", label: "Preciso" },
+                    { key: "general", label: "General" },
+                    { key: "ahorro", label: "Ahorro de bateria" },
+                    { key: "ahorro_max", label: "Ahorro maximo" },
+                    { key: "personalizado", label: "Personalizado" },
+                  ].map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => elegirPerfilTecnico(p.key)}
+                      style={{
+                        padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        border: `1.5px solid ${cfgPerfil === p.key ? "#111827" : "#e2e8f0"}`,
+                        background: cfgPerfil === p.key ? "#F3F4F6" : "#fff",
+                        color: cfgPerfil === p.key ? "#111827" : "#64748b",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                {[
+                  { label: "Frecuencia de registro (segundos)", value: cfgFrecuencia, set: setCfgFrecuencia, hint: "Cada cuanto se le pide posicion al GPS." },
+                  { label: "Distancia minima (metros)", value: cfgDistMin, set: setCfgDistMin, hint: "Distancia minima entre puntos guardados en la ruta." },
+                  { label: "Distancia maxima (metros)", value: cfgDistMax, set: setCfgDistMax, hint: "Si dos puntos quedan mas lejos que esto, se corta el tramo." },
+                  { label: "Precision GPS (metros)", value: cfgPrecision, set: setCfgPrecision, hint: "Si la precision es peor que esto, se ignora esa lectura." },
+                ].map((f) => (
+                  <div key={f.label} style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{f.label}</label>
+                    <input
+                      type="number"
+                      value={f.value}
+                      onChange={(e) => f.set(e.target.value)}
+                      disabled={cfgPerfil !== "personalizado"}
+                      style={{ display: "block", width: "100%", marginTop: 4, padding: "7px 8px", borderRadius: 8, border: "1.5px solid #e2e8f0", fontSize: 13 }}
+                    />
+                    <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 0" }}>{f.hint}</p>
+                  </div>
+                ))}
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#475569", marginTop: 6, cursor: cfgPerfil === "personalizado" ? "pointer" : "default" }}>
+                  <input type="checkbox" checked={cfgFiltrado} disabled={cfgPerfil !== "personalizado"} onChange={(e) => setCfgFiltrado(e.target.checked)} />
+                  Filtrado adicional (suavizado)
+                </label>
+                <p style={{ fontSize: 11, color: "#94a3b8", margin: "3px 0 14px" }}>
+                  Suaviza el ruido normal del GPS. Recomendado solo en el perfil "Preciso".
+                </p>
+
+                {ajustesError ? <p className="warn-text" style={{ marginTop: 0 }}>{ajustesError}</p> : null}
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="secondary-btn small" onClick={() => setAjustesTecnico(null)} disabled={ajustesGuardando}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void guardarAjustesTecnico()}
+                    disabled={ajustesGuardando}
+                    style={{ background: "#111827", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                  >
+                    {ajustesGuardando ? "Guardando..." : "Guardar"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
