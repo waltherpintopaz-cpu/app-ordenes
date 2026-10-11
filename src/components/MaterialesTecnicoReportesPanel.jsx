@@ -29,11 +29,14 @@ async function fetchAllPaged(table, selectCols, filtros = (q) => q) {
   return all;
 }
 
-export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitleStyle }) {
+export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitleStyle, sessionUser }) {
   const [movimientos, setMovimientos] = useState([]);
   const [liqMateriales, setLiqMateriales] = useState([]);
   const [liquidaciones, setLiquidaciones] = useState([]);
   const [catalogoMateriales, setCatalogoMateriales] = useState([]);
+  const [devoluciones, setDevoluciones] = useState([]);
+  const [saldosActuales, setSaldosActuales] = useState([]);
+  const [corrigiendoKey, setCorrigiendoKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filtroTecnico, setFiltroTecnico] = useState("todos");
@@ -48,31 +51,43 @@ export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitle
   const [plantillasGenerales, setPlantillasGenerales] = useState([]);
   const [plantillaElegida, setPlantillaElegida] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true); setError(null);
-      try {
-        const [movData, liqMatData, liqData, catData] = await Promise.all([
-          fetchAllPaged(
-            "inventario_movimientos",
-            "id,created_at,tecnico,item_nombre,cantidad,unidad",
-            (q) => q.eq("tipo_item", "material").eq("movimiento", "salida").eq("motivo", "Asignacion a tecnico")
-          ),
-          fetchAllPaged("liquidacion_materiales", "liquidacion_id,material,cantidad,unidad"),
-          fetchAllPaged("liquidaciones", "id,tecnico_liquida,fecha_liquidacion,codigo"),
-          fetchAllPaged("materiales_catalogo", "nombre,costo_unitario"),
-        ]);
-        setMovimientos(movData);
-        setLiqMateriales(liqMatData);
-        setLiquidaciones(liqData);
-        setCatalogoMateriales(catData);
-      } catch (e) {
-        setError(e?.message || "Error al cargar el reporte.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const cargarTodo = async () => {
+    setLoading(true); setError(null);
+    try {
+      const [movData, liqMatData, liqData, catData, devData, saldoData] = await Promise.all([
+        fetchAllPaged(
+          "inventario_movimientos",
+          "id,created_at,tecnico,item_nombre,cantidad,unidad",
+          (q) => q.eq("tipo_item", "material").eq("movimiento", "salida").eq("motivo", "Asignacion a tecnico")
+        ),
+        fetchAllPaged("liquidacion_materiales", "liquidacion_id,material,cantidad,unidad"),
+        fetchAllPaged("liquidaciones", "id,tecnico_liquida,fecha_liquidacion,codigo"),
+        fetchAllPaged("materiales_catalogo", "nombre,costo_unitario"),
+        // Devoluciones/mermas YA aprobadas -- se restan del "asignado real" igual
+        // que las salidas se suman, para que el calculo de auditoria sea exacto.
+        fetchAllPaged(
+          "inventario_movimientos",
+          "id,tecnico,item_nombre,cantidad,unidad",
+          (q) => q.eq("tipo_item", "material").in("movimiento", ["devolucion", "devolucion_daniado", "merma"])
+        ),
+        // Saldo actual guardado en materiales_asignados_tecnicos, para comparar
+        // contra lo que el kardex+liquidaciones dicen que deberia ser.
+        fetchAllPaged("materiales_asignados_tecnicos", "id,tecnico,material_id,material_nombre,unidad,cantidad_asignada,cantidad_disponible"),
+      ]);
+      setMovimientos(movData);
+      setLiqMateriales(liqMatData);
+      setLiquidaciones(liqData);
+      setCatalogoMateriales(catData);
+      setDevoluciones(devData);
+      setSaldosActuales(saldoData);
+    } catch (e) {
+      setError(e?.message || "Error al cargar el reporte.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void cargarTodo(); }, []);
 
   const liqPorId = useMemo(() => new Map(liquidaciones.map((l) => [l.id, l])), [liquidaciones]);
 
@@ -222,6 +237,114 @@ export default function MaterialesTecnicoReportesPanel({ cardStyle, sectionTitle
     () => ["todos", ...new Set(movimientos.map((m) => m.item_nombre).filter(Boolean))].sort(),
     [movimientos]
   );
+
+  // Auditoria real: TODO el historial (sin filtro de fecha, a diferencia de
+  // porTecnico de arriba que si respeta el filtro), para comparar contra el
+  // saldo que hoy vive en materiales_asignados_tecnicos -- ese saldo puede
+  // haber quedado desincronizado si se escribio ANTES del fix del 2026-10-10
+  // (funcion ajustar_material_tecnico, commit 2c62529).
+  const UMBRAL_DESINCRONIZACION = 1;
+  const auditoriaReal = useMemo(() => {
+    const map = new Map();
+    const key = (tecnico, nombre, unidad) => `${tecnico || ""}|${norm(nombre)}|${norm(unidad || "unidad")}`;
+    const getRow = (tecnico, nombre, unidad) => {
+      const k = key(tecnico, nombre, unidad);
+      if (!map.has(k)) map.set(k, { tecnico, nombre, unidad: unidad || "unidad", asignadoReal: 0, liquidadoReal: 0 });
+      return map.get(k);
+    };
+    for (const m of movimientos) {
+      const r = getRow(m.tecnico, m.item_nombre, m.unidad);
+      r.asignadoReal += Number(m.cantidad || 0);
+    }
+    for (const d of devoluciones) {
+      const r = getRow(d.tecnico, d.item_nombre, d.unidad);
+      r.asignadoReal -= Number(d.cantidad || 0);
+    }
+    for (const lm of liqMateriales) {
+      const liq = liqPorId.get(lm.liquidacion_id);
+      if (!liq) continue;
+      const r = getRow(liq.tecnico_liquida, lm.material, lm.unidad);
+      r.liquidadoReal += Number(lm.cantidad || 0);
+    }
+    return map;
+  }, [movimientos, devoluciones, liqMateriales, liqPorId]);
+
+  const saldosActualesMap = useMemo(() => {
+    const map = new Map();
+    for (const s of saldosActuales) {
+      const k = `${s.tecnico || ""}|${norm(s.material_nombre)}|${norm(s.unidad || "unidad")}`;
+      map.set(k, { id: s.id, asignado: Number(s.cantidad_asignada || 0), disponible: Number(s.cantidad_disponible || 0) });
+    }
+    return map;
+  }, [saldosActuales]);
+
+  function getDesincronizacion(tecnico, nombre, unidad) {
+    const k = `${tecnico || ""}|${norm(nombre)}|${norm(unidad || "unidad")}`;
+    const real = auditoriaReal.get(k);
+    if (!real) return null;
+    const calculoNegativo = real.asignadoReal < 0 || (real.asignadoReal - real.liquidadoReal) < 0;
+    const asignadoReal = Math.max(0, real.asignadoReal);
+    const disponibleReal = Math.max(0, asignadoReal - real.liquidadoReal);
+    const actual = saldosActualesMap.get(k) || { id: null, asignado: 0, disponible: 0 };
+    const diff = disponibleReal - actual.disponible;
+    return { asignadoReal, disponibleReal, actual, diff, calculoNegativo };
+  }
+
+  async function corregirSaldoMaterial(tecnico, nombre, unidad) {
+    const info = getDesincronizacion(tecnico, nombre, unidad);
+    if (!info) return;
+    if (info.calculoNegativo) {
+      window.alert(
+        `No se puede autocorregir: el calculo da negativo para "${nombre}" de ${tecnico} ` +
+        `(liquido mas de lo que el kardex registra como asignado -- probablemente tuvo stock inicial ` +
+        `que nunca se registro como movimiento de ingreso). Revisar manualmente.`
+      );
+      return;
+    }
+    const confirmado = window.confirm(
+      `Corregir saldo de "${nombre}" para ${tecnico}, en base al kardex completo + sus liquidaciones:\n\n` +
+      `Asignado: ${info.actual.asignado.toFixed(2)} → ${info.asignadoReal.toFixed(2)}\n` +
+      `Disponible: ${info.actual.disponible.toFixed(2)} → ${info.disponibleReal.toFixed(2)}\n\n` +
+      `Queda un movimiento de "ajuste" en el kardex explicando el cambio. ¿Continuar?`
+    );
+    if (!confirmado) return;
+    const key = `${tecnico}|${norm(nombre)}|${norm(unidad)}`;
+    setCorrigiendoKey(key);
+    try {
+      const deltaDisponible = info.disponibleReal - info.actual.disponible;
+      const deltaAsignado = info.asignadoReal - info.actual.asignado;
+      const { error: errRpc } = await supabase.rpc("ajustar_material_tecnico", {
+        p_tecnico: tecnico,
+        p_material_id: null,
+        p_material_nombre: nombre,
+        p_unidad: unidad,
+        p_delta_disponible: deltaDisponible,
+        p_delta_asignado: deltaAsignado,
+      });
+      if (errRpc) throw errRpc;
+      await supabase.from("inventario_movimientos").insert([{
+        tipo_item: "material",
+        movimiento: "ajuste",
+        motivo: `Correccion de saldo por desincronizacion: Disponible ${info.actual.disponible.toFixed(2)} -> ${info.disponibleReal.toFixed(2)}, Asignado ${info.actual.asignado.toFixed(2)} -> ${info.asignadoReal.toFixed(2)}`,
+        item_nombre: nombre,
+        referencia: "",
+        cantidad: Math.abs(deltaDisponible),
+        unidad: unidad || "unidad",
+        costo_unitario: 0,
+        tecnico,
+        actor: String(sessionUser?.nombre || sessionUser?.username || "Admin"),
+        nodo: "",
+        almacen_id: "",
+        almacen_nombre: "",
+      }]);
+      await cargarTodo();
+      window.alert("Saldo corregido correctamente.");
+    } catch (e) {
+      window.alert(e?.message || "No se pudo corregir el saldo.");
+    } finally {
+      setCorrigiendoKey("");
+    }
+  }
 
   const totales = porTecnico.reduce(
     (acc, [, mats]) => {
@@ -418,10 +541,16 @@ ${secciones}
                       <th style={{ padding: "6px 8px" }}>Valor liquidado</th>
                       <th style={{ padding: "6px 8px" }}>Valor en poder</th>
                       <th style={{ padding: "6px 8px" }}>Valor total</th>
+                      <th style={{ padding: "6px 8px" }}>Saldo en sistema hoy</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {materiales.map((m) => (
+                    {materiales.map((m) => {
+                      const desinc = getDesincronizacion(tecnico, m.nombre, m.unidad);
+                      const hayDiferencia = desinc && Math.abs(desinc.diff) > UMBRAL_DESINCRONIZACION;
+                      const keyCorrigiendo = `${tecnico}|${norm(m.nombre)}|${norm(m.unidad)}`;
+                      const corrigiendoEsta = corrigiendoKey === keyCorrigiendo;
+                      return (
                       <tr key={m.nombre} style={{ borderTop: "1px solid #f1f5f9" }}>
                         <td style={{ padding: "6px 8px" }}><strong>{m.nombre}</strong></td>
                         <td style={{ padding: "6px 8px" }}>{m.precio.toFixed(2)} / {m.unidad}</td>
@@ -433,8 +562,34 @@ ${secciones}
                         <td style={{ padding: "6px 8px" }}>S/ {m.valorLiquidado.toFixed(2)}</td>
                         <td style={{ padding: "6px 8px", fontWeight: 700, color: m.enPoder > 0 ? "#d97706" : "#16a34a" }}>S/ {m.valorEnPoder.toFixed(2)}</td>
                         <td style={{ padding: "6px 8px", fontWeight: 700 }}>S/ {m.valorAsignado.toFixed(2)}</td>
+                        <td style={{ padding: "6px 8px" }}>
+                          {!desinc ? (
+                            <span style={{ color: "#94a3b8" }}>—</span>
+                          ) : !hayDiferencia ? (
+                            <span style={{ color: "#16a34a", fontWeight: 600, fontSize: 11 }}>✓ Cuadra ({desinc.actual.disponible.toFixed(2)} {m.unidad})</span>
+                          ) : desinc.calculoNegativo ? (
+                            <span title="Liquido mas de lo que el kardex registra como asignado -- revisar manualmente" style={{ color: "#dc2626", fontWeight: 600, fontSize: 11 }}>
+                              ⚠ No autocorregible
+                            </span>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+                              <span style={{ color: "#dc2626", fontWeight: 700, fontSize: 11 }}>
+                                ⚠ Dice {desinc.actual.disponible.toFixed(2)}, debería ser {desinc.disponibleReal.toFixed(2)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void corregirSaldoMaterial(tecnico, m.nombre, m.unidad)}
+                                disabled={Boolean(corrigiendoKey)}
+                                style={{ padding: "3px 10px", borderRadius: 5, border: "1px solid #fecaca", background: "#fef2f2", color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: corrigiendoKey ? "default" : "pointer" }}
+                              >
+                                {corrigiendoEsta ? "Corrigiendo..." : "Corregir saldo"}
+                              </button>
+                            </div>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

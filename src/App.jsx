@@ -25326,7 +25326,7 @@ export default function App() {
         )}
 
         {vistaActiva === "reportes" && reportesSubmenu === "materialesTecnico" && esAdminSesion && (
-          <MaterialesTecnicoReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} />
+          <MaterialesTecnicoReportesPanel cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} sessionUser={usuarioSesion} />
         )}
 
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
