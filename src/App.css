@@ -3014,8 +3014,67 @@ th {
 
 .maptech-controls {
   display: grid;
-  gap: 8px;
+  gap: 14px;
   min-width: 0;
+}
+
+.maptech-controls-group {
+  display: grid;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.maptech-controls-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #64748b;
+}
+
+.maptech-controls-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.maptech-quickpick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.maptech-quickpick button {
+  border: none;
+  background: none;
+  color: #214a99;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.maptech-quickpick button:hover {
+  text-decoration: underline;
+}
+
+.maptech-follow-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 6px 12px;
 }
 
 .maptech-pills,
@@ -3161,6 +3220,28 @@ th {
   min-height: calc(100vh - 220px);
 }
 
+.maptech-map-card:fullscreen {
+  border-radius: 0;
+}
+
+.maptech-fullscreen-btn {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+  z-index: 5;
+}
+
 .maptech-map-canvas {
   flex: 1;
   min-width: 0;
@@ -3172,9 +3253,9 @@ th {
   width: 300px;
   max-height: 420px;
   overflow-y: auto;
-  border-left: 1px solid #cfddf3;
+  border-left: 1px solid #e2e8f0;
   background: #fff;
-  padding: 12px;
+  padding: 14px;
 }
 
 .maptech-detail p {
@@ -3183,20 +3264,57 @@ th {
   font-size: 13px;
 }
 
+.maptech-detail-sub {
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+}
+
 .maptech-detail-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .maptech-detail-head strong {
   color: #163d7f;
+  font-size: 15px;
+}
+
+.maptech-detail-metrics {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.maptech-detail-metric {
+  flex: 1;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.maptech-detail-metric-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #94a3b8;
+}
+
+.maptech-detail-metric strong {
+  font-size: 18px;
+  font-weight: 900;
 }
 
 .maptech-detail-actions {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;

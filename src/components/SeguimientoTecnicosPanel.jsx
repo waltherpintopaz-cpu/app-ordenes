@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { PERFILES_REGISTRO } from "../utils/volanteoPerfiles";
+import { colorForSpeedKmh } from "../utils/vehicleIcon";
 
 // Perfil por defecto para tecnicos (vehiculo entre ordenes, no a pie como
 // volanteadores) -- mismos valores que PERFIL_DEFECTO_TECNICO en
@@ -204,6 +205,7 @@ export default function SeguimientoTecnicosPanel({
   etiquetaPlural = "Tecnicos",
 }) {
   const mapCanvasRef = useRef(null);
+  const mapWrapperRef = useRef(null);
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
   const markersRef = useRef([]);
@@ -215,6 +217,8 @@ export default function SeguimientoTecnicosPanel({
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [mapError, setMapError] = useState("");
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [followTecnico, setFollowTecnico] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [showMovement, setShowMovement] = useState(true);
@@ -864,15 +868,71 @@ export default function SeguimientoTecnicosPanel({
     map.fitBounds(bounds);
   }, [rowsList]);
 
-  const centerTech = useCallback((row) => {
-    if (!mapRef.current) return;
-    const lat = Number(row?.lat);
-    const lng = Number(row?.lng);
-    if (!isValidCoord(lat, lng)) return;
-    setSelectedTechId(parseTecnicoId(row?.tecnico_id));
-    mapRef.current.panTo({ lat, lng });
-    mapRef.current.setZoom(16);
+  // Google Maps no tiene zoom animado nativo (setZoom es instantaneo) -- se
+  // simula suave escalonando el zoom en pasos cortos, igual que en
+  // Seguimiento vehiculos.
+  const zoomSuaveRef = useRef(null);
+  const zoomSuaveHacia = useCallback((map, targetZoom, targetPos) => {
+    if (!map) return;
+    if (zoomSuaveRef.current) clearInterval(zoomSuaveRef.current);
+    map.panTo(targetPos);
+    const startZoom = map.getZoom() ?? targetZoom;
+    const steps = 10;
+    const stepMs = 40;
+    let i = 0;
+    zoomSuaveRef.current = setInterval(() => {
+      i += 1;
+      const z = startZoom + (targetZoom - startZoom) * (i / steps);
+      map.setZoom(Math.round(z));
+      if (i >= steps) {
+        clearInterval(zoomSuaveRef.current);
+        zoomSuaveRef.current = null;
+      }
+    }, stepMs);
   }, []);
+
+  const centerTech = useCallback(
+    (row) => {
+      if (!mapRef.current) return;
+      const lat = Number(row?.lat);
+      const lng = Number(row?.lng);
+      if (!isValidCoord(lat, lng)) return;
+      setSelectedTechId(parseTecnicoId(row?.tecnico_id));
+      zoomSuaveHacia(mapRef.current, 16, { lat, lng });
+    },
+    [zoomSuaveHacia]
+  );
+
+  // Boton propio de pantalla completa (agranda el mapa + la tarjeta de
+  // detalle, no solo el canvas) -- mismo patron que Seguimiento vehiculos.
+  const toggleMapFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else if (mapWrapperRef.current?.requestFullscreen) {
+      mapWrapperRef.current.requestFullscreen();
+    }
+  }, []);
+  useEffect(() => {
+    const onChange = () => {
+      const isFull = document.fullscreenElement === mapWrapperRef.current;
+      setMapFullscreen(isFull);
+      setTimeout(() => {
+        if (mapRef.current && mapsRef.current) mapsRef.current.event.trigger(mapRef.current, "resize");
+      }, 60);
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  // Si "Seguir tecnico" esta activo, cada vez que llega un ping nuevo del
+  // tecnico seleccionado la camara lo sigue sola (igual que en vehiculos).
+  useEffect(() => {
+    if (!followTecnico || !selectedRow || !mapRef.current) return;
+    const lat = Number(selectedRow.lat);
+    const lng = Number(selectedRow.lng);
+    if (!isValidCoord(lat, lng)) return;
+    zoomSuaveHacia(mapRef.current, mapRef.current.getZoom() || 17, { lat, lng });
+  }, [followTecnico, selectedRow, zoomSuaveHacia]);
 
   useEffect(() => {
     let cancelled = false;
@@ -890,7 +950,10 @@ export default function SeguimientoTecnicosPanel({
             mapTypeId: mapType,
             streetViewControl: false,
             mapTypeControl: false,
-            fullscreenControl: true,
+            // El control nativo de Google solo agranda el canvas (no la
+            // tarjeta de detalle, que es un hermano fuera de ese div) -- se
+            // usa un boton propio que agranda todo el contenedor.
+            fullscreenControl: false,
             gestureHandling: "greedy",
           });
           setTimeout(() => {
@@ -981,6 +1044,8 @@ export default function SeguimientoTecnicosPanel({
       return [...prev, id];
     });
   };
+  const seleccionarTodos = () => setSelectedMapTechIds(techOptions.map((t) => t.id));
+  const seleccionarNinguno = () => setSelectedMapTechIds([]);
 
   const fallbackQuery = selectedRow
     ? `${Number(selectedRow.lat).toFixed(6)}, ${Number(selectedRow.lng).toFixed(6)}`
@@ -1034,57 +1099,94 @@ export default function SeguimientoTecnicosPanel({
       </div>
 
       <div className="maptech-controls">
-        <div className="maptech-actions">
-          <button
-            type="button"
-            className={showMovement ? "secondary-btn small maptech-btn-on" : "secondary-btn small"}
-            onClick={() => setShowMovement((prev) => !prev)}
-          >
-            {showMovement ? "Movimiento ON" : "Movimiento OFF"}
-          </button>
-          <button
-            type="button"
-            className="secondary-btn small"
-            onClick={() => setMapType((prev) => (prev === "roadmap" ? "satellite" : "roadmap"))}
-          >
-            {mapType === "roadmap" ? "Vista satelital" : "Vista normal"}
-          </button>
-          <button type="button" className="secondary-btn small" onClick={fitMap}>
-            Ajustar mapa
-          </button>
-        </div>
-        {!esTecnico ? (
-          <div className="maptech-pills">
-            {techOptions.map((tecnico) => {
-              const selected = selectedMapTechIds.includes(tecnico.id);
-              const color = colorForTechId(tecnico.id);
-              return (
-                <button
-                  key={`seg-tech-${tecnico.id}`}
-                  type="button"
-                  className="maptech-pill"
-                  onClick={() => toggleTech(tecnico.id)}
-                  style={{
-                    border: `1.5px solid ${selected ? color : "#e2e8f0"}`,
-                    background: selected ? `${color}1a` : "#fff",
-                    color: selected ? color : "#64748b",
-                  }}
-                >
-                  <span className="maptech-pill-dot" style={{ background: color }} />
-                  {tecnico.nombre} {tecnico.habilitado ? "" : "(OFF)"}
-                </button>
-              );
-            })}
+        <div className="maptech-controls-group">
+          <span className="maptech-controls-label">Vista del mapa</span>
+          <div className="maptech-actions">
+            <button
+              type="button"
+              className={showMovement ? "secondary-btn small maptech-btn-on" : "secondary-btn small"}
+              onClick={() => setShowMovement((prev) => !prev)}
+            >
+              {showMovement ? "🛰️ Recorrido ON" : "🛰️ Recorrido OFF"}
+            </button>
+            <button
+              type="button"
+              className="secondary-btn small"
+              onClick={() => setMapType((prev) => (prev === "roadmap" ? "satellite" : "roadmap"))}
+            >
+              {mapType === "roadmap" ? "🌍 Vista satelital" : "🗺️ Vista normal"}
+            </button>
+            <button type="button" className="secondary-btn small" onClick={fitMap}>
+              🔍 Ajustar mapa
+            </button>
+            <label
+              className="maptech-follow-toggle"
+              style={{
+                color: followTecnico ? "#7C3AED" : "#64748b",
+                opacity: selectedRow ? 1 : 0.5,
+                cursor: selectedRow ? "pointer" : "not-allowed",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={followTecnico}
+                disabled={!selectedRow}
+                onChange={(e) => {
+                  setFollowTecnico(e.target.checked);
+                  if (e.target.checked && selectedRow && isValidCoord(Number(selectedRow.lat), Number(selectedRow.lng))) {
+                    zoomSuaveHacia(mapRef.current, 17, { lat: Number(selectedRow.lat), lng: Number(selectedRow.lng) });
+                  }
+                }}
+              />
+              🎯 Seguir técnico
+            </label>
           </div>
-        ) : null}
-        {showMovement ? (
-          <p className="panel-meta">
-            Trayectoria ultimas {TRAIL_WINDOW_HOURS} horas {trailLoading ? "(actualizando...)" : ""}.
-          </p>
+          {showMovement ? (
+            <p className="panel-meta" style={{ margin: 0 }}>
+              Trayectoria últimas {TRAIL_WINDOW_HOURS} horas {trailLoading ? "(actualizando...)" : ""}.
+            </p>
+          ) : null}
+        </div>
+
+        {!esTecnico ? (
+          <div className="maptech-controls-group">
+            <div className="maptech-controls-label-row">
+              <span className="maptech-controls-label">
+                {etiquetaPlural} en el mapa ({selectedMapTechIds.length}/{techOptions.length})
+              </span>
+              <div className="maptech-quickpick">
+                <button type="button" onClick={seleccionarTodos}>Todos</button>
+                <span>·</span>
+                <button type="button" onClick={seleccionarNinguno}>Ninguno</button>
+              </div>
+            </div>
+            <div className="maptech-pills">
+              {techOptions.map((tecnico) => {
+                const selected = selectedMapTechIds.includes(tecnico.id);
+                const color = colorForTechId(tecnico.id);
+                return (
+                  <button
+                    key={`seg-tech-${tecnico.id}`}
+                    type="button"
+                    className="maptech-pill"
+                    onClick={() => toggleTech(tecnico.id)}
+                    style={{
+                      border: `1.5px solid ${selected ? color : "#e2e8f0"}`,
+                      background: selected ? `${color}1a` : "#fff",
+                      color: selected ? color : "#64748b",
+                    }}
+                  >
+                    <span className="maptech-pill-dot" style={{ background: color }} />
+                    {tecnico.nombre} {tecnico.habilitado ? "" : "(OFF)"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ) : null}
       </div>
 
-      <div className="maptech-map-card">
+      <div ref={mapWrapperRef} className="maptech-map-card">
         <div ref={mapCanvasRef} className="google-map-canvas maptech-map-canvas" />
         {!mapReady || mapError ? (
           <div className="map-fallback">
@@ -1096,21 +1198,50 @@ export default function SeguimientoTecnicosPanel({
             />
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={toggleMapFullscreen}
+          title={mapFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+          className="maptech-fullscreen-btn"
+        >
+          {mapFullscreen ? "🗗" : "⛶"}
+        </button>
         {selectedRow ? (
           <article className="maptech-detail">
             <div className="maptech-detail-head">
-              <strong>{selectedRow.tecnico_label}</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span className="maptech-pill-dot" style={{ background: colorForTechId(selectedRow.tecnico_id), width: 10, height: 10 }} />
+                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedRow.tecnico_label}</strong>
+              </div>
               <span className={`orders-status ${selectedRow.staleMin > 20 ? "warn" : "ok"}`}>
-                {selectedRow.staleMin > 20 ? "Desactualizado" : "En linea"}
+                {selectedRow.staleMin > 20 ? "Desactualizado" : "En línea"}
               </span>
             </div>
-            <p>Actualizado: {formatDateTime(selectedRow.updated_at)}</p>
-            <p>Hace: {formatAgo(selectedRow.updated_at)}</p>
-            <p>
-              Lat/Lng: {Number(selectedRow.lat).toFixed(6)}, {Number(selectedRow.lng).toFixed(6)}
-            </p>
-            <p>Fuente: {toText(selectedRow.source || "-")}</p>
-            <p>Velocidad actual: {Number.isFinite(Number(selectedRow.speedKmh)) ? `${Number(selectedRow.speedKmh).toFixed(1)} km/h` : "-"}</p>
+
+            <div className="maptech-detail-metrics">
+              <div className="maptech-detail-metric">
+                <span className="maptech-detail-metric-label">Velocidad</span>
+                {Number.isFinite(Number(selectedRow.speedKmh)) ? (
+                  <strong style={{ color: colorForSpeedKmh(Number(selectedRow.speedKmh)) }}>
+                    {Number(selectedRow.speedKmh).toFixed(0)} <span style={{ fontSize: 11, fontWeight: 700 }}>km/h</span>
+                  </strong>
+                ) : (
+                  <strong style={{ color: "#cbd5e1" }}>—</strong>
+                )}
+              </div>
+              {selectedRow.battery_pct != null ? (
+                <div className="maptech-detail-metric">
+                  <span className="maptech-detail-metric-label">Batería</span>
+                  <strong style={{ color: Number(selectedRow.battery_pct) <= 20 ? "#dc2626" : Number(selectedRow.battery_pct) <= 50 ? "#ca8a04" : "#16a34a" }}>
+                    🔋 {selectedRow.battery_pct}%
+                  </strong>
+                </div>
+              ) : null}
+            </div>
+
+            <p>Actualizado hace: {formatAgo(selectedRow.updated_at)}</p>
+            <p className="maptech-detail-sub">{formatDateTime(selectedRow.updated_at)} · Fuente: {toText(selectedRow.source || "-")}</p>
+
             <div className="maptech-detail-actions">
               <button type="button" className="primary-btn small" onClick={() => centerTech(selectedRow)}>
                 Centrar
