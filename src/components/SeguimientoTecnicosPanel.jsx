@@ -220,6 +220,7 @@ export default function SeguimientoTecnicosPanel({
   const [showMovement, setShowMovement] = useState(true);
 
   const [techUsers, setTechUsers] = useState([]);
+  const [rolPorIdUsuario, setRolPorIdUsuario] = useState({});
   const [configByTech, setConfigByTech] = useState({});
   const [currentRows, setCurrentRows] = useState([]);
   const [trailByTech, setTrailByTech] = useState({});
@@ -460,8 +461,18 @@ export default function SeguimientoTecnicosPanel({
       .limit(2000);
     if (usuariosError) throw usuariosError;
 
+    // Mapa id -> rol de TODOS los usuarios activos (no solo tecnicos) --
+    // se usa mas abajo para que techOptions no mezcle Volanteadores /
+    // Supervisores que tambien reportan ubicacion en tecnico_ubicacion_actual.
+    const rolPorId = {};
+    (Array.isArray(usuariosData) ? usuariosData : []).forEach((row) => {
+      const id = parseTecnicoId(row?.id);
+      if (id) rolPorId[id] = toText(row?.rol);
+    });
+    setRolPorIdUsuario(rolPorId);
+
     const tecnicos = (Array.isArray(usuariosData) ? usuariosData : [])
-      .filter((row) => toText(row?.rol).toLowerCase().includes(rolFiltro))
+      .filter((row) => toText(row?.rol) === rolPropio)
       .map((row) => ({
         id: parseTecnicoId(row?.id),
         nombre: toText(row?.nombre || row?.id),
@@ -510,7 +521,7 @@ export default function SeguimientoTecnicosPanel({
       if (habilitados.length > 0) return habilitados;
       return tecnicos.map((t) => t.id);
     });
-  }, [esTecnico, tecnicoIdSesion, rolFiltro]);
+  }, [esTecnico, tecnicoIdSesion, rolPropio]);
 
   const idsObjetivoTraza = useMemo(() => {
     if (esTecnico && tecnicoIdSesion) return [tecnicoIdSesion];
@@ -699,6 +710,14 @@ export default function SeguimientoTecnicosPanel({
     (Array.isArray(currentRows) ? currentRows : []).forEach((row) => {
       const id = parseTecnicoId(row?.tecnico_id);
       if (!id || setIds.has(id)) return;
+      // tecnico_ubicacion_actual guarda la ubicacion de CUALQUIER rol que
+      // reporte GPS (Volanteadores, Supervisor, etc. ademas de tecnicos) --
+      // antes esto agregaba a cualquiera con una fila ahi como si fuera
+      // tecnico. Si conocemos su rol real y no es el de este panel, se
+      // descarta; si no esta en el mapa (usuario inactivo/borrado), se deja
+      // pasar para no perder ubicaciones historicas de tecnicos dados de baja.
+      const rolConocido = rolPorIdUsuario[id];
+      if (rolConocido && rolConocido !== rolPropio) return;
       setIds.add(id);
       rows.push({
         id,
@@ -707,7 +726,7 @@ export default function SeguimientoTecnicosPanel({
       });
     });
     return rows.sort((a, b) => a.nombre.localeCompare(b.nombre));
-  }, [techUsers, currentRows, configByTech]);
+  }, [techUsers, currentRows, configByTech, rolPorIdUsuario, rolPropio]);
 
   useEffect(() => {
     if (esTecnico && tecnicoIdSesion) {
@@ -1038,14 +1057,21 @@ export default function SeguimientoTecnicosPanel({
           <div className="maptech-pills">
             {techOptions.map((tecnico) => {
               const selected = selectedMapTechIds.includes(tecnico.id);
+              const color = colorForTechId(tecnico.id);
               return (
                 <button
                   key={`seg-tech-${tecnico.id}`}
                   type="button"
-                  className={selected ? "maptech-pill active" : "maptech-pill"}
+                  className="maptech-pill"
                   onClick={() => toggleTech(tecnico.id)}
+                  style={{
+                    border: `1.5px solid ${selected ? color : "#e2e8f0"}`,
+                    background: selected ? `${color}1a` : "#fff",
+                    color: selected ? color : "#64748b",
+                  }}
                 >
-                  {tecnico.nombre} {tecnico.habilitado ? "(ON)" : "(OFF)"}
+                  <span className="maptech-pill-dot" style={{ background: color }} />
+                  {tecnico.nombre} {tecnico.habilitado ? "" : "(OFF)"}
                 </button>
               );
             })}
