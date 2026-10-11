@@ -296,6 +296,50 @@ export default function SeguimientoTecnicosPanel({
     pingIntervalsRef.current[tecnicoId] = interval;
   }, []);  // eslint-disable-line
 
+  // Valvula de escape para el admin: si un tecnico tiene un problema real
+  // (permiso que no le funciona, celular viejo, etc.) y no puede "Iniciar
+  // jornada" el mismo, esto le crea el turno activo igual -- asi no queda
+  // bloqueado de ver/trabajar sus ordenes por un tema tecnico que no es su
+  // culpa. Solo aplica a Tecnico (Volanteador tiene su propio mecanismo via
+  // usuarios.volanteo_forzar_fin).
+  const [forzandoId, setForzandoId] = useState("");
+  const forzarJornadaActiva = useCallback(
+    async (tecnico) => {
+      if (!tecnico?.id || !isSupabaseConfigured) return;
+      setForzandoId(tecnico.id);
+      try {
+        const { data: existente } = await supabase
+          .from("tecnico_turnos")
+          .select("id")
+          .eq("tecnico_id", tecnico.id)
+          .eq("estado", "activo")
+          .is("fin", null)
+          .order("inicio", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existente?.id) {
+          window.alert(`${tecnico.nombre} ya tiene una jornada activa.`);
+          return;
+        }
+        const { error: insertError } = await supabase.from("tecnico_turnos").insert({
+          tecnico_id: tecnico.id,
+          tecnico_nombre: tecnico.nombre,
+          tecnico_rol: "Tecnico",
+          estado: "activo",
+          inicio: new Date().toISOString(),
+          activado_por: toText(sessionUser?.nombre || sessionUser?.username || "Admin"),
+        });
+        if (insertError) throw insertError;
+        window.alert(`Jornada de ${tecnico.nombre} activada manualmente.`);
+      } catch (e) {
+        window.alert(e?.message || "No se pudo forzar la jornada.");
+      } finally {
+        setForzandoId("");
+      }
+    },
+    [sessionUser]
+  );
+
   const cargarUbicacionActual = useCallback(async () => {
     const { data, error: fetchError } = await supabase
       .from("tecnico_ubicacion_actual")
@@ -1043,6 +1087,18 @@ export default function SeguimientoTecnicosPanel({
                             </button>
                           );
                         })()}
+                        {rolPropio === "Tecnico" && (
+                          <button
+                            type="button"
+                            className="secondary-btn small"
+                            style={{ minWidth: 130 }}
+                            disabled={forzandoId === tecnico.id}
+                            onClick={(e) => { e.stopPropagation(); void forzarJornadaActiva(tecnico); }}
+                            title="Activa la jornada de este tecnico aunque el no haya tocado 'Iniciar jornada' -- usar solo si tiene un problema tecnico real"
+                          >
+                            {forzandoId === tecnico.id ? "Activando..." : "▶ Forzar jornada"}
+                          </button>
+                        )}
                         {tecnico.celular ? (
                           <>
                             <button
