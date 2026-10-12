@@ -9,6 +9,13 @@ import {
   VEHICLE_TYPE_DEFAULT,
 } from "../utils/vehicleIcon";
 import { crearIconoTecnico, tecnicoIconGeometry } from "../utils/tecnicoIcon";
+import { parseUbicacion, todayLocalDateStr, ESTADO_ORDEN_COLOR, crearIconoOrden } from "../utils/ordenIcon";
+
+// Distancia/velocidad bajo las cuales se considera que el tecnico "llego" a
+// la orden (para el halo pulsante en el mapa) -- mismos valores que usa
+// Seguimiento vehiculos (0.08km = 80m).
+const ARRIVAL_M = 80;
+const ARRIVAL_STOPPED_KMH = 5;
 
 // Iconos monocromos (SVG, heredan el color del boton via currentColor) para
 // los controles flotantes del mapa -- en vez de emoji nativos, que se ven
@@ -301,6 +308,39 @@ export default function SeguimientoTecnicosPanel({
   const [reproduciendoRuta, setReproduciendoRuta] = useState(false);
   const playbackRef = useRef({ marker: null, intervalId: null, idx: 0 });
   const [buscarTecnico, setBuscarTecnico] = useState("");
+  const [velocidadReproduccion, setVelocidadReproduccion] = useState(1);
+  const velocidadRef = useRef(1);
+  useEffect(() => { velocidadRef.current = velocidadReproduccion; }, [velocidadReproduccion]);
+
+  // Ordenes del dia en el mapa, igual que Seguimiento vehiculos -- mismo
+  // icono por tipo/estado y el mismo halo verde pulsante cuando el tecnico
+  // ya esta "en sitio" (detenido y cerca de la orden).
+  const [ordenesHoy, setOrdenesHoy] = useState([]);
+  const [showOrdenes, setShowOrdenes] = useState(false);
+  const orderMarkersRef = useRef([]);
+  const arrivedPulsesRef = useRef([]);
+  const pulseRafRef = useRef(null);
+
+  const cargarOrdenesHoy = useCallback(async () => {
+    const hoy = todayLocalDateStr();
+    const manana = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const mananaStr = `${manana.getFullYear()}-${String(manana.getMonth() + 1).padStart(2, "0")}-${String(manana.getDate()).padStart(2, "0")}`;
+    const { data, error: fetchError } = await supabase
+      .from("ordenes")
+      .select("id,codigo,nombre,direccion,tecnico,estado,tipo_actuacion,ubicacion,fecha_actuacion")
+      .gte("fecha_actuacion", hoy)
+      .lt("fecha_actuacion", mananaStr)
+      .limit(2000);
+    if (fetchError) {
+      if (!tableMissing(fetchError, "ordenes")) return;
+      setOrdenesHoy([]);
+      return;
+    }
+    const rows = (Array.isArray(data) ? data : [])
+      .map((row) => ({ ...row, coords: parseUbicacion(row.ubicacion) }))
+      .filter((row) => row.coords);
+    setOrdenesHoy(rows);
+  }, []);
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [showMovement, setShowMovement] = useState(true);
@@ -361,6 +401,11 @@ export default function SeguimientoTecnicosPanel({
       }
     });
     polylinesRef.current = [];
+    orderMarkersRef.current.forEach((m) => {
+      try { m.setMap(null); } catch { /* noop */ }
+    });
+    orderMarkersRef.current = [];
+    arrivedPulsesRef.current = [];
   }, []);
 
   // Los intervals de "pedir ubicacion" (hasta 20s cada uno) no se limpiaban
@@ -734,7 +779,7 @@ export default function SeguimientoTecnicosPanel({
     setError("");
     setWarning("");
     try {
-      await Promise.all([cargarConfigYTecnicos(), cargarUbicacionActual()]);
+      await Promise.all([cargarConfigYTecnicos(), cargarUbicacionActual(), cargarOrdenesHoy()]);
       if (showMovement) await cargarTrayectorias();
       setLastSyncAt(new Date());
     } catch (e) {
@@ -742,7 +787,7 @@ export default function SeguimientoTecnicosPanel({
     } finally {
       setLoading(false);
     }
-  }, [cargarConfigYTecnicos, cargarUbicacionActual, cargarTrayectorias, showMovement]);
+  }, [cargarConfigYTecnicos, cargarUbicacionActual, cargarOrdenesHoy, cargarTrayectorias, showMovement]);
 
   const onRefresh = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -751,6 +796,7 @@ export default function SeguimientoTecnicosPanel({
     try {
       await Promise.all([
         cargarUbicacionActual(),
+        cargarOrdenesHoy(),
         showMovement ? cargarTrayectorias() : Promise.resolve(),
         cargarEstadistica(statsTechId, statsDate),
       ]);
@@ -760,7 +806,7 @@ export default function SeguimientoTecnicosPanel({
     } finally {
       setRefreshing(false);
     }
-  }, [cargarUbicacionActual, cargarTrayectorias, showMovement, cargarEstadistica, statsTechId, statsDate]);
+  }, [cargarUbicacionActual, cargarOrdenesHoy, cargarTrayectorias, showMovement, cargarEstadistica, statsTechId, statsDate]);
 
   useEffect(() => {
     void cargarTodo();
@@ -965,6 +1011,24 @@ export default function SeguimientoTecnicosPanel({
     });
     return out;
   }, [trailByTech]);
+
+  // Ordenes pendientes donde el tecnico asignado esta detenido justo al
+  // lado -- se marcan como "en sitio" para encender el halo pulsante, igual
+  // que Seguimiento vehiculos.
+  const arrivedOrderIds = useMemo(() => {
+    const ids = new Set();
+    ordenesHoy.forEach((orden) => {
+      if (orden.estado !== "Pendiente" || !orden.coords) return;
+      const tecnico = toText(orden.tecnico);
+      if (!tecnico) return;
+      const row = rowsList.find((r) => toText(r.tecnico_label) === tecnico);
+      if (!row || !isValidCoord(Number(row.lat), Number(row.lng))) return;
+      if (row.speedKmh != null && row.speedKmh > ARRIVAL_STOPPED_KMH) return;
+      const distM = haversineMeters(Number(row.lat), Number(row.lng), orden.coords.lat, orden.coords.lng);
+      if (distM <= ARRIVAL_M) ids.add(orden.id);
+    });
+    return ids;
+  }, [ordenesHoy, rowsList]);
 
   const selectedRow = useMemo(
     () => rowsList.find((row) => parseTecnicoId(row?.tecnico_id) === parseTecnicoId(selectedTechId)) || rowsList[0] || null,
@@ -1322,6 +1386,94 @@ export default function SeguimientoTecnicosPanel({
     }
   }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, mapZoom, fitMap]);
 
+  // Ordenes del dia en el mapa (icono por tipo/estado), con halo verde
+  // pulsante en las que el tecnico ya alcanzo -- igual que Seguimiento
+  // vehiculos. Se vuelve a dibujar completo cada vez que cambian las
+  // ordenes/seleccion porque son pocas (ordenes de hoy), no cientos.
+  const clearOrderOverlays = useCallback(() => {
+    orderMarkersRef.current.forEach((m) => {
+      try { m.setMap(null); } catch { /* noop */ }
+    });
+    orderMarkersRef.current = [];
+    arrivedPulsesRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return undefined;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    clearOrderOverlays();
+
+    if (showOrdenes) {
+      ordenesHoy.forEach((orden) => {
+        const color = ESTADO_ORDEN_COLOR[orden.estado] || "#7C3AED";
+        const size = 36;
+        const marker = new maps.Marker({
+          map,
+          position: orden.coords,
+          title: `${orden.codigo || "Orden"} · ${orden.tipo_actuacion || ""} · ${orden.nombre || ""} · ${orden.estado || ""}`,
+          icon: { url: crearIconoOrden(orden.tipo_actuacion, orden.estado), scaledSize: new maps.Size(size, size), anchor: new maps.Point(size / 2, size / 2) },
+          zIndex: 500,
+        });
+        const info = new maps.InfoWindow({
+          content: `<div style="font-size:12px;max-width:260px">
+            <strong>${orden.codigo || "Orden"}</strong><br/>
+            ${orden.tipo_actuacion || ""}<br/>
+            ${orden.nombre || ""}<br/>
+            ${orden.direccion || ""}<br/>
+            Tecnico: ${orden.tecnico || "-"}<br/>
+            <span style="color:${color};font-weight:700">${orden.estado || ""}</span>
+          </div>`,
+        });
+        marker.addListener("click", () => info.open({ map, anchor: marker }));
+        orderMarkersRef.current.push(marker);
+
+        if (arrivedOrderIds.has(orden.id)) {
+          const pulse = new maps.Circle({
+            map,
+            center: orden.coords,
+            radius: 16,
+            fillColor: "#16A34A",
+            fillOpacity: 0.3,
+            strokeOpacity: 0,
+            clickable: false,
+            zIndex: 400,
+          });
+          orderMarkersRef.current.push(pulse);
+          arrivedPulsesRef.current.push(pulse);
+        }
+      });
+    }
+
+    return () => clearOrderOverlays();
+  }, [ordenesHoy, showOrdenes, arrivedOrderIds, clearOrderOverlays]);
+
+  // Pulso "en vivo" del halo de ordenes alcanzadas -- un solo loop de
+  // animacion compartido, igual que Seguimiento vehiculos.
+  useEffect(() => {
+    if (arrivedPulsesRef.current.length === 0) return undefined;
+    let cancelled = false;
+    const PULSE_PERIOD_MS = 2600;
+    const tick = (now) => {
+      if (cancelled) return;
+      const phase = (now % PULSE_PERIOD_MS) / PULSE_PERIOD_MS;
+      const radius = 16 + phase * 34;
+      const opacity = 0.32 * (1 - phase);
+      arrivedPulsesRef.current.forEach((pulse) => {
+        try {
+          pulse.setRadius(radius);
+          pulse.setOptions({ fillOpacity: opacity });
+        } catch { /* noop */ }
+      });
+      pulseRafRef.current = requestAnimationFrame(tick);
+    };
+    pulseRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      if (pulseRafRef.current) cancelAnimationFrame(pulseRafRef.current);
+    };
+  }, [arrivedOrderIds]);
+
   // Ruta historica (cualquier dia pasado, no solo las ultimas 2 horas) --
   // reusa los puntos que ya carga "Estadistica diaria" (cargarEstadistica)
   // para el tecnico y fecha elegidos. Se dibuja como varios tramos de
@@ -1403,7 +1555,7 @@ export default function SeguimientoTecnicosPanel({
   // completo tardaria horas) para revisar rapido "que hizo a tal hora".
   const detenerReproduccion = useCallback(() => {
     const pb = playbackRef.current;
-    if (pb.intervalId) clearInterval(pb.intervalId);
+    if (pb.intervalId) clearTimeout(pb.intervalId);
     try { pb.marker?.setMap(null); } catch { /* noop */ }
     pb.intervalId = null;
     pb.marker = null;
@@ -1428,7 +1580,10 @@ export default function SeguimientoTecnicosPanel({
     // Un dia puede tener miles de puntos -- se saltan algunos para que la
     // reproduccion dure segundos, no minutos, sin perder la forma general.
     const paso = Math.max(1, Math.floor(historicalPath.length / 600));
-    pb.intervalId = setInterval(() => {
+    // setTimeout que se re-agenda solo (en vez de setInterval de delay fijo)
+    // para poder leer la velocidad elegida en cada paso y que el boton
+    // 0.5x/1x/2x/4x cambie el ritmo al instante, sin reiniciar la posicion.
+    const avanzar = () => {
       pb.idx += paso;
       if (pb.idx >= historicalPath.length) {
         detenerReproduccion();
@@ -1437,7 +1592,9 @@ export default function SeguimientoTecnicosPanel({
       const p = historicalPath[pb.idx];
       pb.marker.setPosition(p);
       map.panTo(p);
-    }, 45);
+      pb.intervalId = setTimeout(avanzar, 45 / velocidadRef.current);
+    };
+    pb.intervalId = setTimeout(avanzar, 45 / velocidadRef.current);
   }, [historicalPath, detenerReproduccion]);
 
   useEffect(() => {
@@ -1511,6 +1668,10 @@ export default function SeguimientoTecnicosPanel({
           <span>Trazas</span>
           <strong>{showMovement ? Object.keys(trailByTech || {}).length : 0}</strong>
         </article>
+        <article className="orders-kpi-card">
+          <span>Órdenes hoy</span>
+          <strong>{ordenesHoy.length}</strong>
+        </article>
       </div>
 
       <div className="maptech-controls">
@@ -1581,7 +1742,7 @@ export default function SeguimientoTecnicosPanel({
             <div className="maptech-float-btn-wrap">
               <button
                 type="button"
-                className={showMovement || mapType === "satellite" ? "maptech-float-btn maptech-float-btn-on" : "maptech-float-btn"}
+                className={showMovement || mapType === "satellite" || showOrdenes ? "maptech-float-btn maptech-float-btn-on" : "maptech-float-btn"}
                 title="Capas del mapa"
                 onClick={() => setCapasAbiertas((v) => !v)}
               >
@@ -1600,6 +1761,10 @@ export default function SeguimientoTecnicosPanel({
                       onChange={() => setMapType((prev) => (prev === "roadmap" ? "satellite" : "roadmap"))}
                     />
                     Vista satelital
+                  </label>
+                  <label className="maptech-layers-item">
+                    <input type="checkbox" checked={showOrdenes} onChange={() => setShowOrdenes((prev) => !prev)} />
+                    Órdenes del día ({ordenesHoy.length})
                   </label>
                 </div>
               ) : null}
@@ -1901,6 +2066,20 @@ export default function SeguimientoTecnicosPanel({
               >
                 {reproduciendoRuta ? "⏹ Detener reproducción" : "▶ Reproducir ruta"}
               </button>
+            ) : null}
+            {rutaHistoricaVisible ? (
+              <div className="maptech-speed-group">
+                {[0.5, 1, 2, 4].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={velocidadReproduccion === v ? "maptech-speed-btn active" : "maptech-speed-btn"}
+                    onClick={() => setVelocidadReproduccion(v)}
+                  >
+                    {v}x
+                  </button>
+                ))}
+              </div>
             ) : null}
             <button type="button" className="secondary-btn small" onClick={exportarKml} disabled={statsPoints.length === 0}>
               ⬇ Exportar KML
