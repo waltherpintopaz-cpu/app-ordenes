@@ -242,6 +242,7 @@ export default function SeguimientoTecnicosPanel({
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [followTecnico, setFollowTecnico] = useState(false);
   const [mapZoom, setMapZoom] = useState(15);
+  const [capasAbiertas, setCapasAbiertas] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [showMovement, setShowMovement] = useState(true);
@@ -1302,59 +1303,6 @@ export default function SeguimientoTecnicosPanel({
       </div>
 
       <div className="maptech-controls">
-        <div className="maptech-controls-group">
-          <span className="maptech-controls-label">Vista del mapa</span>
-          <div className="maptech-actions">
-            <button
-              type="button"
-              className={showMovement ? "secondary-btn small maptech-btn-on" : "secondary-btn small"}
-              onClick={() => setShowMovement((prev) => !prev)}
-            >
-              {showMovement ? "🛰️ Recorrido ON" : "🛰️ Recorrido OFF"}
-            </button>
-            <button
-              type="button"
-              className="secondary-btn small"
-              onClick={() => setMapType((prev) => (prev === "roadmap" ? "satellite" : "roadmap"))}
-            >
-              {mapType === "roadmap" ? "🌍 Vista satelital" : "🗺️ Vista normal"}
-            </button>
-            <button type="button" className="secondary-btn small" onClick={fitMap}>
-              🔍 Ajustar mapa
-            </button>
-            <button type="button" className="secondary-btn small" onClick={toggleMapFullscreen}>
-              {mapFullscreen ? "🗗 Salir de pantalla completa" : "⛶ Pantalla completa"}
-            </button>
-            <label
-              className="maptech-follow-toggle"
-              style={{
-                color: followTecnico ? "#7C3AED" : "#64748b",
-                opacity: selectedRow ? 1 : 0.5,
-                cursor: selectedRow ? "pointer" : "not-allowed",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={followTecnico}
-                disabled={!selectedRow}
-                onChange={(e) => {
-                  setFollowTecnico(e.target.checked);
-                  if (e.target.checked && selectedRow && isValidCoord(Number(selectedRow.lat), Number(selectedRow.lng))) {
-                    zoomSuaveHacia(mapRef.current, 17, { lat: Number(selectedRow.lat), lng: Number(selectedRow.lng) });
-                  }
-                }}
-              />
-              🎯 Seguir técnico
-            </label>
-          </div>
-          {showMovement ? (
-            <p className="panel-meta" style={{ margin: 0 }}>
-              Muestra el recorrido de las últimas {TRAIL_WINDOW_HOURS} horas.
-              {trailLoading ? <span className="maptech-live-dot"> ● Actualizando…</span> : null}
-            </p>
-          ) : null}
-        </div>
-
         {!esTecnico ? (
           <div className="maptech-controls-group">
             <div className="maptech-controls-label-row">
@@ -1393,7 +1341,7 @@ export default function SeguimientoTecnicosPanel({
         ) : null}
       </div>
 
-      <div ref={mapWrapperRef} className="maptech-map-card">
+      <div ref={mapWrapperRef} className="maptech-map-card" onClick={() => capasAbiertas && setCapasAbiertas(false)}>
         <div ref={mapCanvasRef} className="google-map-canvas maptech-map-canvas" />
         {!mapReady || mapError ? (
           <div className="map-fallback">
@@ -1405,14 +1353,67 @@ export default function SeguimientoTecnicosPanel({
             />
           </div>
         ) : null}
-        <button
-          type="button"
-          onClick={toggleMapFullscreen}
-          title={mapFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
-          className="maptech-fullscreen-btn"
-        >
-          {mapFullscreen ? "🗗" : "⛶"}
-        </button>
+        <div className="maptech-float-controls">
+          <div className="maptech-float-btn-wrap">
+            <button
+              type="button"
+              className={showMovement || mapType === "satellite" ? "maptech-float-btn maptech-float-btn-on" : "maptech-float-btn"}
+              title="Capas del mapa"
+              onClick={() => setCapasAbiertas((v) => !v)}
+            >
+              🗂️
+            </button>
+            {capasAbiertas ? (
+              <div className="maptech-layers-menu" onClick={(e) => e.stopPropagation()}>
+                <label className="maptech-layers-item">
+                  <input type="checkbox" checked={showMovement} onChange={() => setShowMovement((prev) => !prev)} />
+                  🛰️ Mostrar recorrido
+                </label>
+                <label className="maptech-layers-item">
+                  <input
+                    type="checkbox"
+                    checked={mapType === "satellite"}
+                    onChange={() => setMapType((prev) => (prev === "roadmap" ? "satellite" : "roadmap"))}
+                  />
+                  🌍 Vista satelital
+                </label>
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className="maptech-float-btn" title="Ajustar mapa" onClick={fitMap}>
+            🔍
+          </button>
+          {selectedRow ? (
+            <button
+              type="button"
+              className={followTecnico ? "maptech-float-btn maptech-float-btn-on" : "maptech-float-btn"}
+              title={followTecnico ? "Dejar de seguir" : "Seguir técnico (cámara automática)"}
+              onClick={() => {
+                const next = !followTecnico;
+                setFollowTecnico(next);
+                if (next && isValidCoord(Number(selectedRow.lat), Number(selectedRow.lng))) {
+                  zoomSuaveHacia(mapRef.current, 17, { lat: Number(selectedRow.lat), lng: Number(selectedRow.lng) });
+                }
+              }}
+            >
+              🎯
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="maptech-float-btn"
+            title={mapFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+            onClick={toggleMapFullscreen}
+          >
+            {mapFullscreen ? "🗗" : "⛶"}
+          </button>
+        </div>
+        {showMovement ? (
+          <div className="maptech-trail-chip">
+            Trayectoria últimas {TRAIL_WINDOW_HOURS}h
+            {trailLoading ? <span className="maptech-live-dot"> ● actualizando…</span> : null}
+          </div>
+        ) : null}
         {selectedRow ? (
           <article className="maptech-detail">
             {selectedGroup && selectedGroup.rows.length > 1 ? (

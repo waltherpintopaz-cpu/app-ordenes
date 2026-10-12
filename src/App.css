@@ -3224,21 +3224,90 @@ th {
   border-radius: 0;
 }
 
-.maptech-fullscreen-btn {
+.maptech-float-controls {
   position: absolute;
-  bottom: 14px;
+  top: 14px;
   right: 14px;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 6;
+}
+
+.maptech-float-btn-wrap {
+  position: relative;
+}
+
+.maptech-float-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   border: 1px solid #e2e8f0;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.97);
   cursor: pointer;
   font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.maptech-float-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.maptech-float-btn-on {
+  border-color: #214a99;
+  background: linear-gradient(135deg, #214a99 0%, #2f95e6 100%);
+  color: #fff;
+}
+
+.maptech-layers-menu {
+  position: absolute;
+  top: 0;
+  right: 46px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: nowrap;
+  animation: mtFadeUp 0.15s ease both;
+}
+
+.maptech-layers-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.maptech-layers-item:hover {
+  background: #f1f5f9;
+}
+
+.maptech-trail-chip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #475569;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
   z-index: 5;
 }
 
