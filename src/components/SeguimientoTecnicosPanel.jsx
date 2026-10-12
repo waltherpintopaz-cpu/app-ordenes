@@ -15,6 +15,11 @@ import { crearIconoTecnico, tecnicoIconGeometry } from "../utils/tecnicoIcon";
 // (en la puerta de distintas casas), asi que el umbral tiene que ser mayor
 // a eso pero menor a "estan en la misma cuadra pero separados".
 const GRUPO_VEHICULO_DISTANCIA_M = 45;
+// Debajo de esta velocidad se considera que el grupo esta detenido/bajado
+// del vehiculo (ej. dos tecnicos parados juntos en la puerta de un
+// cliente) -- en ese caso se ve mas honesto mostrar a cada uno con su
+// propio avatar que un auto parqueado, que sugiere que siguen adentro.
+const UMBRAL_MOVIMIENTO_KMH = 3;
 
 // Perfil por defecto para tecnicos (vehiculo entre ordenes, no a pie como
 // volanteadores) -- mismos valores que PERFIL_DEFECTO_TECNICO en
@@ -236,6 +241,7 @@ export default function SeguimientoTecnicosPanel({
   const [mapError, setMapError] = useState("");
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [followTecnico, setFollowTecnico] = useState(false);
+  const [mapZoom, setMapZoom] = useState(15);
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [showMovement, setShowMovement] = useState(true);
@@ -1029,6 +1035,8 @@ export default function SeguimientoTecnicosPanel({
             fullscreenControl: false,
             gestureHandling: "greedy",
           });
+          setMapZoom(mapRef.current.getZoom() ?? 15);
+          mapRef.current.addListener("zoom_changed", () => setMapZoom(mapRef.current.getZoom() ?? 15));
           setTimeout(() => {
             try {
               maps.event.trigger(mapRef.current, "resize");
@@ -1093,104 +1101,127 @@ export default function SeguimientoTecnicosPanel({
     };
   }, [trailPolylines]);
 
-  // Marcadores: mapa persistente por grupo -- cuando el grupo ya existia se
-  // actualiza su icono/posicion en el mismo marcador (sin destruirlo), en
-  // vez del patron anterior de borrar todo y recrear, que hacia parpadear
-  // los iconos con cada click de seleccion o cada actualizacion de datos.
+  // Marcadores: mapa persistente por clave (tecnico_id o groupId) -- cuando
+  // la clave ya existia se actualiza su icono/posicion en el mismo marcador
+  // (sin destruirlo), en vez del patron anterior de borrar todo y recrear,
+  // que hacia parpadear los iconos con cada click de seleccion o cada
+  // actualizacion de datos. El tamaño escala con el zoom, igual que en
+  // Seguimiento vehiculos.
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return;
     const map = mapRef.current;
     const maps = mapsRef.current;
     const seen = new Set();
+    const zoomScale = Math.min(1.7, Math.max(0.85, Math.pow(1.22, mapZoom - 16)));
+
+    const pintarAvatar = (row, key, grupoSeleccionado) => {
+      const staleMin = Number(row?.staleMin || 0);
+      const stale = staleMin > 20;
+      const fillColor = stale ? "#7A8699" : colorForTechId(row?.tecnico_id);
+      const size = Math.round((grupoSeleccionado ? 56 : 46) * zoomScale);
+      const avatarUrl = crearIconoTecnico(fillColor, grupoSeleccionado, stale);
+      const avatarGeo = tecnicoIconGeometry(size);
+      const title = row?.tecnico_label || row?.tecnico_id || "-";
+      const icon = avatarUrl
+        ? { url: avatarUrl, scaledSize: new maps.Size(avatarGeo.width, avatarGeo.height), anchor: new maps.Point(avatarGeo.anchorX, avatarGeo.anchorY) }
+        : {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor,
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff",
+            strokeWeight: grupoSeleccionado ? 2.6 : 1.6,
+            scale: grupoSeleccionado ? 11 : 9,
+          };
+      seen.add(key);
+      const entry = markersMapRef.current.get(key);
+      const primerId = parseTecnicoId(row.tecnico_id);
+      if (!entry) {
+        const marker = new maps.Marker({ map, position: { lat: Number(row.lat), lng: Number(row.lng) }, title, icon, zIndex: grupoSeleccionado ? 999 : undefined });
+        marker.addListener("click", () => setSelectedTechId(primerId));
+        markersMapRef.current.set(key, { marker, primerId });
+      } else {
+        entry.marker.setPosition({ lat: Number(row.lat), lng: Number(row.lng) });
+        entry.marker.setIcon(icon);
+        entry.marker.setTitle(title);
+        entry.marker.setLabel(null);
+        entry.marker.setZIndex(grupoSeleccionado ? 999 : undefined);
+        entry.primerId = primerId;
+      }
+    };
 
     rowGroups.forEach((group) => {
       const { lat, lng, rows: miembros } = group;
       if (!isValidCoord(lat, lng)) return;
       const grupoSeleccionado = miembros.some((m) => parseTecnicoId(m.tecnico_id) === parseTecnicoId(selectedTechId));
-      const primerId = parseTecnicoId(miembros[0].tecnico_id);
-      seen.add(group.groupId);
+      const speedGrupo = Math.max(...miembros.map((m) => Number(m.speedKmh) || 0));
+      const enMovimiento = speedGrupo >= UMBRAL_MOVIMIENTO_KMH;
 
-      let icon;
-      let title;
-      let label;
-      if (miembros.length === 1) {
-        const row = miembros[0];
-        const staleMin = Number(row?.staleMin || 0);
-        const stale = staleMin > 20;
-        const fillColor = stale ? "#7A8699" : colorForTechId(row?.tecnico_id);
-        const size = grupoSeleccionado ? 46 : 38;
-        const avatarUrl = crearIconoTecnico(fillColor, grupoSeleccionado, stale);
-        const avatarGeo = tecnicoIconGeometry(size);
-        title = row?.tecnico_label || row?.tecnico_id || "-";
-        label = null;
-        icon = avatarUrl
-          ? { url: avatarUrl, scaledSize: new maps.Size(avatarGeo.width, avatarGeo.height), anchor: new maps.Point(avatarGeo.anchorX, avatarGeo.anchorY) }
-          : {
-              path: maps.SymbolPath.CIRCLE,
-              fillColor,
-              fillOpacity: 0.95,
-              strokeColor: "#ffffff",
-              strokeWeight: grupoSeleccionado ? 2.2 : 1.4,
-              scale: grupoSeleccionado ? 9 : 7.4,
-            };
-      } else {
-        // 2+ tecnicos muy cerca entre si -- lo mas probable es que vayan
-        // juntos en un solo vehiculo, asi que se dibuja UN icono de auto
-        // (el mismo dibujo que usa Seguimiento vehiculos) en vez de puntos
-        // pegados que pareceria que hay 2 vehiculos. Se toma el vehiculo
-        // asignado al primero del grupo que tenga uno configurado.
-        const vehInfo = miembros.map((m) => vehiculoPorTecnico[m.tecnico_label]).find(Boolean);
-        const staleMinGrupo = Math.min(...miembros.map((m) => Number(m.staleMin || 0)));
-        const bodyColor = staleMinGrupo > 20 ? "#94A3B8" : paintForVehiculoId(group.groupId);
-        const speedGrupo = Math.max(...miembros.map((m) => Number(m.speedKmh) || 0));
-        const iconDataUrl = crearIconoVehiculoTipo(
-          vehInfo?.tipo_vehiculo || VEHICLE_TYPE_DEFAULT,
-          !!vehInfo?.tiene_escalera,
-          bodyColor,
-          null,
-          speedGrupo > 0 ? speedGrupo : null
-        );
-        const size = grupoSeleccionado ? 60 : 50;
-        const iconGeo = vehicleIconGeometry(size);
-        title = `${miembros.map((m) => m.tecnico_label).join(" + ")} (en el mismo vehículo)`;
-        label = { text: String(miembros.length), color: "#ffffff", fontSize: "11px", fontWeight: "800" };
-        icon = iconDataUrl
-          ? { url: iconDataUrl, scaledSize: new maps.Size(iconGeo.width, iconGeo.height), anchor: new maps.Point(iconGeo.anchorX, iconGeo.anchorY) }
-          : {
-              path: maps.SymbolPath.CIRCLE,
-              fillColor: bodyColor,
-              fillOpacity: 0.95,
-              strokeColor: "#ffffff",
-              strokeWeight: 2,
-              scale: 11,
-            };
+      if (miembros.length === 1 || !enMovimiento) {
+        // Solo, o juntos pero detenidos -- cada uno con su propio avatar.
+        miembros.forEach((row) => {
+          const seleccionado = parseTecnicoId(row.tecnico_id) === parseTecnicoId(selectedTechId) || (miembros.length > 1 && grupoSeleccionado);
+          pintarAvatar(row, parseTecnicoId(row.tecnico_id), seleccionado);
+        });
+        return;
       }
 
+      // 2+ tecnicos muy cerca entre si Y en movimiento -- lo mas probable
+      // es que vayan juntos en un solo vehiculo, asi que se dibuja UN icono
+      // de auto (el mismo dibujo que usa Seguimiento vehiculos) en vez de
+      // puntos pegados que pareceria que hay 2 vehiculos. Se toma el
+      // vehiculo asignado al primero del grupo que tenga uno configurado.
+      const primerId = parseTecnicoId(miembros[0].tecnico_id);
+      const vehInfo = miembros.map((m) => vehiculoPorTecnico[m.tecnico_label]).find(Boolean);
+      const staleMinGrupo = Math.min(...miembros.map((m) => Number(m.staleMin || 0)));
+      const bodyColor = staleMinGrupo > 20 ? "#94A3B8" : paintForVehiculoId(group.groupId);
+      const iconDataUrl = crearIconoVehiculoTipo(
+        vehInfo?.tipo_vehiculo || VEHICLE_TYPE_DEFAULT,
+        !!vehInfo?.tiene_escalera,
+        bodyColor,
+        null,
+        speedGrupo
+      );
+      const size = Math.round((grupoSeleccionado ? 68 : 56) * zoomScale);
+      const iconGeo = vehicleIconGeometry(size);
+      const title = `${miembros.map((m) => m.tecnico_label).join(" + ")} (en el mismo vehículo)`;
+      const label = { text: String(miembros.length), color: "#ffffff", fontSize: "11px", fontWeight: "800" };
+      const icon = iconDataUrl
+        ? { url: iconDataUrl, scaledSize: new maps.Size(iconGeo.width, iconGeo.height), anchor: new maps.Point(iconGeo.anchorX, iconGeo.anchorY) }
+        : {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor: bodyColor,
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+            scale: 11,
+          };
+
+      seen.add(group.groupId);
       const entry = markersMapRef.current.get(group.groupId);
       if (!entry) {
-        const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, label: label || undefined, zIndex: grupoSeleccionado ? 999 : undefined });
+        const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, label, zIndex: grupoSeleccionado ? 999 : undefined });
         marker.addListener("click", () => setSelectedTechId(primerId));
         markersMapRef.current.set(group.groupId, { marker, primerId });
       } else {
         entry.marker.setPosition({ lat, lng });
         entry.marker.setIcon(icon);
         entry.marker.setTitle(title);
-        entry.marker.setLabel(label || null);
+        entry.marker.setLabel(label);
         entry.marker.setZIndex(grupoSeleccionado ? 999 : undefined);
         entry.primerId = primerId;
       }
     });
 
-    // Grupos que ya no existen (tecnico se separo, se desconecto, o cambio
-    // de combinacion) -- remover su marcador.
-    markersMapRef.current.forEach((entry, groupId) => {
-      if (seen.has(groupId)) return;
+    // Claves que ya no existen (tecnico se separo/junto, se desconecto, o
+    // cambio entre avatar y vehiculo) -- remover su marcador.
+    markersMapRef.current.forEach((entry, key) => {
+      if (seen.has(key)) return;
       try {
         entry.marker.setMap(null);
       } catch {
         // noop
       }
-      markersMapRef.current.delete(groupId);
+      markersMapRef.current.delete(key);
     });
 
     if (!selectedTechId && rowsList.length > 0) {
@@ -1200,7 +1231,7 @@ export default function SeguimientoTecnicosPanel({
       fitMap();
       autoFitDoneRef.current = true;
     }
-  }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, fitMap]);
+  }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, mapZoom, fitMap]);
 
   // Limpieza total solo al desmontar el panel (no en cada refresco de
   // datos, que es lo que causaba el parpadeo).
@@ -1383,7 +1414,11 @@ export default function SeguimientoTecnicosPanel({
           <article className="maptech-detail">
             {selectedGroup && selectedGroup.rows.length > 1 ? (
               <div className="maptech-group-banner">
-                <span>🚐 Viajan juntos ({selectedGroup.rows.length})</span>
+                <span>
+                  {Math.max(...selectedGroup.rows.map((m) => Number(m.speedKmh) || 0)) >= UMBRAL_MOVIMIENTO_KMH
+                    ? `🚐 Viajan juntos (${selectedGroup.rows.length})`
+                    : `👥 Cerca uno del otro (${selectedGroup.rows.length})`}
+                </span>
                 <div className="maptech-group-chips">
                   {selectedGroup.rows.map((m) => (
                     <button
