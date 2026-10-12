@@ -4741,7 +4741,16 @@ export default function App() {
       const redes = redesParam || mkwRedesOrdenApp;
       let idRed = "";
       for (const red of redes) {
-        const cidr = red.red || red.cidr || red.network || "";
+        // GetRedesIpv4 de Mikrowisp devuelve la red base y el prefijo en
+        // campos separados ("red":"x.x.x.0", "cidr":"24"), no como un solo
+        // string "ip/bits" -- había que combinarlos, si no
+        // ipEnRedCidrOrdenApp nunca encontraba el "/" y descartaba todas
+        // las redes sin match.
+        const base = red.red || red.network || "";
+        let cidr = "";
+        if (base.includes("/")) cidr = base;
+        else if (base && red.cidr) cidr = `${base}/${red.cidr}`;
+        else cidr = String(red.cidr || "");
         if (cidr && ipEnRedCidrOrdenApp(ip, cidr)) { idRed = String(red.id); break; }
       }
       setOrdenIpMikrotik(ip);

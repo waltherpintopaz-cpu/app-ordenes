@@ -3322,7 +3322,15 @@ export default function SidebarApp() {
       if (!ip) { notify("No se encontró IP (el servidor puede estar lento — toca 'Reintentar' o vuelve a salir del campo Usuario)", false); setBuscandoIpOrden(false); return; }
       let idRed = "";
       for (const red of mkwRedesOrden) {
-        const cidr = red.red || red.cidr || red.network || "";
+        // GetRedesIpv4 devuelve la red base y el prefijo en campos
+        // separados ("red":"x.x.x.0", "cidr":"24") -- hay que combinarlos,
+        // si no ipEnRedCidr nunca encuentra el "/" y descarta todas las
+        // redes sin match.
+        const base = red.red || red.network || "";
+        let cidr = "";
+        if (base.includes("/")) cidr = base;
+        else if (base && red.cidr) cidr = `${base}/${red.cidr}`;
+        else cidr = String(red.cidr || "");
         if (cidr && ipEnRedCidr(ip, cidr)) { idRed = String(red.id); break; }
       }
       setOrdenForm(p => ({ ...p, ipMikrotik: ip, idRedIpv4: idRed || p.idRedIpv4 }));
