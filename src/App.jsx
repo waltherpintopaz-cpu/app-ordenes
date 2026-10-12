@@ -2741,6 +2741,23 @@ export default function App() {
   const [ordenIdRedIpv4, setOrdenIdRedIpv4] = useState("");
   const [ordenIdPlantilla, setOrdenIdPlantilla] = useState("");
   const [ordenIpMikrotik, setOrdenIpMikrotik] = useState("");
+  // Si el usuario PPPoE se escribe/selecciona ANTES de que termine de
+  // cargar el catalogo de rangos (GetRedesIpv4), buscarIpOrdenNod04App ya
+  // encuentra la IP pero compara contra una lista todavia vacia y no
+  // matchea ningun rango. Este efecto reintenta el match solo apenas el
+  // catalogo termine de llegar, sin que el usuario tenga que cambiar de
+  // campo e ir y volver.
+  useEffect(() => {
+    if (!ordenIpMikrotik || ordenIdRedIpv4 || !mkwRedesOrdenApp.length) return;
+    for (const red of mkwRedesOrdenApp) {
+      const base = red.red || red.network || "";
+      let cidr = "";
+      if (base.includes("/")) cidr = base;
+      else if (base && red.cidr) cidr = `${base}/${red.cidr}`;
+      else cidr = String(red.cidr || "");
+      if (cidr && ipEnRedCidrOrdenApp(ordenIpMikrotik, cidr)) { setOrdenIdRedIpv4(String(red.id)); break; }
+    }
+  }, [mkwRedesOrdenApp, ordenIpMikrotik, ordenIdRedIpv4]);
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [clienteEnDB, setClienteEnDB] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
