@@ -3245,7 +3245,7 @@ th {
 .maptech-map-canvas {
   flex: 1;
   min-width: 0;
-  min-height: 420px;
+  min-height: 560px;
 }
 
 .maptech-group-banner {

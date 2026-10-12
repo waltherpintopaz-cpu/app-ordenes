@@ -280,7 +280,7 @@ export default function SeguimientoTecnicosPanel({
   const [lastSyncAt, setLastSyncAt] = useState(() => new Date());
   const [pingStates, setPingStates] = useState({}); // { [tecnicoId]: "idle"|"waiting"|"ok"|"timeout" }
 
-  const _esAdmin = rolSesion === "Administrador";
+  const esAdmin = rolSesion === "Administrador";
   const esTecnico = rolSesion === rolPropio;
   const tecnicoIdSesion = parseTecnicoId(sessionUser?.id);
   const tecnicoNombreSesion = toText(sessionUser?.nombre || sessionUser?.username || tecnicoIdSesion);
@@ -1118,7 +1118,7 @@ export default function SeguimientoTecnicosPanel({
       const staleMin = Number(row?.staleMin || 0);
       const stale = staleMin > 20;
       const fillColor = stale ? "#7A8699" : colorForTechId(row?.tecnico_id);
-      const size = Math.round((grupoSeleccionado ? 56 : 46) * zoomScale);
+      const size = Math.round((grupoSeleccionado ? 48 : 40) * zoomScale);
       const avatarUrl = crearIconoTecnico(fillColor, grupoSeleccionado, stale);
       const avatarGeo = tecnicoIconGeometry(size);
       const title = row?.tecnico_label || row?.tecnico_id || "-";
@@ -1572,7 +1572,7 @@ export default function SeguimientoTecnicosPanel({
                             </button>
                           );
                         })()}
-                        {rolPropio === "Tecnico" && (
+                        {esAdmin && rolPropio === "Tecnico" && (
                           <button
                             type="button"
                             className="secondary-btn small"
@@ -1584,14 +1584,16 @@ export default function SeguimientoTecnicosPanel({
                             {forzandoId === tecnico.id ? "Activando..." : "▶ Forzar jornada"}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="secondary-btn small"
-                          style={{ minWidth: 100 }}
-                          onClick={(e) => { e.stopPropagation(); void abrirAjustesTecnico(tecnico); }}
-                        >
-                          ⚙️ Ajustes
-                        </button>
+                        {esAdmin && (
+                          <button
+                            type="button"
+                            className="secondary-btn small"
+                            style={{ minWidth: 100 }}
+                            onClick={(e) => { e.stopPropagation(); void abrirAjustesTecnico(tecnico); }}
+                          >
+                            ⚙️ Ajustes
+                          </button>
+                        )}
                         {tecnico.celular ? (
                           <>
                             <button
