@@ -3381,6 +3381,41 @@ th {
   background: linear-gradient(180deg, #ffffff 0%, #fafdff 100%);
   padding: 12px;
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  animation: mtFadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: box-shadow 0.2s ease;
+}
+
+.maptech-list-card:hover {
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.maptech-panel .orders-kpi-card,
+.maptech-panel .pe-kpi-card {
+  animation: mtFadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.maptech-panel .orders-kpi-card:hover,
+.maptech-panel .pe-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+}
+
+.maptech-panel .orders-kpi-card:nth-child(1),
+.maptech-panel .pe-kpi-card:nth-child(1) { animation-delay: 0ms; }
+.maptech-panel .orders-kpi-card:nth-child(2),
+.maptech-panel .pe-kpi-card:nth-child(2) { animation-delay: 50ms; }
+.maptech-panel .orders-kpi-card:nth-child(3),
+.maptech-panel .pe-kpi-card:nth-child(3) { animation-delay: 100ms; }
+.maptech-panel .orders-kpi-card:nth-child(4),
+.maptech-panel .pe-kpi-card:nth-child(4) { animation-delay: 150ms; }
+.maptech-panel .pe-kpi-card:nth-child(5) { animation-delay: 200ms; }
+.maptech-panel .pe-kpi-card:nth-child(6) { animation-delay: 250ms; }
+.maptech-panel .pe-kpi-card:nth-child(7) { animation-delay: 300ms; }
+.maptech-panel .pe-kpi-card:nth-child(8) { animation-delay: 350ms; }
+
+.maptech-map-card {
+  animation: mtFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .maptech-list-card h3 {
@@ -3396,6 +3431,17 @@ th {
   gap: 8px;
 }
 
+@keyframes mtFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .maptech-row {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -3404,6 +3450,11 @@ th {
   padding: 10px 12px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.maptech-row-in {
+  animation: mtFadeUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
 }
 
 .maptech-row:hover {

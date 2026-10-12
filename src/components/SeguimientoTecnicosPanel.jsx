@@ -1322,6 +1322,9 @@ export default function SeguimientoTecnicosPanel({
             <button type="button" className="secondary-btn small" onClick={fitMap}>
               🔍 Ajustar mapa
             </button>
+            <button type="button" className="secondary-btn small" onClick={toggleMapFullscreen}>
+              {mapFullscreen ? "🗗 Salir de pantalla completa" : "⛶ Pantalla completa"}
+            </button>
             <label
               className="maptech-follow-toggle"
               style={{
@@ -1513,11 +1516,12 @@ export default function SeguimientoTecnicosPanel({
             {rowsList.length === 0 ? (
               <p className="empty">No hay posiciones activas para los tecnicos seleccionados.</p>
             ) : (
-              rowsList.map((row) => (
+              rowsList.map((row, idx) => (
                 <button
                   key={`seg-row-${row.tecnico_id}`}
                   type="button"
-                  className={parseTecnicoId(selectedTechId) === row.tecnico_id ? "maptech-row active" : "maptech-row"}
+                  className={parseTecnicoId(selectedTechId) === row.tecnico_id ? "maptech-row active maptech-row-in" : "maptech-row maptech-row-in"}
+                  style={{ "--i": idx }}
                   onClick={() => centerTech(row)}
                 >
                   <p className="maptech-row-title">{row.tecnico_label}</p>
@@ -1542,13 +1546,13 @@ export default function SeguimientoTecnicosPanel({
             {techOptions.length === 0 ? (
               <p className="empty">No hay {etiquetaPlural.toLowerCase()} activos.</p>
             ) : (
-              techOptions.map((tecnico) => {
+              techOptions.map((tecnico, idx) => {
                 const row = rowsList.find((item) => item.tecnico_id === tecnico.id);
                 return (
                   <div
                     key={`seg-tech-row-${tecnico.id}`}
-                    className={parseTecnicoId(selectedTechId) === tecnico.id ? "maptech-row active" : "maptech-row"}
-                    style={{ cursor: "pointer" }}
+                    className={parseTecnicoId(selectedTechId) === tecnico.id ? "maptech-row active maptech-row-in" : "maptech-row maptech-row-in"}
+                    style={{ cursor: "pointer", "--i": idx }}
                     onClick={() => { setSelectedTechId(tecnico.id); if (row) centerTech(row); }}
                   >
                     <p className="maptech-row-title">{tecnico.nombre}</p>
