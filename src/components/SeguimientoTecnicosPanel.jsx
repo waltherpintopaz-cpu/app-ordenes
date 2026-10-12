@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { PERFILES_REGISTRO } from "../utils/volanteoPerfiles";
-import { colorForSpeedKmh } from "../utils/vehicleIcon";
+import {
+  colorForSpeedKmh,
+  crearIconoVehiculoTipo,
+  vehicleIconGeometry,
+  paintForVehiculoId,
+  VEHICLE_TYPE_DEFAULT,
+} from "../utils/vehicleIcon";
+
+// Distancia maxima entre dos tecnicos para considerarlos "en el mismo
+// vehiculo" -- a pie dos personas facilmente estan a 10-20m una de otra
+// (en la puerta de distintas casas), asi que el umbral tiene que ser mayor
+// a eso pero menor a "estan en la misma cuadra pero separados".
+const GRUPO_VEHICULO_DISTANCIA_M = 45;
 
 // Perfil por defecto para tecnicos (vehiculo entre ordenes, no a pie como
 // volanteadores) -- mismos valores que PERFIL_DEFECTO_TECNICO en
@@ -225,6 +237,23 @@ export default function SeguimientoTecnicosPanel({
 
   const [techUsers, setTechUsers] = useState([]);
   const [rolPorIdUsuario, setRolPorIdUsuario] = useState({});
+  // Vehiculo asignado a cada tecnico (tabla "vehiculos", campo
+  // tecnico_asignado) -- se usa para que el icono del grupo (cuando 2+
+  // tecnicos van juntos) use el mismo tipo de carroceria/escalera que ya
+  // configuraron en Seguimiento vehiculos, en vez de un auto generico.
+  const [vehiculoPorTecnico, setVehiculoPorTecnico] = useState({});
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    (async () => {
+      const { data } = await supabase.from("vehiculos").select("tipo_vehiculo,tiene_escalera,tecnico_asignado");
+      const map = {};
+      (Array.isArray(data) ? data : []).forEach((v) => {
+        const nombre = toText(v?.tecnico_asignado);
+        if (nombre) map[nombre] = { tipo_vehiculo: v?.tipo_vehiculo, tiene_escalera: !!v?.tiene_escalera };
+      });
+      setVehiculoPorTecnico(map);
+    })();
+  }, []);
   const [configByTech, setConfigByTech] = useState({});
   const [currentRows, setCurrentRows] = useState([]);
   const [trailByTech, setTrailByTech] = useState({});
@@ -798,6 +827,45 @@ export default function SeguimientoTecnicosPanel({
       });
   }, [ubicacionesVisibles, configByTech, techById]);
 
+  // Agrupa tecnicos que estan muy cerca entre si (viajando juntos en el
+  // mismo vehiculo) para mostrar un solo icono de auto en vez de 2 puntos
+  // pegados que parecerian 2 vehiculos distintos. Union simple por
+  // cercania mutua (greedy): barato de sobra para ~10-20 tecnicos.
+  const rowGroups = useMemo(() => {
+    const validRows = rowsList.filter((r) => isValidCoord(Number(r.lat), Number(r.lng)));
+    const used = new Set();
+    const groups = [];
+    validRows.forEach((row) => {
+      const id = parseTecnicoId(row.tecnico_id);
+      if (used.has(id)) return;
+      const miembros = [row];
+      used.add(id);
+      validRows.forEach((otro) => {
+        const otroId = parseTecnicoId(otro.tecnico_id);
+        if (used.has(otroId)) return;
+        const cerca = miembros.some(
+          (m) => haversineMeters(Number(m.lat), Number(m.lng), Number(otro.lat), Number(otro.lng)) <= GRUPO_VEHICULO_DISTANCIA_M
+        );
+        if (cerca) {
+          miembros.push(otro);
+          used.add(otroId);
+        }
+      });
+      groups.push({
+        groupId: miembros.map((m) => parseTecnicoId(m.tecnico_id)).sort().join("+"),
+        rows: miembros,
+        lat: Number(miembros[0].lat),
+        lng: Number(miembros[0].lng),
+      });
+    });
+    return groups;
+  }, [rowsList]);
+
+  const selectedGroup = useMemo(
+    () => rowGroups.find((g) => g.rows.some((r) => parseTecnicoId(r.tecnico_id) === parseTecnicoId(selectedTechId))) || null,
+    [rowGroups, selectedTechId]
+  );
+
   const selectedRow = useMemo(
     () => rowsList.find((row) => parseTecnicoId(row?.tecnico_id) === parseTecnicoId(selectedTechId)) || rowsList[0] || null,
     [rowsList, selectedTechId]
@@ -1001,27 +1069,74 @@ export default function SeguimientoTecnicosPanel({
       polylinesRef.current.push(line);
     });
 
-    rowsList.forEach((row) => {
-      const lat = Number(row?.lat);
-      const lng = Number(row?.lng);
+    rowGroups.forEach((group) => {
+      const { lat, lng, rows: miembros } = group;
       if (!isValidCoord(lat, lng)) return;
-      const selected = parseTecnicoId(row?.tecnico_id) === parseTecnicoId(selectedTechId);
-      const staleMin = Number(row?.staleMin || 0);
-      const fillColor = staleMin > 20 ? "#7A8699" : colorForTechId(row?.tecnico_id);
+      const grupoSeleccionado = miembros.some((m) => parseTecnicoId(m.tecnico_id) === parseTecnicoId(selectedTechId));
+      const primerId = parseTecnicoId(miembros[0].tecnico_id);
+
+      if (miembros.length === 1) {
+        const row = miembros[0];
+        const staleMin = Number(row?.staleMin || 0);
+        const fillColor = staleMin > 20 ? "#7A8699" : colorForTechId(row?.tecnico_id);
+        const marker = new maps.Marker({
+          map,
+          position: { lat, lng },
+          title: row?.tecnico_label || row?.tecnico_id || "-",
+          icon: {
+            path: maps.SymbolPath.CIRCLE,
+            fillColor,
+            fillOpacity: 0.95,
+            strokeColor: "#ffffff",
+            strokeWeight: grupoSeleccionado ? 2.2 : 1.4,
+            scale: grupoSeleccionado ? 9 : 7.4,
+          },
+        });
+        marker.addListener("click", () => setSelectedTechId(primerId));
+        markersRef.current.push(marker);
+        return;
+      }
+
+      // 2+ tecnicos muy cerca entre si -- lo mas probable es que vayan
+      // juntos en un solo vehiculo, asi que se dibuja UN icono de auto (el
+      // mismo dibujo que usa Seguimiento vehiculos) en vez de puntos
+      // pegados que pareceria que hay 2 vehiculos. Se toma el vehiculo
+      // asignado al primero del grupo que tenga uno configurado.
+      const vehInfo = miembros.map((m) => vehiculoPorTecnico[m.tecnico_label]).find(Boolean);
+      const staleMinGrupo = Math.min(...miembros.map((m) => Number(m.staleMin || 0)));
+      const bodyColor = staleMinGrupo > 20 ? "#94A3B8" : paintForVehiculoId(group.groupId);
+      const speedGrupo = Math.max(...miembros.map((m) => Number(m.speedKmh) || 0));
+      const iconDataUrl = crearIconoVehiculoTipo(
+        vehInfo?.tipo_vehiculo || VEHICLE_TYPE_DEFAULT,
+        !!vehInfo?.tiene_escalera,
+        bodyColor,
+        null,
+        speedGrupo > 0 ? speedGrupo : null
+      );
+      const size = grupoSeleccionado ? 60 : 50;
+      const iconGeo = vehicleIconGeometry(size);
       const marker = new maps.Marker({
         map,
         position: { lat, lng },
-        title: row?.tecnico_label || row?.tecnico_id || "-",
-        icon: {
-          path: maps.SymbolPath.CIRCLE,
-          fillColor,
-          fillOpacity: 0.95,
-          strokeColor: "#ffffff",
-          strokeWeight: selected ? 2.2 : 1.4,
-          scale: selected ? 9 : 7.4,
+        title: `${miembros.map((m) => m.tecnico_label).join(" + ")} (en el mismo vehículo)`,
+        label: {
+          text: String(miembros.length),
+          color: "#ffffff",
+          fontSize: "11px",
+          fontWeight: "800",
         },
+        icon: iconDataUrl
+          ? { url: iconDataUrl, scaledSize: new maps.Size(iconGeo.width, iconGeo.height), anchor: new maps.Point(iconGeo.anchorX, iconGeo.anchorY) }
+          : {
+              path: maps.SymbolPath.CIRCLE,
+              fillColor: bodyColor,
+              fillOpacity: 0.95,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+              scale: 11,
+            },
       });
-      marker.addListener("click", () => setSelectedTechId(parseTecnicoId(row?.tecnico_id)));
+      marker.addListener("click", () => setSelectedTechId(primerId));
       markersRef.current.push(marker);
     });
 
@@ -1034,7 +1149,7 @@ export default function SeguimientoTecnicosPanel({
     }
 
     return () => clearOverlays();
-  }, [rowsList, selectedTechId, trailPolylines, clearOverlays, fitMap]);
+  }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, trailPolylines, clearOverlays, fitMap]);
 
   const toggleTech = (techIdRaw) => {
     const id = parseTecnicoId(techIdRaw);
@@ -1208,6 +1323,24 @@ export default function SeguimientoTecnicosPanel({
         </button>
         {selectedRow ? (
           <article className="maptech-detail">
+            {selectedGroup && selectedGroup.rows.length > 1 ? (
+              <div className="maptech-group-banner">
+                <span>🚐 Viajan juntos ({selectedGroup.rows.length})</span>
+                <div className="maptech-group-chips">
+                  {selectedGroup.rows.map((m) => (
+                    <button
+                      key={`grp-${m.tecnico_id}`}
+                      type="button"
+                      className={parseTecnicoId(m.tecnico_id) === parseTecnicoId(selectedRow.tecnico_id) ? "maptech-group-chip active" : "maptech-group-chip"}
+                      onClick={() => setSelectedTechId(parseTecnicoId(m.tecnico_id))}
+                    >
+                      <span className="maptech-pill-dot" style={{ background: colorForTechId(m.tecnico_id) }} />
+                      {m.tecnico_label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="maptech-detail-head">
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                 <span className="maptech-pill-dot" style={{ background: colorForTechId(selectedRow.tecnico_id), width: 10, height: 10 }} />
