@@ -3290,6 +3290,12 @@ th {
   color: #fff;
 }
 
+.maptech-live-dot {
+  color: #214a99;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
 .maptech-detail {
   flex-shrink: 0;
   width: 300px;

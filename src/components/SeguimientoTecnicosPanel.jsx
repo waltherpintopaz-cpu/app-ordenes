@@ -221,7 +221,11 @@ export default function SeguimientoTecnicosPanel({
   const mapWrapperRef = useRef(null);
   const mapRef = useRef(null);
   const mapsRef = useRef(null);
-  const markersRef = useRef([]);
+  // Mapa persistente de marcadores (key -> {marker, type, miembros}) en vez
+  // de un array que se destruye y recrea entero en cada render -- asi un
+  // simple click para seleccionar un tecnico no hace parpadear TODOS los
+  // iconos del mapa, solo actualiza el que realmente cambio (borde/tamaño).
+  const markersMapRef = useRef(new Map());
   const polylinesRef = useRef([]);
   const autoFitDoneRef = useRef(false);
 
@@ -276,13 +280,14 @@ export default function SeguimientoTecnicosPanel({
   const tecnicoNombreSesion = toText(sessionUser?.nombre || sessionUser?.username || tecnicoIdSesion);
 
   const clearOverlays = useCallback(() => {
-    markersRef.current.forEach((marker) => {
+    markersMapRef.current.forEach((entry) => {
       try {
-        marker.setMap(null);
+        entry.marker.setMap(null);
       } catch {
         // noop
       }
     });
+    markersMapRef.current.clear();
     polylinesRef.current.forEach((line) => {
       try {
         line.setMap(null);
@@ -290,7 +295,6 @@ export default function SeguimientoTecnicosPanel({
         // noop
       }
     });
-    markersRef.current = [];
     polylinesRef.current = [];
   }, []);
 
@@ -1053,29 +1057,62 @@ export default function SeguimientoTecnicosPanel({
     };
   }, [mapType]);
 
+  // Trazas (polylines): solo dependen de trailPolylines, no de la seleccion
+  // -- asi un click para seleccionar un tecnico no vuelve a dibujar el
+  // recorrido entero.
   useEffect(() => {
     if (!mapRef.current || !mapsRef.current) return;
     const map = mapRef.current;
     const maps = mapsRef.current;
-    clearOverlays();
-
-    trailPolylines.forEach((trail) => {
-      const line = new maps.Polyline({
-        map,
-        path: trail.points,
-        strokeColor: trail.color,
-        strokeOpacity: 0.9,
-        strokeWeight: 4,
-      });
-      polylinesRef.current.push(line);
+    polylinesRef.current.forEach((line) => {
+      try {
+        line.setMap(null);
+      } catch {
+        // noop
+      }
     });
+    polylinesRef.current = trailPolylines.map(
+      (trail) =>
+        new maps.Polyline({
+          map,
+          path: trail.points,
+          strokeColor: trail.color,
+          strokeOpacity: 0.9,
+          strokeWeight: 4,
+        })
+    );
+    return () => {
+      polylinesRef.current.forEach((line) => {
+        try {
+          line.setMap(null);
+        } catch {
+          // noop
+        }
+      });
+      polylinesRef.current = [];
+    };
+  }, [trailPolylines]);
+
+  // Marcadores: mapa persistente por grupo -- cuando el grupo ya existia se
+  // actualiza su icono/posicion en el mismo marcador (sin destruirlo), en
+  // vez del patron anterior de borrar todo y recrear, que hacia parpadear
+  // los iconos con cada click de seleccion o cada actualizacion de datos.
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const map = mapRef.current;
+    const maps = mapsRef.current;
+    const seen = new Set();
 
     rowGroups.forEach((group) => {
       const { lat, lng, rows: miembros } = group;
       if (!isValidCoord(lat, lng)) return;
       const grupoSeleccionado = miembros.some((m) => parseTecnicoId(m.tecnico_id) === parseTecnicoId(selectedTechId));
       const primerId = parseTecnicoId(miembros[0].tecnico_id);
+      seen.add(group.groupId);
 
+      let icon;
+      let title;
+      let label;
       if (miembros.length === 1) {
         const row = miembros[0];
         const staleMin = Number(row?.staleMin || 0);
@@ -1084,55 +1121,40 @@ export default function SeguimientoTecnicosPanel({
         const size = grupoSeleccionado ? 46 : 38;
         const avatarUrl = crearIconoTecnico(fillColor, grupoSeleccionado, stale);
         const avatarGeo = tecnicoIconGeometry(size);
-        const marker = new maps.Marker({
-          map,
-          position: { lat, lng },
-          title: row?.tecnico_label || row?.tecnico_id || "-",
-          icon: avatarUrl
-            ? { url: avatarUrl, scaledSize: new maps.Size(avatarGeo.width, avatarGeo.height), anchor: new maps.Point(avatarGeo.anchorX, avatarGeo.anchorY) }
-            : {
-                path: maps.SymbolPath.CIRCLE,
-                fillColor,
-                fillOpacity: 0.95,
-                strokeColor: "#ffffff",
-                strokeWeight: grupoSeleccionado ? 2.2 : 1.4,
-                scale: grupoSeleccionado ? 9 : 7.4,
-              },
-        });
-        marker.addListener("click", () => setSelectedTechId(primerId));
-        markersRef.current.push(marker);
-        return;
-      }
-
-      // 2+ tecnicos muy cerca entre si -- lo mas probable es que vayan
-      // juntos en un solo vehiculo, asi que se dibuja UN icono de auto (el
-      // mismo dibujo que usa Seguimiento vehiculos) en vez de puntos
-      // pegados que pareceria que hay 2 vehiculos. Se toma el vehiculo
-      // asignado al primero del grupo que tenga uno configurado.
-      const vehInfo = miembros.map((m) => vehiculoPorTecnico[m.tecnico_label]).find(Boolean);
-      const staleMinGrupo = Math.min(...miembros.map((m) => Number(m.staleMin || 0)));
-      const bodyColor = staleMinGrupo > 20 ? "#94A3B8" : paintForVehiculoId(group.groupId);
-      const speedGrupo = Math.max(...miembros.map((m) => Number(m.speedKmh) || 0));
-      const iconDataUrl = crearIconoVehiculoTipo(
-        vehInfo?.tipo_vehiculo || VEHICLE_TYPE_DEFAULT,
-        !!vehInfo?.tiene_escalera,
-        bodyColor,
-        null,
-        speedGrupo > 0 ? speedGrupo : null
-      );
-      const size = grupoSeleccionado ? 60 : 50;
-      const iconGeo = vehicleIconGeometry(size);
-      const marker = new maps.Marker({
-        map,
-        position: { lat, lng },
-        title: `${miembros.map((m) => m.tecnico_label).join(" + ")} (en el mismo vehículo)`,
-        label: {
-          text: String(miembros.length),
-          color: "#ffffff",
-          fontSize: "11px",
-          fontWeight: "800",
-        },
-        icon: iconDataUrl
+        title = row?.tecnico_label || row?.tecnico_id || "-";
+        label = null;
+        icon = avatarUrl
+          ? { url: avatarUrl, scaledSize: new maps.Size(avatarGeo.width, avatarGeo.height), anchor: new maps.Point(avatarGeo.anchorX, avatarGeo.anchorY) }
+          : {
+              path: maps.SymbolPath.CIRCLE,
+              fillColor,
+              fillOpacity: 0.95,
+              strokeColor: "#ffffff",
+              strokeWeight: grupoSeleccionado ? 2.2 : 1.4,
+              scale: grupoSeleccionado ? 9 : 7.4,
+            };
+      } else {
+        // 2+ tecnicos muy cerca entre si -- lo mas probable es que vayan
+        // juntos en un solo vehiculo, asi que se dibuja UN icono de auto
+        // (el mismo dibujo que usa Seguimiento vehiculos) en vez de puntos
+        // pegados que pareceria que hay 2 vehiculos. Se toma el vehiculo
+        // asignado al primero del grupo que tenga uno configurado.
+        const vehInfo = miembros.map((m) => vehiculoPorTecnico[m.tecnico_label]).find(Boolean);
+        const staleMinGrupo = Math.min(...miembros.map((m) => Number(m.staleMin || 0)));
+        const bodyColor = staleMinGrupo > 20 ? "#94A3B8" : paintForVehiculoId(group.groupId);
+        const speedGrupo = Math.max(...miembros.map((m) => Number(m.speedKmh) || 0));
+        const iconDataUrl = crearIconoVehiculoTipo(
+          vehInfo?.tipo_vehiculo || VEHICLE_TYPE_DEFAULT,
+          !!vehInfo?.tiene_escalera,
+          bodyColor,
+          null,
+          speedGrupo > 0 ? speedGrupo : null
+        );
+        const size = grupoSeleccionado ? 60 : 50;
+        const iconGeo = vehicleIconGeometry(size);
+        title = `${miembros.map((m) => m.tecnico_label).join(" + ")} (en el mismo vehículo)`;
+        label = { text: String(miembros.length), color: "#ffffff", fontSize: "11px", fontWeight: "800" };
+        icon = iconDataUrl
           ? { url: iconDataUrl, scaledSize: new maps.Size(iconGeo.width, iconGeo.height), anchor: new maps.Point(iconGeo.anchorX, iconGeo.anchorY) }
           : {
               path: maps.SymbolPath.CIRCLE,
@@ -1141,10 +1163,34 @@ export default function SeguimientoTecnicosPanel({
               strokeColor: "#ffffff",
               strokeWeight: 2,
               scale: 11,
-            },
-      });
-      marker.addListener("click", () => setSelectedTechId(primerId));
-      markersRef.current.push(marker);
+            };
+      }
+
+      const entry = markersMapRef.current.get(group.groupId);
+      if (!entry) {
+        const marker = new maps.Marker({ map, position: { lat, lng }, title, icon, label: label || undefined, zIndex: grupoSeleccionado ? 999 : undefined });
+        marker.addListener("click", () => setSelectedTechId(primerId));
+        markersMapRef.current.set(group.groupId, { marker, primerId });
+      } else {
+        entry.marker.setPosition({ lat, lng });
+        entry.marker.setIcon(icon);
+        entry.marker.setTitle(title);
+        entry.marker.setLabel(label || null);
+        entry.marker.setZIndex(grupoSeleccionado ? 999 : undefined);
+        entry.primerId = primerId;
+      }
+    });
+
+    // Grupos que ya no existen (tecnico se separo, se desconecto, o cambio
+    // de combinacion) -- remover su marcador.
+    markersMapRef.current.forEach((entry, groupId) => {
+      if (seen.has(groupId)) return;
+      try {
+        entry.marker.setMap(null);
+      } catch {
+        // noop
+      }
+      markersMapRef.current.delete(groupId);
     });
 
     if (!selectedTechId && rowsList.length > 0) {
@@ -1154,9 +1200,13 @@ export default function SeguimientoTecnicosPanel({
       fitMap();
       autoFitDoneRef.current = true;
     }
+  }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, fitMap]);
 
+  // Limpieza total solo al desmontar el panel (no en cada refresco de
+  // datos, que es lo que causaba el parpadeo).
+  useEffect(() => {
     return () => clearOverlays();
-  }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, trailPolylines, clearOverlays, fitMap]);
+  }, [clearOverlays]);
 
   const toggleTech = (techIdRaw) => {
     const id = parseTecnicoId(techIdRaw);
@@ -1265,7 +1315,8 @@ export default function SeguimientoTecnicosPanel({
           </div>
           {showMovement ? (
             <p className="panel-meta" style={{ margin: 0 }}>
-              Trayectoria últimas {TRAIL_WINDOW_HOURS} horas {trailLoading ? "(actualizando...)" : ""}.
+              Muestra el recorrido de las últimas {TRAIL_WINDOW_HOURS} horas.
+              {trailLoading ? <span className="maptech-live-dot"> ● Actualizando…</span> : null}
             </p>
           ) : null}
         </div>
