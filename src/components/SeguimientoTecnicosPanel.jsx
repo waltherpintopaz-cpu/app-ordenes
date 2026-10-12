@@ -8,6 +8,7 @@ import {
   paintForVehiculoId,
   VEHICLE_TYPE_DEFAULT,
 } from "../utils/vehicleIcon";
+import { crearIconoTecnico, tecnicoIconGeometry } from "../utils/tecnicoIcon";
 
 // Distancia maxima entre dos tecnicos para considerarlos "en el mismo
 // vehiculo" -- a pie dos personas facilmente estan a 10-20m una de otra
@@ -1078,19 +1079,25 @@ export default function SeguimientoTecnicosPanel({
       if (miembros.length === 1) {
         const row = miembros[0];
         const staleMin = Number(row?.staleMin || 0);
-        const fillColor = staleMin > 20 ? "#7A8699" : colorForTechId(row?.tecnico_id);
+        const stale = staleMin > 20;
+        const fillColor = stale ? "#7A8699" : colorForTechId(row?.tecnico_id);
+        const size = grupoSeleccionado ? 46 : 38;
+        const avatarUrl = crearIconoTecnico(fillColor, grupoSeleccionado, stale);
+        const avatarGeo = tecnicoIconGeometry(size);
         const marker = new maps.Marker({
           map,
           position: { lat, lng },
           title: row?.tecnico_label || row?.tecnico_id || "-",
-          icon: {
-            path: maps.SymbolPath.CIRCLE,
-            fillColor,
-            fillOpacity: 0.95,
-            strokeColor: "#ffffff",
-            strokeWeight: grupoSeleccionado ? 2.2 : 1.4,
-            scale: grupoSeleccionado ? 9 : 7.4,
-          },
+          icon: avatarUrl
+            ? { url: avatarUrl, scaledSize: new maps.Size(avatarGeo.width, avatarGeo.height), anchor: new maps.Point(avatarGeo.anchorX, avatarGeo.anchorY) }
+            : {
+                path: maps.SymbolPath.CIRCLE,
+                fillColor,
+                fillOpacity: 0.95,
+                strokeColor: "#ffffff",
+                strokeWeight: grupoSeleccionado ? 2.2 : 1.4,
+                scale: grupoSeleccionado ? 9 : 7.4,
+              },
         });
         marker.addListener("click", () => setSelectedTechId(primerId));
         markersRef.current.push(marker);
