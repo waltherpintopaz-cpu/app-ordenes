@@ -296,6 +296,8 @@ export default function SeguimientoTecnicosPanel({
   const [followTecnico, setFollowTecnico] = useState(false);
   const [mapZoom, setMapZoom] = useState(15);
   const [capasAbiertas, setCapasAbiertas] = useState(false);
+  const [rutaHistoricaVisible, setRutaHistoricaVisible] = useState(false);
+  const historicalOverlaysRef = useRef({ polyline: null, startMarker: null, endMarker: null });
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [showMovement, setShowMovement] = useState(true);
@@ -1287,6 +1289,55 @@ export default function SeguimientoTecnicosPanel({
     }
   }, [rowsList, rowGroups, vehiculoPorTecnico, selectedTechId, mapZoom, fitMap]);
 
+  // Ruta historica (cualquier dia pasado, no solo las ultimas 2 horas) --
+  // reusa los puntos que ya carga "Estadistica diaria" (cargarEstadistica)
+  // para el tecnico y fecha elegidos, y los dibuja como una polyline
+  // punteada distinta del recorrido en vivo, con marcadores de inicio/fin.
+  useEffect(() => {
+    const maps = mapsRef.current;
+    const map = mapRef.current;
+    const overlays = historicalOverlaysRef.current;
+    const limpiar = () => {
+      try { overlays.polyline?.setMap(null); } catch { /* noop */ }
+      try { overlays.startMarker?.setMap(null); } catch { /* noop */ }
+      try { overlays.endMarker?.setMap(null); } catch { /* noop */ }
+      overlays.polyline = null;
+      overlays.startMarker = null;
+      overlays.endMarker = null;
+    };
+    if (!map || !maps || !rutaHistoricaVisible || statsPoints.length === 0) {
+      limpiar();
+      return;
+    }
+    limpiar();
+    const path = statsPoints.filter((p) => isValidCoord(Number(p.lat), Number(p.lng))).map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }));
+    if (path.length === 0) return;
+    overlays.polyline = new maps.Polyline({
+      map,
+      path,
+      strokeColor: "#7C3AED",
+      strokeOpacity: 0.85,
+      strokeWeight: 4,
+      icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "14px" }],
+    });
+    overlays.startMarker = new maps.Marker({
+      map,
+      position: path[0],
+      title: "Inicio",
+      icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#16A34A", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 7 },
+    });
+    overlays.endMarker = new maps.Marker({
+      map,
+      position: path[path.length - 1],
+      title: "Fin / ultima posicion",
+      icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#DC2626", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 7 },
+    });
+    const bounds = new maps.LatLngBounds();
+    path.forEach((p) => bounds.extend(p));
+    map.fitBounds(bounds);
+    return limpiar;
+  }, [rutaHistoricaVisible, statsPoints]);
+
   // Limpieza total solo al desmontar el panel (no en cada refresco de
   // datos, que es lo que causaba el parpadeo).
   useEffect(() => {
@@ -1462,7 +1513,11 @@ export default function SeguimientoTecnicosPanel({
               {mapFullscreen ? <IconCollapse /> : <IconExpand />}
             </button>
           </div>
-          {showMovement ? (
+          {rutaHistoricaVisible ? (
+            <div className="maptech-trail-chip maptech-trail-chip-historica">
+              🗺️ Ruta de {selectedStatsTechName} — {formatDateInput(statsDate)}
+            </div>
+          ) : showMovement ? (
             <div className="maptech-trail-chip">
               Trayectoria últimas {TRAIL_WINDOW_HOURS}h
               {trailLoading ? <span className="maptech-live-dot"> ● actualizando…</span> : null}
@@ -1692,6 +1747,14 @@ export default function SeguimientoTecnicosPanel({
           <h3>Estadistica diaria</h3>
           <p className="panel-meta">Distancia, trayectos, tiempos detenidos y velocidad.</p>
           <div className="maptech-actions">
+            <button
+              type="button"
+              className={rutaHistoricaVisible ? "secondary-btn small maptech-btn-on" : "secondary-btn small"}
+              onClick={() => setRutaHistoricaVisible((v) => !v)}
+              disabled={statsPoints.length === 0}
+            >
+              {rutaHistoricaVisible ? "✕ Ocultar ruta del mapa" : "🗺️ Ver esta ruta en el mapa"}
+            </button>
             <button type="button" className="secondary-btn small" onClick={exportarKml} disabled={statsPoints.length === 0}>
               ⬇ Exportar KML
             </button>

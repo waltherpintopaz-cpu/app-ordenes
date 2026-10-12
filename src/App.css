@@ -3311,6 +3311,12 @@ th {
   z-index: 5;
 }
 
+.maptech-trail-chip-historica {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: #c4b5fd;
+  color: #6d28d9;
+}
+
 .maptech-canvas-wrap {
   position: relative;
   flex: 1;
