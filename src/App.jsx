@@ -7,6 +7,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import SeguimientoTecnicosPanel from "./components/SeguimientoTecnicosPanel";
+import AsistenciasPanel from "./components/AsistenciasPanel";
 import SeguimientoVolanteadoresPanel from "./components/SeguimientoVolanteadoresPanel";
 import SeguimientoVehiculosPanel from "./components/SeguimientoVehiculosPanel";
 import PlantaExternaPanel from "./components/PlantaExternaPanel";
@@ -383,6 +384,7 @@ const MENU_VISTAS_WEB = [
   { key: "centralOlt", label: "Central OLT (app técnico)", mobileOnly: true },
   { key: "etiquetadoOnu", label: "Etiquetado de ONUs (app técnico)", mobileOnly: true },
   { key: "seguimientoTecnicos", label: "Seguimiento tecnicos" },
+  { key: "asistencias", label: "Asistencias" },
   { key: "seguimientoVehiculos", label: "Seguimiento vehiculos" },
   { key: "seguimientoVolanteadores", label: "Seguimiento volanteadores" },
   { key: "plantaExterna", label: "Planta externa" },
@@ -418,7 +420,7 @@ const MENU_GRUPO_POR_KEY_WEB = {
   dashboard: "Operación", crear: "Operación", pendientes: "Operación", historial: "Operación", recuperaciones: "Operación", historialAppsheet: "Operación",
   diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", onuInventario: "Red y Diagnóstico", onuAverias: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
   clientes: "Clientes", consultaCliente: "Clientes", suspendidos: "Clientes",
-  seguimientoTecnicos: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
+  seguimientoTecnicos: "Seguimiento", asistencias: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
   whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
   inventario: "Inventario",
   reportes: "Reportes",
@@ -492,6 +494,7 @@ const MENU_LUCIDE_ICONS = {
   consultaApi:         Search,
   smartOlt:            Signal,
   seguimientoTecnicos: Users2,
+  asistencias:         CheckCircle2,
   seguimientoVehiculos: Truck,
   seguimientoVolanteadores: Footprints,
   plantaExterna:       MapPin,
@@ -23248,6 +23251,8 @@ export default function App() {
         {vistaActiva === "seguimientoTecnicos" && (
           <SeguimientoTecnicosPanel sessionUser={usuarioSesion} rolSesion={rolSesion} />
         )}
+
+        {vistaActiva === "asistencias" && <AsistenciasPanel sessionUser={usuarioSesion} />}
 
         {vistaActiva === "seguimientoVehiculos" && <SeguimientoVehiculosPanel />}
 

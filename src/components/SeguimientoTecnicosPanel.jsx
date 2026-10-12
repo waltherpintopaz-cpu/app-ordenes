@@ -572,12 +572,15 @@ export default function SeguimientoTecnicosPanel({
           window.alert(`${tecnico.nombre} ya tiene una jornada activa.`);
           return;
         }
+        const inicioIso = new Date().toISOString();
         const { error: insertError } = await supabase.from("tecnico_turnos").insert({
           tecnico_id: tecnico.id,
           tecnico_nombre: tecnico.nombre,
           tecnico_rol: "Tecnico",
           estado: "activo",
-          inicio: new Date().toISOString(),
+          inicio: inicioIso,
+          duracion_horas: 9,
+          fin_programado: new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString(),
           activado_por: toText(sessionUser?.nombre || sessionUser?.username || "Admin"),
         });
         if (insertError) throw insertError;
@@ -589,6 +592,58 @@ export default function SeguimientoTecnicosPanel({
       }
     },
     [sessionUser]
+  );
+
+  // Solicitudes de cierre anticipado: un tecnico con jornada fija (9h por
+  // defecto) que toca "Finalizar" antes de hora no cierra su turno -- queda
+  // "pendiente" aqui hasta que un admin la apruebe (cierra el turno) o la
+  // rechace (el tecnico sigue trabajando y puede volver a pedirlo).
+  const [cierresPendientes, setCierresPendientes] = useState([]);
+  const [resolviendoCierreId, setResolviendoCierreId] = useState("");
+
+  const cargarCierresPendientes = useCallback(async () => {
+    if (!isSupabaseConfigured || !esAdmin) return;
+    const { data, error: fetchError } = await supabase
+      .from("tecnico_turnos")
+      .select("id,tecnico_id,tecnico_nombre,inicio,fin_programado,cierre_anticipado_motivo,cierre_anticipado_solicitado_en")
+      .eq("cierre_anticipado_estado", "pendiente")
+      .eq("estado", "activo")
+      .is("fin", null)
+      .order("cierre_anticipado_solicitado_en", { ascending: true });
+    if (fetchError) return;
+    setCierresPendientes(Array.isArray(data) ? data : []);
+  }, [esAdmin]);
+
+  const resolverCierreAnticipado = useCallback(
+    async (turno, aprobar) => {
+      if (!turno?.id || !isSupabaseConfigured) return;
+      setResolviendoCierreId(turno.id);
+      try {
+        const resueltoPor = toText(sessionUser?.nombre || sessionUser?.username || "Admin");
+        const patch = aprobar
+          ? {
+              fin: new Date().toISOString(),
+              estado: "cerrado",
+              cierre_anticipado_estado: "aprobado",
+              cierre_anticipado_resuelto_por: resueltoPor,
+              cierre_anticipado_resuelto_en: new Date().toISOString(),
+            }
+          : {
+              cierre_anticipado_estado: "rechazado",
+              cierre_anticipado_solicitado: false,
+              cierre_anticipado_resuelto_por: resueltoPor,
+              cierre_anticipado_resuelto_en: new Date().toISOString(),
+            };
+        const { error: updateError } = await supabase.from("tecnico_turnos").update(patch).eq("id", turno.id);
+        if (updateError) throw updateError;
+        await cargarCierresPendientes();
+      } catch (e) {
+        window.alert(e?.message || "No se pudo resolver la solicitud.");
+      } finally {
+        setResolviendoCierreId("");
+      }
+    },
+    [sessionUser, cargarCierresPendientes]
   );
 
   const cargarUbicacionActual = useCallback(async () => {
@@ -779,7 +834,7 @@ export default function SeguimientoTecnicosPanel({
     setError("");
     setWarning("");
     try {
-      await Promise.all([cargarConfigYTecnicos(), cargarUbicacionActual(), cargarOrdenesHoy()]);
+      await Promise.all([cargarConfigYTecnicos(), cargarUbicacionActual(), cargarOrdenesHoy(), cargarCierresPendientes()]);
       if (showMovement) await cargarTrayectorias();
       setLastSyncAt(new Date());
     } catch (e) {
@@ -787,7 +842,7 @@ export default function SeguimientoTecnicosPanel({
     } finally {
       setLoading(false);
     }
-  }, [cargarConfigYTecnicos, cargarUbicacionActual, cargarOrdenesHoy, cargarTrayectorias, showMovement]);
+  }, [cargarConfigYTecnicos, cargarUbicacionActual, cargarOrdenesHoy, cargarCierresPendientes, cargarTrayectorias, showMovement]);
 
   const onRefresh = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -797,6 +852,7 @@ export default function SeguimientoTecnicosPanel({
       await Promise.all([
         cargarUbicacionActual(),
         cargarOrdenesHoy(),
+        cargarCierresPendientes(),
         showMovement ? cargarTrayectorias() : Promise.resolve(),
         cargarEstadistica(statsTechId, statsDate),
       ]);
@@ -806,7 +862,7 @@ export default function SeguimientoTecnicosPanel({
     } finally {
       setRefreshing(false);
     }
-  }, [cargarUbicacionActual, cargarOrdenesHoy, cargarTrayectorias, showMovement, cargarEstadistica, statsTechId, statsDate]);
+  }, [cargarUbicacionActual, cargarOrdenesHoy, cargarCierresPendientes, cargarTrayectorias, showMovement, cargarEstadistica, statsTechId, statsDate]);
 
   useEffect(() => {
     void cargarTodo();
@@ -1943,6 +1999,45 @@ export default function SeguimientoTecnicosPanel({
             )}
           </div>
         </section>
+
+        {esAdmin && cierresPendientes.length > 0 && (
+          <section className="maptech-list-card maptech-cierres-card">
+            <h3>⏳ Solicitudes de cierre anticipado ({cierresPendientes.length})</h3>
+            <div className="maptech-list">
+              {cierresPendientes.map((turno) => (
+                <div key={`cierre-${turno.id}`} className="maptech-row maptech-cierre-row">
+                  <p className="maptech-row-title">{turno.tecnico_nombre || turno.tecnico_id}</p>
+                  <p className="maptech-row-meta">
+                    Jornada desde {formatDateTime(turno.inicio)}
+                    {turno.fin_programado ? ` · programada hasta ${formatDateTime(turno.fin_programado)}` : ""}
+                  </p>
+                  <p className="maptech-row-meta">
+                    Solicitado {formatAgo(turno.cierre_anticipado_solicitado_en)}
+                    {turno.cierre_anticipado_motivo ? ` · Motivo: ${turno.cierre_anticipado_motivo}` : " · Sin motivo indicado"}
+                  </p>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                    <button
+                      type="button"
+                      className="secondary-btn small"
+                      disabled={resolviendoCierreId === turno.id}
+                      onClick={() => void resolverCierreAnticipado(turno, true)}
+                    >
+                      {resolviendoCierreId === turno.id ? "..." : "✓ Aprobar cierre"}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-btn small"
+                      disabled={resolviendoCierreId === turno.id}
+                      onClick={() => void resolverCierreAnticipado(turno, false)}
+                    >
+                      {resolviendoCierreId === turno.id ? "..." : "✗ Rechazar"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="maptech-list-card">
           <h3>{etiquetaPlural} ({techOptionsFiltrados.length}/{techOptions.length})</h3>

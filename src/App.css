@@ -3582,6 +3582,56 @@ th {
   font-weight: 800;
 }
 
+.maptech-cierres-card {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+}
+
+.maptech-cierre-row {
+  background: #fff;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+/* ── Asistencias ── */
+.asistencias-panel { display: flex; flex-direction: column; gap: 16px; padding: 16px; }
+.asistencias-header h2 { margin: 0; font-size: 20px; font-weight: 800; color: #0f172a; }
+.asistencias-kpis { display: flex; gap: 12px; flex-wrap: wrap; }
+.asistencias-kpi {
+  flex: 1; min-width: 160px; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.asistencias-kpi-value { font-size: 26px; font-weight: 800; }
+.asistencias-kpi-label { font-size: 12px; color: #475569; font-weight: 600; }
+.asistencias-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+.asistencias-card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 800; color: #0f172a; }
+.asistencias-card-pendientes { border-color: #fde68a; background: #fffbeb; }
+.asistencias-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.asistencias-card-head h3 { margin: 0; margin-right: auto; }
+.asistencias-pendiente-row {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  background: #fff; border: 1px solid #fde68a; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;
+}
+.asistencias-pendiente-btns { display: flex; gap: 6px; flex-shrink: 0; }
+.asistencias-meta { margin: 2px 0 0; font-size: 12px; color: #64748b; }
+.asistencias-dia-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.asistencias-dia-item {
+  display: flex; align-items: flex-start; gap: 8px; border: 1px solid #e2e8f0; border-left-width: 4px;
+  border-radius: 10px; padding: 10px 12px;
+}
+.asistencias-dia-emoji { font-size: 16px; line-height: 1.3; }
+.asistencias-dia-nombre { margin: 0; font-weight: 700; font-size: 13px; color: #0f172a; }
+.asistencias-grid-scroll { overflow-x: auto; }
+.asistencias-tabla { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.asistencias-tabla th, .asistencias-tabla td { padding: 5px 7px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+.asistencias-tabla th { color: #64748b; font-weight: 700; }
+.asistencias-tabla-nombre { text-align: left !important; font-weight: 700; color: #0f172a; position: sticky; left: 0; background: #fff; }
+.asistencias-leyenda { margin: 10px 0 0; font-size: 11.5px; color: #94a3b8; }
+.asistencias-permiso-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.asistencias-permiso-form select, .asistencias-permiso-form input { border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 9px; font-size: 13px; }
+
 .maptech-speed-group {
   display: inline-flex;
   border: 1px solid #e2e8f0;
