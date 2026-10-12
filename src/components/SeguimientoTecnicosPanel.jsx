@@ -297,7 +297,10 @@ export default function SeguimientoTecnicosPanel({
   const [mapZoom, setMapZoom] = useState(15);
   const [capasAbiertas, setCapasAbiertas] = useState(false);
   const [rutaHistoricaVisible, setRutaHistoricaVisible] = useState(false);
-  const historicalOverlaysRef = useRef({ polyline: null, startMarker: null, endMarker: null });
+  const historicalOverlaysRef = useRef({ polylines: [], startMarker: null, endMarker: null });
+  const [reproduciendoRuta, setReproduciendoRuta] = useState(false);
+  const playbackRef = useRef({ marker: null, intervalId: null, idx: 0 });
+  const [buscarTecnico, setBuscarTecnico] = useState("");
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState("roadmap");
   const [showMovement, setShowMovement] = useState(true);
@@ -828,6 +831,12 @@ export default function SeguimientoTecnicosPanel({
     return rows.sort((a, b) => a.nombre.localeCompare(b.nombre));
   }, [techUsers, currentRows, configByTech, rolPorIdUsuario, rolPropio]);
 
+  const techOptionsFiltrados = useMemo(() => {
+    const q = buscarTecnico.trim().toLowerCase();
+    if (!q) return techOptions;
+    return techOptions.filter((t) => t.nombre.toLowerCase().includes(q));
+  }, [techOptions, buscarTecnico]);
+
   useEffect(() => {
     if (esTecnico && tecnicoIdSesion) {
       if (statsTechId !== tecnicoIdSesion) setStatsTechId(tecnicoIdSesion);
@@ -932,6 +941,30 @@ export default function SeguimientoTecnicosPanel({
     () => rowGroups.find((g) => g.rows.some((r) => parseTecnicoId(r.tecnico_id) === parseTecnicoId(selectedTechId))) || null,
     [rowGroups, selectedTechId]
   );
+
+  // Minutos que lleva un tecnico sin alejarse mas de 20m de su posicion
+  // actual -- se calcula con la traza en vivo que ya se carga (trailByTech),
+  // asi que solo aplica a los tecnicos visibles en el mapa con "Recorrido"
+  // activado. Sirve para avisar "lleva X rato detenido" sin pedir datos
+  // nuevos aparte.
+  const detenidoMinPorTecnico = useMemo(() => {
+    const out = {};
+    Object.entries(trailByTech || {}).forEach(([id, trail]) => {
+      if (!Array.isArray(trail) || trail.length < 2) return;
+      const last = trail[trail.length - 1];
+      let i = trail.length - 1;
+      while (i > 0) {
+        const p = trail[i - 1];
+        if (haversineMeters(last.lat, last.lng, p.lat, p.lng) > 20) break;
+        i--;
+      }
+      if (i === trail.length - 1) return;
+      const first = trail[i];
+      const ms = new Date(last.created_at).getTime() - new Date(first.created_at).getTime();
+      if (Number.isFinite(ms) && ms > 0) out[id] = Math.round(ms / 60000);
+    });
+    return out;
+  }, [trailByTech]);
 
   const selectedRow = useMemo(
     () => rowsList.find((row) => parseTecnicoId(row?.tecnico_id) === parseTecnicoId(selectedTechId)) || rowsList[0] || null,
@@ -1291,52 +1324,126 @@ export default function SeguimientoTecnicosPanel({
 
   // Ruta historica (cualquier dia pasado, no solo las ultimas 2 horas) --
   // reusa los puntos que ya carga "Estadistica diaria" (cargarEstadistica)
-  // para el tecnico y fecha elegidos, y los dibuja como una polyline
-  // punteada distinta del recorrido en vivo, con marcadores de inicio/fin.
+  // para el tecnico y fecha elegidos. Se dibuja como varios tramos de
+  // polyline coloreados segun la velocidad real de cada punto (mismo codigo
+  // de colores que usa Seguimiento vehiculos), en vez de una sola linea
+  // plana, para ver de un vistazo donde se detuvo y donde avanzo rapido.
+  const historicalPath = useMemo(
+    () =>
+      statsPoints
+        .filter((p) => isValidCoord(Number(p.lat), Number(p.lng)))
+        .map((p) => ({
+          lat: Number(p.lat),
+          lng: Number(p.lng),
+          kmh: Number.isFinite(Number(p.speed_mps)) ? Number(p.speed_mps) * 3.6 : 0,
+          created_at: p.created_at,
+        })),
+    [statsPoints]
+  );
+
   useEffect(() => {
     const maps = mapsRef.current;
     const map = mapRef.current;
     const overlays = historicalOverlaysRef.current;
     const limpiar = () => {
-      try { overlays.polyline?.setMap(null); } catch { /* noop */ }
+      (overlays.polylines || []).forEach((line) => {
+        try { line.setMap(null); } catch { /* noop */ }
+      });
       try { overlays.startMarker?.setMap(null); } catch { /* noop */ }
       try { overlays.endMarker?.setMap(null); } catch { /* noop */ }
-      overlays.polyline = null;
+      overlays.polylines = [];
       overlays.startMarker = null;
       overlays.endMarker = null;
     };
-    if (!map || !maps || !rutaHistoricaVisible || statsPoints.length === 0) {
+    if (!map || !maps || !rutaHistoricaVisible || historicalPath.length === 0) {
       limpiar();
       return;
     }
     limpiar();
-    const path = statsPoints.filter((p) => isValidCoord(Number(p.lat), Number(p.lng))).map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) }));
-    if (path.length === 0) return;
-    overlays.polyline = new maps.Polyline({
-      map,
-      path,
-      strokeColor: "#7C3AED",
-      strokeOpacity: 0.85,
-      strokeWeight: 4,
-      icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 }, offset: "0", repeat: "14px" }],
+
+    // Agrupa puntos consecutivos del mismo color (misma franja de
+    // velocidad) en un solo tramo, en vez de un segmento por cada par de
+    // puntos -- evita crear cientos de objetos Polyline innecesarios.
+    const tramos = [];
+    let actual = null;
+    historicalPath.forEach((p) => {
+      const color = colorForSpeedKmh(p.kmh);
+      if (!actual || actual.color !== color) {
+        if (actual) tramos.push(actual);
+        actual = { color, pts: actual ? [actual.pts[actual.pts.length - 1], p] : [p] };
+      } else {
+        actual.pts.push(p);
+      }
     });
+    if (actual) tramos.push(actual);
+
+    overlays.polylines = tramos.map(
+      (t) => new maps.Polyline({ map, path: t.pts, strokeColor: t.color, strokeOpacity: 0.9, strokeWeight: 4 })
+    );
     overlays.startMarker = new maps.Marker({
       map,
-      position: path[0],
+      position: historicalPath[0],
       title: "Inicio",
       icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#16A34A", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 7 },
     });
     overlays.endMarker = new maps.Marker({
       map,
-      position: path[path.length - 1],
+      position: historicalPath[historicalPath.length - 1],
       title: "Fin / ultima posicion",
       icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#DC2626", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 7 },
     });
     const bounds = new maps.LatLngBounds();
-    path.forEach((p) => bounds.extend(p));
+    historicalPath.forEach((p) => bounds.extend(p));
     map.fitBounds(bounds);
     return limpiar;
-  }, [rutaHistoricaVisible, statsPoints]);
+  }, [rutaHistoricaVisible, historicalPath]);
+
+  // Reproduccion de la ruta historica: un marcador avanza punto a punto por
+  // el recorrido del dia (a velocidad fija, no en tiempo real -- un dia
+  // completo tardaria horas) para revisar rapido "que hizo a tal hora".
+  const detenerReproduccion = useCallback(() => {
+    const pb = playbackRef.current;
+    if (pb.intervalId) clearInterval(pb.intervalId);
+    try { pb.marker?.setMap(null); } catch { /* noop */ }
+    pb.intervalId = null;
+    pb.marker = null;
+    pb.idx = 0;
+    setReproduciendoRuta(false);
+  }, []);
+
+  const reproducirRuta = useCallback(() => {
+    const maps = mapsRef.current;
+    const map = mapRef.current;
+    if (!map || !maps || historicalPath.length < 2) return;
+    detenerReproduccion();
+    const pb = playbackRef.current;
+    pb.idx = 0;
+    pb.marker = new maps.Marker({
+      map,
+      position: historicalPath[0],
+      icon: { path: maps.SymbolPath.CIRCLE, fillColor: "#7C3AED", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2, scale: 8 },
+      zIndex: 999,
+    });
+    setReproduciendoRuta(true);
+    // Un dia puede tener miles de puntos -- se saltan algunos para que la
+    // reproduccion dure segundos, no minutos, sin perder la forma general.
+    const paso = Math.max(1, Math.floor(historicalPath.length / 600));
+    pb.intervalId = setInterval(() => {
+      pb.idx += paso;
+      if (pb.idx >= historicalPath.length) {
+        detenerReproduccion();
+        return;
+      }
+      const p = historicalPath[pb.idx];
+      pb.marker.setPosition(p);
+      map.panTo(p);
+    }, 45);
+  }, [historicalPath, detenerReproduccion]);
+
+  useEffect(() => {
+    if (!rutaHistoricaVisible) detenerReproduccion();
+  }, [rutaHistoricaVisible, detenerReproduccion]);
+  useEffect(() => () => detenerReproduccion(), [detenerReproduccion]);
 
   // Limpieza total solo al desmontar el panel (no en cada refresco de
   // datos, que es lo que causaba el parpadeo).
@@ -1419,8 +1526,20 @@ export default function SeguimientoTecnicosPanel({
                 <button type="button" onClick={seleccionarNinguno}>Ninguno</button>
               </div>
             </div>
+            {techOptions.length > 5 ? (
+              <input
+                type="text"
+                className="maptech-search"
+                placeholder={`Buscar ${etiquetaPlural.toLowerCase()}...`}
+                value={buscarTecnico}
+                onChange={(e) => setBuscarTecnico(e.target.value)}
+              />
+            ) : null}
             <div className="maptech-pills">
-              {techOptions.map((tecnico) => {
+              {techOptionsFiltrados.length === 0 ? (
+                <p className="empty" style={{ margin: 0 }}>Sin resultados para "{buscarTecnico}".</p>
+              ) : null}
+              {techOptionsFiltrados.map((tecnico) => {
                 const selected = selectedMapTechIds.includes(tecnico.id);
                 const color = colorForTechId(tecnico.id);
                 return (
@@ -1627,38 +1746,50 @@ export default function SeguimientoTecnicosPanel({
             {rowsList.length === 0 ? (
               <p className="empty">No hay posiciones activas para los tecnicos seleccionados.</p>
             ) : (
-              rowsList.map((row, idx) => (
-                <button
-                  key={`seg-row-${row.tecnico_id}`}
-                  type="button"
-                  className={parseTecnicoId(selectedTechId) === row.tecnico_id ? "maptech-row active maptech-row-in" : "maptech-row maptech-row-in"}
-                  style={{ "--i": idx }}
-                  onClick={() => centerTech(row)}
-                >
-                  <p className="maptech-row-title">{row.tecnico_label}</p>
-                  <p className="maptech-row-meta">
-                    Actualizado: {formatDateTime(row.updated_at)} ({formatAgo(row.updated_at)})
-                  </p>
-                  <p className="maptech-row-meta">
-                    {Number(row.lat).toFixed(6)}, {Number(row.lng).toFixed(6)} | Fuente: {toText(row.source || "-")}
-                  </p>
-                  <p className="maptech-row-meta">
-                    Velocidad: {Number.isFinite(Number(row.speedKmh)) ? `${Number(row.speedKmh).toFixed(1)} km/h` : "-"}
-                  </p>
-                </button>
-              ))
+              rowsList.map((row, idx) => {
+                const detenidoMin = detenidoMinPorTecnico[parseTecnicoId(row.tecnico_id)];
+                return (
+                  <button
+                    key={`seg-row-${row.tecnico_id}`}
+                    type="button"
+                    className={parseTecnicoId(selectedTechId) === row.tecnico_id ? "maptech-row active maptech-row-in" : "maptech-row maptech-row-in"}
+                    style={{ "--i": idx }}
+                    onClick={() => centerTech(row)}
+                  >
+                    <p className="maptech-row-title">
+                      <span className="maptech-pill-dot" style={{ background: colorForTechId(row.tecnico_id) }} />
+                      {row.tecnico_label}
+                      {detenidoMin >= 30 && row.staleMin <= 20 ? (
+                        <span className="maptech-stopped-badge" title="Sin moverse mas de 20m">⚠ Detenido {detenidoMin}m</span>
+                      ) : null}
+                    </p>
+                    <p className="maptech-row-meta">
+                      Actualizado: {formatDateTime(row.updated_at)} ({formatAgo(row.updated_at)})
+                    </p>
+                    <p className="maptech-row-meta">
+                      {Number(row.lat).toFixed(6)}, {Number(row.lng).toFixed(6)} | Fuente: {toText(row.source || "-")}
+                    </p>
+                    <p className="maptech-row-meta">
+                      Velocidad: {Number.isFinite(Number(row.speedKmh)) ? `${Number(row.speedKmh).toFixed(1)} km/h` : "-"}
+                    </p>
+                  </button>
+                );
+              })
             )}
           </div>
         </section>
 
         <section className="maptech-list-card">
-          <h3>{etiquetaPlural} ({techOptions.length})</h3>
+          <h3>{etiquetaPlural} ({techOptionsFiltrados.length}/{techOptions.length})</h3>
           <div className="maptech-list">
             {techOptions.length === 0 ? (
               <p className="empty">No hay {etiquetaPlural.toLowerCase()} activos.</p>
+            ) : techOptionsFiltrados.length === 0 ? (
+              <p className="empty">Sin resultados para "{buscarTecnico}".</p>
             ) : (
-              techOptions.map((tecnico, idx) => {
+              techOptionsFiltrados.map((tecnico, idx) => {
                 const row = rowsList.find((item) => item.tecnico_id === tecnico.id);
+                const detenidoMin = detenidoMinPorTecnico[tecnico.id];
                 return (
                   <div
                     key={`seg-tech-row-${tecnico.id}`}
@@ -1666,7 +1797,13 @@ export default function SeguimientoTecnicosPanel({
                     style={{ cursor: "pointer", "--i": idx }}
                     onClick={() => { setSelectedTechId(tecnico.id); if (row) centerTech(row); }}
                   >
-                    <p className="maptech-row-title">{tecnico.nombre}</p>
+                    <p className="maptech-row-title">
+                      <span className="maptech-pill-dot" style={{ background: colorForTechId(tecnico.id) }} />
+                      {tecnico.nombre}
+                      {detenidoMin >= 30 && row && row.staleMin <= 20 ? (
+                        <span className="maptech-stopped-badge" title="Sin moverse mas de 20m">⚠ Detenido {detenidoMin}m</span>
+                      ) : null}
+                    </p>
                     <p className="maptech-row-meta">Seguimiento: {tecnico.habilitado ? "ON" : "OFF"}</p>
                     <p className="maptech-row-meta">
                       {row ? `Ultimo ping: ${formatDateTime(row.updated_at)} (${formatAgo(row.updated_at)})` : "Sin ubicacion actual."}
@@ -1755,6 +1892,16 @@ export default function SeguimientoTecnicosPanel({
             >
               {rutaHistoricaVisible ? "✕ Ocultar ruta del mapa" : "🗺️ Ver esta ruta en el mapa"}
             </button>
+            {rutaHistoricaVisible ? (
+              <button
+                type="button"
+                className="secondary-btn small"
+                onClick={reproduciendoRuta ? detenerReproduccion : reproducirRuta}
+                disabled={historicalPath.length < 2}
+              >
+                {reproduciendoRuta ? "⏹ Detener reproducción" : "▶ Reproducir ruta"}
+              </button>
+            ) : null}
             <button type="button" className="secondary-btn small" onClick={exportarKml} disabled={statsPoints.length === 0}>
               ⬇ Exportar KML
             </button>
