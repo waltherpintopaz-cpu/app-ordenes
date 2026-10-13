@@ -1760,6 +1760,39 @@ const handleChatwootResolverConversacion = async (payload, creds = null) => {
   return await readProxyJsonResponse(res, "Chatwoot resolver conversacion");
 };
 
+// Asigna la conversación abierta de un cliente a un equipo de Chatwoot
+// (ej. Soporte/Pagos) -- usado por bot-pagos-comprobante al escalar, para
+// que la conversación aparezca filtrada en la bandeja del equipo correcto
+// en vez de quedar sin asignar.
+const handleChatwootAsignarEquipo = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const phone = String(payload?.phone || "").replace(/\D/g, "");
+  const acctId = String(payload?.account_id || "1");
+  const teamId = payload?.team_id;
+  if (!teamId) throw new Error("team_id requerido");
+  const directConvId = payload?.conv_id || null;
+  let convId = directConvId;
+  if (!convId) {
+    if (!phone) throw new Error("phone o conv_id requerido");
+    const contactId = await cwBuscarContacto(phone, creds);
+    if (!contactId) throw new Error("Contacto no encontrado: " + phone);
+    const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+      headers: { api_access_token: token },
+    }).then((r) => r.json()).catch(() => ({}));
+    const convs = cr?.payload || [];
+    const conv = convs.find((c) => c.status === "open") || convs[0];
+    convId = conv?.id;
+  }
+  if (!convId) throw new Error("Sin conversación para asignar");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${convId}/assignments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", api_access_token: token },
+    body: JSON.stringify({ team_id: teamId }),
+  });
+  return await readProxyJsonResponse(res, "Chatwoot asignar equipo");
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -1809,6 +1842,11 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootResolverConversacion") {
       const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
       const data = await handleChatwootResolverConversacion(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootAsignarEquipo") {
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleChatwootAsignarEquipo(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
@@ -2296,6 +2334,10 @@ const proxyOpenAiChat = async (req) => {
       messages: Array.isArray(body?.messages) ? body.messages : [],
       max_tokens: Number(body?.max_tokens) || 900,
       ...(Number.isFinite(Number(body?.temperature)) ? { temperature: Number(body.temperature) } : {}),
+      // tools/tool_choice: soporte de function-calling (usado por
+      // bot-pagos-comprobante en su "modo IA básico") -- opcional, no
+      // afecta a ningún llamador existente que no los mande.
+      ...(Array.isArray(body?.tools) && body.tools.length ? { tools: body.tools, tool_choice: body.tool_choice || "auto" } : {}),
     }),
   }, 60000);
   const json = await response.json().catch(() => ({}));
