@@ -12,10 +12,16 @@ const WISPRO_BASE = "https://www.cloud.wispro.co/api/v1";
 const DEFAULT_SMARTOLT_TOKEN = "0cb1ad391ea4458cab6efe97769c761d";
 const DEFAULT_CHATWOOT_BASE = "https://chat.americanet.club";
 const DEFAULT_CHATWOOT_TOKEN = "Wm9K5UiCrfJPcgFJrWgxftYv";
+// Pasarela WhatsApp para avisos al grupo del equipo -- mismo endpoint y
+// apikey ya probados en produccion por bot-pagos-comprobante.
+const DEFAULT_WA_GRUPO_API = "https://api.americanet.space/message/sendText/premium";
+const DEFAULT_WA_GRUPO_APIKEY = "1NhNmO0e1NxlpGIMB9edgIliZApOcRGe";
 const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "127.0.0.1").trim() || "127.0.0.1";
 const SERVER_PORT = Number(process.env.DIAGNOSTICO_SERVER_PORT || 8787) || 8787;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const WA_GRUPO_API = String(process.env.WA_GRUPO_API || DEFAULT_WA_GRUPO_API).trim();
+const WA_GRUPO_APIKEY = String(process.env.WA_GRUPO_APIKEY || DEFAULT_WA_GRUPO_APIKEY).trim();
 const MIKROWISP_API_BASE =
   String(process.env.MIKROWISP_API_BASE || DEFAULT_MIKROWISP_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_MIKROWISP_API_BASE;
 const MIKROWISP_TOKEN = String(process.env.MIKROWISP_TOKEN || DEFAULT_MIKROWISP_TOKEN).trim();
@@ -1799,6 +1805,36 @@ const handleChatwootAsignarEquipo = async (payload, creds = null) => {
   return await readProxyJsonResponse(res, "Chatwoot asignar equipo");
 };
 
+// Avisa al grupo de WhatsApp del equipo cuando un tecnico pausa su jornada
+// (ver pausarJornada() en TecnicoSessionContext.js de la app movil). Lee
+// el numero del grupo de bot_config -- mismo patron de credencial server-
+// side ya usado en bot-pagos-comprobante, nunca en el APK.
+const handleNotificarPausaJornada = async (payload) => {
+  const tecnicoNombre = String(payload?.tecnico_nombre || "").trim() || "Un técnico";
+  const motivo = String(payload?.motivo || "").trim();
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/bot_config?id=eq.1&select=notif_grupo_principal`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  const rows = await res.json().catch(() => []);
+  const numero = rows?.[0]?.notif_grupo_principal;
+  if (!numero) throw new Error("bot_config.notif_grupo_principal no configurado");
+
+  const horaLima = new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16);
+  const lineas = [
+    "⏸️ *Jornada pausada*",
+    "",
+    `👷 ${tecnicoNombre}`,
+    `🕐 ${horaLima}`,
+    motivo ? `📝 Motivo: ${motivo}` : "📝 Sin motivo (después de las 5pm)",
+  ];
+  const waRes = await fetchConTimeout(WA_GRUPO_API, {
+    method: "POST",
+    headers: { apikey: WA_GRUPO_APIKEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ number: numero, text: lineas.join("\n") }),
+  });
+  return await readProxyJsonResponse(waRes, "Notificar pausa jornada");
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -1853,6 +1889,10 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootAsignarEquipo") {
       const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
       const data = await handleChatwootAsignarEquipo(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "NotificarPausaJornada") {
+      const data = await handleNotificarPausaJornada(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {

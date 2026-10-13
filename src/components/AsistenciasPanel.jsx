@@ -42,6 +42,7 @@ function formatAgo(value) {
 // ausente (no hay ningun turno ese dia).
 function estadoDia(turnosDelDia) {
   if (!turnosDelDia || turnosDelDia.length === 0) return "ausente";
+  if (turnosDelDia.some((t) => t.estado === "activo" && !t.fin && t.pausado)) return "pausado";
   if (turnosDelDia.some((t) => t.estado === "activo" && !t.fin)) return "en_curso";
   if (turnosDelDia.some((t) => t.cierre_anticipado_estado === "aprobado")) return "cerro_antes";
   return "completo";
@@ -49,12 +50,13 @@ function estadoDia(turnosDelDia) {
 
 const ESTADO_INFO = {
   en_curso: { emoji: "🟢", label: "En curso", color: "#16A34A" },
+  pausado: { emoji: "🟠", label: "Pausado", color: "#D97706" },
   completo: { emoji: "✅", label: "Completó", color: "#2563EB" },
   cerro_antes: { emoji: "🟡", label: "Cerró antes (aprobado)", color: "#D97706" },
   ausente: { emoji: "🔴", label: "Ausente", color: "#DC2626" },
 };
 
-const GRID_SIMBOLO = { en_curso: "·", completo: "✓", cerro_antes: "½", ausente: "✗" };
+const GRID_SIMBOLO = { en_curso: "·", pausado: "⏸", completo: "✓", cerro_antes: "½", ausente: "✗" };
 
 function descargarCsv(nombreArchivo, filas) {
   const csv = filas.map((fila) => fila.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -102,7 +104,7 @@ export default function AsistenciasPanel({ sessionUser }) {
     const hasta = new Date(`${fecha}T23:59:59.999`).toISOString();
     const { data, error: err } = await supabase
       .from("tecnico_turnos")
-      .select("id,tecnico_id,tecnico_nombre,inicio,fin,estado,cierre_anticipado_estado")
+      .select("id,tecnico_id,tecnico_nombre,inicio,fin,estado,cierre_anticipado_estado,pausado")
       .gte("inicio", desde)
       .lte("inicio", hasta);
     if (err) throw err;
@@ -115,7 +117,7 @@ export default function AsistenciasPanel({ sessionUser }) {
     const hasta = new Date(y, m, 0, 23, 59, 59, 999).toISOString();
     const { data, error: err } = await supabase
       .from("tecnico_turnos")
-      .select("id,tecnico_id,tecnico_nombre,inicio,fin,estado,cierre_anticipado_estado")
+      .select("id,tecnico_id,tecnico_nombre,inicio,fin,estado,cierre_anticipado_estado,pausado")
       .gte("inicio", desde)
       .lte("inicio", hasta);
     if (err) throw err;
