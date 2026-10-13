@@ -27,6 +27,7 @@ const DEFAULT = {
   mensaje_espera_asesor:
     "✅ Recibimos tu mensaje y un asesor te atenderá en breve. Puedes seguir escribiendo — todo queda registrado. 🙏\nNuestro horario es Lunes a Sábado, 8:00 am – 9:00 pm.",
   inboxes_excluidos: "DIM Ventas, Ventas Meta",
+  bot_pagos_v3_inboxes_prueba: "",
   nod06_yape_numero: "980 196 764",
   nod06_yape_titular: "Gustavo Ramírez",
   nod06_bcp_cuenta: "21515064826092",
@@ -737,6 +738,23 @@ export default function BotConfigPanel() {
                 onChange={arr => set("inboxes_excluidos", arr.join(", "))}
                 placeholder="Nombre exacto de bandeja..."
                 hint="El bot no responderá en estos canales."
+              />
+            </div>
+
+            <div style={card}>
+              <div style={cardTitle()}>
+                <Settings size={16} color="#16a34a" /> Inboxes de prueba — Bot Pagos v3
+              </div>
+              <div style={{ ...infoBanner(cfg.bot_pagos_v3_inboxes_prueba ? "green" : "red"), marginBottom: 14 }}>
+                {cfg.bot_pagos_v3_inboxes_prueba
+                  ? "✅ El bot nuevo (bot-pagos-comprobante) SOLO procesa mensajes de estos inboxes."
+                  : "⚠️ Vacío: el bot nuevo no procesa NINGÚN mensaje todavía, aunque conectes su webhook en Chatwoot."}
+              </div>
+              <TagInput
+                values={(cfg.bot_pagos_v3_inboxes_prueba || "").split(",").map(s => s.trim()).filter(Boolean)}
+                onChange={arr => set("bot_pagos_v3_inboxes_prueba", arr.join(", "))}
+                placeholder="Nombre exacto del inbox de prueba..."
+                hint="Lista blanca exclusiva del motor nuevo (en paralelo al n8n v2) -- no afecta en nada al bot actual ni a inboxes_excluidos de arriba."
               />
             </div>
           </>
