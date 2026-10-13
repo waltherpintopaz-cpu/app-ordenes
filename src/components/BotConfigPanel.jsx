@@ -52,6 +52,7 @@ const DEFAULT = {
   bot_agent_id: 10,
   comprobante_dias_max: 7,
   bancos_excepcion_anio: "Scotiabank",
+  pagos_timeout_escalar_min: 15,
   modo_bot: "ia",
   bot_activo: true,
   averia_activa: false,
@@ -1046,6 +1047,14 @@ export default function BotConfigPanel() {
                     <span style={{ fontSize: 13, color: "#6b7280" }}>días</span>
                   </div>
                   <div style={hint}>Comprobantes más antiguos serán rechazados automáticamente.</div>
+                </div>
+                <div>
+                  <label style={lbl}>Minutos antes de escalar a un agente</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input type="number" min={1} max={120} value={cfg.pagos_timeout_escalar_min} onChange={e => set("pagos_timeout_escalar_min", Number(e.target.value))} style={{ ...inp, width: 80 }} />
+                    <span style={{ fontSize: 13, color: "#6b7280" }}>min</span>
+                  </div>
+                  <div style={hint}>Si nadie del equipo de Pagos atiende un comprobante pendiente en este tiempo, se escala.</div>
                 </div>
               </div>
               <div>

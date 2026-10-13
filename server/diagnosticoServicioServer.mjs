@@ -1729,6 +1729,37 @@ const handleChatwootMessage = async (payload, creds = null) => {
   return await readProxyJsonResponse(mr, "Chatwoot mensaje");
 };
 
+// Cierra (marca "resolved") la conversación abierta de un cliente -- usado
+// por bot-pagos-comprobante después de un pago confirmado, equivalente al
+// nodo Resolver_Conversacion del n8n v2 (antes no existía este caso en el
+// proxy, el bot nuevo contestaba pero dejaba la conversación abierta).
+const handleChatwootResolverConversacion = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const phone = String(payload?.phone || "").replace(/\D/g, "");
+  const acctId = String(payload?.account_id || "1");
+  const directConvId = payload?.conv_id || null;
+  let convId = directConvId;
+  if (!convId) {
+    if (!phone) throw new Error("phone o conv_id requerido");
+    const contactId = await cwBuscarContacto(phone, creds);
+    if (!contactId) throw new Error("Contacto no encontrado: " + phone);
+    const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+      headers: { api_access_token: token },
+    }).then((r) => r.json()).catch(() => ({}));
+    const convs = cr?.payload || [];
+    const conv = convs.find((c) => c.status === "open") || convs[0];
+    convId = conv?.id;
+  }
+  if (!convId) throw new Error("Sin conversación para resolver");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${convId}/toggle_status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", api_access_token: token },
+    body: JSON.stringify({ status: "resolved" }),
+  });
+  return await readProxyJsonResponse(res, "Chatwoot resolver conversacion");
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -1773,6 +1804,11 @@ const proxyMikrowispGenerico = async (req) => {
       // de Americanet/DIM/waw, sin cambios).
       const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
       const data = await handleChatwootMessage(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootResolverConversacion") {
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleChatwootResolverConversacion(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
