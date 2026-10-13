@@ -975,6 +975,26 @@ export default function SidebarApp() {
   const [mkwPlantillasOrden, setMkwPlantillasOrden] = useState([]);
   const [cargandoCatalogoOrden, setCargandoCatalogoOrden] = useState(false);
   const [buscandoIpOrden,  setBuscandoIpOrden]  = useState(false);
+  // Si el usuario PPPoE se escribe/selecciona ANTES de que termine de
+  // cargar el catalogo de rangos (GetRedesIpv4), buscarIpOrdenNod04 ya
+  // encuentra la IP pero compara contra una lista todavia vacia y no
+  // matchea ningun rango. Este efecto reintenta el match solo apenas el
+  // catalogo termine de llegar, sin que el usuario tenga que cambiar de
+  // campo e ir y volver (mismo fix que ya se aplico en App.jsx).
+  useEffect(() => {
+    if (!ordenForm.ipMikrotik || ordenForm.idRedIpv4 || !mkwRedesOrden.length) return;
+    for (const red of mkwRedesOrden) {
+      const base = red.red || red.network || "";
+      let cidr = "";
+      if (base.includes("/")) cidr = base;
+      else if (base && red.cidr) cidr = `${base}/${red.cidr}`;
+      else cidr = String(red.cidr || "");
+      if (cidr && ipEnRedCidr(ordenForm.ipMikrotik, cidr)) {
+        setOrdenForm(p => ({ ...p, idRedIpv4: String(red.id) }));
+        break;
+      }
+    }
+  }, [mkwRedesOrden, ordenForm.ipMikrotik, ordenForm.idRedIpv4]);
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
