@@ -1691,6 +1691,12 @@ const handleChatwootMessage = async (payload, creds = null) => {
   const msg = String(payload?.message || "");
   const acctId = String(payload?.account_id || "1");
   const attachmentUrl = payload?.attachment_url || null;
+  // private: nota interna (solo visible para agentes, no para el cliente)
+  // -- usado por bot-pagos-comprobante al escalar, para dejar el resumen
+  // directo en la conversación además de avisar al grupo de WhatsApp.
+  // Default false preserva el comportamiento de siempre para cualquier
+  // llamador existente que no lo mande.
+  const esPrivada = payload?.private === true;
   if (!phone || !msg) throw new Error("phone y message requeridos");
   const contactId = await cwBuscarContacto(phone, creds);
   if (!contactId) throw new Error("Contacto no encontrado: " + phone);
@@ -1724,7 +1730,7 @@ const handleChatwootMessage = async (payload, creds = null) => {
   const mr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${conv.id}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", api_access_token: token },
-    body: JSON.stringify({ content: msg, message_type: "outgoing", private: false }),
+    body: JSON.stringify({ content: msg, message_type: "outgoing", private: esPrivada }),
   });
   return await readProxyJsonResponse(mr, "Chatwoot mensaje");
 };
