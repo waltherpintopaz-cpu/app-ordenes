@@ -23,6 +23,7 @@ import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import BotControlPanel from "./components/BotControlPanel";
 import BotConfigPanel from "./components/BotConfigPanel";
+import BotPagosV3ConfigPanel from "./components/BotPagosV3ConfigPanel";
 import TelegramAgentesPanel from "./components/TelegramAgentesPanel";
 import MetaPlantillasPanel from "./components/MetaPlantillasPanel";
 import MkwEstadoPanel from "./components/MkwEstadoPanel";
@@ -566,11 +567,13 @@ const BOT_SUBMENU_ITEMS = [
   { key: "botControl", label: "Control Bot", sideLabel: "Control Bot" },
   { key: "botConfig",  label: "Config Bot",  sideLabel: "Config Bot"  },
   { key: "agentes",    label: "Agentes",     sideLabel: "Agentes"     },
+  { key: "botPagosV3", label: "Bot Pagos v3", sideLabel: "Bot Pagos v3" },
 ];
 const BOT_LUCIDE_ICONS = {
   botControl: Activity,
   botConfig:  Cpu,
   agentes:    Users2,
+  botPagosV3: Radio,
 };
 
 const MAXPLAYER_SUBMENU_ITEMS = [
@@ -25255,6 +25258,10 @@ export default function App() {
 
         {vistaActiva === "bot" && botSubmenu === "agentes" && (
           <TelegramAgentesPanel />
+        )}
+
+        {vistaActiva === "bot" && botSubmenu === "botPagosV3" && (
+          <BotPagosV3ConfigPanel />
         )}
 
         {vistaActiva === "metaPlantillas" && (
