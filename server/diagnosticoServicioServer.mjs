@@ -1845,12 +1845,22 @@ const handleVpnCrearPeer = async (payload) => {
   const tipo = String(payload?.tipo || "").trim();
   const nombre = String(payload?.nombre || "").trim();
   if (!["pc", "celular"].includes(tipo) || !nombre) throw new Error("tipo/nombre requeridos");
+  const creadoPor = String(payload?.creadoPor || "").trim() || null;
   const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Admin-Secret": VPN_ADMIN_SECRET },
-    body: JSON.stringify({ tipo, nombre }),
+    body: JSON.stringify({ tipo, nombre, creadoPor }),
   });
   return await readProxyJsonResponse(res, "VPN crear peer");
+};
+
+const handleVpnListarPeers = async () => {
+  if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
+  const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
+    method: "GET",
+    headers: { "X-Admin-Secret": VPN_ADMIN_SECRET },
+  });
+  return await readProxyJsonResponse(res, "VPN listar peers");
 };
 
 const handleGetChatwootMessages = async (payload, creds = null) => {
@@ -1915,6 +1925,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "VpnCrearPeer") {
       const data = await handleVpnCrearPeer(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "VpnListarPeers") {
+      const data = await handleVpnListarPeers();
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
