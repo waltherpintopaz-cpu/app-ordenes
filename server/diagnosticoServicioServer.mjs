@@ -2672,6 +2672,19 @@ const server = http.createServer(async (req, res) => {
     // GET /api/cruce-mac-debug -- DEBUG TEMPORAL: muestra una muestra cruda
     // de secrets (name/caller-id/comment) para confirmar si el campo
     // caller-id realmente esta poblado. Quitar cuando se confirme.
+    // GET /api/cliente-debug?dni=XXXXXXXX -- DEBUG TEMPORAL: muestra la fila
+    // cruda de "clientes" para un DNI, para diagnosticar por que el bot de
+    // pagos no encuentra a un cliente por telefono (celular vacio/mal
+    // formateado vs lo que si tiene mikrowisp_clientes.telefonos).
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/cliente-debug") {
+      const dni = new URL(req.url, "http://localhost").searchParams.get("dni");
+      if (!dni) { writeJson(res, 400, { ok: false, error: "Falta dni" }); return; }
+      const clientes = await fetchSupabaseRows("clientes", `dni=eq.${encodeURIComponent(dni)}&select=id,nombre,dni,celular,nodo`);
+      const mikrowisp = await fetchSupabaseRows("mikrowisp_clientes", `cedula=eq.${encodeURIComponent(dni)}&select=mikrowisp_id,cedula,nombre,telefonos`);
+      writeJson(res, 200, { ok: true, clientes, mikrowisp_clientes: mikrowisp });
+      return;
+    }
+
     if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/cruce-mac-debug") {
       let connection = null;
       try {
