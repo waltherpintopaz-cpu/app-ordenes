@@ -1807,6 +1807,27 @@ const handleChatwootAsignarEquipo = async (payload, creds = null) => {
   return await readProxyJsonResponse(res, "Chatwoot asignar equipo");
 };
 
+// Asigna la conversacion a un agente puntual (no a un equipo) -- usado por
+// bot-pagos-comprobante cuando detecta que un asesor humano le escribio al
+// cliente en una conversacion sin asignar: la auto-asigna a ese mismo
+// agente para que quede clara la responsabilidad, en vez de quedar "sin
+// asignar" aunque alguien ya la este atendiendo.
+const handleChatwootAsignarAgente = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const acctId = String(payload?.account_id || "1");
+  const convId = payload?.conv_id;
+  const assigneeId = payload?.assignee_id;
+  if (!convId) throw new Error("conv_id requerido");
+  if (!assigneeId) throw new Error("assignee_id requerido");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${convId}/assignments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", api_access_token: token },
+    body: JSON.stringify({ assignee_id: assigneeId }),
+  });
+  return await readProxyJsonResponse(res, "Chatwoot asignar agente");
+};
+
 // Avisa al grupo de WhatsApp del equipo cuando un tecnico pausa su jornada
 // (ver pausarJornada() en TecnicoSessionContext.js de la app movil). Lee
 // el numero del grupo de bot_config -- mismo patron de credencial server-
@@ -1944,6 +1965,11 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootAsignarEquipo") {
       const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
       const data = await handleChatwootAsignarEquipo(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootAsignarAgente") {
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleChatwootAsignarAgente(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "NotificarPausaJornada") {
