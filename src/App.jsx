@@ -6,6 +6,7 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
+import VpnAccesosPanel from "./components/VpnAccesosPanel";
 import SeguimientoTecnicosPanel from "./components/SeguimientoTecnicosPanel";
 import AsistenciasPanel from "./components/AsistenciasPanel";
 import SeguimientoVolanteadoresPanel from "./components/SeguimientoVolanteadoresPanel";
@@ -410,6 +411,7 @@ const MENU_VISTAS_WEB = [
   { key: "maxplayerCuentas", label: "Cuentas MaxPlayer" },
   { key: "finanzas", label: "Finanzas" },
   { key: "misGastos", label: "Mis Gastos" },
+  { key: "vpnAccesos", label: "Accesos VPN", gestoraVisible: true },
 ];
 
 // Agrupacion del menu lateral en secciones colapsables -- antes era una
@@ -427,13 +429,13 @@ const MENU_GRUPO_POR_KEY_WEB = {
   reportes: "Reportes",
   iptv: "IPTV", maxplayerCuentas: "IPTV",
   finanzas: "Finanzas", misGastos: "Finanzas",
-  usuarios: "Administración", logs: "Administración", reclamaciones: "Administración",
+  usuarios: "Administración", logs: "Administración", reclamaciones: "Administración", vpnAccesos: "Administración",
 };
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
 const PERMISOS_MENU_POR_ROL_WEB = {
   Administrador: MENU_VISTAS_WEB.map((item) => item.key),
-  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "suspendidos", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas"],
+  Gestora: ["dashboard", "crear", "pendientes", "historial", "recuperaciones", "historialAppsheet", "diagnosticoServicio", "reportes", "clientes", "suspendidos", "nap", "cobertura", "promociones", "mensajesRapidos", "whatsapp", "recordatorios", "iptv", "maxplayerCuentas", "vpnAccesos"],
   Tecnico: ["crear", "pendientes", "historial", "recuperaciones", "mapa", "stockTecnico", "consultaCliente", "smartOlt", "clientes", "recordatorios", "etiquetadoOnu"],
   Almacen: ["historial", "recuperaciones", "reportes", "inventario", "smartOlt", "plantaExterna", "nap", "recordatorios"],
   Volanteador: [],
@@ -25368,6 +25370,7 @@ export default function App() {
         )}
 
         {vistaActiva === "monitorSenales" && <MonitorSeñalesPanel onCrearOrden={crearOrdenDesdeCliente} nodosPermitidos={esGestorSesion ? nodosAccesoGestoraSesion : []} />}
+        {vistaActiva === "vpnAccesos" && <VpnAccesosPanel usuarioSesion={usuarioSesion} puedeRevocar={esAdminSesion} />}
 
         {vistaActiva === "iptv" && (esAdminSesion || esGestorSesion) && (
           <IptvPanel esAdmin={esAdminSesion} sessionUser={usuarioSesion} theme={theme} />
