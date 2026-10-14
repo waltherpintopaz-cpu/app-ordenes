@@ -2724,7 +2724,7 @@ const server = http.createServer(async (req, res) => {
             return;
           }
           const ficha = { board: null, port: ident.port ?? null, onuId: ident.onuId ?? null, oltName: ident.oltName || null };
-          const mikrotik = { usuario: ident.usuario, comentario: ident.comentario || null };
+          const mikrotik = { usuario: ident.usuario, comentario: ident.comentario || null, macAproximada: !!ident.macAproximada };
           writeJson(res, 200, { ok: true, sn, mac: ident.mac || null, ficha, mikrotik, cliente });
         } catch (e) {
           writeJson(res, 200, { ok: false, error: e.message || String(e) });
@@ -2771,22 +2771,42 @@ const server = http.createServer(async (req, res) => {
           // router VLAN 102 antes de rendirse.
           const routersCandidatos = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
           const ordenRouters = [routersCandidatos.tiabaya, routersCandidatos[ROUTER_KEY_VLAN102]].filter(Boolean);
-          let secret = null, activos = [], routerUsado = null;
-          for (const router of ordenRouters) {
-            if (buildRouterConfigError(router)) continue;
-            let conn = null;
-            try {
-              conn = await connectToRouter(router);
-              const [secretsRouter, activosRouter] = await Promise.all([
-                withTimeout(conn.api.write("/ppp/secret/print", []), 20000, `Listar PPP Secret en ${router.nombre}`),
-                withTimeout(conn.api.write("/ppp/active/print", []), 15000, `Listar PPP Active en ${router.nombre}`).catch(() => []),
-              ]);
-              const encontrado = secretsRouter.find((s) => normMac(s["last-caller-id"] || s["caller-id"] || s.callerid) === mac);
-              if (encontrado) { secret = encontrado; activos = activosRouter; routerUsado = router; break; }
-            } catch (e) {
-              console.warn(`[onu-diagnostico-completo] ${router.nombre} no respondio:`, e.message);
-            } finally {
-              if (conn?.api) await closeRouterApiSafe(conn.api);
+          // Algunos equipos tienen la MAC de WAN y la de LAN/gestion
+          // consecutivas de fabrica (difieren solo en el ultimo digito hex).
+          // La OLT reporta una, el MikroTik a veces guardo la otra en su
+          // ultimo login -- sin esto, un desfase de 1 digito hacia que el
+          // tecnico nunca encontrara el cliente aunque todo lo demas calzara.
+          const macCercana = (a, b) => {
+            if (a.length !== 12 || b.length !== 12 || a.slice(0, 10) !== b.slice(0, 10)) return false;
+            return Math.abs(parseInt(a.slice(10), 16) - parseInt(b.slice(10), 16)) === 1;
+          };
+          let secret = null, activos = [], routerUsado = null, macAproximada = false;
+          for (const soloExacta of [true, false]) {
+            if (secret) break;
+            for (const router of ordenRouters) {
+              if (buildRouterConfigError(router)) continue;
+              let conn = null;
+              try {
+                conn = await connectToRouter(router);
+                const [secretsRouter, activosRouter] = await Promise.all([
+                  withTimeout(conn.api.write("/ppp/secret/print", []), 20000, `Listar PPP Secret en ${router.nombre}`),
+                  withTimeout(conn.api.write("/ppp/active/print", []), 15000, `Listar PPP Active en ${router.nombre}`).catch(() => []),
+                ]);
+                const encontrado = secretsRouter.find((s) => {
+                  const macSecret = normMac(s["last-caller-id"] || s["caller-id"] || s.callerid);
+                  if (!macSecret) return false;
+                  return soloExacta ? macSecret === mac : macCercana(macSecret, mac);
+                });
+                if (encontrado) {
+                  secret = encontrado; activos = activosRouter; routerUsado = router;
+                  macAproximada = !soloExacta;
+                  break;
+                }
+              } catch (e) {
+                console.warn(`[onu-diagnostico-completo] ${router.nombre} no respondio:`, e.message);
+              } finally {
+                if (conn?.api) await closeRouterApiSafe(conn.api);
+              }
             }
           }
 
@@ -2802,6 +2822,7 @@ const server = http.createServer(async (req, res) => {
               ultimaDesconexion: secret["last-logged-out"] || null,
               perfil: (activo ? activo.profile : secret.profile) || null,
               router: routerUsado?.nombre || null,
+              macAproximada,
             };
 
             if (usuario) {
