@@ -2651,21 +2651,29 @@ const server = http.createServer(async (req, res) => {
     // GET /api/cruce-mac-debug -- DEBUG TEMPORAL: muestra una muestra cruda
     // de secrets (name/caller-id/comment) para confirmar si el campo
     // caller-id realmente esta poblado. Quitar cuando se confirme.
-    if (req.method === "GET" && req.url === "/api/cruce-mac-debug") {
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/cruce-mac-debug") {
       let connection = null;
       try {
-        connection = await connectRouterByKey("tiabaya");
-        const secrets = await withTimeout(connection.api.write("/ppp/secret/print", []), 25000, "Listar PPP Secret en Tiabaya (debug)");
+        const qUrl = new URL(req.url, "http://localhost");
+        const routerKey = (qUrl.searchParams.get("router") || "tiabaya").trim();
+        const q = (qUrl.searchParams.get("q") || "").trim().toLowerCase();
+        connection = await connectRouterByKey(routerKey);
+        const secrets = await withTimeout(connection.api.write("/ppp/secret/print", []), 25000, `Listar PPP Secret en ${routerKey} (debug)`);
         await closeRouterApiSafe(connection.api);
         connection = null;
         const conCallerId = secrets.filter((s) => (s["caller-id"] || s.callerid || "").trim()).length;
         const conLastCallerId = secrets.filter((s) => (s["last-caller-id"] || "").trim()).length;
+        const encontrados = q
+          ? secrets.filter((s) => String(s.name || "").toLowerCase().includes(q) || String(s.comment || "").toLowerCase().includes(q))
+          : [];
         writeJson(res, 200, {
           ok: true,
+          router: routerKey,
           total: secrets.length,
           conCallerId,
           conLastCallerId,
-          muestra: secrets.slice(0, 10).map((s) => ({ name: s.name, callerId: s["caller-id"], lastCallerId: s["last-caller-id"], comment: s.comment })),
+          encontrados: encontrados.map((s) => ({ name: s.name, callerId: s["caller-id"], lastCallerId: s["last-caller-id"], comment: s.comment, disabled: s.disabled })),
+          muestra: q ? undefined : secrets.slice(0, 10).map((s) => ({ name: s.name, callerId: s["caller-id"], lastCallerId: s["last-caller-id"], comment: s.comment })),
         });
       } catch (e) {
         writeJson(res, 200, { ok: false, error: e.message || String(e) });
