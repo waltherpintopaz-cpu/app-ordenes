@@ -1863,6 +1863,17 @@ const handleVpnListarPeers = async () => {
   return await readProxyJsonResponse(res, "VPN listar peers");
 };
 
+const handleVpnEliminarPeer = async (payload) => {
+  if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
+  const ip = String(payload?.ip || "").trim();
+  if (!ip) throw new Error("ip requerida");
+  const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers?ip=${encodeURIComponent(ip)}`, {
+    method: "DELETE",
+    headers: { "X-Admin-Secret": VPN_ADMIN_SECRET },
+  });
+  return await readProxyJsonResponse(res, "VPN eliminar peer");
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -1929,6 +1940,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "VpnListarPeers") {
       const data = await handleVpnListarPeers();
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "VpnEliminarPeer") {
+      const data = await handleVpnEliminarPeer(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
