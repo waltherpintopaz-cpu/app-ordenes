@@ -1844,7 +1844,7 @@ const handleVpnCrearPeer = async (payload) => {
   if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
   const tipo = String(payload?.tipo || "").trim();
   const nombre = String(payload?.nombre || "").trim();
-  if (!["pc", "celular"].includes(tipo) || !nombre) throw new Error("tipo/nombre requeridos");
+  if (!["pc", "celular", "mikrotik"].includes(tipo) || !nombre) throw new Error("tipo/nombre requeridos");
   const creadoPor = String(payload?.creadoPor || "").trim() || null;
   const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
     method: "POST",
