@@ -1874,6 +1874,22 @@ const handleVpnEliminarPeer = async (payload) => {
   return await readProxyJsonResponse(res, "VPN eliminar peer");
 };
 
+// Lista los inboxes reales de Chatwoot -- usado por el panel de config del
+// bot (ej. BotPagosV3ConfigPanel) para que el admin elija el nombre exacto
+// de un inbox en vez de tener que escribirlo a mano y arriesgarse a un
+// typo que deje el bot sin procesar nada.
+const handleChatwootListarInboxes = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const acctId = String(payload?.account_id || "1");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/inboxes`, {
+    headers: { api_access_token: token },
+  });
+  const data = await readProxyJsonResponse(res, "Chatwoot listar inboxes");
+  const inboxes = (data?.payload || []).map((i) => ({ id: i.id, nombre: i.name, canal: i.channel_type || null }));
+  return { inboxes };
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -1944,6 +1960,11 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "VpnEliminarPeer") {
       const data = await handleVpnEliminarPeer(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootListarInboxes") {
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleChatwootListarInboxes(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {

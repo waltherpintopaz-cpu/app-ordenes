@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { Save, Power, Clock, MessageSquare, ShieldCheck, Banknote, Bell, Users, CalendarClock, AlertOctagon, Radio, Plus, Trash2, Pencil, Lock, CheckCircle } from "lucide-react";
+import { Save, Power, Clock, MessageSquare, ShieldCheck, Banknote, Bell, Users, CalendarClock, AlertOctagon, Radio, Plus, Trash2, Pencil, Lock, CheckCircle, RefreshCw } from "lucide-react";
+
+const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
+const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 
 // Configuración INDEPENDIENTE de bot-pagos-comprobante -- separada a
 // propósito de bot_config (que sigue siendo del n8n v2 en producción).
@@ -88,8 +91,30 @@ export default function BotPagosV3ConfigPanel() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [editingBenef, setEditingBenef] = useState([]);
+  const [inboxesDisponibles, setInboxesDisponibles] = useState([]);
+  const [cargandoInboxes, setCargandoInboxes] = useState(false);
+  const [errorInboxes, setErrorInboxes] = useState("");
 
   useEffect(() => { load(); }, []);
+
+  async function cargarInboxes() {
+    setCargandoInboxes(true);
+    setErrorInboxes("");
+    try {
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "ChatwootListarInboxes", payload: {} }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json?.error || "No se pudo cargar la lista de inboxes.");
+      setInboxesDisponibles(json?.data?.inboxes || []);
+    } catch (err) {
+      setErrorInboxes(String(err?.message || err));
+    } finally {
+      setCargandoInboxes(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -176,6 +201,41 @@ export default function BotPagosV3ConfigPanel() {
           {cfg.inboxes_prueba ? "✅ El bot SOLO procesa mensajes de estos inboxes." : "⚠️ Vacío: el bot no procesa NINGÚN mensaje todavía."}
         </div>
         <TagInput values={(cfg.inboxes_prueba || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("inboxes_prueba", arr.join(", "))} placeholder="Nombre exacto del inbox..." />
+
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e5e7eb" }}>
+          <button
+            onClick={cargarInboxes}
+            disabled={cargandoInboxes}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 7, border: "1px solid #6366f1", background: "#fff", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: cargandoInboxes ? "wait" : "pointer" }}
+          >
+            <RefreshCw size={13} /> {cargandoInboxes ? "Cargando..." : "Ver inboxes reales de Chatwoot"}
+          </button>
+          {errorInboxes && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{errorInboxes}</div>}
+          {inboxesDisponibles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {inboxesDisponibles.map((ib) => {
+                const yaAgregado = (cfg.inboxes_prueba || "").split(",").map(s => s.trim()).includes(ib.nombre);
+                return (
+                  <button
+                    key={ib.id}
+                    disabled={yaAgregado}
+                    onClick={() => {
+                      const actuales = (cfg.inboxes_prueba || "").split(",").map(s => s.trim()).filter(Boolean);
+                      set("inboxes_prueba", [...actuales, ib.nombre].join(", "));
+                    }}
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: yaAgregado ? "default" : "pointer",
+                      border: "1px solid #d1d5db", background: yaAgregado ? "#f3f4f6" : "#eef2ff",
+                      color: yaAgregado ? "#9ca3af" : "#4338ca",
+                    }}
+                  >
+                    {yaAgregado ? "✓ " : "+ "}{ib.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Estado */}
