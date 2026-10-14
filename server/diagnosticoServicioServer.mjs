@@ -55,6 +55,8 @@ const VSOL_ACCION_TOKEN = String(process.env.VSOL_ACCION_TOKEN || "").trim();
 // paneles como VITE_OPENAI_KEY, 100% extraible del bundle publico -- ver
 // auditoria de seguridad, 2026-09-28). Ahora solo vive aca, server-side.
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
+const VPN_ADMIN_API = String(process.env.VPN_ADMIN_API || "http://185.173.110.145:7700").trim().replace(/\/+$/, "");
+const VPN_ADMIN_SECRET = String(process.env.VPN_ADMIN_SECRET || "").trim();
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
@@ -1835,6 +1837,22 @@ const handleNotificarPausaJornada = async (payload) => {
   return await readProxyJsonResponse(waRes, "Notificar pausa jornada");
 };
 
+// Crea un peer WireGuard nuevo pegandole al vpn-admin-server nativo del VPS
+// (no es Docker -- el contenedor de este servicio no tiene red hacia wg0).
+// El secreto solo vive aqui, nunca llega al navegador.
+const handleVpnCrearPeer = async (payload) => {
+  if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
+  const tipo = String(payload?.tipo || "").trim();
+  const nombre = String(payload?.nombre || "").trim();
+  if (!["pc", "celular"].includes(tipo) || !nombre) throw new Error("tipo/nombre requeridos");
+  const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Admin-Secret": VPN_ADMIN_SECRET },
+    body: JSON.stringify({ tipo, nombre }),
+  });
+  return await readProxyJsonResponse(res, "VPN crear peer");
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -1893,6 +1911,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "NotificarPausaJornada") {
       const data = await handleNotificarPausaJornada(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "VpnCrearPeer") {
+      const data = await handleVpnCrearPeer(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
