@@ -1875,13 +1875,37 @@ const handleVpnCrearPeer = async (payload) => {
   return await readProxyJsonResponse(res, "VPN crear peer");
 };
 
-const handleVpnListarPeers = async () => {
+// Un Admin ve todos los accesos. Una Gestora solo ve los que el Admin le
+// haya habilitado explicitamente por fila (peer.visiblePara incluye su
+// usuario_id) -- si no se le configuro ninguno, no ve nada en la lista
+// (pero igual puede generar accesos nuevos, eso no cambia). El filtrado se
+// hace aca, server-side, para que una Gestora no pueda ver la lista
+// completa mirando la respuesta de red del navegador.
+const handleVpnListarPeers = async (payload) => {
   if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
   const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
     method: "GET",
     headers: { "X-Admin-Secret": VPN_ADMIN_SECRET },
   });
-  return await readProxyJsonResponse(res, "VPN listar peers");
+  const data = await readProxyJsonResponse(res, "VPN listar peers");
+  if (payload?.esAdmin) return data;
+  const usuarioId = String(payload?.usuarioId || "").trim();
+  const peers = (data?.peers || []).filter((p) => usuarioId && Array.isArray(p.visiblePara) && p.visiblePara.includes(usuarioId));
+  return { ...data, peers };
+};
+
+const handleVpnEditarPeer = async (payload) => {
+  if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
+  const ip = String(payload?.ip || "").trim();
+  if (!ip) throw new Error("ip requerida");
+  const nombre = payload?.nombre;
+  const visiblePara = payload?.visiblePara;
+  const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Admin-Secret": VPN_ADMIN_SECRET },
+    body: JSON.stringify({ ip, nombre, visiblePara }),
+  });
+  return await readProxyJsonResponse(res, "VPN editar peer");
 };
 
 const handleVpnEliminarPeer = async (payload) => {
@@ -1981,11 +2005,15 @@ const proxyMikrowispGenerico = async (req) => {
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "VpnListarPeers") {
-      const data = await handleVpnListarPeers();
+      const data = await handleVpnListarPeers(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "VpnEliminarPeer") {
       const data = await handleVpnEliminarPeer(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "VpnEditarPeer") {
+      const data = await handleVpnEditarPeer(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootListarInboxes") {
