@@ -280,6 +280,30 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
               porque la llave privada no se puede volver a mostrar.
             </div>
           )}
+
+          {resultado.conf && tipo === "pc" && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #e5e7eb" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Cómo instalarlo en la PC</div>
+              <ol style={{ fontSize: 12.5, color: "#444", paddingLeft: 18, margin: 0, lineHeight: 1.7 }}>
+                <li>Descarga WireGuard para Windows: <a href="https://download.wireguard.com/windows-client/wireguard-installer.exe" target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>download.wireguard.com/windows-client/wireguard-installer.exe</a> (o desde <a href="https://www.wireguard.com/install/" target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>wireguard.com/install</a> para Mac/Linux).</li>
+                <li>Instala y abre la app WireGuard.</li>
+                <li>Click en <strong>"Importar túnel desde archivo"</strong> y selecciona el <strong>.conf</strong> que descargaste arriba.</li>
+                <li>Click en <strong>"Activar"</strong> para conectar.</li>
+              </ol>
+            </div>
+          )}
+
+          {resultado.qr && tipo === "celular" && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #e5e7eb" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Cómo instalarlo en el celular</div>
+              <ol style={{ fontSize: 12.5, color: "#444", paddingLeft: 18, margin: 0, lineHeight: 1.7 }}>
+                <li>Instala la app WireGuard: <a href="https://play.google.com/store/apps/details?id=com.wireguard.android" target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>Android (Play Store)</a> / <a href="https://apps.apple.com/app/wireguard/id1441195209" target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>iPhone (App Store)</a>.</li>
+                <li>Abre la app y toca el botón <strong>"+"</strong>.</li>
+                <li>Elige <strong>"Escanear desde código QR"</strong> y apunta la cámara al QR de arriba.</li>
+                <li>Ponle un nombre al túnel y actívalo con el interruptor.</li>
+              </ol>
+            </div>
+          )}
         </div>
       )}
 
