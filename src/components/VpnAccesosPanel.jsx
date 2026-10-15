@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { supabase } from "../supabaseClient";
 
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
@@ -14,6 +15,9 @@ function formatearFecha(iso) {
 }
 
 export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
+  const esAdmin = !!puedeRevocar;
+  const usuarioId = String(usuarioSesion?.id || "");
+  const [gestoras, setGestoras] = useState([]);
   const [tipo, setTipo] = useState("pc");
   const [nombre, setNombre] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -30,7 +34,7 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
       const res = await fetch(PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "VpnListarPeers", payload: {} }),
+        body: JSON.stringify({ accion: "VpnListarPeers", payload: { esAdmin, usuarioId } }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json?.error || "No se pudo cargar la lista");
@@ -40,9 +44,22 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
     } finally {
       setCargandoLista(false);
     }
-  }, []);
+  }, [esAdmin, usuarioId]);
 
   useEffect(() => { cargarLista(); }, [cargarLista]);
+
+  // Admin: lista de Gestoras para elegir a quien hacerle visible cada
+  // acceso. Se carga una sola vez (no cambia mientras el panel esta abierto).
+  useEffect(() => {
+    if (!esAdmin) return;
+    supabase
+      .from("usuarios")
+      .select("id,nombre,username")
+      .eq("rol", "Gestora")
+      .then(({ data, error }) => {
+        if (!error) setGestoras(data || []);
+      });
+  }, [esAdmin]);
 
   const generar = async (e) => {
     e.preventDefault();
@@ -93,6 +110,31 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
       setErrorLista(String(err?.message || err));
     } finally {
       setRevocando(null);
+    }
+  };
+
+  const [editando, setEditando] = useState(null); // { ip, nombre, visiblePara }
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+
+  const abrirEdicion = (p) => setEditando({ ip: p.ip, nombre: p.nombre, visiblePara: Array.isArray(p.visiblePara) ? p.visiblePara : [] });
+
+  const guardarEdicion = async () => {
+    if (!editando) return;
+    setGuardandoEdicion(true);
+    try {
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "VpnEditarPeer", payload: editando }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json?.error || "No se pudo guardar");
+      setEditando(null);
+      cargarLista();
+    } catch (err) {
+      setErrorLista(String(err?.message || err));
+    } finally {
+      setGuardandoEdicion(false);
     }
   };
 
@@ -241,7 +283,13 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
                     </span>
                   </td>
                   {puedeRevocar && (
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={{ padding: "6px 8px", display: "flex", gap: 6 }}>
+                      <button
+                        onClick={() => abrirEdicion(p)}
+                        style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #6366f1", background: "#fff", color: "#6366f1", fontSize: 12, cursor: "pointer" }}
+                      >
+                        Editar
+                      </button>
                       <button
                         onClick={() => revocar(p.ip, p.nombre)}
                         disabled={revocando === p.ip}
@@ -255,6 +303,52 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editando && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setEditando(null)}>
+          <div style={{ background: "#fff", borderRadius: 10, padding: 24, width: 360, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: 16, marginBottom: 16 }}>Editar acceso</h3>
+            <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>Nombre / etiqueta</label>
+            <input
+              value={editando.nombre}
+              onChange={(e) => setEditando({ ...editando, nombre: e.target.value })}
+              style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc", boxSizing: "border-box", marginBottom: 16 }}
+            />
+            <label style={{ display: "block", fontSize: 13, marginBottom: 6 }}>Visible para (Gestoras)</label>
+            <div style={{ maxHeight: 160, overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: 6, padding: 8, marginBottom: 16 }}>
+              {gestoras.length === 0 && <div style={{ fontSize: 12, color: "#999" }}>No hay usuarios con rol Gestora.</div>}
+              {gestoras.map((g) => {
+                const gid = String(g.id);
+                const marcado = editando.visiblePara.includes(gid);
+                return (
+                  <label key={gid} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "4px 0", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={(e) => {
+                        const siguiente = e.target.checked
+                          ? [...editando.visiblePara, gid]
+                          : editando.visiblePara.filter((x) => x !== gid);
+                        setEditando({ ...editando, visiblePara: siguiente });
+                      }}
+                    />
+                    {g.nombre || g.username}
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: "#999", marginBottom: 16 }}>
+              Si no marcas ninguna, solo Administrador podrá ver este acceso en la lista.
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setEditando(null)} style={{ padding: "8px 14px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>Cancelar</button>
+              <button onClick={guardarEdicion} disabled={guardandoEdicion} style={{ padding: "8px 14px", borderRadius: 6, border: "none", background: "#6366f1", color: "#fff", cursor: guardandoEdicion ? "wait" : "pointer" }}>
+                {guardandoEdicion ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
