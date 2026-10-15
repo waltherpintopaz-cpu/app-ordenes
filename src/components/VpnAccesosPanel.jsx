@@ -113,19 +113,24 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
     }
   };
 
-  const [editando, setEditando] = useState(null); // { ip, nombre, visiblePara }
+  const [editando, setEditando] = useState(null); // { ip, nombre, visiblePara, cambiarComentario, comentario }
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
 
-  const abrirEdicion = (p) => setEditando({ ip: p.ip, nombre: p.nombre, visiblePara: Array.isArray(p.visiblePara) ? p.visiblePara : [] });
+  const abrirEdicion = (p) => setEditando({
+    ip: p.ip, nombre: p.nombre, visiblePara: Array.isArray(p.visiblePara) ? p.visiblePara : [],
+    cambiarComentario: false, comentario: "",
+  });
 
   const guardarEdicion = async () => {
     if (!editando) return;
     setGuardandoEdicion(true);
     try {
+      const { cambiarComentario, comentario, ...resto } = editando;
+      const payload = cambiarComentario ? { ...resto, comentario } : resto;
       const res = await fetch(PROXY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accion: "VpnEditarPeer", payload: editando }),
+        body: JSON.stringify({ accion: "VpnEditarPeer", payload }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) throw new Error(json?.error || "No se pudo guardar");
@@ -135,6 +140,43 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
       setErrorLista(String(err?.message || err));
     } finally {
       setGuardandoEdicion(false);
+    }
+  };
+
+  // Ver comentario: pide re-escribir la contraseña del usuario actual
+  // (verificada contra Supabase, mismo patron que "Cambiar contraseña" del
+  // panel de Usuarios) antes de pedirle el texto real al servidor.
+  const [verComentario, setVerComentario] = useState(null); // { ip, nombre }
+  const [passwordInput, setPasswordInput] = useState("");
+  const [verificando, setVerificando] = useState(false);
+  const [errorPassword, setErrorPassword] = useState("");
+  const [comentarioRevelado, setComentarioRevelado] = useState(null); // { ip, texto }
+
+  const confirmarVerComentario = async () => {
+    setVerificando(true);
+    setErrorPassword("");
+    try {
+      const username = String(usuarioSesion?.username || "").trim().toLowerCase();
+      const { data: dbUser } = await supabase.from("usuarios").select("password").eq("username", username).maybeSingle();
+      const passReal = dbUser?.password ?? usuarioSesion?.password ?? "";
+      if (passReal !== passwordInput) {
+        setErrorPassword("Contraseña incorrecta.");
+        return;
+      }
+      const res = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "VpnVerComentario", payload: { ip: verComentario.ip } }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) throw new Error(json?.error || "No se pudo obtener el comentario");
+      setComentarioRevelado({ ip: verComentario.ip, texto: json?.data?.comentario || "(sin texto)" });
+      setVerComentario(null);
+      setPasswordInput("");
+    } catch (err) {
+      setErrorPassword(String(err?.message || err));
+    } finally {
+      setVerificando(false);
     }
   };
 
@@ -262,6 +304,7 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
                 <th style={{ padding: "6px 8px" }}>Creado</th>
                 <th style={{ padding: "6px 8px" }}>Por</th>
                 <th style={{ padding: "6px 8px" }}>Estado</th>
+                <th style={{ padding: "6px 8px" }}>Comentario</th>
                 {puedeRevocar && <th style={{ padding: "6px 8px" }}></th>}
               </tr>
             </thead>
@@ -281,6 +324,22 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
                     }}>
                       {p.conectado ? "Conectado" : (p.ultimoHandshake ? "Desconectado" : "Nunca conectado")}
                     </span>
+                  </td>
+                  <td style={{ padding: "6px 8px" }}>
+                    {p.tieneComentario ? (
+                      comentarioRevelado?.ip === p.ip ? (
+                        <span style={{ fontSize: 12, color: "#374151" }}>{comentarioRevelado.texto}</span>
+                      ) : (
+                        <button
+                          onClick={() => { setVerComentario({ ip: p.ip, nombre: p.nombre }); setPasswordInput(""); setErrorPassword(""); }}
+                          style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb", color: "#374151", fontSize: 12, cursor: "pointer" }}
+                        >
+                          🔒 Ver
+                        </button>
+                      )
+                    ) : (
+                      <span style={{ fontSize: 12, color: "#d1d5db" }}>—</span>
+                    )}
                   </td>
                   {puedeRevocar && (
                     <td style={{ padding: "6px 8px", display: "flex", gap: 6 }}>
@@ -342,10 +401,52 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
             <div style={{ fontSize: 11, color: "#999", marginBottom: 16 }}>
               Si no marcas ninguna, solo Administrador podrá ver este acceso en la lista.
             </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={editando.cambiarComentario}
+                onChange={(e) => setEditando({ ...editando, cambiarComentario: e.target.checked })}
+              />
+              Cambiar comentario (protegido por contraseña)
+            </label>
+            {editando.cambiarComentario && (
+              <textarea
+                value={editando.comentario}
+                onChange={(e) => setEditando({ ...editando, comentario: e.target.value })}
+                placeholder="Este texto solo se vera volviendo a escribir la contraseña del usuario..."
+                rows={3}
+                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc", boxSizing: "border-box", marginBottom: 16, fontFamily: "inherit", fontSize: 13 }}
+              />
+            )}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setEditando(null)} style={{ padding: "8px 14px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>Cancelar</button>
               <button onClick={guardarEdicion} disabled={guardandoEdicion} style={{ padding: "8px 14px", borderRadius: 6, border: "none", background: "#6366f1", color: "#fff", cursor: guardandoEdicion ? "wait" : "pointer" }}>
                 {guardandoEdicion ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {verComentario && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1001 }} onClick={() => setVerComentario(null)}>
+          <div style={{ background: "#fff", borderRadius: 10, padding: 24, width: 320, maxWidth: "90vw" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: 15, marginBottom: 8 }}>🔒 Confirma tu contraseña</h3>
+            <p style={{ fontSize: 12, color: "#666", marginBottom: 12 }}>Para ver el comentario de "{verComentario.nombre}", vuelve a escribir tu propia contraseña de usuario.</p>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirmarVerComentario(); }}
+              placeholder="Tu contraseña"
+              autoFocus
+              style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #ccc", boxSizing: "border-box", marginBottom: 12 }}
+            />
+            {errorPassword && <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 12 }}>{errorPassword}</div>}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setVerComentario(null)} style={{ padding: "8px 14px", borderRadius: 6, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}>Cancelar</button>
+              <button onClick={confirmarVerComentario} disabled={verificando || !passwordInput} style={{ padding: "8px 14px", borderRadius: 6, border: "none", background: "#6366f1", color: "#fff", cursor: verificando ? "wait" : "pointer" }}>
+                {verificando ? "Verificando…" : "Ver comentario"}
               </button>
             </div>
           </div>
