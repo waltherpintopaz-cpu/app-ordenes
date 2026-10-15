@@ -1881,6 +1881,12 @@ const handleVpnCrearPeer = async (payload) => {
 // (pero igual puede generar accesos nuevos, eso no cambia). El filtrado se
 // hace aca, server-side, para que una Gestora no pueda ver la lista
 // completa mirando la respuesta de red del navegador.
+// El comentario de cada acceso NUNCA viaja en este listado -- solo se
+// manda si tiene o no (tieneComentario), para que el candado se muestre
+// en pantalla. El texto real solo se entrega via VpnVerComentario, que el
+// frontend llama recien despues de que el usuario reescribe su propia
+// contraseña (verificada contra Supabase) -- asi el comentario no queda
+// expuesto en la respuesta de red antes de esa confirmacion.
 const handleVpnListarPeers = async (payload) => {
   if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
   const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
@@ -1888,10 +1894,27 @@ const handleVpnListarPeers = async (payload) => {
     headers: { "X-Admin-Secret": VPN_ADMIN_SECRET },
   });
   const data = await readProxyJsonResponse(res, "VPN listar peers");
-  if (payload?.esAdmin) return data;
+  const limpiar = (p) => { const { comentario, ...resto } = p; return { ...resto, tieneComentario: !!comentario }; };
+  if (payload?.esAdmin) return { ...data, peers: (data?.peers || []).map(limpiar) };
   const usuarioId = String(payload?.usuarioId || "").trim();
-  const peers = (data?.peers || []).filter((p) => usuarioId && Array.isArray(p.visiblePara) && p.visiblePara.includes(usuarioId));
+  const peers = (data?.peers || [])
+    .filter((p) => usuarioId && Array.isArray(p.visiblePara) && p.visiblePara.includes(usuarioId))
+    .map(limpiar);
   return { ...data, peers };
+};
+
+const handleVpnVerComentario = async (payload) => {
+  if (!VPN_ADMIN_SECRET) throw new Error("VPN_ADMIN_SECRET no configurado");
+  const ip = String(payload?.ip || "").trim();
+  if (!ip) throw new Error("ip requerida");
+  const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
+    method: "GET",
+    headers: { "X-Admin-Secret": VPN_ADMIN_SECRET },
+  });
+  const data = await readProxyJsonResponse(res, "VPN listar peers");
+  const peer = (data?.peers || []).find((p) => p.ip === ip);
+  if (!peer) throw new Error("Acceso no encontrado");
+  return { comentario: peer.comentario || "" };
 };
 
 const handleVpnEditarPeer = async (payload) => {
@@ -1900,10 +1923,11 @@ const handleVpnEditarPeer = async (payload) => {
   if (!ip) throw new Error("ip requerida");
   const nombre = payload?.nombre;
   const visiblePara = payload?.visiblePara;
+  const comentario = payload?.comentario;
   const res = await fetchConTimeout(`${VPN_ADMIN_API}/peers`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "X-Admin-Secret": VPN_ADMIN_SECRET },
-    body: JSON.stringify({ ip, nombre, visiblePara }),
+    body: JSON.stringify({ ip, nombre, visiblePara, comentario }),
   });
   return await readProxyJsonResponse(res, "VPN editar peer");
 };
@@ -2014,6 +2038,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "VpnEditarPeer") {
       const data = await handleVpnEditarPeer(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "VpnVerComentario") {
+      const data = await handleVpnVerComentario(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootListarInboxes") {
