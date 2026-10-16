@@ -16901,7 +16901,12 @@ export default function App() {
 </svg>`,
         className: "", iconSize: [sw, sh], iconAnchor: [sw / 2, sh],
       });
-      const popupBase = `<div style="min-width:180px"><b style="font-size:13px">${caja.codigo}</b><br><span style="font-size:11px;color:#6b7280">${[caja.sector,caja.nodo].filter(Boolean).join(' · ')}</span><br><span style="font-size:11px;color:${p>=90?'#dc2626':p>=70?'#ea580c':'#16a34a'};font-weight:700">${caja.puertos_ocupados||0}/${caja.capacidad||8} puertos${p>=90?' — LLENA':` (${(caja.capacidad||8)-(caja.puertos_ocupados||0)} libres)`}</span>`;
+      {/* Nodo en el titulo, no solo en el subtitulo gris de abajo -- hay
+          codigos de caja repetidos entre nodos (ej. "Nap-007" existe tanto
+          en Nod_01 como en Nod_02), y de un vistazo rapido al mapa solo se
+          lee el titulo en negrita, generando confusion real sobre cual caja
+          es cual. */}
+      const popupBase = `<div style="min-width:180px"><b style="font-size:13px">${caja.codigo}${caja.nodo ? ` <span style="font-weight:600;color:#6b7280">(${caja.nodo})</span>` : ''}</b><br><span style="font-size:11px;color:#6b7280">${[caja.sector,caja.nodo].filter(Boolean).join(' · ')}</span><br><span style="font-size:11px;color:${p>=90?'#dc2626':p>=70?'#ea580c':'#16a34a'};font-weight:700">${caja.puertos_ocupados||0}/${caja.capacidad||8} puertos${p>=90?' — LLENA':` (${(caja.capacidad||8)-(caja.puertos_ocupados||0)} libres)`}</span>`;
       const m = L.marker([caja.lat, caja.lng], { icon })
         .addTo(mapaCrearInstanceRef.current)
         .bindPopup(popupBase + `<br><small style="color:#6b7280">Clic para seleccionar</small></div>`, { maxWidth: 240 });

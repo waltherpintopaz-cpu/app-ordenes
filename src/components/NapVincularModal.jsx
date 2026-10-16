@@ -353,7 +353,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
 
       marker.bindPopup(`
         <div style="font-family:Inter,system-ui,sans-serif;min-width:180px;line-height:1.4">
-          <div style="font-size:15px;font-weight:800;color:#163f86;margin-bottom:2px">${caja.codigo}</div>
+          <div style="font-size:15px;font-weight:800;color:#163f86;margin-bottom:2px">${caja.codigo}${caja.nodo ? ` <span style="font-weight:600;color:#64748b;font-size:12px">(${caja.nodo})</span>` : ''}</div>
           ${caja.sector ? `<div style="font-size:11px;color:#64748b;margin-bottom:6px">${caja.sector} · ${caja.nodo}</div>` : `<div style="font-size:11px;color:#64748b;margin-bottom:6px">${caja.nodo}</div>`}
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
             <div style="flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden">
@@ -922,7 +922,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
               <div style={s.cajaBadge}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#f97316" }}>📦 {cajaSeleccionada.codigo}</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "#f97316" }}>📦 {cajaSeleccionada.codigo}{cajaSeleccionada.nodo ? ` (${cajaSeleccionada.nodo})` : ""}</div>
                     <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 1 }}>{cajaSeleccionada.sector || ""} {cajaSeleccionada.nodo}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1002,7 +1002,7 @@ export default function NapVincularModal({ cajas, onClose, onUpdate }) {
               <option value="">— Seleccionar caja —</option>
               {(filtroNodo === "Todos" ? cajas : cajas.filter(c => c.nodo === filtroNodo)).map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.codigo}{c.sector ? ` · ${c.sector}` : ""} ({c.puertos_ocupados || 0}/{c.capacidad || 8})
+                  {c.codigo}{c.sector ? ` · ${c.sector}` : ""}{filtroNodo === "Todos" && c.nodo ? ` (${c.nodo})` : ""} ({c.puertos_ocupados || 0}/{c.capacidad || 8})
                 </option>
               ))}
             </select>
