@@ -936,6 +936,11 @@ export default function SidebarApp() {
   const [guardandoVlan, setGuardandoVlan] = useState(false);
   const [senal,    setSenal]    = useState(null);   // { rx, oltRx, ts }
   const [senalLoad,setSenalLoad]= useState(false);
+  // Chequeo en vivo de la lista "morosos" -- para descartar rapido el caso
+  // "pago pero Mikrowisp no le quito el bloqueo" cuando un cliente reclama.
+  const [morosoInfo, setMorosoInfo] = useState(null); // { enMorosos, entradas } | null = sin revisar/error
+  const [morosoCargando, setMorosoCargando] = useState(false);
+  const [morosoCorrigiendo, setMorosoCorrigiendo] = useState(false);
   // Buscar SN por MAC (cuando no hay SN guardado, o el guardado ya no lo
   // reconoce la OLT -- ONU cambiada/re-registrada)
   const [snBuscando, setSnBuscando] = useState(false);
@@ -1377,6 +1382,7 @@ export default function SidebarApp() {
 
     const pppuser = detRes?.datos?.[0]?.servicios?.[0]?.pppuser || detRes?.clientes?.[0]?.servicios?.[0]?.pppuser || "";
     setClienteIdReal(null); setClienteVlan(null);
+    setMorosoInfo(null);
     if (pppuser) {
       const { data: snRows } = await supabase
         .from("clientes").select("id, sn_onu, nodo, vlan").eq("usuario_nodo", pppuser).limit(1);
@@ -1384,6 +1390,7 @@ export default function SidebarApp() {
       if (snRows?.[0]?.nodo)   setNodoReal(snRows[0].nodo);
       if (snRows?.[0]?.id != null) setClienteIdReal(snRows[0].id);
       setClienteVlan(snRows?.[0]?.vlan ?? null);
+      if (snRows?.[0]?.nodo) revisarMorosos(snRows[0].nodo, pppuser, servicio?.ip || "", id);
     }
 
     // Señal de carga completa para auto-consulta
@@ -2000,6 +2007,48 @@ export default function SidebarApp() {
       }
     } catch(e) { notify("Error: " + e.message, false); }
     setActivando(false);
+  }
+
+  // ── Chequeo en vivo de la lista "morosos" ──────────────────────────────────
+  // Se dispara solo al abrir un cliente (ver cargarDesdeRow). Sirve para
+  // descartar en segundos, cuando un cliente reclama que no tiene
+  // internet, si el motivo es que quedo bloqueado ahi por un pago que
+  // Mikrowisp no termino de sincronizar.
+  async function revisarMorosos(nodoTexto, pppuser, ip, mikrowispId) {
+    if (!nodoTexto || !pppuser) return;
+    setMorosoCargando(true);
+    try {
+      const params = new URLSearchParams({ nodo: nodoTexto, userPppoe: pppuser });
+      if (ip) params.set("ip", ip);
+      if (mikrowispId) params.set("mikrowispId", String(mikrowispId));
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/morosos-estado?${params}`);
+      const json = await res.json().catch(() => ({}));
+      if (json?.ok) setMorosoInfo({ enMorosos: !!json.enMorosos, entradas: json.entradas || [] });
+      else setMorosoInfo(null);
+    } catch { setMorosoInfo(null); }
+    setMorosoCargando(false);
+  }
+
+  async function corregirMoroso() {
+    if (!nodoReal || !cliente) return;
+    setMorosoCorrigiendo(true);
+    try {
+      const pppuser = detalle?._servicio?.pppuser || cliente.usuario_nodo || "";
+      const ip = detalle?._servicio?.ip || "";
+      const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/activar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo: nodoReal, userPppoe: pppuser, ip, mikrowispId: cliente.mikrowisp_id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json?.ok) {
+        notify("✅ " + (json?.result?.message || "IP retirada de la lista de morosos."));
+        await revisarMorosos(nodoReal, pppuser, ip, cliente.mikrowisp_id);
+      } else {
+        notify("Error: " + (json?.error || "No se pudo corregir."), false);
+      }
+    } catch (e) { notify("Error: " + e.message, false); }
+    setMorosoCorrigiendo(false);
   }
 
   // ── Suspender servicio (cliente activo) ───────────────────────────────────
@@ -5621,6 +5670,45 @@ export default function SidebarApp() {
                   </div>
                 );
               })()}
+            </div>
+
+            {/* Lista "morosos" -- chequeo en vivo, para descartar rapido el
+                caso "pago pero Mikrowisp no le quito el bloqueo" cuando el
+                cliente reclama que no tiene servicio. */}
+            <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Lista morosos</span>
+                {morosoCargando && <span style={{ fontSize:10, color:T.muted }}>Consultando...</span>}
+                {!morosoCargando && morosoInfo == null && (
+                  <span style={{ fontSize:10, color:T.muted, flex:1 }}>Sin revisar</span>
+                )}
+                {!morosoCargando && morosoInfo && !morosoInfo.enMorosos && (
+                  <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.greenLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.green }}>
+                    ✅ No está bloqueado
+                  </span>
+                )}
+                {!morosoCargando && morosoInfo && morosoInfo.enMorosos && (
+                  <>
+                    <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.redLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.red }}>
+                      ⚠️ IP bloqueada en morosos
+                    </span>
+                    <button onClick={corregirMoroso} disabled={morosoCorrigiendo}
+                      style={{ padding:"5px 10px", background: morosoCorrigiendo ? T.muted : T.blue, color:"#fff", border:"none", borderRadius:7, fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
+                      {morosoCorrigiendo ? "Corrigiendo..." : "Corregir ahora"}
+                    </button>
+                  </>
+                )}
+                {!morosoCargando && nodoReal && (() => {
+                  const pppuser = detalle?._servicio?.pppuser || cliente?.usuario_nodo || "";
+                  return pppuser ? (
+                    <button onClick={() => revisarMorosos(nodoReal, pppuser, detalle?._servicio?.ip || "", cliente?.mikrowisp_id)}
+                      className="sb-btn-action" title="Revisar de nuevo"
+                      style={{ ...S.btnSm("#ea580c"), fontSize:10, flexShrink:0, padding:"4px 7px" }}>
+                      <RefreshCw size={11}/>
+                    </button>
+                  ) : null;
+                })()}
+              </div>
             </div>
 
             {/* Sin SN, o el SN guardado existe pero la OLT no lo reconoce
