@@ -705,7 +705,15 @@ const loadSecretOnly = async ({ api, router, userPppoe }) => {
   return findByName(secretRows, userPppoe);
 };
 
-const findMorosoEntries = async ({ api, userPppoe, ip = "" }) => {
+// Mikrowisp nombra sus propias entradas de corte como "Corte_Servicio_<id>"
+// (confirmado visualmente en su panel), donde <id> es el mikrowisp_id del
+// cliente -- NO el usuario PPPoE. Sin este patron, una entrada creada por
+// Mikrowisp mismo (la gran mayoria) nunca hacia match por userPppoe/ip y
+// quedaba invisible para nuestro respaldo.
+const buildMorosoCommentRegex = (mikrowispId) =>
+  mikrowispId ? new RegExp(`corte_servicio_${String(mikrowispId).trim()}\\b`, "i") : null;
+
+const findMorosoEntries = async ({ api, userPppoe, ip = "", mikrowispId = "" }) => {
   let rows = [];
   try {
     rows = await withTimeout(
@@ -725,10 +733,16 @@ const findMorosoEntries = async ({ api, userPppoe, ip = "" }) => {
   }
   const normalizedUser = String(userPppoe || "").trim().toLowerCase();
   const normalizedIp = String(ip || "").trim();
+  const idRe = buildMorosoCommentRegex(mikrowispId);
   return (Array.isArray(rows) ? rows : []).filter((row) => {
     const rowIp = pickFirst(row?.address);
-    const comment = String(pickFirst(row?.comment) || "").toLowerCase();
-    return (normalizedIp && rowIp === normalizedIp) || (normalizedUser && comment.includes(normalizedUser));
+    const comment = String(pickFirst(row?.comment) || "");
+    const commentLower = comment.toLowerCase();
+    return (
+      (normalizedIp && rowIp === normalizedIp) ||
+      (normalizedUser && commentLower.includes(normalizedUser)) ||
+      (idRe && idRe.test(comment))
+    );
   });
 };
 
@@ -903,7 +917,7 @@ const suspenderRouter = async ({ nodo, userPppoe }) => {
   }
 };
 
-const activarRouter = async ({ nodo, userPppoe, ip = "" }) => {
+const activarRouter = async ({ nodo, userPppoe, ip = "", mikrowispId = "" }) => {
   let connection = null;
   try {
     connection = await connectRouterByNodo(nodo, userPppoe);
@@ -918,7 +932,7 @@ const activarRouter = async ({ nodo, userPppoe, ip = "" }) => {
       throw new Error(`El PPP Secret de ${userPppoe} no tiene remote-address configurado.`);
     }
 
-    const entries = await findMorosoEntries({ api, userPppoe, ip: targetIp });
+    const entries = await findMorosoEntries({ api, userPppoe, ip: targetIp, mikrowispId });
     for (const row of entries) {
       const rowId = pickFirst(row?.[".id"], row?.id);
       if (!rowId) continue;
@@ -954,6 +968,106 @@ const activarRouter = async ({ nodo, userPppoe, ip = "" }) => {
     if (connection?.api) await closeRouterApiSafe(connection.api);
   }
 };
+
+// ── Reconciliacion automatica de la lista "morosos" ───────────────────────
+// Corre sola cada cierto tiempo en segundo plano: revisa la lista
+// "morosos" de cada Mikrotik (consulta liviana, solo trae los bloqueados
+// ahi, no el total de clientes) y, para cada entrada con el comentario
+// "Corte_Servicio_<mikrowisp_id>" que Mikrowisp mismo genera, cruza contra
+// mikrowisp_clientes.estado -- si ya no esta SUSPENDIDO (es decir, ya
+// pago), la saca de la lista. Resuelve el caso real: Mikrowisp marca
+// ACTIVO en su base pero su propia sincronizacion con el Mikrotik falla o
+// se demora, dejando al cliente pagado pero cortado de verdad, sin que
+// nadie se entere hasta que reclama.
+const reconciliarMorosos = async () => {
+  const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
+  const resumen = { routersRevisados: 0, entradasRevisadas: 0, removidas: 0, errores: [] };
+  for (const router of Object.values(routers)) {
+    if (buildRouterConfigError(router)) continue;
+    resumen.routersRevisados++;
+
+    let connection = null;
+    let rows = [];
+    try {
+      connection = await connectToRouter(router);
+      rows = await withTimeout(
+        connection.api.write("/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`]),
+        10000,
+        `Consulta address-list ${MOROSOS_ADDRESS_LIST} en ${router.nombre}`
+      ).catch((error) => {
+        const code = String(error?.errno || error?.code || "").toUpperCase();
+        const reply = String(error?.reply || error?.error?.reply || "").toLowerCase();
+        const detail = formatErrorDetail(error).toLowerCase();
+        const isEmptyReply = code === "UNKNOWNREPLY" && (reply.includes("!empty") || detail.includes("unknown reply: !empty"));
+        if (!isEmptyReply) throw error;
+        return [];
+      });
+    } catch (e) {
+      resumen.errores.push(`${router.nombre}: ${e.message || e}`);
+      if (connection?.api) await closeRouterApiSafe(connection.api);
+      continue;
+    }
+
+    rows = Array.isArray(rows) ? rows : [];
+    if (!rows.length) {
+      if (connection?.api) await closeRouterApiSafe(connection.api);
+      continue;
+    }
+    resumen.entradasRevisadas += rows.length;
+
+    const porId = new Map();
+    for (const row of rows) {
+      const comment = String(pickFirst(row?.comment) || "");
+      const m = comment.match(/corte_servicio_(\d+)/i);
+      if (m) porId.set(m[1], row);
+    }
+
+    if (!porId.size) {
+      if (connection?.api) await closeRouterApiSafe(connection.api);
+      continue;
+    }
+
+    try {
+      const ids = [...porId.keys()];
+      const estados = await fetchSupabaseRows(
+        "mikrowisp_clientes",
+        `select=mikrowisp_id,estado&mikrowisp_id=in.(${ids.join(",")})`
+      );
+      for (const est of Array.isArray(estados) ? estados : []) {
+        const estadoNorm = String(est?.estado || "").trim().toUpperCase();
+        if (!estadoNorm || estadoNorm === "SUSPENDIDO") continue; // sigue suspendido de verdad, no tocar
+        const row = porId.get(String(est.mikrowisp_id));
+        if (!row) continue;
+        const rowId = pickFirst(row?.[".id"], row?.id);
+        if (!rowId) continue;
+        await withTimeout(
+          connection.api.write("/ip/firewall/address-list/remove", [`=.id=${rowId}`]),
+          10000,
+          `Baja address-list ${MOROSOS_ADDRESS_LIST} en ${router.nombre}`
+        );
+        resumen.removidas++;
+        console.log(`[reconciliar-morosos] ${router.nombre}: IP ${pickFirst(row?.address)} (mikrowisp_id ${est.mikrowisp_id}, estado ${estadoNorm}) retirada de ${MOROSOS_ADDRESS_LIST}.`);
+      }
+    } catch (e) {
+      resumen.errores.push(`${router.nombre} (reconciliar): ${e.message || e}`);
+    } finally {
+      if (connection?.api) await closeRouterApiSafe(connection.api);
+    }
+  }
+  return resumen;
+};
+
+const RECONCILIAR_MOROSOS_MS = Number(process.env.RECONCILIAR_MOROSOS_MINUTOS || 7) * 60000;
+setInterval(() => {
+  reconciliarMorosos()
+    .then((r) => {
+      if (r.removidas > 0 || r.errores.length > 0) {
+        console.log(`[reconciliar-morosos] routers=${r.routersRevisados} entradas=${r.entradasRevisadas} removidas=${r.removidas} errores=${r.errores.length}`);
+        if (r.errores.length) console.warn("[reconciliar-morosos] errores:", r.errores);
+      }
+    })
+    .catch((e) => console.error("[reconciliar-morosos] fallo el barrido completo:", e));
+}, RECONCILIAR_MOROSOS_MS);
 
 const buildAbsoluteApiUrl = (base, path = "") => {
   const normalizedBase = String(base || "").trim().replace(/\/+$/, "");
@@ -3382,6 +3496,7 @@ const server = http.createServer(async (req, res) => {
       const nodo = String(body?.nodo || "").trim();
       const userPppoe = String(body?.userPppoe || "").trim();
       const ip = String(body?.ip || "").trim();
+      const mikrowispId = String(body?.mikrowispId || "").trim();
 
       if (!nodo) {
         writeJson(res, 400, { ok: false, error: "No se encontro nodo para este abonado." });
@@ -3392,8 +3507,52 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = await activarRouter({ nodo, userPppoe, ip });
+      const result = await activarRouter({ nodo, userPppoe, ip, mikrowispId });
       writeJson(res, 200, { ok: true, action: "activar", nodo, userPppoe, result });
+      return;
+    }
+
+    // POST /api/diagnostico-servicio/morosos-reconciliar -- fuerza una
+    // pasada manual del barrido automatico (el mismo que corre solo cada
+    // RECONCILIAR_MOROSOS_MINUTOS), util para probar sin esperar el timer.
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/morosos-reconciliar") {
+      const resumen = await reconciliarMorosos();
+      writeJson(res, 200, { ok: true, resumen });
+      return;
+    }
+
+    // GET /api/diagnostico-servicio/morosos-estado -- consulta EN VIVO (sin
+    // modificar nada) si la IP/usuario de un cliente puntual sigue en la
+    // lista "morosos" del Mikrotik. Pensado para el sidebar: cuando un
+    // cliente reclama que no tiene servicio, permite descartar/confirmar
+    // en segundos si el motivo es que quedo bloqueado ahi por un pago que
+    // Mikrowisp no termino de sincronizar.
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/diagnostico-servicio/morosos-estado") {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const nodo = String(q.get("nodo") || "").trim();
+      const userPppoe = String(q.get("userPppoe") || "").trim();
+      const ip = String(q.get("ip") || "").trim();
+      const mikrowispId = String(q.get("mikrowispId") || "").trim();
+      if (!nodo || !userPppoe) {
+        writeJson(res, 400, { ok: false, error: "nodo y userPppoe son requeridos." });
+        return;
+      }
+      let connection = null;
+      try {
+        connection = await connectRouterByNodo(nodo, userPppoe);
+        const { api, router } = connection;
+        const entries = await findMorosoEntries({ api, userPppoe, ip, mikrowispId });
+        writeJson(res, 200, {
+          ok: true,
+          enMorosos: entries.length > 0,
+          router: buildRouterInfo(router),
+          entradas: entries.map((e) => ({ ip: pickFirst(e?.address), comment: pickFirst(e?.comment) || "" })),
+        });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
       return;
     }
 
