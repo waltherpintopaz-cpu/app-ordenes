@@ -16,7 +16,11 @@ const DEFAULT_CHATWOOT_TOKEN = "Wm9K5UiCrfJPcgFJrWgxftYv";
 // apikey ya probados en produccion por bot-pagos-comprobante.
 const DEFAULT_WA_GRUPO_API = "https://api.americanet.space/message/sendText/premium";
 const DEFAULT_WA_GRUPO_APIKEY = "1NhNmO0e1NxlpGIMB9edgIliZApOcRGe";
-const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "127.0.0.1").trim() || "127.0.0.1";
+// Default a 0.0.0.0 (no 127.0.0.1): EasyPanel/Traefik le habla al contenedor
+// por la red interna, no por localhost. Un reset del env (ya paso 2 veces)
+// que borre DIAGNOSTICO_SERVER_HOST dejaba el servicio inalcanzable aunque
+// el proceso siguiera vivo y funcionando -- con este default ya no importa.
+const SERVER_HOST = String(process.env.DIAGNOSTICO_SERVER_HOST || "0.0.0.0").trim() || "0.0.0.0";
 const SERVER_PORT = Number(process.env.DIAGNOSTICO_SERVER_PORT || 8787) || 8787;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
