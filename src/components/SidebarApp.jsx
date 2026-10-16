@@ -1310,7 +1310,21 @@ export default function SidebarApp() {
     // un cliente de Nod_06 (router 12) cayera en el "else" y se mostrara
     // como si fuera de Americanet. Usamos el mapa dinamico MW_NODO_MAP para
     // no volver a hardcodear un numero que ya cambio una vez en produccion.
-    const empresa = nodoNum === 5 ? "dimfiber" : nodoNum === MW_NODO_MAP["Nod_06"] ? "nod06" : "americanet";
+    let empresa = nodoNum === 5 ? "dimfiber" : nodoNum === MW_NODO_MAP["Nod_06"] ? "nod06" : "americanet";
+    // Colision real de numeracion: Nod_03 con VLAN 102 (Americanet) usa el
+    // MISMO id de router Mikrowisp (12) que Nod_06 de DIM -- ver
+    // mikrowispRouterIdParaCliente() mas abajo, que ya conoce este caso para
+    // CREAR ordenes. mikrowisp_clientes no guarda el vlan, asi que aca (al
+    // LEER un cliente existente) hacia falta cruzar con clientes.nodo/vlan
+    // por cedula para no mostrar un cliente de Americanet como si fuera de
+    // DIM (bug real: facturas de Mikrowisp Americanet nunca aparecian
+    // porque se consultaban contra el Mikrowisp de DIM).
+    if (nodoNum === MW_NODO_MAP["Nod_06"] && row.cedula) {
+      try {
+        const { data: clReal } = await supabase.from("clientes").select("nodo, vlan").eq("dni", row.cedula).limit(1).maybeSingle();
+        if (clReal?.nodo === "Nod_03" && Number(clReal.vlan) === 102) empresa = "americanet";
+      } catch { /* si falla el cruce, se mantiene el guess anterior */ }
+    }
     const cli = { ...row, empresa };
     setCliente(cli);
     setError(null);
