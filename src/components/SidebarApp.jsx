@@ -1959,7 +1959,27 @@ export default function SidebarApp() {
       const res = await mkwProxy(Number(cliente.nodo), "ActiveService", { idcliente: parseInt(cliente.mikrowisp_id, 10) }, tkn, esDimCliente);
       const ok  = (res?.estado || "").toLowerCase() === "exito";
       if (!ok) { notify("Error: " + (res?.mensaje || res?.message || JSON.stringify(res)), false); }
-      else { notify("✅ Servicio activado correctamente"); await buscarCliente(contact?.phone_number || ""); }
+      else {
+        // Respaldo: Mikrowisp a veces marca el servicio ACTIVO en su base
+        // pero no borra a tiempo la IP de la lista "morosos" en el Mikrotik
+        // (su propia sincronizacion falla/demora) -- el cliente queda
+        // pagado y "activo" en Mikrowisp pero sigue cortado de verdad. Se
+        // llama ademas al endpoint que quita la IP de esa lista directo en
+        // el router, sin depender de que Mikrowisp lo haga por su cuenta.
+        // Best-effort: si falla, no se bloquea el aviso de exito de arriba.
+        try {
+          const pppuser = detalle?._servicio?.pppuser || cliente.usuario_nodo || "";
+          const ipSvc = detalle?._servicio?.ip || "";
+          if (nodoReal && pppuser) {
+            await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/activar`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nodo: nodoReal, userPppoe: pppuser, ip: ipSvc }),
+            });
+          }
+        } catch { /* best-effort, no bloquea el flujo principal */ }
+        notify("✅ Servicio activado correctamente"); await buscarCliente(contact?.phone_number || "");
+      }
     } catch(e) { notify("Error: " + e.message, false); }
     setActivando(false);
   }
