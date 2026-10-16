@@ -59,7 +59,7 @@ const VPN_ADMIN_API = String(process.env.VPN_ADMIN_API || "http://185.173.110.14
 const VPN_ADMIN_SECRET = String(process.env.VPN_ADMIN_SECRET || "").trim();
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
-const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "moroso_").trim() || "moroso_";
+const MOROSOS_ADDRESS_LIST = String(process.env.MIKROTIK_MOROSOS_LIST || "morosos").trim() || "morosos";
 
 // Mismas reglas que ya usa el frontend (SidebarApp.jsx/App.jsx) para sugerir
 // usuario/password al crear una orden -- se duplican aca (server) para poder
