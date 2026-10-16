@@ -150,10 +150,14 @@ export default function OnuAveriasPanelVsol({ theme }) {
     return true;
   });
 
+  // Antes se sondeaba la OLT de DIM cada 20s en automatico mientras el
+  // panel seguia abierto -- esto ya no corresponde: DIM administra sus
+  // propios nodos (Nod_04/05/06) y ya tiene su propio monitoreo continuo,
+  // asi que Americanet solo debe pedir datos frescos cuando el admin lo
+  // pide explicitamente (boton "Actualizar"), para no saturar la OLT con
+  // sondeos redundantes desde dos sistemas distintos.
   useEffect(() => {
     cargar();
-    const id = setInterval(cargar, REFRESH_MS);
-    return () => clearInterval(id);
   }, [cargar]);
 
   useEffect(() => { cargarConfig(); }, [cargarConfig]);
