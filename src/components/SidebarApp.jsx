@@ -1612,6 +1612,24 @@ export default function SidebarApp() {
 
       notify("✅ Pago registrado correctamente");
 
+      // Respaldo: Mikrowisp marca el pago/servicio OK en su base pero a
+      // veces no borra a tiempo la IP de la lista "morosos" en el Mikrotik
+      // (su propia sincronizacion falla/demora) -- el cliente queda pagado
+      // pero sigue cortado de verdad. Se pide ademas quitar la IP de esa
+      // lista directo en el router. Best-effort: si falla, no bloquea la
+      // confirmacion de arriba (el pago ya quedo registrado en Mikrowisp).
+      try {
+        const pppuserPago = detalle?._servicio?.pppuser || cliente.usuario_nodo || "";
+        const ipPago = detalle?._servicio?.ip || "";
+        if (nodoReal && pppuserPago) {
+          fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/activar`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nodo: nodoReal, userPppoe: pppuserPago, ip: ipPago }),
+          }).catch(() => {});
+        }
+      } catch { /* best-effort */ }
+
       // Enviar confirmación al cliente vía n8n (igual que prórroga)
       if (contact?.phone_number) {
         const nombreRaw = cliente?.nombre || "";
