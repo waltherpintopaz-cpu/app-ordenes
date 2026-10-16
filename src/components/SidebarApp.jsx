@@ -5687,10 +5687,20 @@ export default function SidebarApp() {
                     ✅ No está bloqueado
                   </span>
                 )}
-                {!morosoCargando && morosoInfo && morosoInfo.enMorosos && (
+                {/* Si Mikrowisp todavia lo tiene como SUSPENDIDO, el bloqueo es
+                    legitimo (de verdad no pago) -- no se ofrece "Corregir",
+                    solo se informa. El boton solo aparece cuando hay un
+                    desajuste real: Mikrowisp dice que ya no esta suspendido
+                    pero el Mikrotik lo sigue bloqueando. */}
+                {!morosoCargando && morosoInfo && morosoInfo.enMorosos && suspendido && (
+                  <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.amberLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.amber }}>
+                    🔒 Bloqueado (cliente sigue suspendido en Mikrowisp)
+                  </span>
+                )}
+                {!morosoCargando && morosoInfo && morosoInfo.enMorosos && !suspendido && (
                   <>
                     <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.redLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.red }}>
-                      ⚠️ IP bloqueada en morosos
+                      ⚠️ Pagó pero sigue bloqueado
                     </span>
                     <button onClick={corregirMoroso} disabled={morosoCorrigiendo}
                       style={{ padding:"5px 10px", background: morosoCorrigiendo ? T.muted : T.blue, color:"#fff", border:"none", borderRadius:7, fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
