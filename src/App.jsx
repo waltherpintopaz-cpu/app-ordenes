@@ -155,7 +155,7 @@ async function upsertIptvClienteConFallback(payload) {
   }
 }
 const OLT_CONFIG_TABLE = "olt_config";
-const OLT_SIGNAL_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/+$/, "");
+const OLT_SIGNAL_API = String(import.meta.env.VITE_OLT_SSH_API || "https://olt-signal-dim.wolgest.com").trim().replace(/\/+$/, "");
 const MIKROTIK_ROUTERS_TABLE = "mikrotik_routers";
 const MIKROTIK_NODO_ROUTER_TABLE = "mikrotik_nodo_router";
 const HIST_APPSHEET_SHEET_ID = "1soSl4tyfSC7VDNAXhRWUhtkotk09G1IpjqqxkzQnqKE";

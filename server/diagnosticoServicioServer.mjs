@@ -44,7 +44,7 @@ const HUAWEI_ACCION_TOKEN = String(process.env.HUAWEI_ACCION_TOKEN || "").trim()
 // Mismo patron que arriba, pero para el servicio VSOL (olt-signal, nodos
 // DIM) -- el ACCION_TOKEN de ese servicio protege su /averia-config (guarda
 // un bot token de Telegram) y no debe viajar al navegador.
-const OLT_SSH_API = String(process.env.OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/+$/, "");
+const OLT_SSH_API = String(process.env.OLT_SSH_API || "https://olt-signal-dim.wolgest.com").trim().replace(/\/+$/, "");
 // "vsol" (DIM, via OLT_SSH_API /signal) o "huawei" (Americanet, via
 // HUAWEI_OLT_SNMP_API /onu-info) -- ambos devuelven el mismo campo
 // "rxPower", asi que el resto de handleActualizarContactoChatwoot no

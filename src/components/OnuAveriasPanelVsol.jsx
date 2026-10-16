@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const OLT_SSH_API = String(import.meta.env.VITE_OLT_SSH_API || "https://olt-signal-dim.wolgest.com").trim().replace(/\/$/, "");
 const DIAGNO_BASE = String(import.meta.env.VITE_DIAGNO_URL || "").trim().replace(/\/$/, "");
 
 // Version VSOL de OnuAveriasPanel.jsx (Huawei) -- misma tabla onu_eventos

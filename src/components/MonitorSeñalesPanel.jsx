@@ -5,7 +5,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { requestSmartOlt, SMART_OLT_TOKEN } from "../app/useSmartOltSenal";
 
-const OLT_SSH_API      = String(import.meta.env.VITE_OLT_SSH_API || "https://amnet-olt-signal.0lthka.easypanel.host").trim().replace(/\/$/, "");
+const OLT_SSH_API      = String(import.meta.env.VITE_OLT_SSH_API || "https://olt-signal-dim.wolgest.com").trim().replace(/\/$/, "");
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
 const SMARTOLT_NODOS   = new Set(["Nod_01", "Nod_02", "Nod_03"]);
 
