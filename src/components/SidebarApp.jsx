@@ -5572,7 +5572,7 @@ export default function SidebarApp() {
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
                     {fila("Caja NAP", (
-                      <button type="button" onClick={() => { alert("DEBUG: boton Cambiar tocado"); setNapPickerAbierto(true); }}
+                      <button type="button" onClick={() => setNapPickerAbierto(true)}
                         style={{ width:"100%", background:"none", border:"none", borderRadius:0, padding:"7px 10px",
                           fontSize:12, color: ordenForm.cajaNap ? T.navy : T.muted, textAlign:"left", cursor:"pointer",
                           display:"flex", alignItems:"center", justifyContent:"space-between", fontFamily:"inherit" }}>
@@ -7989,11 +7989,12 @@ export default function SidebarApp() {
             comportamiento y diseño que App.jsx (lista de cajas cercanas +
             splitter de puertos, sin auto-asignar en Nod_02). ══ */}
         {napPickerAbierto && (
-          <>
-            <div onClick={() => setNapPickerAbierto(false)}
-              style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.35)",
-                animation:"sbToastBackdropIn .2s ease both" }} />
-            <div style={{ position:"fixed", inset:"6% 5%", zIndex:9998, maxWidth:520, margin:"0 auto",
+          <div onClick={() => setNapPickerAbierto(false)}
+            style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.35)",
+              display:"flex", alignItems:"center", justifyContent:"center", padding:16,
+              animation:"sbToastBackdropIn .2s ease both" }}>
+            <div onClick={(e) => e.stopPropagation()}
+              style={{ width:"100%", maxWidth:480, maxHeight:"88vh", zIndex:9998,
               display:"flex", flexDirection:"column", background:"#fff", borderRadius:16,
               border:`1px solid ${T.border}`, boxShadow:"0 24px 60px rgba(0,0,0,0.3)", overflow:"hidden",
               animation:"sbToastCardIn .28s cubic-bezier(.34,1.56,.64,1) both" }}>
@@ -8151,7 +8152,7 @@ export default function SidebarApp() {
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
 
         {/* ══ NOTAS DEL CLIENTE — boton flotante, siempre al alcance sin
