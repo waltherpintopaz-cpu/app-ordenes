@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
-import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight } from "lucide-react";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo, NODOS_CONFIG_DEFAULT, cargarNodosConfig, nodosActivosOrdenados, mwNodoMapDesdeConfig, nodoUsuarioRulesDesdeConfig, nodoPasswordRulesDesdeConfig, vlanPorNodoDesdeConfig, nodosMkwAutoDesdeConfig, esDimNodoDesdeConfig, empresaPorNodoDesdeConfig } from "../utils/nodos.js";
@@ -594,8 +594,9 @@ const getGlobalCSS = (T) => `
   html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
   .sb-panel * { font-family: 'Inter', system-ui, -apple-system, sans-serif !important; }
   .sb-tab-btn { transition: color .15s, border-color .15s; }
-  .sb-btn-action { transition: opacity .15s, background .15s; }
+  .sb-btn-action { transition: opacity .15s, background .15s, transform .1s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
+  .sb-btn-action:active:not(:disabled) { transform: scale(0.97); }
   .sb-action-btn:hover:not(:disabled) { filter: brightness(0.97); box-shadow: 0 2px 8px rgba(15,23,42,0.1); transform: translateY(-1px); }
   .sb-action-btn { transition: filter .15s, box-shadow .15s, transform .15s; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
@@ -624,6 +625,10 @@ const getGlobalCSS = (T) => `
   @keyframes sbToastCheckDraw { from{stroke-dashoffset:34} to{stroke-dashoffset:0} }
   @keyframes sbToastXDraw1 { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
   @keyframes sbToastXDraw2 { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
+  @keyframes sbShimmer { 0%{background-position:-120px 0} 100%{background-position:120px 0} }
+  .sb-skel { display:inline-block; border-radius:5px; background:linear-gradient(90deg, ${T.border} 25%, ${T.accent} 50%, ${T.border} 75%); background-size:240px 100%; animation:sbShimmer 1.2s ease-in-out infinite; }
+  @keyframes sbTabFade { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .sb-tab-fade { animation:sbTabFade .22s ease both; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 4px; }
 `;
 
@@ -5633,7 +5638,7 @@ export default function SidebarApp() {
               {/* Fila compacta siempre visible */}
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>MikroTik</span>
-                {diagLoad && <span style={{ fontSize:10, color:T.muted }}>Consultando...</span>}
+                {diagLoad && <span className="sb-skel" style={{ width:100, height:11 }} />}
                 {!diagLoad && diagError && (
                   <span style={{ fontSize:10, color:T.red, flex:1 }}>Sin respuesta</span>
                 )}
@@ -5723,13 +5728,13 @@ export default function SidebarApp() {
             <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                 <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Lista morosos</span>
-                {morosoCargando && <span style={{ fontSize:10, color:T.muted }}>Consultando...</span>}
+                {morosoCargando && <span className="sb-skel" style={{ width:100, height:11 }} />}
                 {!morosoCargando && morosoInfo == null && (
                   <span style={{ fontSize:10, color:T.muted, flex:1 }}>Sin revisar</span>
                 )}
                 {!morosoCargando && morosoInfo && !morosoInfo.enMorosos && (
                   <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.greenLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.green }}>
-                    ✅ No está bloqueado
+                    <CheckCircle2 size={13} /> No está bloqueado
                   </span>
                 )}
                 {/* Si Mikrowisp todavia lo tiene como SUSPENDIDO, el bloqueo es
@@ -5739,13 +5744,13 @@ export default function SidebarApp() {
                     pero el Mikrotik lo sigue bloqueando. */}
                 {!morosoCargando && morosoInfo && morosoInfo.enMorosos && suspendido && (
                   <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.amberLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.amber }}>
-                    🔒 Bloqueado (cliente sigue suspendido en Mikrowisp)
+                    <Lock size={13} /> Bloqueado (cliente sigue suspendido en Mikrowisp)
                   </span>
                 )}
                 {!morosoCargando && morosoInfo && morosoInfo.enMorosos && !suspendido && (
                   <>
                     <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.redLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.red }}>
-                      ⚠️ Pagó pero sigue bloqueado
+                      <AlertTriangle size={13} /> Pagó pero sigue bloqueado
                     </span>
                     <button onClick={corregirMoroso} disabled={morosoCorrigiendo}
                       style={{ padding:"5px 10px", background: morosoCorrigiendo ? T.muted : T.blue, color:"#fff", border:"none", borderRadius:7, fontSize:10.5, fontWeight:700, cursor:"pointer" }}>
@@ -6006,7 +6011,13 @@ export default function SidebarApp() {
 
             {showHistorial && (
               <div style={{ ...S.card, padding:"12px 14px", marginTop:6 }}>
-                {historialLoad && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:8 }}>Cargando...</div>}
+                {historialLoad && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:6, padding:8 }}>
+                    <span className="sb-skel" style={{ width:"85%", height:12 }} />
+                    <span className="sb-skel" style={{ width:"60%", height:12 }} />
+                    <span className="sb-skel" style={{ width:"72%", height:12 }} />
+                  </div>
+                )}
 
                 {/* Órdenes */}
                 {ordenesCliente.length > 0 && (<>
@@ -6127,7 +6138,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: FACTURAS ══ */}
         {tab === "info" && (
-          <div style={{ margin:"8px", ...S.card }}>
+          <div key="info" className="sb-tab-fade" style={{ margin:"8px", ...S.card }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
               <span style={{ fontWeight:700, fontSize:13, color:T.navy }}>Facturas</span>
               <span style={{ fontSize:11, color:T.muted }}>{factRecientes.length} registros</span>
@@ -6313,7 +6324,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: PAGO ══ */}
         {tab === "pago" && (
-          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+          <div key="pago" className="sb-tab-fade" style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Registrar pago</div>
 
             {/* Zona comprobante */}
@@ -6400,7 +6411,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: PRORROGA ══ */}
         {tab === "prorroga" && (
-          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+          <div key="prorroga" className="sb-tab-fade" style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>Prorroga de pago</div>
             {prorrando && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Verificando elegibilidad...</div>}
             {!prorrando && !prorrInfo && <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:16 }}>Sin facturas pendientes para prorroga.</div>}
@@ -6550,7 +6561,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: NUEVA FACTURA ══ */}
         {tab === "nueva" && (
-          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+          <div key="nueva" className="sb-tab-fade" style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:4 }}>Nueva factura</div>
             <div style={{ color:T.muted, fontSize:11, marginBottom:12 }}>
               Para <strong style={{ color:T.navy }}>{cliente.nombre}</strong> · #{cliente.mikrowisp_id}
@@ -6596,7 +6607,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: EDITAR CLIENTE ══ */}
         {tab === "editar" && (<>
-          <div style={{ margin:"8px", ...S.card }}>
+          <div key="editar" className="sb-tab-fade" style={{ margin:"8px", ...S.card }}>
             <div style={{ padding:"10px 14px", borderBottom:`1px solid ${T.border}` }}>
               <div style={{ fontWeight:700, fontSize:13, color:T.navy }}>Editar datos del cliente</div>
               <div style={{ color:T.muted, fontSize:11, marginTop:2 }}>Solo modifica los campos que necesites cambiar.</div>
@@ -6717,7 +6728,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: CREAR ORDEN ══ */}
         {tab === "orden" && (
-          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+          <div key="orden" className="sb-tab-fade" style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:4 }}>Crear orden de servicio</div>
             <div style={{ color:T.muted, fontSize:11, marginBottom:12 }}>
               Para <strong style={{ color:T.navy }}>{cliente.nombre}</strong> · DNI {cliente.cedula || "—"}
@@ -7462,7 +7473,7 @@ export default function SidebarApp() {
 
         {/* ══ TAB: IPTV ══ */}
         {tab === "iptv" && (
-          <div style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
+          <div key="iptv" className="sb-tab-fade" style={{ margin:"8px", ...S.card, padding:"14px 16px" }}>
             <div style={{ fontWeight:700, fontSize:13, color:T.navy, marginBottom:12 }}>📺 IPTV MaxPlayer</div>
 
             {iptvData ? (
