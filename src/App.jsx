@@ -16862,7 +16862,10 @@ export default function App() {
     napCajasTop20.forEach(caja => {
       const p = caja.capacidad ? Math.round((caja.puertos_ocupados || 0) / caja.capacidad * 100) : 0;
       const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#0284c7";
-      const sel = orden.cajaNap === caja.codigo;
+      // El codigo no es unico entre nodos (ej. "Nap-007" en Nod_01 y en
+      // Nod_02) -- comparar tambien por nodo, sino se resaltan dos cajas
+      // distintas a la vez con el mismo codigo.
+      const sel = orden.cajaNap === caja.codigo && orden.nodo === caja.nodo;
       const uid = caja.codigo.replace(/[^a-z0-9]/gi, "");
       // Compact dark NAP box icon (portrait, like real enclosure)
       const sw = sel ? 28 : 22, sh = sel ? 40 : 32;
@@ -16993,10 +16996,10 @@ export default function App() {
     const results = {};
     napCajasNearby.forEach(caja => {
       const dist = haversineM(clat, clng, caja.lat, caja.lng);
-      results[caja.codigo] = { dist };
+      results[`${caja.codigo}__${caja.nodo}`] = { dist };
       const p = caja.capacidad ? Math.round((caja.puertos_ocupados || 0) / caja.capacidad * 100) : 0;
       const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#0284c7";
-      const isSel = orden.cajaNap === caja.codigo;
+      const isSel = orden.cajaNap === caja.codigo && orden.nodo === caja.nodo;
       const line = L.polyline([[clat, clng], [caja.lat, caja.lng]], {
         color,
         weight: isSel ? 3 : 1.5,
@@ -17015,7 +17018,7 @@ export default function App() {
     napRouteLayersRef.current.forEach((line, i) => {
       const caja = napCajasNearby[i];
       if (!caja) return;
-      const isSel = orden.cajaNap === caja.codigo;
+      const isSel = orden.cajaNap === caja.codigo && orden.nodo === caja.nodo;
       line.setStyle({ weight: isSel ? 4 : 2, opacity: isSel ? 0.85 : 0.3, dashArray: isSel ? null : "7,5" });
       if (isSel) line.bringToFront();
     });
@@ -19056,13 +19059,13 @@ export default function App() {
                           {napCajasNearby.map(c => {
                             const p = c.capacidad ? Math.round((c.puertos_ocupados||0)/c.capacidad*100) : 0;
                             const color = p>=90?"#dc2626":p>=70?"#ea580c":"#0284c7";
-                            const sel = orden.cajaNap === c.codigo;
-                            const ruta = napRoutes[c.codigo];
+                            const sel = orden.cajaNap === c.codigo && orden.nodo === c.nodo;
+                            const ruta = napRoutes[`${c.codigo}__${c.nodo}`];
                             const d = ruta ? ruta.dist : c.dist;
                             const distLabel = d < 1000 ? Math.round(d)+"m" : (d/1000).toFixed(1)+"km";
                             return (
                               <div
-                                key={c.codigo}
+                                key={`${c.codigo}__${c.nodo}`}
                                 onClick={() => handleChange("cajaNap", c.codigo)}
                                 style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:8, cursor:"pointer", border: sel?`2px solid ${color}`:"1.5px solid #e4eaf4", background: sel?"#f0f9ff":"#f8fafc", transition:"all .15s" }}
                               >
