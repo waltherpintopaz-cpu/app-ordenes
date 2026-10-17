@@ -1,6 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+// Leaflet se carga dinamicamente (no en el import estatico del modulo) --
+// agregarlo como import normal corrio el orden de evaluacion de chunks del
+// bundle y disparaba "can't access lexical declaration before
+// initialization" al cargar CUALQUIER pantalla, no solo donde se usa el
+// mapa. Cargado perezoso, solo cuando el mapa realmente se va a crear,
+// evita por completo ese problema de orden de inicializacion.
+let _leafletCargado = null;
+async function cargarLeaflet() {
+  if (_leafletCargado) return _leafletCargado;
+  const [{ default: L }] = await Promise.all([
+    import("leaflet"),
+    import("leaflet/dist/leaflet.css"),
+  ]);
+  _leafletCargado = L;
+  return L;
+}
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
@@ -1214,27 +1228,32 @@ export default function SidebarApp() {
     if (ordenCoordMapInstanceRefSB.current) return;
     const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
     if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
-    const map = L.map(ordenCoordMapRefSB.current, { zoomControl:true }).setView([lat, lng], 17);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
-    const icon = L.divIcon({
-      html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
-      className:"", iconSize:[22,22], iconAnchor:[11,11],
+    let cancelado = false;
+    cargarLeaflet().then((L) => {
+      if (cancelado || !ordenCoordMapRefSB.current || ordenCoordMapInstanceRefSB.current) return;
+      const map = L.map(ordenCoordMapRefSB.current, { zoomControl:true }).setView([lat, lng], 17);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
+      const icon = L.divIcon({
+        html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+        className:"", iconSize:[22,22], iconAnchor:[11,11],
+      });
+      const marker = L.marker([lat, lng], { icon, draggable:true }).addTo(map);
+      marker.on("dragend", (e) => {
+        const { lat:nlat, lng:nlng } = e.target.getLatLng();
+        setOrdenForm(p => ({ ...p, coordenadas: `${nlat.toFixed(6)}, ${nlng.toFixed(6)}` }));
+      });
+      map.on("click", (e) => {
+        const { lat:nlat, lng:nlng } = e.latlng;
+        setOrdenForm(p => ({ ...p, coordenadas: `${nlat.toFixed(6)}, ${nlng.toFixed(6)}` }));
+        marker.setLatLng([nlat, nlng]);
+      });
+      ordenCoordMapInstanceRefSB.current = map;
+      ordenCoordMapMarkerRefSB.current = marker;
+      setTimeout(() => map.invalidateSize(), 80);
     });
-    const marker = L.marker([lat, lng], { icon, draggable:true }).addTo(map);
-    marker.on("dragend", (e) => {
-      const { lat:nlat, lng:nlng } = e.target.getLatLng();
-      setOrdenForm(p => ({ ...p, coordenadas: `${nlat.toFixed(6)}, ${nlng.toFixed(6)}` }));
-    });
-    map.on("click", (e) => {
-      const { lat:nlat, lng:nlng } = e.latlng;
-      setOrdenForm(p => ({ ...p, coordenadas: `${nlat.toFixed(6)}, ${nlng.toFixed(6)}` }));
-      marker.setLatLng([nlat, nlng]);
-    });
-    ordenCoordMapInstanceRefSB.current = map;
-    ordenCoordMapMarkerRefSB.current = marker;
-    setTimeout(() => map.invalidateSize(), 80);
     return () => {
-      map.remove();
+      cancelado = true;
+      if (ordenCoordMapInstanceRefSB.current) ordenCoordMapInstanceRefSB.current.remove();
       ordenCoordMapInstanceRefSB.current = null;
       ordenCoordMapMarkerRefSB.current = null;
     };
@@ -1258,31 +1277,36 @@ export default function SidebarApp() {
   useEffect(() => {
     if (!napPickerAbierto || ordenForm.cajaNap || !napMapRefSB.current) return;
     if (napMapInstanceRefSB.current) return; // ya esta creado
-    const [clat, clng] = (ordenForm.coordenadas || "").split(",").map(Number);
-    const centro = (clat && clng && !isNaN(clat) && !isNaN(clng)) ? [clat, clng] : [-16.409, -71.537];
-    const map = L.map(napMapRefSB.current, { zoomControl:true }).setView(centro, clat ? 16 : 13);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
-    napMapInstanceRefSB.current = map;
-    if (clat && clng) {
-      const clientIcon = L.divIcon({
-        html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
-        className:"", iconSize:[22,22], iconAnchor:[11,11],
-      });
-      const marker = L.marker(centro, { icon:clientIcon, draggable:true }).addTo(map);
-      marker.on("dragend", (e) => {
-        const { lat, lng } = e.target.getLatLng();
-        setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
-      });
-      map.on("click", (e) => {
-        const { lat, lng } = e.latlng;
-        setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
-        marker.setLatLng([lat, lng]);
-      });
-      napMapClientMarkerRefSB.current = marker;
-    }
-    setTimeout(() => map.invalidateSize(), 80);
+    let cancelado = false;
+    cargarLeaflet().then((L) => {
+      if (cancelado || !napMapRefSB.current || napMapInstanceRefSB.current) return;
+      const [clat, clng] = (ordenForm.coordenadas || "").split(",").map(Number);
+      const centro = (clat && clng && !isNaN(clat) && !isNaN(clng)) ? [clat, clng] : [-16.409, -71.537];
+      const map = L.map(napMapRefSB.current, { zoomControl:true }).setView(centro, clat ? 16 : 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
+      napMapInstanceRefSB.current = map;
+      if (clat && clng) {
+        const clientIcon = L.divIcon({
+          html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+          className:"", iconSize:[22,22], iconAnchor:[11,11],
+        });
+        const marker = L.marker(centro, { icon:clientIcon, draggable:true }).addTo(map);
+        marker.on("dragend", (e) => {
+          const { lat, lng } = e.target.getLatLng();
+          setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
+        });
+        map.on("click", (e) => {
+          const { lat, lng } = e.latlng;
+          setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
+          marker.setLatLng([lat, lng]);
+        });
+        napMapClientMarkerRefSB.current = marker;
+      }
+      setTimeout(() => map.invalidateSize(), 80);
+    });
     return () => {
-      map.remove();
+      cancelado = true;
+      if (napMapInstanceRefSB.current) napMapInstanceRefSB.current.remove();
       napMapInstanceRefSB.current = null;
       napMapClientMarkerRefSB.current = null;
       napMapBoxMarkersRefSB.current = [];
@@ -1301,32 +1325,44 @@ export default function SidebarApp() {
     marker.setLatLng([lat, lng]);
   }, [ordenForm.coordenadas]);
 
-  // Marcadores de cajas NAP cercanas -- se redibujan cuando cambia la lista
+  // Marcadores de cajas NAP cercanas -- se redibujan cuando cambia la lista.
+  // La creacion del mapa es asincrona (carga de Leaflet diferida), asi que
+  // si este efecto corre antes de que el mapa exista, reintenta un toque
+  // despues en vez de simplemente no dibujar nada.
   useEffect(() => {
-    const map = napMapInstanceRefSB.current;
-    if (!map) return;
-    napMapBoxMarkersRefSB.current.forEach(m => m.remove());
-    napMapBoxMarkersRefSB.current = [];
-    const lista = napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden;
-    lista.slice(0, 20).forEach(c => {
-      if (!c.lat || !c.lng) return;
-      const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
-      const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
-      const icon = L.divIcon({
-        html: `<div style="display:flex;flex-direction:column;align-items:center">
-          <div style="width:26px;height:26px;border-radius:7px;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">📦</div>
-        </div>`,
-        className:"", iconSize:[26,26], iconAnchor:[13,13],
-      });
-      const marker = L.marker([c.lat, c.lng], { icon }).addTo(map);
-      marker.bindTooltip(`${c.codigo} · ${c.puertos_ocupados||0}/${c.capacidad||8}`, { direction:"top" });
-      marker.on("click", () => {
-        cajaNapDesdClienteRefSB.current = true;
-        setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" }));
-      });
-      napMapBoxMarkersRefSB.current.push(marker);
+    let cancelado = false;
+    let timeoutId;
+    cargarLeaflet().then((L) => {
+      const tryDraw = () => {
+        if (cancelado) return;
+        const map = napMapInstanceRefSB.current;
+        if (!map) { timeoutId = setTimeout(tryDraw, 120); return; }
+        napMapBoxMarkersRefSB.current.forEach(m => m.remove());
+        napMapBoxMarkersRefSB.current = [];
+        const lista = napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden;
+        lista.slice(0, 20).forEach(c => {
+          if (!c.lat || !c.lng) return;
+          const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
+          const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
+          const icon = L.divIcon({
+            html: `<div style="display:flex;flex-direction:column;align-items:center">
+              <div style="width:26px;height:26px;border-radius:7px;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">📦</div>
+            </div>`,
+            className:"", iconSize:[26,26], iconAnchor:[13,13],
+          });
+          const marker = L.marker([c.lat, c.lng], { icon }).addTo(map);
+          marker.bindTooltip(`${c.codigo} · ${c.puertos_ocupados||0}/${c.capacidad||8}`, { direction:"top" });
+          marker.on("click", () => {
+            cajaNapDesdClienteRefSB.current = true;
+            setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" }));
+          });
+          napMapBoxMarkersRefSB.current.push(marker);
+        });
+      };
+      tryDraw();
     });
-  }, [napCajasNearbySB, napCajasOrden]);
+    return () => { cancelado = true; if (timeoutId) clearTimeout(timeoutId); };
+  }, [napCajasNearbySB, napCajasOrden, napPickerAbierto]);
 
   // Auto-asignar la caja mas cercana -- Nod_02 todavia no tiene todas sus
   // cajas registradas en nap_cajas, asi que auto-asignar ahi puede terminar
