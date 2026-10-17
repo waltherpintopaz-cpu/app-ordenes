@@ -19219,24 +19219,24 @@ export default function App() {
                                 <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando bornes…</div>
                               ) : cajaBornesInfo ? (
                                 <>
-                                  <div style={{ position: "relative", background: "linear-gradient(165deg, #363c48 0%, #2b2f38 45%, #23262e 100%)", borderRadius: 14, padding: "20px 16px 14px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -8px 16px rgba(0,0,0,0.25)" }}>
-                                    <div style={{ position: "absolute", top: 8, left: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a", boxShadow: "inset 0 1px 1px rgba(0,0,0,0.4), 0 0.5px 0 rgba(255,255,255,0.15)" }} />
-                                    <div style={{ position: "absolute", top: 8, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a", boxShadow: "inset 0 1px 1px rgba(0,0,0,0.4), 0 0.5px 0 rgba(255,255,255,0.15)" }} />
-                                    <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#8d93a3", marginBottom: 10 }}>
+                                  <div style={{ position: "relative", background: "linear-gradient(165deg, #f8faff 0%, #eef3fd 100%)", border: "1px solid #dbe4fb", borderRadius: 16, padding: "20px 18px 16px", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" }}>
+                                    <div style={{ position: "absolute", top: 10, left: 12, width: 7, height: 7, borderRadius: "50%", background: "#c7d3ee" }} />
+                                    <div style={{ position: "absolute", top: 10, right: 12, width: 7, height: 7, borderRadius: "50%", background: "#c7d3ee" }} />
+                                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: "#64748b", marginBottom: 12 }}>
                                       SPLITTER 1:{cajaBornesInfo.capacidad}
                                     </div>
                                     {/* Fibra troncal de entrada -- un solo cordon que "se reparte" en los
                                         N puertos de salida, para que se lea como un splitter real y no
                                         solo una fila de conectores sueltos. */}
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12, paddingBottom: 10, borderBottom: "1px dashed #454b59" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, paddingBottom: 11, borderBottom: "1px dashed #c7d3ee" }}>
                                       <svg width="20" height="14" viewBox="0 0 20 14">
                                         <path d="M0 7 H10" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" />
-                                        <path d="M10 7 L17 2 M10 7 L17 7 M10 7 L17 12" stroke="#6b7280" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity={0.7} />
+                                        <path d="M10 7 L17 2 M10 7 L17 7 M10 7 L17 12" stroke="#94a3b8" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity={0.8} />
                                         <circle cx="10" cy="7" r="2" fill="#f59e0b" />
                                       </svg>
-                                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: "#9aa1b0" }}>ENTRADA TRONCAL</span>
+                                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#64748b" }}>ENTRADA TRONCAL</span>
                                     </div>
-                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(50px, 1fr))", gap: 10 }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: 14 }}>
                                       {Array.from({ length: cajaBornesInfo.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
                                         const ocupantes = cajaBornesInfo.porPuerto[puerto] || [];
                                         const confirmado = ocupantes.some(c => c.precinto_codigo);
@@ -19259,17 +19259,17 @@ export default function App() {
                                             style={{ animationDelay: `${Math.min(idx, 24) * 22}ms`, display: "flex", flexDirection: "column", alignItems: "center", cursor: puedeAsignar || !libre ? "pointer" : "default" }}
                                           >
                                             <div className="borne-icon" style={{
-                                              width: 36, height: 42, position: "relative",
-                                              filter: sel || infoAbierta ? "drop-shadow(0 0 0 2px #1d4ed8)" : "none",
+                                              width: 54, height: 63, position: "relative",
+                                              filter: sel || infoAbierta ? "drop-shadow(0 0 0 2.5px #1d4ed8)" : "none",
                                             }}>
                                               <PortIconWeb ocupado={!libre} colorOverride={colorOverride} uid={`${orden.cajaNap}-${puerto}`} />
                                               {suspendido && (
-                                                <span className="borne-susp-dot" style={{ position: "absolute", top: -2, right: -2, width: 10, height: 10, borderRadius: "50%", background: "#dc2626", border: "2px solid #2b2f38" }} title="Suspendido" />
+                                                <span className="borne-susp-dot" style={{ position: "absolute", top: -2, right: -2, width: 13, height: 13, borderRadius: "50%", background: "#dc2626", border: "2.5px solid #eef3fd" }} title="Suspendido" />
                                               )}
                                             </div>
-                                            <span style={{ fontSize: 10, fontWeight: 800, color: sel ? "#93c5fd" : !libre ? "#e2e8f0" : "#8d93a3", marginTop: 2 }}>{puerto}</span>
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: sel ? "#1d4ed8" : !libre ? "#1e293b" : "#94a3b8", marginTop: 4 }}>{puerto}</span>
                                             {!libre && (
-                                              <span style={{ fontSize: 8.5, fontWeight: 600, maxWidth: 48, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: suspendido ? "#fca5a5" : "#aab1c2" }}>
+                                              <span style={{ fontSize: 10, fontWeight: 600, maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: suspendido ? "#dc2626" : "#64748b" }}>
                                                 {ocupantes[0].nombre?.split(" ")[0] || "—"}
                                               </span>
                                             )}
@@ -19291,40 +19291,40 @@ export default function App() {
                                     const puedeConsultar = !!cli.sn_onu && (nodoUsaHuawei(cli.nodo) || nodoUsaOltSsh(cli.nodo));
                                     const consultar = () => nodoUsaHuawei(cli.nodo) ? consultarSenalHuaweiTabla({ id: cli.id, snOnu: cli.sn_onu }) : consultarSenalOltSshTabla({ id: cli.id, snOnu: cli.sn_onu, nodo: cli.nodo, vlan: cli.vlan });
                                     return (
-                                      <div className="borne-tile-wrap" style={{ marginTop: 12, background: "#1c2029", borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 24px rgba(15,23,42,0.25)" }}>
+                                      <div className="borne-tile-wrap" style={{ marginTop: 12, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 24px rgba(15,23,42,0.08)" }}>
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                                           <div>
-                                            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{cli.nombre || "—"}</div>
-                                            <div style={{ fontSize: 11, color: "#8d93a3" }}>Puerto {bornePuertoInfo} · DNI {cli.dni || "—"}</div>
+                                            <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{cli.nombre || "—"}</div>
+                                            <div style={{ fontSize: 11, color: "#64748b" }}>Puerto {bornePuertoInfo} · DNI {cli.dni || "—"}</div>
                                           </div>
-                                          <button type="button" onClick={() => setBornePuertoInfo(null)} style={{ background: "none", border: "none", color: "#8d93a3", cursor: "pointer", fontSize: 16 }}>✕</button>
+                                          <button type="button" onClick={() => setBornePuertoInfo(null)} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 16 }}>✕</button>
                                         </div>
                                         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                                          <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: cli.precinto_codigo ? "rgba(22,163,74,0.18)" : "rgba(245,158,11,0.18)", color: cli.precinto_codigo ? "#4ade80" : "#fbbf24" }}>
+                                          <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: cli.precinto_codigo ? "#dcfce7" : "#fef3c7", color: cli.precinto_codigo ? "#15803d" : "#92400e" }}>
                                             🏷️ {cli.precinto_codigo ? `Etiqueta ${cli.precinto_codigo}` : "Sin etiqueta confirmada"}
                                           </span>
                                           {susp ? (
-                                            <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: "rgba(220,38,38,0.18)", color: "#f87171" }}>
+                                            <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: "#fee2e2", color: "#dc2626" }}>
                                               ⛔ Suspendido{cli.fecha_suspendido ? ` el ${new Date(cli.fecha_suspendido).toLocaleDateString("es-PE")}` : ""}
                                             </span>
                                           ) : (
-                                            <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: "rgba(22,163,74,0.18)", color: "#4ade80" }}>✓ {cli.estado_servicio || "ACTIVO"}</span>
+                                            <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 7, background: "#dcfce7", color: "#15803d" }}>✓ {cli.estado_servicio || "ACTIVO"}</span>
                                           )}
                                         </div>
                                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
                                           {senalCargando ? (
-                                            <span style={{ fontSize: 12, color: "#8d93a3" }}>Consultando señal…</span>
+                                            <span style={{ fontSize: 12, color: "#64748b" }}>Consultando señal…</span>
                                           ) : senalError ? (
-                                            <span style={{ fontSize: 12, color: "#f87171" }}>{senalError}</span>
+                                            <span style={{ fontSize: 12, color: "#dc2626" }}>{senalError}</span>
                                           ) : rxMostrar != null ? (
-                                            <span style={{ fontSize: 13, fontWeight: 800, color: Number(rxMostrar) >= -22 ? "#4ade80" : Number(rxMostrar) >= -25 ? "#fbbf24" : "#f87171" }}>
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: Number(rxMostrar) >= -22 ? "#15803d" : Number(rxMostrar) >= -25 ? "#b45309" : "#dc2626" }}>
                                               📶 {rxMostrar} dBm{cli.signal_updated_at && !senalViva ? ` (hace ${Math.max(0, Math.floor((Date.now() - new Date(cli.signal_updated_at).getTime()) / 60000))} min)` : ""}
                                             </span>
                                           ) : (
-                                            <span style={{ fontSize: 12, color: "#8d93a3" }}>Sin señal registrada</span>
+                                            <span style={{ fontSize: 12, color: "#94a3b8" }}>Sin señal registrada</span>
                                           )}
                                           {puedeConsultar && (
-                                            <button type="button" onClick={consultar} disabled={senalCargando} style={{ fontSize: 11, fontWeight: 700, color: "#93c5fd", background: "none", border: "none", cursor: senalCargando ? "wait" : "pointer" }}>
+                                            <button type="button" onClick={consultar} disabled={senalCargando} style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", background: "none", border: "none", cursor: senalCargando ? "wait" : "pointer" }}>
                                               ↺ {rxMostrar != null ? "Actualizar" : "Consultar"}
                                             </button>
                                           )}
