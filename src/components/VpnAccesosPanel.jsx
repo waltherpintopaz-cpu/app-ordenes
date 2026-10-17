@@ -204,7 +204,7 @@ export default function VpnAccesosPanel({ usuarioSesion, puedeRevocar }) {
   };
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
+    <div style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <h2 style={{ marginBottom: 4 }}>Accesos VPN</h2>
       <p style={{ color: "#666", marginBottom: 20, fontSize: 14 }}>
         Genera un acceso WireGuard nuevo para una PC, un celular o un Mikrotik. La llave
