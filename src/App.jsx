@@ -16914,7 +16914,11 @@ export default function App() {
         handleChange("cajaNap", caja.codigo);
         m.setPopupContent(popupBase + `<br><span style="font-size:11px;color:#6b7280">Cargando clientes...</span></div>`);
         m.openPopup();
-        supabase.from("clientes").select("nombre,dni,caja_nap").ilike("caja_nap", String(caja.codigo).trim()).order("nombre")
+        // El codigo de caja NO es unico entre nodos (ej. "Nap-007" existe
+        // tanto en Nod_01 como en Nod_02) -- filtrar solo por caja_nap
+        // mezclaba los clientes de las dos cajas distintas en el mismo
+        // popup. Hay que acotar tambien por nodo.
+        supabase.from("clientes").select("nombre,dni,caja_nap,nodo").ilike("caja_nap", String(caja.codigo).trim()).eq("nodo", caja.nodo).order("nombre")
           .then(({ data }) => {
             const codigoNorm = String(caja.codigo).trim().toLowerCase();
             const lista = (data || []).filter((c) => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
@@ -16953,9 +16957,14 @@ export default function App() {
     if (!codigo) { setCajaBornesInfo(null); return; }
     let cancelado = false;
     setCajaBornesLoading(true);
+    // Mismo bug que el popup del mapa: el codigo de caja no es unico entre
+    // nodos (ej. "Nap-007" existe en Nod_01 y en Nod_02), asi que hay que
+    // acotar tambien por nodo o se mezclan los clientes de dos cajas
+    // distintas.
+    const nodoActual = String(orden.nodo || "").trim();
     Promise.all([
-      supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).limit(1).maybeSingle(),
-      supabase.from("clientes").select("id,nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap,sn_onu,nodo,vlan,rx_signal,signal_updated_at,fecha_suspendido").ilike("caja_nap", codigo),
+      supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).eq("nodo", nodoActual).limit(1).maybeSingle(),
+      supabase.from("clientes").select("id,nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap,sn_onu,nodo,vlan,rx_signal,signal_updated_at,fecha_suspendido").ilike("caja_nap", codigo).eq("nodo", nodoActual),
     ]).then(([cajaRes, cliRes]) => {
       if (cancelado) return;
       const codigoNorm = codigo.toLowerCase();
