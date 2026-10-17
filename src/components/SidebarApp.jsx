@@ -7661,57 +7661,83 @@ export default function SidebarApp() {
           </div>
         )}
 
-        {/* ══ NOTAS DEL CLIENTE ══ */}
-        <div style={{ padding:"6px 8px 0" }}>
-          <button onClick={() => setShowNotas(v => !v)}
-            style={{ width:"100%", background: showNotas ? T.accent : T.bg,
-              border:`1px solid ${T.border}`, borderRadius:5, padding:"7px 12px",
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-              cursor:"pointer", fontFamily:"inherit" }}>
-            <span style={{ fontSize:11, fontWeight:700, color:T.blue }}>
-              📝 Notas del cliente {notasCliente.length > 0 && <span style={{ background:T.blue, color:"#fff", borderRadius:99, padding:"1px 7px", fontSize:10, marginLeft:4 }}>{notasCliente.length}</span>}
+        {/* ══ NOTAS DEL CLIENTE — boton flotante, siempre al alcance sin
+            importar el scroll (antes era una seccion colapsable al fondo
+            del panel, habia que bajar todo para llegar). ══ */}
+        <button onClick={() => setShowNotas(v => !v)}
+          title="Notas del cliente"
+          style={{ position:"fixed", right:16, bottom:16, zIndex:9998,
+            width:48, height:48, borderRadius:"50%", border:"none", cursor:"pointer",
+            background:T.blue, color:"#fff", boxShadow:"0 4px 14px rgba(0,0,0,0.25)",
+            display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <FileText size={20} />
+          {notasCliente.length > 0 && (
+            <span style={{ position:"absolute", top:-3, right:-3, background:T.red, color:"#fff",
+              borderRadius:99, minWidth:18, height:18, padding:"0 4px", fontSize:10, fontWeight:700,
+              display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${T.bg}` }}>
+              {notasCliente.length}
             </span>
-            <span style={{ fontSize:12, color:T.muted, fontWeight:700 }}>{showNotas ? "▲ Ocultar" : "▼ Ver"}</span>
-          </button>
-          {showNotas && (
-            <div style={{ background:T.accent, border:`1px solid #e9d5ff`, borderRadius:"0 0 6px 6px", padding:"10px 10px 8px" }}>
-              {/* Formulario nueva nota */}
-              <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-                <textarea
-                  placeholder="Agregar nota..."
-                  value={notaNueva}
-                  onChange={e => setNotaNueva(e.target.value)}
-                  rows={2}
-                  style={{ flex:1, padding:"7px 9px", border:"1.5px solid #d8b4fe", borderRadius:6, fontSize:12, fontFamily:"inherit", resize:"vertical", outline:"none" }}
-                />
-                <button onClick={() => guardarNota(cliente.cedula || detalle?.cedula)}
-                  disabled={notaGuardando || !notaNueva.trim()}
-                  style={{ padding:"0 12px", background: notaNueva.trim() ? T.blue : T.border, color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor: notaNueva.trim() ? "pointer" : "default", alignSelf:"stretch" }}>
-                  {notaGuardando ? "..." : "✓"}
+          )}
+        </button>
+
+        {showNotas && (
+          <>
+            <div onClick={() => setShowNotas(false)}
+              style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.25)",
+                animation:"sbToastBackdropIn .2s ease both" }} />
+            <div style={{ position:"fixed", right:16, bottom:72, zIndex:9998, width:300, maxWidth:"calc(100vw - 32px)",
+              maxHeight:"70vh", display:"flex", flexDirection:"column",
+              background:T.card, borderRadius:12, border:`1px solid ${T.border}`,
+              boxShadow:"0 12px 32px rgba(0,0,0,0.25)", overflow:"hidden",
+              animation:"sbToastCardIn .28s cubic-bezier(.34,1.56,.64,1) both" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+                padding:"10px 12px", borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+                <span style={{ fontSize:12, fontWeight:700, color:T.navy, display:"flex", alignItems:"center", gap:6 }}>
+                  <FileText size={14} color={T.blue} /> Notas del cliente
+                </span>
+                <button onClick={() => setShowNotas(false)} className="sb-btn-ghost" title="Cerrar">
+                  <XCircle size={16} />
                 </button>
               </div>
-              {/* Lista de notas */}
-              {notasCliente.length === 0 ? (
-                <div style={{ fontSize:11, color:T.muted, textAlign:"center", padding:"6px 0" }}>Sin notas registradas</div>
-              ) : (
-                <div style={{ display:"grid", gap:6 }}>
-                  {notasCliente.map(n => (
-                    <div key={n.id} style={{ background:"#fff", border:"1px solid #e9d5ff", borderRadius:6, padding:"8px 10px" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
-                        <div style={{ fontSize:10, color:T.blue, fontWeight:700 }}>
-                          {n.autor} · {new Date(n.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"short",year:"numeric"})} {new Date(n.created_at).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
-                        </div>
-                        <button onClick={() => eliminarNota(n.id)}
-                          style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"#dc2626", padding:"0 2px", lineHeight:1 }}>✕</button>
-                      </div>
-                      <div style={{ fontSize:12, color:"#1e293b", lineHeight:1.5, whiteSpace:"pre-wrap" }}>{n.nota}</div>
-                    </div>
-                  ))}
+              <div style={{ padding:"10px 12px", overflowY:"auto" }}>
+                {/* Formulario nueva nota */}
+                <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                  <textarea
+                    placeholder="Agregar nota..."
+                    value={notaNueva}
+                    onChange={e => setNotaNueva(e.target.value)}
+                    rows={2}
+                    style={{ flex:1, padding:"7px 9px", border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:12, fontFamily:"inherit", resize:"vertical", outline:"none", background:T.card, color:T.navy }}
+                  />
+                  <button onClick={() => guardarNota(cliente.cedula || detalle?.cedula)}
+                    disabled={notaGuardando || !notaNueva.trim()}
+                    style={{ padding:"0 12px", background: notaNueva.trim() ? T.blue : T.border, color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor: notaNueva.trim() ? "pointer" : "default", alignSelf:"stretch" }}>
+                    {notaGuardando ? "..." : "✓"}
+                  </button>
                 </div>
-              )}
+                {/* Lista de notas */}
+                {notasCliente.length === 0 ? (
+                  <div style={{ fontSize:11, color:T.muted, textAlign:"center", padding:"6px 0" }}>Sin notas registradas</div>
+                ) : (
+                  <div style={{ display:"grid", gap:6 }}>
+                    {notasCliente.map(n => (
+                      <div key={n.id} style={{ background:T.bg, border:`1px solid ${T.border}`, borderRadius:6, padding:"8px 10px" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                          <div style={{ fontSize:10, color:T.blue, fontWeight:700 }}>
+                            {n.autor} · {new Date(n.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"short",year:"numeric"})} {new Date(n.created_at).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}
+                          </div>
+                          <button onClick={() => eliminarNota(n.id)}
+                            style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:T.red, padding:"0 2px", lineHeight:1 }}>✕</button>
+                        </div>
+                        <div style={{ fontSize:12, color:T.navy, lineHeight:1.5, whiteSpace:"pre-wrap" }}>{n.nota}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
+          </>
+        )}
 
         {/* ══ FOOTER ══ */}
         <div style={{ textAlign:"center", padding:"8px 0 14px" }}>
