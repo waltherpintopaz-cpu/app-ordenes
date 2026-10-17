@@ -616,6 +616,14 @@ const getGlobalCSS = (T) => `
   @keyframes sbFadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
   @keyframes sbPing   { 0%{transform:scale(1);opacity:.6} 100%{transform:scale(2.2);opacity:0} }
   @keyframes dotPulse { 0%,80%,100%{transform:scale(.55);opacity:.25} 40%{transform:scale(1);opacity:1} }
+  @keyframes sbToastBackdropIn  { from{opacity:0} to{opacity:1} }
+  @keyframes sbToastBackdropOut { from{opacity:1} to{opacity:0} }
+  @keyframes sbToastCardIn  { 0%{opacity:0;transform:scale(.75) translateY(8px)} 60%{opacity:1;transform:scale(1.04) translateY(0)} 100%{opacity:1;transform:scale(1) translateY(0)} }
+  @keyframes sbToastCardOut { from{opacity:1;transform:scale(1)} to{opacity:0;transform:scale(.9)} }
+  @keyframes sbToastRingIn  { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+  @keyframes sbToastCheckDraw { from{stroke-dashoffset:34} to{stroke-dashoffset:0} }
+  @keyframes sbToastXDraw1 { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
+  @keyframes sbToastXDraw2 { from{stroke-dashoffset:20} to{stroke-dashoffset:0} }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 4px; }
 `;
 
@@ -896,6 +904,8 @@ export default function SidebarApp() {
   const [loading, setLoading]     = useState(false);
   const [error,   setError]       = useState(null);
   const [msg,     setMsg]         = useState(null);  // notificación
+  const [msgLeaving, setMsgLeaving] = useState(false); // true -> reproduce la animacion de salida
+  const msgTimersRef = useRef([]);
   const [tab,     setTab]         = useState("info"); // info | pago | prorroga
   // Pago manual
   const [formPago, setFormPago]   = useState({ pasarela: "Yape", monto: "", idfactura: "" });
@@ -1228,8 +1238,12 @@ export default function SidebarApp() {
   }, []);
 
   function notify(text, ok = true) {
+    msgTimersRef.current.forEach(clearTimeout);
+    msgTimersRef.current = [];
+    setMsgLeaving(false);
     setMsg({ text, ok });
-    setTimeout(() => setMsg(null), 4000);
+    msgTimersRef.current.push(setTimeout(() => setMsgLeaving(true), 2200));
+    msgTimersRef.current.push(setTimeout(() => { setMsg(null); setMsgLeaving(false); }, 2500));
   }
 
   function copiarAlPortapapeles(valor, etiqueta = "Valor") {
@@ -4494,12 +4508,43 @@ export default function SidebarApp() {
         )}
       </div>
 
-      {/* ── Notificación flotante ── */}
+      {/* ── Notificación centrada, animada ── */}
       {msg && (
-        <div style={{ background:msg.ok ? T.greenLt : T.redLt, color:msg.ok ? T.green : T.red,
-          border:`1px solid ${msg.ok?"#86efac":"#fca5a5"}`, borderRadius:0,
-          padding:"8px 12px", fontSize:12, fontWeight:600, borderLeft:`3px solid ${msg.ok?T.green:T.red}` }}>
-          {msg.text}
+        <div style={{ position:"fixed", inset:0, zIndex:9999, display:"flex",
+          alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+          <div style={{ position:"absolute", inset:0, background:"rgba(10,10,26,0.28)",
+            animation:`${msgLeaving ? "sbToastBackdropOut" : "sbToastBackdropIn"} .25s ease both` }} />
+          <div style={{ position:"relative", background:T.card, borderRadius:16, padding:"22px 26px",
+            minWidth:190, maxWidth:260, boxShadow:"0 18px 40px rgba(0,0,0,0.28)",
+            border:`1px solid ${T.border}`, display:"flex", flexDirection:"column",
+            alignItems:"center", gap:10, textAlign:"center",
+            animation:`${msgLeaving ? "sbToastCardOut .22s ease both" : "sbToastCardIn .42s cubic-bezier(.34,1.56,.64,1) both"}` }}>
+            <div style={{ width:56, height:56, borderRadius:"50%",
+              background: msg.ok ? T.greenLt : T.redLt,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              animation:"sbToastRingIn .35s ease both .05s" }}>
+              {msg.ok ? (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 13l4.5 4.5L19 7" stroke={T.green} strokeWidth="3"
+                    strokeLinecap="round" strokeLinejoin="round"
+                    strokeDasharray="34" strokeDashoffset="34"
+                    style={{ animation:"sbToastCheckDraw .4s ease forwards .18s" }} />
+                </svg>
+              ) : (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                  <path d="M6 6l12 12" stroke={T.red} strokeWidth="3" strokeLinecap="round"
+                    strokeDasharray="20" strokeDashoffset="20"
+                    style={{ animation:"sbToastXDraw1 .25s ease forwards .18s" }} />
+                  <path d="M18 6L6 18" stroke={T.red} strokeWidth="3" strokeLinecap="round"
+                    strokeDasharray="20" strokeDashoffset="20"
+                    style={{ animation:"sbToastXDraw2 .25s ease forwards .35s" }} />
+                </svg>
+              )}
+            </div>
+            <div style={{ fontSize:13, fontWeight:700, color:T.navy, lineHeight:1.35 }}>
+              {msg.text}
+            </div>
+          </div>
         </div>
       )}
 
