@@ -1192,6 +1192,13 @@ export default function SidebarApp() {
   const [cajaBornesInfoSB, setCajaBornesInfoSB] = useState(null);
   const [cajaBornesLoadingSB, setCajaBornesLoadingSB] = useState(false);
   const [bornePuertoInfoSB, setBornePuertoInfoSB] = useState(null);
+  // Mapa chico por defecto (240px) con boton "Ampliar" para agrandarlo sin
+  // recrear el mapa -- y la lista de "Cajas cercanas" empieza colapsada: con
+  // el mapa ya mostrando las cajas como iconos tocables, la lista repetia la
+  // misma info y ocupaba toda la pantalla del celular antes de llegar al
+  // mapa en si.
+  const [napMapAmpliadoSB, setNapMapAmpliadoSB] = useState(false);
+  const [napListaAbiertaSB, setNapListaAbiertaSB] = useState(false);
   const cajaNapDesdClienteRefSB = useRef(false);
   const ordenCoordMapRefSB = useRef(null);         // mapa interactivo de "Coordenadas" (Crear orden)
   const ordenCoordMapInstanceRefSB = useRef(null);
@@ -1344,12 +1351,38 @@ export default function SidebarApp() {
         lista.slice(0, 20).forEach(c => {
           if (!c.lat || !c.lng) return;
           const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
-          const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
+          const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#0284c7";
+          const uid = String(c.codigo || "").replace(/[^a-z0-9]/gi, "") + "_" + String(c.nodo || "").replace(/[^a-z0-9]/gi, "");
+          // Mismo dibujo de caja (SVG, no emoji) que usa el mapa de "Crear
+          // orden" en App.jsx -- antes esto era un cuadradito de color con un
+          // 📦 adentro, visualmente distinto al resto del sistema.
           const icon = L.divIcon({
-            html: `<div style="display:flex;flex-direction:column;align-items:center">
-              <div style="width:26px;height:26px;border-radius:7px;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">📦</div>
-            </div>`,
-            className:"", iconSize:[26,26], iconAnchor:[13,13],
+            html: `<svg width="22" height="32" viewBox="0 0 22 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="ns${uid}" x="-25%" y="-15%" width="150%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.5)"/>
+    </filter>
+  </defs>
+  <path d="M9 27 L11 31 L13 27Z" fill="#64748b"/>
+  <rect x="1" y="1" width="20" height="26" rx="2.5" fill="#cfd8dc" filter="url(#ns${uid})"/>
+  <rect x="0" y="6"  width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <rect x="0" y="16" width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <rect x="20" y="6"  width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <rect x="20" y="16" width="2" height="5" rx="1" fill="#a8bcc5"/>
+  <rect x="4" y="5"  width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="8"  width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="11" width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="14" width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <rect x="4" y="17" width="14" height="2" rx="0.8" fill="#a8bcc5"/>
+  <circle cx="3.5"  cy="23" r="1.2" fill="${color}"/>
+  <circle cx="6.5"  cy="23" r="1.2" fill="${color}"/>
+  <circle cx="9.5"  cy="23" r="1.2" fill="${color}"/>
+  <circle cx="12.5" cy="23" r="1.2" fill="${color}"/>
+  <circle cx="15.5" cy="23" r="1.2" fill="#64748b"/>
+  <circle cx="18.5" cy="23" r="1.2" fill="#64748b"/>
+  <rect x="1" y="1" width="20" height="26" rx="2.5" fill="none" stroke="#64748b" stroke-width="0.8"/>
+</svg>`,
+            className:"", iconSize:[22,32], iconAnchor:[11,32],
           });
           const marker = L.marker([c.lat, c.lng], { icon }).addTo(map);
           marker.bindTooltip(`${c.codigo} · ${c.puertos_ocupados||0}/${c.capacidad||8}`, { direction:"top" });
@@ -1364,6 +1397,16 @@ export default function SidebarApp() {
     });
     return () => { cancelado = true; if (timeoutId) clearTimeout(timeoutId); };
   }, [napCajasNearbySB, napCajasOrden, napPickerAbierto]);
+
+  // Leaflet calcula su tamaño por el contenedor en el momento en que se
+  // crea -- al cambiar la altura del div (boton "Ampliar mapa") hay que
+  // avisarle con invalidateSize() despues de que termine la transicion CSS,
+  // sino el mapa queda con un recorte o un area gris sin tiles.
+  useEffect(() => {
+    if (!napMapInstanceRefSB.current) return;
+    const t = setTimeout(() => napMapInstanceRefSB.current?.invalidateSize(), 220);
+    return () => clearTimeout(t);
+  }, [napMapAmpliadoSB]);
 
   // Auto-asignar la caja mas cercana -- Nod_02 todavia no tiene todas sus
   // cajas registradas en nap_cajas, asi que auto-asignar ahi puede terminar
@@ -4770,7 +4813,7 @@ export default function SidebarApp() {
                   {ordenForm.cajaNap ? ` · Caja ${ordenForm.cajaNap}` : ""}
                 </div>
               </div>
-              <button type="button" onClick={() => setNapPickerAbierto(false)}
+              <button type="button" onClick={() => { setNapPickerAbierto(false); setNapMapAmpliadoSB(false); setNapListaAbiertaSB(false); }}
                 style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#94a3b8", lineHeight:1 }}>✕</button>
             </div>
 
@@ -4779,9 +4822,19 @@ export default function SidebarApp() {
                 <div style={{ fontSize:12, color:"#94a3b8" }}>Selecciona el nodo del cliente para ver sus cajas NAP.</div>
               ) : !ordenForm.cajaNap ? (
                 <>
-                  <div ref={napMapRefSB} style={{ height:240, borderRadius:10, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}` }} />
+                  <div style={{ position:"relative" }}>
+                    <div ref={napMapRefSB} style={{ height: napMapAmpliadoSB ? 440 : 240, borderRadius:10, overflow:"hidden",
+                      marginBottom:10, border:`1px solid ${T.border}`, transition:"height .22s ease" }} />
+                    <button type="button" onClick={() => setNapMapAmpliadoSB(v => !v)}
+                      style={{ position:"absolute", top:8, right:8, zIndex:400, display:"flex", alignItems:"center", gap:4,
+                        background:"rgba(255,255,255,0.95)", border:`1px solid ${T.border}`, borderRadius:8,
+                        padding:"5px 9px", fontSize:10.5, fontWeight:700, color:"#334155", cursor:"pointer",
+                        boxShadow:"0 2px 6px rgba(15,23,42,0.15)" }}>
+                      {napMapAmpliadoSB ? "↙ Reducir mapa" : "↗ Ampliar mapa"}
+                    </button>
+                  </div>
                   <div style={{ fontSize:10, color:"#94a3b8", marginBottom:10 }}>
-                    Arrastra el punto azul (o toca el mapa) para ajustar la ubicación · toca una caja 📦 para elegirla
+                    Arrastra el punto azul (o toca el mapa) para ajustar la ubicación · toca una caja para elegirla
                   </div>
                   {ordenForm.nodo === "Nod_02" && (
                     <div style={{ display:"flex", alignItems:"center", gap:6, background:T.amberLt, color:T.amber,
@@ -4789,34 +4842,47 @@ export default function SidebarApp() {
                       <AlertTriangle size={13} /> Nod_02 no tiene todas sus cajas registradas todavía — revisa bien antes de elegir.
                     </div>
                   )}
-                  <div style={{ fontSize:11, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
-                    {napCajasNearbySB.length ? "Cajas cercanas" : "Cajas de este nodo"}
-                  </div>
-                  {(napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).length === 0 ? (
-                    <div style={{ fontSize:12, color:"#94a3b8" }}>Sin cajas NAP registradas para este nodo.</div>
-                  ) : (
-                    <div style={{ display:"grid", gap:6 }}>
-                      {(napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).slice(0, 10).map(c => {
-                        const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
-                        const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
-                        return (
-                          <button key={c.codigo} type="button"
-                            onClick={() => { cajaNapDesdClienteRefSB.current = true; setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" })); }}
-                            style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
-                              background:"#f8faff", border:`1px solid ${T.border}`, borderRadius:10, padding:"9px 12px",
-                              cursor:"pointer", textAlign:"left" }}>
-                            <div>
-                              <div style={{ fontSize:12.5, fontWeight:700, color:"#0f172a" }}>{c.codigo}</div>
-                              <div style={{ fontSize:10.5, color:"#64748b" }}>{c.sector || ""} · {c.nodo}</div>
-                            </div>
-                            <div style={{ textAlign:"right", flexShrink:0 }}>
-                              {c.dist != null && <div style={{ fontSize:10.5, color:"#94a3b8" }}>{c.dist < 1000 ? `${Math.round(c.dist)}m` : `${(c.dist/1000).toFixed(1)}km`}</div>}
-                              <div style={{ fontSize:10.5, fontWeight:700, color }}>{c.puertos_ocupados||0}/{c.capacidad||8}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {/* Lista colapsada por defecto -- las cajas ya se eligen
+                      directo desde los iconos del mapa de arriba; la lista
+                      es solo un respaldo (ej. GPS impreciso) y antes se
+                      mostraba siempre entera, empujando el mapa fuera de
+                      vista en pantallas chicas. */}
+                  <button type="button" onClick={() => setNapListaAbiertaSB(v => !v)}
+                    style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%",
+                      background:"none", border:"none", padding:"4px 0", cursor:"pointer" }}>
+                    <span style={{ fontSize:11, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.05em" }}>
+                      {napCajasNearbySB.length ? "Cajas cercanas" : "Cajas de este nodo"}
+                      {" "}({(napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).length})
+                    </span>
+                    <span style={{ fontSize:11, color:"#94a3b8", transform: napListaAbiertaSB ? "rotate(180deg)" : "none", transition:"transform .15s ease" }}>▾</span>
+                  </button>
+                  {napListaAbiertaSB && (
+                    (napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).length === 0 ? (
+                      <div style={{ fontSize:12, color:"#94a3b8", marginTop:8 }}>Sin cajas NAP registradas para este nodo.</div>
+                    ) : (
+                      <div style={{ display:"grid", gap:6, marginTop:8 }}>
+                        {(napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).slice(0, 10).map(c => {
+                          const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
+                          const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
+                          return (
+                            <button key={c.codigo} type="button"
+                              onClick={() => { cajaNapDesdClienteRefSB.current = true; setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" })); }}
+                              style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+                                background:"#f8faff", border:`1px solid ${T.border}`, borderRadius:10, padding:"9px 12px",
+                                cursor:"pointer", textAlign:"left" }}>
+                              <div>
+                                <div style={{ fontSize:12.5, fontWeight:700, color:"#0f172a" }}>{c.codigo}</div>
+                                <div style={{ fontSize:10.5, color:"#64748b" }}>{c.sector || ""} · {c.nodo}</div>
+                              </div>
+                              <div style={{ textAlign:"right", flexShrink:0 }}>
+                                {c.dist != null && <div style={{ fontSize:10.5, color:"#94a3b8" }}>{c.dist < 1000 ? `${Math.round(c.dist)}m` : `${(c.dist/1000).toFixed(1)}km`}</div>}
+                                <div style={{ fontSize:10.5, fontWeight:700, color }}>{c.puertos_ocupados||0}/{c.capacidad||8}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )
                   )}
                 </>
               ) : cajaBornesLoadingSB ? (
