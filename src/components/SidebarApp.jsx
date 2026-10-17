@@ -854,6 +854,36 @@ function CifraAnimada({ value, prefix = "", decimals = 2 }) {
   return <>{prefix}{display.toFixed(decimals)}</>;
 }
 
+// ─── Mini linea de tiempo de pagos -- un punto por cada una de las ultimas
+// facturas (viejo -> nuevo, izquierda a derecha) para ver de un vistazo si
+// un cliente es moroso recurrente, sin entrar a la pestana de Facturas.
+function MiniTimelinePagos({ facturas, T }) {
+  const ultimas = [...(facturas || [])]
+    .sort((a, b) => new Date(a.emitido || 0) - new Date(b.emitido || 0))
+    .slice(-6);
+  if (ultimas.length < 2) return null;
+  const colorDe = (f) => {
+    const estado = String(f.estado || "").toLowerCase();
+    if (estado === "anulado") return T.border;
+    if (estado === "pagado") {
+      const pago = f.fechapago && f.fechapago !== "0000-00-00" ? new Date(f.fechapago) : null;
+      const vence = f.vencimiento ? new Date(f.vencimiento) : null;
+      return (pago && vence && pago > vence) ? T.amber : T.green;
+    }
+    if (estado === "vencido") return T.red;
+    const vence = f.vencimiento ? new Date(f.vencimiento) : null;
+    return (vence && vence < new Date()) ? T.red : T.border;
+  };
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:4, marginTop:6 }} title="Historial reciente de facturas (gris=sin pagar aun/anulada)">
+      <span style={{ fontSize:10, color:T.muted, marginRight:2 }}>Historial</span>
+      {ultimas.map((f, i) => (
+        <span key={f.id || f.idfactura || i} style={{ width:7, height:7, borderRadius:"50%", background:colorDe(f), flexShrink:0 }} />
+      ))}
+    </div>
+  );
+}
+
 // ─── Anillo tipo gauge para la señal optica (dBm) -- antes era solo texto
 // plano, un anillo que se llena segun la calidad se lee de un vistazo
 // (igual que un indicador de bateria/wifi) en vez de tener que leer el
@@ -995,6 +1025,7 @@ export default function SidebarApp() {
   const [error,   setError]       = useState(null);
   const [msg,     setMsg]         = useState(null);  // notificación
   const [msgLeaving, setMsgLeaving] = useState(false); // true -> reproduce la animacion de salida
+  const [fechaSuspendido, setFechaSuspendido] = useState(null); // ISO -- de clientes.fecha_suspendido, para mostrar "hace N dias"
   const msgTimersRef = useRef([]);
   const [tab,     setTab]         = useState("info"); // info | pago | prorroga
   // Pago manual
@@ -1437,6 +1468,12 @@ export default function SidebarApp() {
     const cli = { ...row, empresa };
     setCliente(cli);
     setError(null);
+    setFechaSuspendido(null);
+    if (row.cedula) {
+      supabase.from("clientes").select("fecha_suspendido").eq("dni", row.cedula).limit(1).maybeSingle()
+        .then(({ data }) => setFechaSuspendido(data?.fecha_suspendido || null))
+        .catch(() => {});
+    }
 
     const id = parseInt(cli.mikrowisp_id, 10);
     const esDimCli = empresa === "dimfiber" || empresa === "nod06";
@@ -1540,6 +1577,7 @@ export default function SidebarApp() {
       empresa,
     };
     setCliente(cli);
+    setFechaSuspendido(row.fecha_suspendido || null);
     setNodoReal(row.nodo || null);
     setClienteIdReal(row.id ?? null);
     setClienteVlan(row.vlan ?? null);
@@ -5577,7 +5615,7 @@ export default function SidebarApp() {
                   </div>
                 );
               })()}
-              <div style={{ minWidth:0 }}>
+              <div style={{ minWidth:0, borderLeft: _ec !== T.green ? `3px solid ${_ec}` : "none", paddingLeft: _ec !== T.green ? 8 : 0 }}>
               <div style={{ fontWeight:700, fontSize:15, color:T.navy, lineHeight:1.2, wordBreak:"break-word", letterSpacing:"-0.2px" }}>
                 {cliente.nombre}
               </div>
@@ -5596,6 +5634,10 @@ export default function SidebarApp() {
                   {estadoServicio === "SUSPENDIDO" && <Lock size={11} />}
                   {estadoServicio && estadoServicio !== "ACTIVO" && estadoServicio !== "SUSPENDIDO" && <XCircle size={11} />}
                   {estadoServicio || "ACTIVO"}
+                  {estadoServicio === "SUSPENDIDO" && fechaSuspendido && (() => {
+                    const dias = Math.max(0, Math.floor((Date.now() - new Date(fechaSuspendido).getTime()) / 86400000));
+                    return <span style={{ opacity:0.85, fontWeight:600 }}>· hace {dias === 0 ? "hoy" : dias === 1 ? "1 día" : `${dias} días`}</span>;
+                  })()}
                 </span>
                 {_vencida && (
                   <span style={{ background:T.amberLt, color:T.amber, borderRadius:4, padding:"2px 8px",
@@ -5650,6 +5692,7 @@ export default function SidebarApp() {
                   </span>
                 )}
               </div>
+              <MiniTimelinePagos facturas={facturas} T={T} />
               </div>
             </div>
             <div style={{ display:"flex", gap:6, flexShrink:0 }}>
