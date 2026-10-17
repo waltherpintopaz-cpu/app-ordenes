@@ -2793,6 +2793,7 @@ export default function App() {
   }, [mkwRedesOrdenApp, ordenIpMikrotik, ordenIdRedIpv4]);
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [clienteEnDB, setClienteEnDB] = useState(false);
+  const [clienteExistenteSinCajaWeb, setClienteExistenteSinCajaWeb] = useState(false);
   const [fotosClienteDni, setFotosClienteDni] = useState([]);
   const [enviarWhatsappOrden, setEnviarWhatsappOrden] = useState(true);
   const [ordenIncluirIptv, setOrdenIncluirIptv] = useState(false);
@@ -7988,6 +7989,25 @@ export default function App() {
     }));
   };
 
+  // Cambiar la caja NAP de una orden que ya tenia una asignada (solo al
+  // EDITAR una orden existente, no al crear una nueva) es mas delicado que
+  // elegirla por primera vez -- antes un clic de mas en el mapa o la lista
+  // la reemplazaba al instante, sin aviso, pisando un dato real ya guardado.
+  // Ahora, si se esta editando y ya habia una caja distinta, se pide
+  // confirmacion explicita antes de aplicar el cambio.
+  const elegirCajaNapWeb = async (nuevoCodigo) => {
+    const actual = String(orden.cajaNap || "").trim();
+    const nuevo = String(nuevoCodigo || "").trim();
+    if (ordenEditandoId && actual && actual.toLowerCase() !== nuevo.toLowerCase()) {
+      const ok = await dialogConfirm(
+        `Esta orden ya tiene la caja ${actual} asignada. ¿Confirmas cambiarla a ${nuevo}?`,
+        { titulo: "Cambiar caja NAP", variante: "peligro", textoOk: "Sí, cambiar" }
+      );
+      if (!ok) return;
+    }
+    handleChange("cajaNap", nuevo);
+  };
+
   const handleNodoChange = (nodoValue) => {
     const nextNodo = String(nodoValue || "").trim();
     // Automatizacion Mikrowisp Nod_04 (piloto): limpiar lo del nodo anterior
@@ -11218,6 +11238,11 @@ export default function App() {
 
   const _aplicarClienteInternoAOrden = async (clienteInterno, dni) => {
     setClienteEnDB(true);
+    // Cliente que YA existe en el sistema pero sin caja_nap guardada -- se
+    // avisa distinto de un cliente genuinamente nuevo, porque la sugerencia
+    // por cercania que puede llenar el campo despues no es un dato
+    // recuperado real, es solo una suposicion por GPS que hay que verificar.
+    setClienteExistenteSinCajaWeb(!clienteInterno.caja_nap);
     setOrden((prev) => ({
       ...prev,
       nombre: clienteInterno.nombre || prev.nombre,
@@ -11803,6 +11828,7 @@ export default function App() {
     setEnviarWhatsappOrden(true);
     setOrdenIncluirIptv(false);
     setClienteEnDB(false);
+    setClienteExistenteSinCajaWeb(false);
     setVistaActiva(estadoFinal === "Liquidada" ? "historial" : "pendientes");
   };
 
@@ -11822,6 +11848,7 @@ export default function App() {
       ...baseOrden,
     });
     setOrdenEditandoId(id);
+    setClienteExistenteSinCajaWeb(false);
     // Automatizacion Mikrowisp Nod_04 (piloto): recuperar lo guardado para
     // que los selectores de Plan/Facturacion/IP no aparezcan vacios.
     setOrdenIdPerfil(ordenItem.mikrowispIdPerfil != null ? String(ordenItem.mikrowispIdPerfil) : "");
@@ -16942,7 +16969,7 @@ export default function App() {
         .addTo(mapaCrearInstanceRef.current)
         .bindPopup(popupBase + `<br><small style="color:#6b7280">Clic para seleccionar</small></div>`, { maxWidth: 240 });
       m.on("click", () => {
-        handleChange("cajaNap", caja.codigo);
+        elegirCajaNapWeb(caja.codigo);
         m.setPopupContent(popupBase + `<br><span style="font-size:11px;color:#6b7280">Cargando clientes...</span></div>`);
         m.openPopup();
         // El codigo de caja NO es unico entre nodos (ej. "Nap-007" existe
@@ -18795,6 +18822,7 @@ export default function App() {
                           passwordUsuario: normalizeNodoKey(prev.nodo) === "NOD_07" ? dniValue : prev.passwordUsuario,
                         }));
                         setClienteEnDB(false);
+                        setClienteExistenteSinCajaWeb(false);
                       }} placeholder="DNI (8) o RUC (11)" maxLength={11} />
                       <button
                         onClick={buscarDni}
@@ -19090,6 +19118,16 @@ export default function App() {
                         </span>
                       )}
                     </div>
+                    {clienteExistenteSinCajaWeb && (
+                      <div style={{ display:"flex", alignItems:"flex-start", gap:6, background:"#fffbeb", color:"#92400e",
+                        border:"1px solid #fde68a", borderRadius:8, padding:"7px 10px", fontSize:11.5, fontWeight:600, marginBottom:8 }}>
+                        <span>⚠</span>
+                        <span>
+                          Este cliente ya existe en el sistema pero no tenía caja NAP guardada.
+                          {orden.cajaNap ? " La caja de abajo es una SUGERENCIA por cercanía (GPS), no un dato recuperado -- verifica que sea la correcta antes de guardar." : ""}
+                        </span>
+                      </div>
+                    )}
                     {napCajasNearby.length > 0 ? (
                       <>
                         <div style={{ display: "grid", gap: 6 }}>
@@ -19103,7 +19141,7 @@ export default function App() {
                             return (
                               <div
                                 key={`${c.codigo}__${c.nodo}`}
-                                onClick={() => handleChange("cajaNap", c.codigo)}
+                                onClick={() => elegirCajaNapWeb(c.codigo)}
                                 style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 12px", borderRadius:8, cursor:"pointer", border: sel?`2px solid ${color}`:"1.5px solid #e4eaf4", background: sel?"#f0f9ff":"#f8fafc", transition:"all .15s" }}
                               >
                                 <div style={{ width:10, height:10, borderRadius:"50%", background:color, flexShrink:0 }} />
@@ -19137,7 +19175,7 @@ export default function App() {
                       <select
                         style={{ ...inputStyle, fontSize:12 }}
                         value={orden.cajaNap}
-                        onChange={e => handleChange("cajaNap", e.target.value)}
+                        onChange={e => elegirCajaNapWeb(e.target.value)}
                       >
                         <option value="">— Buscar caja manualmente —</option>
                         {napCajasMapData

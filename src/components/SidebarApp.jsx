@@ -1199,6 +1199,7 @@ export default function SidebarApp() {
   // mapa en si.
   const [napMapAmpliadoSB, setNapMapAmpliadoSB] = useState(false);
   const [napListaAbiertaSB, setNapListaAbiertaSB] = useState(false);
+  const [clienteExistenteSinCajaSB, setClienteExistenteSinCajaSB] = useState(false);
   const cajaNapDesdClienteRefSB = useRef(false);
   const ordenCoordMapRefSB = useRef(null);         // mapa interactivo de "Coordenadas" (Crear orden)
   const ordenCoordMapInstanceRefSB = useRef(null);
@@ -1386,10 +1387,7 @@ export default function SidebarApp() {
           });
           const marker = L.marker([c.lat, c.lng], { icon }).addTo(map);
           marker.bindTooltip(`${c.codigo} · ${c.puertos_ocupados||0}/${c.capacidad||8}`, { direction:"top" });
-          marker.on("click", () => {
-            cajaNapDesdClienteRefSB.current = true;
-            setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" }));
-          });
+          marker.on("click", () => elegirCajaNapSB(c.codigo));
           napMapBoxMarkersRefSB.current.push(marker);
         });
       };
@@ -4256,6 +4254,20 @@ export default function SidebarApp() {
 
   // ── Búsqueda DNI RENIEC para orden nueva ─────────────────────────────────
   function _aplicarClienteAOrdenForm(c) {
+    // Cliente que YA existe en el sistema pero sin caja_nap guardada -- se
+    // avisa distinto de un cliente nuevo (ver banner mas abajo), porque la
+    // sugerencia por cercania que puede llenar el campo despues no es un
+    // dato recuperado real, solo una suposicion por GPS.
+    setClienteExistenteSinCajaSB(!c.caja_nap);
+    // Si el cliente SI trae caja_nap real, marcar el flag que ya usa el
+    // efecto de auto-asignar-la-mas-cercana para no pisarla (igual criterio
+    // que _aplicarClienteInternoAOrden en App.jsx) -- antes este flujo del
+    // sidebar no lo marcaba, puramente por suerte no causaba problema porque
+    // el efecto igual revisa "si ya hay cajaNap, no tocar", pero sin el flag
+    // no hay forma de distinguir despues "este valor es un dato real del
+    // cliente" de "esto lo elegi tocando el mapa", que es lo que necesita el
+    // aviso de confirmacion al cambiarla.
+    if (c.caja_nap) cajaNapDesdClienteRefSB.current = true;
     setOrdenForm(p=>({ ...p,
       nombre:    c.nombre    || p.nombre,
       direccion: c.direccion || p.direccion,
@@ -4275,6 +4287,22 @@ export default function SidebarApp() {
       codigoAbonadoExistente: c.codigo_abonado || "",
     }));
     notify("✅ Cliente encontrado en base de datos");
+  }
+
+  // Cambiar la caja NAP cuando ya habia una real guardada del cliente (no
+  // una sugerida por cercania) es mas delicado que elegirla por primera vez
+  // -- antes un toque de mas en el mapa o la lista la reemplazaba al
+  // instante, sin aviso, pisando el dato real. cajaNapDesdClienteRefSB
+  // distingue "esto vino de la ficha del cliente" de "esto lo sugirio el
+  // sistema por cercania" (que si puede cambiarse libremente sin preguntar).
+  function elegirCajaNapSB(nuevoCodigo) {
+    const actual = String(ordenForm.cajaNap || "").trim();
+    const nuevo = String(nuevoCodigo || "").trim();
+    if (cajaNapDesdClienteRefSB.current && actual && actual.toLowerCase() !== nuevo.toLowerCase()) {
+      if (!window.confirm(`Este cliente ya tenía la caja ${actual} guardada. ¿Confirmas cambiarla a ${nuevo}?`)) return;
+    }
+    cajaNapDesdClienteRefSB.current = true;
+    setOrdenForm(p => ({ ...p, cajaNap: nuevo, puertoNap:"" }));
   }
 
   function usarComoServicioNuevo() {
@@ -4866,7 +4894,7 @@ export default function SidebarApp() {
                           const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
                           return (
                             <button key={c.codigo} type="button"
-                              onClick={() => { cajaNapDesdClienteRefSB.current = true; setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" })); }}
+                              onClick={() => elegirCajaNapSB(c.codigo)}
                               style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
                                 background:"#f8faff", border:`1px solid ${T.border}`, borderRadius:10, padding:"9px 12px",
                                 cursor:"pointer", textAlign:"left" }}>
@@ -5777,6 +5805,7 @@ export default function SidebarApp() {
                 const abriendo = !showOrdenNuevo;
                 setShowOrdenNuevo(v=>!v);
                 setOrdenCreada(null);
+                setClienteExistenteSinCajaSB(false);
                 setOrdenForm(p=>({...p, tipoActuacion:"Instalacion Internet", ordenTipo:"ORDEN DE SERVICIO", celular:(contact?.phone_number||"").replace(/[^\d]/g,"") }));
                 // Auto-extraer datos del cliente y coordenadas del chat al abrir, para evitar los clics manuales.
                 if (abriendo) {
@@ -5877,6 +5906,7 @@ export default function SidebarApp() {
                           value={ordenForm.dni} onChange={e=>{
                             const dniValue = e.target.value.replace(/\D/g,"");
                             setOrdenForm(p=>({ ...p, dni: dniValue, passwordUsuario: normalizeNodoKey(p.nodo)==="NOD_07" ? dniValue : p.passwordUsuario }));
+                            setClienteExistenteSinCajaSB(false);
                             // Auto-buscar apenas se completa un DNI (8) o RUC (11), sin esperar clic/Enter.
                             if ((dniValue.length===8 || dniValue.length===11) && dniAutoBuscadoRef.current !== dniValue) {
                               dniAutoBuscadoRef.current = dniValue;
@@ -5982,6 +6012,16 @@ export default function SidebarApp() {
                     )}
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
+                    {clienteExistenteSinCajaSB && (
+                      <div style={{ display:"flex", alignItems:"flex-start", gap:6, background:"#fffbeb", color:"#92400e",
+                        border:"1px solid #fde68a", borderRadius:6, padding:"6px 9px", fontSize:10.5, fontWeight:600, margin:"4px 10px" }}>
+                        <span>⚠</span>
+                        <span>
+                          Este cliente ya existe en el sistema pero no tenía caja NAP guardada.
+                          {ordenForm.cajaNap ? " La caja de abajo es una SUGERENCIA por cercanía (GPS), no un dato recuperado -- verifica antes de guardar." : ""}
+                        </span>
+                      </div>
+                    )}
                     {fila("Caja NAP", (
                       <button type="button" onClick={() => setNapPickerAbierto(true)}
                         style={{ width:"100%", background:"none", border:"none", borderRadius:0, padding:"7px 10px",
