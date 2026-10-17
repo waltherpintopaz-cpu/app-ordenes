@@ -5637,7 +5637,7 @@ export default function SidebarApp() {
             <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
               {/* Fila compacta siempre visible */}
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>MikroTik</span>
+                <span style={{ fontSize:10, fontWeight:700, color:T.muted, flexShrink:0, textTransform:"uppercase", letterSpacing:"0.4px" }}>MikroTik</span>
                 {diagLoad && <span className="sb-skel" style={{ width:100, height:11 }} />}
                 {!diagLoad && diagError && (
                   <span style={{ fontSize:10, color:T.red, flex:1 }}>Sin respuesta</span>
@@ -5727,7 +5727,7 @@ export default function SidebarApp() {
                 cliente reclama que no tiene servicio. */}
             <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
               <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Lista morosos</span>
+                <span style={{ fontSize:10, fontWeight:700, color:T.muted, flexShrink:0, textTransform:"uppercase", letterSpacing:"0.4px" }}>Lista morosos</span>
                 {morosoCargando && <span className="sb-skel" style={{ width:100, height:11 }} />}
                 {!morosoCargando && morosoInfo == null && (
                   <span style={{ fontSize:10, color:T.muted, flex:1 }}>Sin revisar</span>
@@ -5777,7 +5777,7 @@ export default function SidebarApp() {
             {(!snOnu || snPosibleIncorrecto) && diagResult?.mikrotik?.callerId && (esNodoOltSsh(nodoReal) ? OLT_SSH_API : HUAWEI_OLT_SNMP_API) && (
               <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Señal</span>
+                  <span style={{ fontSize:10, fontWeight:700, color:T.muted, flexShrink:0, textTransform:"uppercase", letterSpacing:"0.4px" }}>Señal</span>
                   <span style={{ fontSize:10.5, color:T.muted, flex:1 }}>
                     {snOnu ? `SN guardado (${snOnu}) no reconocido por la OLT` : "Sin SN guardado"}
                   </span>
@@ -5817,7 +5817,7 @@ export default function SidebarApp() {
               <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
                 {/* Fila compacta */}
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                  <span style={{ fontSize:11, fontWeight:600, color:T.muted, flexShrink:0 }}>Señal</span>
+                  <span style={{ fontSize:10, fontWeight:700, color:T.muted, flexShrink:0, textTransform:"uppercase", letterSpacing:"0.4px" }}>Señal</span>
                   {senalLoad && <span style={{ fontSize:10, color:T.muted }}>Leyendo...</span>}
                   {!senalLoad && senal && (() => {
                     const c   = senalColor(senal.rx);
