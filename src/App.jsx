@@ -19140,6 +19140,8 @@ export default function App() {
                           .bornes-toggle-btn:active { transform: scale(0.98); }
                           .bornes-overlay { animation: bornesOverlayIn .18s ease; }
                           .bornes-modal-card { animation: bornesCardIn .3s cubic-bezier(.34,1.56,.64,1); }
+                          @keyframes bornePuertoSuspPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.55); } 70% { box-shadow: 0 0 0 5px rgba(220,38,38,0); } }
+                          .borne-susp-dot { animation: bornePuertoSuspPulse 1.8s ease-out infinite; }
                         `}</style>
                         <button
                           type="button"
@@ -19223,7 +19225,7 @@ export default function App() {
                                             }}>
                                               <PortIconWeb ocupado={!libre} colorOverride={colorOverride} />
                                               {suspendido && (
-                                                <span style={{ position: "absolute", top: -2, right: -2, width: 10, height: 10, borderRadius: "50%", background: "#dc2626", border: "2px solid #2b2f38" }} title="Suspendido" />
+                                                <span className="borne-susp-dot" style={{ position: "absolute", top: -2, right: -2, width: 10, height: 10, borderRadius: "50%", background: "#dc2626", border: "2px solid #2b2f38" }} title="Suspendido" />
                                               )}
                                             </div>
                                             <span style={{ fontSize: 10, fontWeight: 800, color: sel ? "#93c5fd" : !libre ? "#e2e8f0" : "#8d93a3", marginTop: 2 }}>{puerto}</span>
@@ -19250,7 +19252,7 @@ export default function App() {
                                     const puedeConsultar = !!cli.sn_onu && (nodoUsaHuawei(cli.nodo) || nodoUsaOltSsh(cli.nodo));
                                     const consultar = () => nodoUsaHuawei(cli.nodo) ? consultarSenalHuaweiTabla({ id: cli.id, snOnu: cli.sn_onu }) : consultarSenalOltSshTabla({ id: cli.id, snOnu: cli.sn_onu, nodo: cli.nodo, vlan: cli.vlan });
                                     return (
-                                      <div className="borne-tile-wrap" style={{ marginTop: 12, background: "#1c2029", borderRadius: 12, padding: "12px 14px" }}>
+                                      <div className="borne-tile-wrap" style={{ marginTop: 12, background: "#1c2029", borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 24px rgba(15,23,42,0.25)" }}>
                                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                                           <div>
                                             <div style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>{cli.nombre || "—"}</div>
