@@ -5460,7 +5460,20 @@ export default function SidebarApp() {
         {/* ══ HEADER CLIENTE — fondo claro con acento azul ══ */}
         <div style={{ background:T.card, borderBottom:`2px solid ${T.blue}`, padding:"14px 14px 12px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
-            <div style={{ minWidth:0 }}>
+            <div style={{ display:"flex", alignItems:"flex-start", gap:10, minWidth:0 }}>
+              {(() => {
+                const ec = estadoServicio === "ACTIVO" ? T.green : estadoServicio === "SUSPENDIDO" ? T.amber : T.red;
+                const iniciales = String(cliente.nombre || "?")
+                  .split(/[,\s]+/).filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase() || "?";
+                return (
+                  <div style={{ width:38, height:38, borderRadius:"50%", flexShrink:0, display:"flex",
+                    alignItems:"center", justifyContent:"center", background:`${ec}1a`, border:`1.5px solid ${ec}55`,
+                    color:ec, fontWeight:700, fontSize:13 }}>
+                    {iniciales}
+                  </div>
+                );
+              })()}
+              <div style={{ minWidth:0 }}>
               <div style={{ fontWeight:700, fontSize:15, color:T.navy, lineHeight:1.2, wordBreak:"break-word", letterSpacing:"-0.2px" }}>
                 {cliente.nombre}
               </div>
@@ -5521,6 +5534,7 @@ export default function SidebarApp() {
                     </select>
                   </span>
                 )}
+              </div>
               </div>
             </div>
             <div style={{ display:"flex", gap:6, flexShrink:0 }}>
@@ -7237,10 +7251,16 @@ export default function SidebarApp() {
         {/* ══ SETUP MIKROWISP ══ */}
         <div style={{ padding:"8px 8px 0" }}>
           <div style={S.divider} />
-          <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
-            style={{ ...S.btn(mwOpen?T.slate:T.blue), display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginBottom: mwOpen?8:0 }}>
-            🚀 {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
-          </button>
+          <div style={{ display:"flex", justifyContent:"flex-end", marginBottom: mwOpen?8:0 }}>
+            <button onClick={() => { setMwOpen(v=>!v); if(!mwOpen) { setMwStep(0); setMwCliSupa(null); setMwMsg(""); } }}
+              className="sb-btn-action"
+              style={{ background: mwOpen ? T.bg : "transparent", color: mwOpen ? T.slate : T.blue,
+                border:`1px solid ${mwOpen ? T.border : T.blue + "55"}`, borderRadius:5,
+                padding:"8px 16px", fontWeight:700, fontSize:12, cursor:"pointer",
+                display:"flex", alignItems:"center", gap:6 }}>
+              <Rocket size={14} /> {mwOpen ? "Cerrar Setup Mikrowisp" : "Setup Mikrowisp"}
+            </button>
+          </div>
           {mwOpen && (
             <div style={{ border:`1.5px solid #fcd34d`, borderRadius:8, overflow:"hidden", marginBottom:8 }}>
               <div style={{ background:"#fffbeb", padding:"8px 12px", borderBottom:`1px solid #fcd34d`, display:"flex", gap:2 }}>
