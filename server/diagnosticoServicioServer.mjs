@@ -1827,15 +1827,31 @@ const handleChatwootMessage = async (payload, creds = null) => {
   // Default false preserva el comportamiento de siempre para cualquier
   // llamador existente que no lo mande.
   const esPrivada = payload?.private === true;
-  if (!phone || !msg) throw new Error("phone y message requeridos");
-  const contactId = await cwBuscarContacto(phone, creds);
-  if (!contactId) throw new Error("Contacto no encontrado: " + phone);
-  const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
-    headers: { api_access_token: token },
-  }).then((r) => r.json()).catch(() => ({}));
-  const convs = cr?.payload || [];
-  const conv = convs.find((c) => c.status === "open") || convs[0];
-  if (!conv?.id) throw new Error("Sin conversación activa");
+  if (!msg) throw new Error("message requerido");
+  // conv_id: opcional, pero CRITICO cuando lo manda el sidebar -- este
+  // mismo bug ya se habia resuelto para Resolver_Conversacion/Asignar_Equipo
+  // (ver handleChatwootResolverConversacion/handleChatwootAsignarEquipo, que
+  // SI aceptan conv_id directo) pero el envio de mensajes (el que de verdad
+  // dispara el "PAGO VALIDADO" etc) se quedo buscando SOLO por telefono.
+  // Bug real reportado: un cliente con conversaciones en mas de una bandeja
+  // (inbox) de Chatwoot podia recibir el mensaje por la conversacion
+  // EQUIVOCADA -- "convs.find(open) || convs[0]" no tiene forma de saber
+  // cual de esas conversaciones es la que el agente tiene abierta en el
+  // sidebar en ese momento. Con conv_id, se usa esa EXACTA, sin adivinar.
+  let convId = payload?.conv_id || null;
+  if (!convId) {
+    if (!phone) throw new Error("phone o conv_id requeridos");
+    const contactId = await cwBuscarContacto(phone, creds);
+    if (!contactId) throw new Error("Contacto no encontrado: " + phone);
+    const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+      headers: { api_access_token: token },
+    }).then((r) => r.json()).catch(() => ({}));
+    const convs = cr?.payload || [];
+    const conv = convs.find((c) => c.status === "open") || convs[0];
+    convId = conv?.id;
+  }
+  if (!convId) throw new Error("Sin conversación activa");
+  const conv = { id: convId };
   if (attachmentUrl) {
     const imgRes = await fetchConTimeout(attachmentUrl, {});
     const buf = Buffer.from(await imgRes.arrayBuffer());

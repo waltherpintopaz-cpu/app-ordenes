@@ -2149,7 +2149,12 @@ export default function SidebarApp() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             accion: "ChatwootMessage",
-            payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" },
+            // conv_id: sin esto, el backend buscaba la conversacion SOLO por
+            // telefono y podia acertar la bandeja equivocada si el cliente
+            // tenia conversaciones en mas de un inbox de Chatwoot -- con
+            // conv_id va directo a ESTA conversacion, la que el agente
+            // realmente tiene abierta.
+            payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1", conv_id: convId || null },
           }),
         }).catch(() => {});
       }
@@ -3425,7 +3430,7 @@ export default function SidebarApp() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             accion: "ChatwootMessage",
-            payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" },
+            payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1", conv_id: convId || null },
           }),
         }).catch(() => {});
       }
@@ -3687,7 +3692,7 @@ export default function SidebarApp() {
     await fetch(PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: texto, account_id: acctId || "1" } }),
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: texto, account_id: acctId || "1", conv_id: convId || null } }),
     }).catch(() => {});
   }
 
@@ -3718,7 +3723,7 @@ export default function SidebarApp() {
     await fetch(PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: mensaje, account_id: acctId || "1" } }),
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: mensaje, account_id: acctId || "1", conv_id: convId || null } }),
     });
 
     const { error } = await supabase.from("leads_sin_cobertura").insert([{
@@ -3801,10 +3806,14 @@ export default function SidebarApp() {
   }
 
   async function enviarMensajeChatwootDirecto(phone, texto) {
+    // conv_id: misma razon que en la confirmacion de pago -- sin esto, el
+    // backend adivinaba la conversacion por telefono y podia mandar el
+    // mensaje por una bandeja (inbox) distinta a la que el agente tiene
+    // abierta, cuando el cliente tiene historial en mas de un inbox.
     const res = await fetch(PROXY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: texto, account_id: acctId || "1" } }),
+      body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone, message: texto, account_id: acctId || "1", conv_id: convId || null } }),
     });
     const bodyTxt = await res.text().catch(() => "");
     if (!res.ok) throw new Error(`Webhook respondió ${res.status} — ${bodyTxt.slice(0, 200)}`);
@@ -4780,6 +4789,7 @@ export default function SidebarApp() {
             message:        texto,
             account_id:     acctId || "1",
             attachment_url: MP_LOGO_URL,
+            conv_id:        convId || null,
           },
         }),
       });
@@ -6473,7 +6483,7 @@ export default function SidebarApp() {
                             : `Hola ${nombreFmt}, revisamos tu servicio y detectamos que no está conectado desde las ${fmt12h(mk.lastLoggedOut)}. Estamos revisando la situación. 🔧`;
                           await fetch(PROXY_URL, {
                             method:"POST", headers:{"Content-Type":"application/json"},
-                            body: JSON.stringify({ accion:"ChatwootMessage", payload:{ phone: contact.phone_number, message: texto, account_id: acctId||"1" } }),
+                            body: JSON.stringify({ accion:"ChatwootMessage", payload:{ phone: contact.phone_number, message: texto, account_id: acctId||"1", conv_id: convId||null } }),
                           }).catch(()=>{});
                           notify("✅ Diagnóstico enviado al cliente");
                         }}
@@ -7028,7 +7038,7 @@ export default function SidebarApp() {
                                         await fetch(PROXY_URL, {
                                           method: "POST",
                                           headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1" } }),
+                                          body: JSON.stringify({ accion: "ChatwootMessage", payload: { phone: contact.phone_number, message: texto, account_id: acctId || "1", conv_id: convId || null } }),
                                         }).catch(() => {});
                                         notify("✅ PDF enviado al cliente");
                                       }}
