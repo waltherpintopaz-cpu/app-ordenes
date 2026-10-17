@@ -6221,7 +6221,14 @@ export default function SidebarApp() {
               <div style={{ color:T.muted, fontSize:12, textAlign:"center", padding:24 }}>Sin facturas registradas</div>
             ) : (
               <div style={{ overflowX:"auto" }}>
-                <table className="sb-tbl" style={{ width:"100%", borderCollapse:"collapse" }}>
+                <table className="sb-tbl" style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" }}>
+                  <colgroup>
+                    <col style={{ width:"14%" }} />
+                    <col style={{ width:"14%" }} />
+                    <col style={{ width:"14%" }} />
+                    <col style={{ width:"16%" }} />
+                    <col style={{ width:"42%" }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       {(() => {
