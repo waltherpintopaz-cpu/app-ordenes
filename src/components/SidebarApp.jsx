@@ -689,6 +689,19 @@ const DARK_T = {
   accent:  "#1D2C48",
 };
 
+// Oscurece un color hex un % dado -- usado para el segundo stop de los
+// degradados de botones (gris/plano -> relleno con un poco de profundidad,
+// sin salirse de la paleta de cada color en vez de agregar uno nuevo).
+const shade = (hex, amt = 0.16) => {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return hex;
+  const n = parseInt(h, 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 255) * (1 - amt)));
+  const g = Math.max(0, Math.round(((n >> 8) & 255) * (1 - amt)));
+  const b = Math.max(0, Math.round((n & 255) * (1 - amt)));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+};
+
 const getS = (T) => ({
   root:   { fontFamily:"'Inter','Segoe UI',sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
   card:   { background:T.card, borderRadius:10, border:`1px solid ${T.border}66`, boxShadow:"0 1px 2px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.05)", marginBottom:8, overflow:"hidden" },
@@ -696,7 +709,7 @@ const getS = (T) => ({
   val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
   mono:   { fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12 },
   badge:  (c,bg) => ({ background:bg||c, color:"#fff", borderRadius:3, padding:"2px 7px", fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:3 }),
-  btn:    (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:5, padding:"9px 14px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
+  btn:    (c=T.blue) => ({ background:`linear-gradient(135deg, ${c}, ${shade(c)})`, color:"#fff", border:"none", borderRadius:5, padding:"9px 14px", fontWeight:700, fontSize:12, cursor:"pointer", width:"100%", transition:"opacity .15s" }),
   btnSm:  (c=T.blue) => ({ background:c, color:"#fff", border:"none", borderRadius:4, padding:"4px 10px", fontWeight:700, fontSize:11, cursor:"pointer" }),
   btnOut: { background:T.card, border:`1px solid ${T.border}`, borderRadius:4, padding:"4px 10px", fontWeight:600, fontSize:11, cursor:"pointer", color:T.slate },
   input:  { border:`1px solid ${T.border}`, borderRadius:4, padding:"7px 10px", fontSize:13, width:"100%", boxSizing:"border-box", outline:"none", color:T.navy, background:T.card, fontFamily:"inherit" },
@@ -5475,8 +5488,9 @@ export default function SidebarApp() {
                   .split(/[,\s]+/).filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase() || "?";
                 return (
                   <div style={{ width:38, height:38, borderRadius:"50%", flexShrink:0, display:"flex",
-                    alignItems:"center", justifyContent:"center", background:`${ec}1a`, border:`1.5px solid ${ec}55`,
-                    color:ec, fontWeight:700, fontSize:13 }}>
+                    alignItems:"center", justifyContent:"center",
+                    background:`linear-gradient(135deg, ${ec}, ${shade(ec)})`, boxShadow:`0 2px 6px ${ec}55`,
+                    color:"#fff", fontWeight:700, fontSize:13 }}>
                     {iniciales}
                   </div>
                 );
@@ -5953,7 +5967,7 @@ export default function SidebarApp() {
                   </div>
                 </div>
                 <button onClick={() => setShowHistorial(true)}
-                  style={{ background:T.blue, color:"#fff", border:"none", borderRadius:5,
+                  style={{ background:`linear-gradient(135deg, ${T.blue}, ${shade(T.blue)})`, color:"#fff", border:"none", borderRadius:5,
                     padding:"6px 12px", fontWeight:700, fontSize:11, cursor:"pointer", flexShrink:0 }}>
                   Ver →
                 </button>
@@ -5979,7 +5993,7 @@ export default function SidebarApp() {
               </div>
               <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
                 <button onClick={() => setTab("pago")} className="sb-btn-action"
-                  style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
+                  style={{ background:`linear-gradient(135deg, ${T.green}, ${shade(T.green)})`, color:"#fff", border:"none", borderRadius:5,
                     padding:"9px 16px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
                   PAGAR →
                 </button>
@@ -6002,7 +6016,7 @@ export default function SidebarApp() {
               </div>
               {suspendido && (
                 <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
-                  style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
+                  style={{ background:`linear-gradient(135deg, ${T.green}, ${shade(T.green)})`, color:"#fff", border:"none", borderRadius:5,
                     padding:"8px 16px", fontWeight:700, fontSize:12, cursor:"pointer",
                     display:"flex", alignItems:"center", gap:6, opacity:activando?0.6:1, flexShrink:0 }}>
                   <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
@@ -7690,7 +7704,7 @@ export default function SidebarApp() {
           title="Notas del cliente"
           style={{ position:"fixed", right:16, bottom:16, zIndex:9998,
             width:48, height:48, borderRadius:"50%", border:"none", cursor:"pointer",
-            background:T.blue, color:"#fff", boxShadow:"0 4px 14px rgba(0,0,0,0.25)",
+            background:`linear-gradient(135deg, ${T.blue}, ${shade(T.blue)})`, color:"#fff", boxShadow:"0 4px 14px rgba(0,0,0,0.25)",
             display:"flex", alignItems:"center", justifyContent:"center" }}>
           <FileText size={20} />
           {notasCliente.length > 0 && (
