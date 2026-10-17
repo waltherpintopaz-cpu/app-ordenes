@@ -7989,13 +7989,13 @@ export default function SidebarApp() {
             comportamiento y diseño que App.jsx (lista de cajas cercanas +
             splitter de puertos, sin auto-asignar en Nod_02). ══ */}
         {napPickerAbierto && (
-          <div onClick={() => setNapPickerAbierto(false)}
-            style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.35)",
-              display:"flex", alignItems:"center", justifyContent:"center", padding:16,
-              animation:"sbToastBackdropIn .2s ease both" }}>
-            <div onClick={(e) => e.stopPropagation()}
-              style={{ width:"100%", maxWidth:480, maxHeight:"88vh", zIndex:9998,
-              display:"flex", flexDirection:"column", background:"#fff", borderRadius:16,
+          <>
+            <div onClick={() => setNapPickerAbierto(false)}
+              style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.35)",
+                animation:"sbToastBackdropIn .2s ease both" }} />
+            <div style={{ position:"fixed", top:16, left:16, right:16, bottom:16, margin:"auto",
+              width:"calc(100vw - 32px)", maxWidth:480, height:"fit-content", maxHeight:"calc(100vh - 32px)",
+              zIndex:9998, display:"flex", flexDirection:"column", background:"#fff", borderRadius:16,
               border:`1px solid ${T.border}`, boxShadow:"0 24px 60px rgba(0,0,0,0.3)", overflow:"hidden",
               animation:"sbToastCardIn .28s cubic-bezier(.34,1.56,.64,1) both" }}>
               <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10,
@@ -8152,7 +8152,7 @@ export default function SidebarApp() {
                 )}
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* ══ NOTAS DEL CLIENTE — boton flotante, siempre al alcance sin
