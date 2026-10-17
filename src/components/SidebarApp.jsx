@@ -5909,17 +5909,11 @@ export default function SidebarApp() {
           </div>
         )}
 
-        {/* ══ BOTONES ACTIVAR / SUSPENDER ══ */}
-        {!cliente.sinMikrowisp && (suspendido || estadoServicio === "ACTIVO") && (
+        {/* ══ BOTON SUSPENDER ══ (Activar servicio se movio junto al banner
+            de deuda -- la causa de la suspension debe verse antes/junto a
+            la accion de reactivar, no en una fila suelta sin contexto) */}
+        {!cliente.sinMikrowisp && estadoServicio === "ACTIVO" && (
           <div style={{ padding:"8px 8px 0", display:"flex", justifyContent:"flex-end", gap:6 }}>
-            {suspendido && (
-              <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
-                style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
-                  padding:"9px 16px", fontWeight:700, fontSize:12, cursor:"pointer",
-                  display:"flex", alignItems:"center", gap:6, opacity:activando?0.6:1 }}>
-                <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
-              </button>
-            )}
             {estadoServicio === "ACTIVO" && (
               <button onClick={suspenderServicio} disabled={suspendiendo} className="sb-btn-action"
                 style={{ background:"transparent", color:T.amber, border:`1px solid ${T.amber}66`, borderRadius:5,
@@ -5975,17 +5969,37 @@ export default function SidebarApp() {
                   {factPend.length > 1 ? `${factPend.length} facturas pendientes` : `Vence ${factPend[0]?.vencimiento||"—"}`}
                 </div>
               </div>
-              <button onClick={() => setTab("pago")} className="sb-btn-action"
-                style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
-                  padding:"9px 16px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
-                PAGAR →
-              </button>
+              <div style={{ display:"flex", flexDirection:"column", gap:6, flexShrink:0 }}>
+                <button onClick={() => setTab("pago")} className="sb-btn-action"
+                  style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
+                    padding:"9px 16px", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+                  PAGAR →
+                </button>
+                {suspendido && (
+                  <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
+                    style={{ background:"transparent", color:T.green, border:`1px solid ${T.green}66`, borderRadius:5,
+                      padding:"7px 16px", fontWeight:700, fontSize:11.5, cursor:"pointer",
+                      display:"flex", alignItems:"center", justifyContent:"center", gap:5, opacity:activando?0.6:1 }}>
+                    <Zap size={12} />{activando ? "Activando..." : "Activar igual"}
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div style={{ background:T.greenLt, borderLeft:`3px solid ${T.green}`, borderRadius:5,
-              border:`1px solid ${T.green}66`, display:"flex", alignItems:"center", gap:10, padding:"9px 12px" }}>
-              <div style={{ fontWeight:600, color:T.green, fontSize:12 }}>Sin deuda pendiente</div>
-              <span style={{ fontSize:11, color:T.muted }}>· Cliente al dia</span>
+              border:`1px solid ${T.green}66`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, padding:"9px 12px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ fontWeight:600, color:T.green, fontSize:12 }}>Sin deuda pendiente</div>
+                <span style={{ fontSize:11, color:T.muted }}>· Cliente al dia</span>
+              </div>
+              {suspendido && (
+                <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
+                  style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
+                    padding:"8px 16px", fontWeight:700, fontSize:12, cursor:"pointer",
+                    display:"flex", alignItems:"center", gap:6, opacity:activando?0.6:1, flexShrink:0 }}>
+                  <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
+                </button>
+              )}
             </div>
           )}
         </div>
