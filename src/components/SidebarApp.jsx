@@ -1,4 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+// Leaflet se carga dinamicamente (no en el import estatico del modulo) --
+// agregarlo como import normal corrio el orden de evaluacion de chunks del
+// bundle y disparaba "can't access lexical declaration before
+// initialization" al cargar CUALQUIER pantalla, no solo donde se usa el
+// mapa. Cargado perezoso, solo cuando el mapa realmente se va a crear,
+// evita por completo ese problema de orden de inicializacion.
+let _leafletCargado = null;
+async function cargarLeaflet() {
+  if (_leafletCargado) return _leafletCargado;
+  const [{ default: L }] = await Promise.all([
+    import("leaflet"),
+    import("leaflet/dist/leaflet.css"),
+  ]);
+  _leafletCargado = L;
+  return L;
+}
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
@@ -1177,6 +1193,13 @@ export default function SidebarApp() {
   const [cajaBornesLoadingSB, setCajaBornesLoadingSB] = useState(false);
   const [bornePuertoInfoSB, setBornePuertoInfoSB] = useState(null);
   const cajaNapDesdClienteRefSB = useRef(false);
+  const ordenCoordMapRefSB = useRef(null);         // mapa interactivo de "Coordenadas" (Crear orden)
+  const ordenCoordMapInstanceRefSB = useRef(null);
+  const ordenCoordMapMarkerRefSB = useRef(null);
+  const napMapRefSB = useRef(null);          // div contenedor del mapa
+  const napMapInstanceRefSB = useRef(null);  // instancia Leaflet
+  const napMapClientMarkerRefSB = useRef(null);
+  const napMapBoxMarkersRefSB = useRef([]);
 
   // Cajas del nodo elegido, ordenadas por cercania al cliente
   const napCajasNearbySB = useMemo(() => {
@@ -1195,6 +1218,152 @@ export default function SidebarApp() {
       .then(({ data }) => setNapCajasOrden(data || []))
       .catch(() => setNapCajasOrden([]));
   }, [ordenForm.nodo]);
+
+  // Mapa interactivo (Leaflet) del campo "Coordenadas" en Crear orden --
+  // antes era una imagen estatica (iframe embed de OSM, sin zoom ni poder
+  // mover el pin); ahora es el mismo tipo de mapa real que usa App.jsx:
+  // zoom/pan nativos, marcador arrastrable y clic para mover la ubicacion.
+  const [showOrdenMap, setShowOrdenMap] = useState(false);
+  useEffect(() => {
+    if (!showOrdenMap || !ordenCoordMapRefSB.current) return;
+    if (ordenCoordMapInstanceRefSB.current) return;
+    const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+    let cancelado = false;
+    cargarLeaflet().then((L) => {
+      if (cancelado || !ordenCoordMapRefSB.current || ordenCoordMapInstanceRefSB.current) return;
+      const map = L.map(ordenCoordMapRefSB.current, { zoomControl:true }).setView([lat, lng], 17);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
+      const icon = L.divIcon({
+        html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+        className:"", iconSize:[22,22], iconAnchor:[11,11],
+      });
+      const marker = L.marker([lat, lng], { icon, draggable:true }).addTo(map);
+      marker.on("dragend", (e) => {
+        const { lat:nlat, lng:nlng } = e.target.getLatLng();
+        setOrdenForm(p => ({ ...p, coordenadas: `${nlat.toFixed(6)}, ${nlng.toFixed(6)}` }));
+      });
+      map.on("click", (e) => {
+        const { lat:nlat, lng:nlng } = e.latlng;
+        setOrdenForm(p => ({ ...p, coordenadas: `${nlat.toFixed(6)}, ${nlng.toFixed(6)}` }));
+        marker.setLatLng([nlat, nlng]);
+      });
+      ordenCoordMapInstanceRefSB.current = map;
+      ordenCoordMapMarkerRefSB.current = marker;
+      setTimeout(() => map.invalidateSize(), 80);
+    });
+    return () => {
+      cancelado = true;
+      if (ordenCoordMapInstanceRefSB.current) ordenCoordMapInstanceRefSB.current.remove();
+      ordenCoordMapInstanceRefSB.current = null;
+      ordenCoordMapMarkerRefSB.current = null;
+    };
+  }, [showOrdenMap]);
+
+  // Si las coordenadas cambian por otra via (ej. "📍 Chat"), mover el pin
+  // sin recrear el mapa entero.
+  useEffect(() => {
+    const marker = ordenCoordMapMarkerRefSB.current;
+    if (!marker) return;
+    const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+    marker.setLatLng([lat, lng]);
+  }, [ordenForm.coordenadas]);
+
+  // Mapa interactivo (Leaflet) del selector de caja NAP -- se crea/destruye
+  // junto con el modal (solo existe mientras se esta eligiendo la caja, no
+  // en la vista del splitter). Marcador del cliente arrastrable + clic en
+  // el mapa para mover su ubicacion (mismo patron que App.jsx "Crear
+  // orden"), y un marcador por cada caja cercana, clicable para elegirla.
+  useEffect(() => {
+    if (!napPickerAbierto || ordenForm.cajaNap || !napMapRefSB.current) return;
+    if (napMapInstanceRefSB.current) return; // ya esta creado
+    let cancelado = false;
+    cargarLeaflet().then((L) => {
+      if (cancelado || !napMapRefSB.current || napMapInstanceRefSB.current) return;
+      const [clat, clng] = (ordenForm.coordenadas || "").split(",").map(Number);
+      const centro = (clat && clng && !isNaN(clat) && !isNaN(clng)) ? [clat, clng] : [-16.409, -71.537];
+      const map = L.map(napMapRefSB.current, { zoomControl:true }).setView(centro, clat ? 16 : 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
+      napMapInstanceRefSB.current = map;
+      if (clat && clng) {
+        const clientIcon = L.divIcon({
+          html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+          className:"", iconSize:[22,22], iconAnchor:[11,11],
+        });
+        const marker = L.marker(centro, { icon:clientIcon, draggable:true }).addTo(map);
+        marker.on("dragend", (e) => {
+          const { lat, lng } = e.target.getLatLng();
+          setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
+        });
+        map.on("click", (e) => {
+          const { lat, lng } = e.latlng;
+          setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
+          marker.setLatLng([lat, lng]);
+        });
+        napMapClientMarkerRefSB.current = marker;
+      }
+      setTimeout(() => map.invalidateSize(), 80);
+    });
+    return () => {
+      cancelado = true;
+      if (napMapInstanceRefSB.current) napMapInstanceRefSB.current.remove();
+      napMapInstanceRefSB.current = null;
+      napMapClientMarkerRefSB.current = null;
+      napMapBoxMarkersRefSB.current = [];
+    };
+  }, [napPickerAbierto, !!ordenForm.cajaNap]);
+
+  // Si el cliente mueve el marcador manualmente, re-centrar el marcador sin
+  // recrear el mapa entero (el marcador ya lo actualiza "dragend"/"click"
+  // arriba -- esto cubre el caso de que coordenadas cambien por otra via,
+  // ej. "📍 Chat").
+  useEffect(() => {
+    const marker = napMapClientMarkerRefSB.current;
+    if (!marker) return;
+    const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+    marker.setLatLng([lat, lng]);
+  }, [ordenForm.coordenadas]);
+
+  // Marcadores de cajas NAP cercanas -- se redibujan cuando cambia la lista.
+  // La creacion del mapa es asincrona (carga de Leaflet diferida), asi que
+  // si este efecto corre antes de que el mapa exista, reintenta un toque
+  // despues en vez de simplemente no dibujar nada.
+  useEffect(() => {
+    let cancelado = false;
+    let timeoutId;
+    cargarLeaflet().then((L) => {
+      const tryDraw = () => {
+        if (cancelado) return;
+        const map = napMapInstanceRefSB.current;
+        if (!map) { timeoutId = setTimeout(tryDraw, 120); return; }
+        napMapBoxMarkersRefSB.current.forEach(m => m.remove());
+        napMapBoxMarkersRefSB.current = [];
+        const lista = napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden;
+        lista.slice(0, 20).forEach(c => {
+          if (!c.lat || !c.lng) return;
+          const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
+          const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
+          const icon = L.divIcon({
+            html: `<div style="display:flex;flex-direction:column;align-items:center">
+              <div style="width:26px;height:26px;border-radius:7px;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">📦</div>
+            </div>`,
+            className:"", iconSize:[26,26], iconAnchor:[13,13],
+          });
+          const marker = L.marker([c.lat, c.lng], { icon }).addTo(map);
+          marker.bindTooltip(`${c.codigo} · ${c.puertos_ocupados||0}/${c.capacidad||8}`, { direction:"top" });
+          marker.on("click", () => {
+            cajaNapDesdClienteRefSB.current = true;
+            setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" }));
+          });
+          napMapBoxMarkersRefSB.current.push(marker);
+        });
+      };
+      tryDraw();
+    });
+    return () => { cancelado = true; if (timeoutId) clearTimeout(timeoutId); };
+  }, [napCajasNearbySB, napCajasOrden, napPickerAbierto]);
 
   // Auto-asignar la caja mas cercana -- Nod_02 todavia no tiene todas sus
   // cajas registradas en nap_cajas, asi que auto-asignar ahi puede terminar
@@ -1298,7 +1467,6 @@ export default function SidebarApp() {
   const [agregarTelMkw, setAgregarTelMkw] = useState(true);
   const [tecnicosLista, setTecnicosLista] = useState([]);
   const [autorLista,    setAutorLista]    = useState([]);
-  const [showOrdenMap,  setShowOrdenMap]  = useState(false);
   // Editar servicio
   const [perfiles,      setPerfiles]      = useState([]);
   const [loadingPerf,   setLoadingPerf]   = useState(false);
@@ -4611,6 +4779,10 @@ export default function SidebarApp() {
                 <div style={{ fontSize:12, color:"#94a3b8" }}>Selecciona el nodo del cliente para ver sus cajas NAP.</div>
               ) : !ordenForm.cajaNap ? (
                 <>
+                  <div ref={napMapRefSB} style={{ height:240, borderRadius:10, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}` }} />
+                  <div style={{ fontSize:10, color:"#94a3b8", marginBottom:10 }}>
+                    Arrastra el punto azul (o toca el mapa) para ajustar la ubicación · toca una caja 📦 para elegirla
+                  </div>
                   {ordenForm.nodo === "Nod_02" && (
                     <div style={{ display:"flex", alignItems:"center", gap:6, background:T.amberLt, color:T.amber,
                       borderRadius:8, padding:"7px 10px", fontSize:11, fontWeight:600, marginBottom:10 }}>
@@ -7686,16 +7858,19 @@ export default function SidebarApp() {
                     </button>
                   </div>
                 )}
-                {/* Mapa */}
+                {/* Mapa -- interactivo (Leaflet), no una imagen estatica: zoom/pan
+                    reales y el pin se arrastra o se mueve con un clic. */}
                 {showOrdenMap && (() => {
                   const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
                   if (!lat || !lng) return null;
-                  const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-0.003},${lat-0.003},${lng+0.003},${lat+0.003}&layer=mapnik&marker=${lat},${lng}`;
                   return (
                     <div style={{ position:"relative" }}>
-                      <iframe src={mapUrl} title="Ubicación orden" style={{ width:"100%", height:160, border:"none", display:"block" }} loading="lazy" />
+                      <div ref={ordenCoordMapRefSB} style={{ width:"100%", height:200 }} />
+                      <div style={{ fontSize:9.5, color:T.muted, textAlign:"center", padding:"4px 0", background:T.bg }}>
+                        Arrastra el punto (o toca el mapa) para ajustar la ubicación
+                      </div>
                       <a href={`https://maps.google.com/?q=${lat},${lng}`} target="_blank" rel="noopener noreferrer"
-                        style={{ position:"absolute", bottom:6, right:8, background:"rgba(0,0,0,0.6)", color:"#fff", fontSize:10, padding:"3px 8px", borderRadius:4, textDecoration:"none", fontWeight:600 }}>
+                        style={{ position:"absolute", bottom:34, right:8, background:"rgba(0,0,0,0.6)", color:"#fff", fontSize:10, padding:"3px 8px", borderRadius:4, textDecoration:"none", fontWeight:600, zIndex:401 }}>
                         Google Maps ↗
                       </a>
                       <StreetViewThumb coordenadas={ordenForm.coordenadas} height={160} style={{ marginTop: 4, borderRadius: 0 }} />
