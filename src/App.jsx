@@ -16975,7 +16975,13 @@ export default function App() {
       .sort((a, b) => a.dist - b.dist);
     setNapCajasTop20(sorted.slice(0, 20));
     setNapCajasNearby(sorted.slice(0, 5));
-    if (!ordenEditandoId && !orden.cajaNap && !cajaNapDesdClienteRef.current && sorted.length) {
+    // Nod_02 todavia no tiene todas sus cajas registradas en nap_cajas --
+    // auto-asignar la "mas cercana" ahi mismo puede terminar eligiendo una
+    // caja de OTRO nodo (la unica registrada cerca), cruzando infraestructura
+    // entre nodos sin que nadie lo note. Desactivado temporalmente para
+    // Nod_02 hasta que su catalogo de cajas este completo -- el tecnico
+    // sigue pudiendo elegir manualmente de la lista.
+    if (!ordenEditandoId && !orden.cajaNap && !cajaNapDesdClienteRef.current && sorted.length && orden.nodo !== "Nod_02") {
       handleChange("cajaNap", sorted[0].codigo);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
