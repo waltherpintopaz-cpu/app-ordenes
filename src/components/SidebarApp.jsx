@@ -42,6 +42,14 @@ const MP_NODO_SUFFIX = { 1:1, 2:2, 3:3, 5:4, 11:6 };
 const XTREAM_PROXY_URL = String(import.meta.env.VITE_XTREAM_PROXY_URL || "").trim().replace(/\/+$/, "");
 const XTREAM_INTERNAL_TOKEN = String(import.meta.env.VITE_XTREAM_INTERNAL_TOKEN || "").trim();
 const XTREAM_BOUQUETS_TODOS = [1, 2, 3, 4, 5, 6, 7];
+// Token compartido para las rutas protegidas de diagnosticoServicioServer.mjs
+// (RUTAS_PROTEGIDAS_INTERNAS: /activar, /suspender, etc). Nombre distinto a
+// XTREAM_INTERNAL_TOKEN porque son dos secretos independientes de dos
+// servicios distintos -- usar el de Xtream aca enviaba un header vacio
+// (VITE_XTREAM_INTERNAL_TOKEN nunca se configuro) y el backend rechazaba la
+// llamada sin avisar en los flujos "best-effort" (solo se notó en
+// "Corregir ahora" de morosos, que si muestra el error al usuario).
+const DIAGNOSTICO_INTERNAL_TOKEN_FE = String(import.meta.env.VITE_DIAGNOSTICO_INTERNAL_TOKEN || "").trim();
 // Planes IPTV — cada uno es superset del anterior. 1=TV_BASICO 2=TV_PREMIUN
 // 3=PELICULAS 4=SERIES 5=TV_DIGITAL 6=Privado 7=Free.
 const PLANES_IPTV = {
@@ -1652,7 +1660,7 @@ export default function SidebarApp() {
         if (nodoReal && pppuserPago) {
           fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/activar`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN_FE },
             body: JSON.stringify({ nodo: nodoReal, userPppoe: pppuserPago, ip: ipPago }),
           }).catch(() => {});
         }
@@ -2019,7 +2027,7 @@ export default function SidebarApp() {
           if (nodoReal && pppuser) {
             await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/activar`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN_FE },
               body: JSON.stringify({ nodo: nodoReal, userPppoe: pppuser, ip: ipSvc }),
             });
           }
@@ -2058,7 +2066,7 @@ export default function SidebarApp() {
       const ip = detalle?._servicio?.ip || "";
       const res = await fetch(`${DIAGNO_BASE}/api/diagnostico-servicio/activar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN_FE },
         body: JSON.stringify({ nodo: nodoReal, userPppoe: pppuser, ip, mikrowispId: cliente.mikrowisp_id }),
       });
       const json = await res.json().catch(() => ({}));
