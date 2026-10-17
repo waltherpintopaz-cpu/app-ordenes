@@ -5572,7 +5572,7 @@ export default function SidebarApp() {
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
                     {fila("Caja NAP", (
-                      <button type="button" onClick={() => setNapPickerAbierto(true)}
+                      <button type="button" onClick={() => { alert("DEBUG: boton Cambiar tocado"); setNapPickerAbierto(true); }}
                         style={{ width:"100%", background:"none", border:"none", borderRadius:0, padding:"7px 10px",
                           fontSize:12, color: ordenForm.cajaNap ? T.navy : T.muted, textAlign:"left", cursor:"pointer",
                           display:"flex", alignItems:"center", justifyContent:"space-between", fontFamily:"inherit" }}>
