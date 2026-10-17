@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
@@ -1177,6 +1179,10 @@ export default function SidebarApp() {
   const [cajaBornesLoadingSB, setCajaBornesLoadingSB] = useState(false);
   const [bornePuertoInfoSB, setBornePuertoInfoSB] = useState(null);
   const cajaNapDesdClienteRefSB = useRef(false);
+  const napMapRefSB = useRef(null);          // div contenedor del mapa
+  const napMapInstanceRefSB = useRef(null);  // instancia Leaflet
+  const napMapClientMarkerRefSB = useRef(null);
+  const napMapBoxMarkersRefSB = useRef([]);
 
   // Cajas del nodo elegido, ordenadas por cercania al cliente
   const napCajasNearbySB = useMemo(() => {
@@ -1195,6 +1201,84 @@ export default function SidebarApp() {
       .then(({ data }) => setNapCajasOrden(data || []))
       .catch(() => setNapCajasOrden([]));
   }, [ordenForm.nodo]);
+
+  // Mapa interactivo (Leaflet) del selector de caja NAP -- se crea/destruye
+  // junto con el modal (solo existe mientras se esta eligiendo la caja, no
+  // en la vista del splitter). Marcador del cliente arrastrable + clic en
+  // el mapa para mover su ubicacion (mismo patron que App.jsx "Crear
+  // orden"), y un marcador por cada caja cercana, clicable para elegirla.
+  useEffect(() => {
+    if (!napPickerAbierto || ordenForm.cajaNap || !napMapRefSB.current) return;
+    if (napMapInstanceRefSB.current) return; // ya esta creado
+    const [clat, clng] = (ordenForm.coordenadas || "").split(",").map(Number);
+    const centro = (clat && clng && !isNaN(clat) && !isNaN(clng)) ? [clat, clng] : [-16.409, -71.537];
+    const map = L.map(napMapRefSB.current, { zoomControl:true }).setView(centro, clat ? 16 : 13);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:"© OpenStreetMap" }).addTo(map);
+    napMapInstanceRefSB.current = map;
+    if (clat && clng) {
+      const clientIcon = L.divIcon({
+        html: `<div style="width:22px;height:22px;border-radius:50%;background:${T.blue};border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>`,
+        className:"", iconSize:[22,22], iconAnchor:[11,11],
+      });
+      const marker = L.marker(centro, { icon:clientIcon, draggable:true }).addTo(map);
+      marker.on("dragend", (e) => {
+        const { lat, lng } = e.target.getLatLng();
+        setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
+      });
+      map.on("click", (e) => {
+        const { lat, lng } = e.latlng;
+        setOrdenForm(p => ({ ...p, coordenadas: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
+        marker.setLatLng([lat, lng]);
+      });
+      napMapClientMarkerRefSB.current = marker;
+    }
+    setTimeout(() => map.invalidateSize(), 80);
+    return () => {
+      map.remove();
+      napMapInstanceRefSB.current = null;
+      napMapClientMarkerRefSB.current = null;
+      napMapBoxMarkersRefSB.current = [];
+    };
+  }, [napPickerAbierto, !!ordenForm.cajaNap]);
+
+  // Si el cliente mueve el marcador manualmente, re-centrar el marcador sin
+  // recrear el mapa entero (el marcador ya lo actualiza "dragend"/"click"
+  // arriba -- esto cubre el caso de que coordenadas cambien por otra via,
+  // ej. "📍 Chat").
+  useEffect(() => {
+    const marker = napMapClientMarkerRefSB.current;
+    if (!marker) return;
+    const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+    marker.setLatLng([lat, lng]);
+  }, [ordenForm.coordenadas]);
+
+  // Marcadores de cajas NAP cercanas -- se redibujan cuando cambia la lista
+  useEffect(() => {
+    const map = napMapInstanceRefSB.current;
+    if (!map) return;
+    napMapBoxMarkersRefSB.current.forEach(m => m.remove());
+    napMapBoxMarkersRefSB.current = [];
+    const lista = napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden;
+    lista.slice(0, 20).forEach(c => {
+      if (!c.lat || !c.lng) return;
+      const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
+      const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
+      const icon = L.divIcon({
+        html: `<div style="display:flex;flex-direction:column;align-items:center">
+          <div style="width:26px;height:26px;border-radius:7px;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">📦</div>
+        </div>`,
+        className:"", iconSize:[26,26], iconAnchor:[13,13],
+      });
+      const marker = L.marker([c.lat, c.lng], { icon }).addTo(map);
+      marker.bindTooltip(`${c.codigo} · ${c.puertos_ocupados||0}/${c.capacidad||8}`, { direction:"top" });
+      marker.on("click", () => {
+        cajaNapDesdClienteRefSB.current = true;
+        setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" }));
+      });
+      napMapBoxMarkersRefSB.current.push(marker);
+    });
+  }, [napCajasNearbySB, napCajasOrden]);
 
   // Auto-asignar la caja mas cercana -- Nod_02 todavia no tiene todas sus
   // cajas registradas en nap_cajas, asi que auto-asignar ahi puede terminar
@@ -4611,6 +4695,10 @@ export default function SidebarApp() {
                 <div style={{ fontSize:12, color:"#94a3b8" }}>Selecciona el nodo del cliente para ver sus cajas NAP.</div>
               ) : !ordenForm.cajaNap ? (
                 <>
+                  <div ref={napMapRefSB} style={{ height:240, borderRadius:10, overflow:"hidden", marginBottom:10, border:`1px solid ${T.border}` }} />
+                  <div style={{ fontSize:10, color:"#94a3b8", marginBottom:10 }}>
+                    Arrastra el punto azul (o toca el mapa) para ajustar la ubicación · toca una caja 📦 para elegirla
+                  </div>
                   {ordenForm.nodo === "Nod_02" && (
                     <div style={{ display:"flex", alignItems:"center", gap:6, background:T.amberLt, color:T.amber,
                       borderRadius:8, padding:"7px 10px", fontSize:11, fontWeight:600, marginBottom:10 }}>
