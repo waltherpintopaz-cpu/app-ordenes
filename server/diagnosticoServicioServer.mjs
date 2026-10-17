@@ -2327,6 +2327,13 @@ const handleEvolutionProxyAccion = async (accion, payload, tenantId) => {
 // reinicia, se resetea solo, no hace falta limpiar nada a mano).
 const _cooldownPorContacto = new Map(); // "accountId:contactId" -> ms
 const COOLDOWN_MS = 45_000;
+// Cola de reintento (debounce de cola): si un mensaje llega bloqueado por el
+// cooldown, no se descarta -- se guarda el ultimo body recibido y se vuelve a
+// ejecutar justo cuando el cooldown termina. Sin esto, un pago validado que
+// cae dentro de la ventana de cooldown de una consulta anterior se perdia
+// para siempre (el contacto quedaba con el nombre/estado viejo hasta que
+// llegara otro mensaje nuevo, lo que podia tardar horas o no pasar nunca).
+const _cooldownReintento = new Map(); // cooldownKey -> { body, timer }
 
 const handleActualizarContactoChatwoot = async (body) => {
   // "message_created" se dispara para los dos lados (cliente Y agente) --
@@ -2343,7 +2350,17 @@ const handleActualizarContactoChatwoot = async (body) => {
   if (!body?.dry_run) {
     const ultima = _cooldownPorContacto.get(cooldownKey);
     if (ultima && Date.now() - ultima < COOLDOWN_MS) {
-      return { ok: false, motivo: `Cooldown activo (actualizado hace ${Math.round((Date.now() - ultima) / 1000)}s, se ignora hasta los ${COOLDOWN_MS / 1000}s).` };
+      const restante = COOLDOWN_MS - (Date.now() - ultima);
+      const pendiente = _cooldownReintento.get(cooldownKey);
+      if (pendiente) clearTimeout(pendiente.timer);
+      const timer = setTimeout(() => {
+        _cooldownReintento.delete(cooldownKey);
+        handleActualizarContactoChatwoot(body)
+          .then((r) => console.log(`[actualizar-contacto] reintento tras cooldown:`, JSON.stringify(r).slice(0, 500)))
+          .catch((e) => console.log(`[actualizar-contacto] reintento tras cooldown ERROR: ${e.message}`));
+      }, restante + 200);
+      _cooldownReintento.set(cooldownKey, { body, timer });
+      return { ok: false, motivo: `Cooldown activo (actualizado hace ${Math.round((Date.now() - ultima) / 1000)}s, se ignora hasta los ${COOLDOWN_MS / 1000}s). Reintento programado.` };
     }
   }
 
