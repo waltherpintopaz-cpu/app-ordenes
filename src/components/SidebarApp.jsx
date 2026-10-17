@@ -7990,6 +7990,7 @@ export default function SidebarApp() {
             splitter de puertos, sin auto-asignar en Nod_02). ══ */}
         {napPickerAbierto && (
           <>
+            <div style={{ position:"fixed", top:0, left:0, width:220, height:220, background:"red", zIndex:999999, color:"#fff", fontSize:20, fontWeight:900 }}>TEST VISIBLE</div>
             <div onClick={() => setNapPickerAbierto(false)}
               style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.35)",
                 animation:"sbToastBackdropIn .2s ease both" }} />
