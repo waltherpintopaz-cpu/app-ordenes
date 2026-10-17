@@ -52,8 +52,12 @@ const OLT_SSH_API = String(process.env.OLT_SSH_API || "https://olt-signal-dim.wo
 // "vsol" (DIM, via OLT_SSH_API /signal) o "huawei" (Americanet, via
 // HUAWEI_OLT_SNMP_API /onu-info) -- ambos devuelven el mismo campo
 // "rxPower", asi que el resto de handleActualizarContactoChatwoot no
-// necesita saber cual proveedor respondio.
+// necesita saber cual proveedor respondio. Mismo criterio por nodo que ya
+// usa el panel web (esNodoOltSsh/NODOS_HUAWEI en SidebarApp.jsx): Nod_01/02/03
+// son Huawei (OLT propia de Americanet), el resto es VSOL (olt-signal-dim).
 const OLT_SIGNAL_PROVIDER = String(process.env.OLT_SIGNAL_PROVIDER || "vsol").trim().toLowerCase();
+const NODOS_HUAWEI = new Set(["Nod_01", "Nod_02", "Nod_03"]);
+const proveedorSenalPorNodo = (nodo) => (NODOS_HUAWEI.has(String(nodo || "")) ? "huawei" : "vsol");
 const VSOL_ACCION_TOKEN = String(process.env.VSOL_ACCION_TOKEN || "").trim();
 // La key de OpenAI NUNCA debe vivir en el navegador (antes estaba en varios
 // paneles como VITE_OPENAI_KEY, 100% extraible del bundle publico -- ver
@@ -2500,7 +2504,7 @@ const handleActualizarContactoChatwoot = async (body) => {
       : Promise.resolve(null),
     cliente?.sn_onu
       ? fetchConTimeout(
-          OLT_SIGNAL_PROVIDER === "huawei"
+          proveedorSenalPorNodo(nodoCliente) === "huawei"
             ? `${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(cliente.sn_onu)}`
             : `${OLT_SSH_API}/signal?sn=${encodeURIComponent(cliente.sn_onu)}&nodo=${encodeURIComponent(nodoCliente || "")}`,
           {},
