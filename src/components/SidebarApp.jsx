@@ -597,6 +597,8 @@ const getGlobalCSS = (T) => `
   .sb-btn-action { transition: opacity .15s, background .15s, transform .1s; }
   .sb-btn-action:hover:not(:disabled) { opacity: 0.88; }
   .sb-btn-action:active:not(:disabled) { transform: scale(0.97); }
+  .sb-btn-ghost { background:transparent; border:none; color:${T.muted}; cursor:pointer; padding:5px; border-radius:6px; display:flex; align-items:center; justify-content:center; transition: background .15s, color .15s; }
+  .sb-btn-ghost:hover:not(:disabled) { background:${T.accent}; color:${T.blue}; }
   .sb-action-btn:hover:not(:disabled) { filter: brightness(0.97); box-shadow: 0 2px 8px rgba(15,23,42,0.1); transform: translateY(-1px); }
   .sb-action-btn { transition: filter .15s, box-shadow .15s, transform .15s; }
   .sb-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; background:inherit; animation: sbPing 1.5s ease infinite; }
@@ -5651,10 +5653,8 @@ export default function SidebarApp() {
                     : `Inactivo desde: ${fmt12h(mk.lastLoggedOut)}`;
                   return (
                     <div onClick={() => setShowDiagDetail(v => !v)}
-                      style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer",
-                        background: isConn ? T.greenLt : T.redLt, borderRadius:5, padding:"5px 8px",
-                        border:`1px solid ${c}40` }}>
-                      <div style={{ position:"relative", width:8, height:8, flexShrink:0 }}>
+                      style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer" }}>
+                      <div style={{ position:"relative", width:7, height:7, flexShrink:0 }}>
                         <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
                         {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
                       </div>
@@ -5664,10 +5664,9 @@ export default function SidebarApp() {
                     </div>
                   );
                 })()}
-                <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-action"
-                  title="Refrescar diagnóstico"
-                  style={{ ...S.btnSm("#ea580c"), opacity:diagLoad?0.6:1, fontSize:10, flexShrink:0, padding:"4px 7px" }}>
-                  <RefreshCw size={11}/>
+                <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-ghost"
+                  title="Refrescar diagnóstico" style={{ opacity:diagLoad?0.5:1, flexShrink:0 }}>
+                  <RefreshCw size={13}/>
                 </button>
               </div>
 
@@ -5733,7 +5732,7 @@ export default function SidebarApp() {
                   <span style={{ fontSize:10, color:T.muted, flex:1 }}>Sin revisar</span>
                 )}
                 {!morosoCargando && morosoInfo && !morosoInfo.enMorosos && (
-                  <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.greenLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.green }}>
+                  <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, fontSize:11, fontWeight:700, color:T.green }}>
                     <CheckCircle2 size={13} /> No está bloqueado
                   </span>
                 )}
@@ -5762,9 +5761,8 @@ export default function SidebarApp() {
                   const pppuser = detalle?._servicio?.pppuser || cliente?.usuario_nodo || "";
                   return pppuser ? (
                     <button onClick={() => revisarMorosos(nodoReal, pppuser, detalle?._servicio?.ip || "", cliente?.mikrowisp_id)}
-                      className="sb-btn-action" title="Revisar de nuevo"
-                      style={{ ...S.btnSm("#ea580c"), fontSize:10, flexShrink:0, padding:"4px 7px" }}>
-                      <RefreshCw size={11}/>
+                      className="sb-btn-ghost" title="Revisar de nuevo" style={{ flexShrink:0 }}>
+                      <RefreshCw size={13}/>
                     </button>
                   ) : null;
                 })()}
@@ -5824,8 +5822,7 @@ export default function SidebarApp() {
                     const lbl = senalLabel(senal.rx);
                     return (
                       <div onClick={() => setShowSenalDetail(v => !v)}
-                        style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer",
-                          background:"#fff", borderRadius:5, padding:"5px 8px", border:`1px solid ${c}40` }}>
+                        style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer" }}>
                         <span style={{ fontWeight:700, fontSize:12, color:c, fontFamily:"monospace" }}>{senal.rx} dBm</span>
                         <span style={{ fontSize:10, fontWeight:600, color:c }}>{lbl}</span>
                         <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{showSenalDetail ? "▲" : "▼"}</span>
@@ -5833,10 +5830,9 @@ export default function SidebarApp() {
                     );
                   })()}
                   {!senalLoad && !senal && <span style={{ fontSize:10, color:T.muted }}>—</span>}
-                  <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-action"
-                    title="Refrescar señal"
-                    style={{ ...S.btnSm(senalLoad?T.muted:T.blue), opacity:senalLoad?0.6:1, fontSize:10, flexShrink:0, padding:"4px 7px" }}>
-                    <RefreshCw size={11}/>
+                  <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-ghost"
+                    title="Refrescar señal" style={{ opacity:senalLoad?0.5:1, flexShrink:0 }}>
+                    <RefreshCw size={13}/>
                   </button>
                 </div>
 
