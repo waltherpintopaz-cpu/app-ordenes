@@ -919,36 +919,64 @@ const buildInitialOrder = () => ({
 // SelectorPuertoCaja.js (app movil, Etiquetado de ONUs / Liquidacion), para
 // que el grid de bornes de Crear Orden se vea igual que esa pantalla.
 const PORT_ICON_COLORS = { plate: "#E7EAEF", plateEdge: "#B7BEC9", adapter: "#2F9E46", adapter2: "#3FBF5A", dustcap: "#D7DCE2", cable: "#1B1F26", cableCore: "#454C58", boot: "#454C58" };
-function PortIconWeb({ ocupado, colorOverride }) {
+function PortIconWeb({ ocupado, colorOverride, uid = "p" }) {
   const C = PORT_ICON_COLORS;
   const adapterColor = colorOverride || C.adapter;
   const adapterColor2 = colorOverride || C.adapter2;
+  // IDs unicos por instancia -- varios puertos renderizados a la vez, los
+  // <linearGradient> comparten namespace de id en el DOM si no se distinguen.
+  const gPlate = `gp-${uid}`, gBody = `gb-${uid}`, gCap = `gc-${uid}`;
+  const defs = (
+    <defs>
+      <linearGradient id={gPlate} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#F4F6F9" />
+        <stop offset="55%" stopColor={C.plate} />
+        <stop offset="100%" stopColor="#CBD2DC" />
+      </linearGradient>
+      <linearGradient id={gBody} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor={adapterColor2} />
+        <stop offset="45%" stopColor={adapterColor} />
+        <stop offset="100%" stopColor={adapterColor} stopOpacity={0.82} />
+      </linearGradient>
+      <linearGradient id={gCap} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#FFFFFF" />
+        <stop offset="100%" stopColor="#D7E0F5" />
+      </linearGradient>
+    </defs>
+  );
   if (!ocupado) {
     return (
       <svg viewBox="0 0 44 52" width="100%" height="100%">
-        <rect x={3} y={15} width={38} height={22} rx={6} fill={C.plate} stroke={C.plateEdge} strokeWidth={1.2} />
-        <rect x={8} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.5} />
-        <rect x={30} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.5} />
-        <rect x={13} y={18} width={18} height={16} rx={3.5} fill={C.adapter} opacity={0.5} />
+        {defs}
+        <rect x={3} y={15} width={38} height={22} rx={6} fill={`url(#${gPlate})`} stroke={C.plateEdge} strokeWidth={1.2} />
+        <rect x={8} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.38} />
+        <rect x={30} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.38} />
+        <rect x={13} y={18} width={18} height={16} rx={3.5} fill={C.adapter} opacity={0.38} />
         <rect x={16.5} y={22} width={11} height={8} rx={2} fill={C.dustcap} />
+        <rect x={3} y={15} width={38} height={6} rx={4} fill="#FFFFFF" opacity={0.3} />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 44 52" width="100%" height="100%">
-      <rect x={3} y={15} width={38} height={22} rx={6} fill={C.plate} stroke={C.plateEdge} strokeWidth={1.2} />
-      <path d="M22 38 C22 43, 22 44, 22 50" fill="none" stroke={C.cable} strokeWidth={5.5} strokeLinecap="round" />
-      <path d="M22 38 C22 43, 22 44, 22 50" fill="none" stroke={C.cableCore} strokeWidth={1.4} strokeLinecap="round" opacity={0.45} />
+      {defs}
+      <rect x={3} y={15} width={38} height={22} rx={6} fill={`url(#${gPlate})`} stroke={C.plateEdge} strokeWidth={1.2} />
+      {/* Cordon de fibra real: jacket oscuro + brillo lateral + nucleo, con
+          una leve curva en S (nunca cuelga perfectamente recto) */}
+      <path d="M22 38 C21 42, 23 44, 22 50" fill="none" stroke={C.cable} strokeWidth={5.5} strokeLinecap="round" />
+      <path d="M22 38 C21 42, 23 44, 22 50" fill="none" stroke={C.cableCore} strokeWidth={1.6} strokeLinecap="round" opacity={0.5} />
+      <path d="M20 38 C19.2 42, 20.8 44, 20.2 50" fill="none" stroke="#FFFFFF" strokeWidth={0.8} strokeLinecap="round" opacity={0.18} />
       <rect x={19} y={34} width={6} height={7} rx={1.8} fill={C.boot} />
-      <rect x={8} y={21} width={6} height={10} rx={1.6} fill={adapterColor} />
-      <rect x={30} y={21} width={6} height={10} rx={1.6} fill={adapterColor} />
-      <rect x={13} y={18} width={18} height={16} rx={3.5} fill={adapterColor} />
+      <rect x={8} y={21} width={6} height={10} rx={1.6} fill={`url(#${gBody})`} />
+      <rect x={30} y={21} width={6} height={10} rx={1.6} fill={`url(#${gBody})`} />
+      <rect x={13} y={18} width={18} height={16} rx={3.5} fill={`url(#${gBody})`} />
       <rect x={16.5} y={1} width={11} height={19} rx={3} fill={adapterColor2} />
-      <rect x={18.5} y={3.2} width={7} height={2.4} rx={1.1} fill="rgba(255,255,255,0.6)" />
-      <rect x={18.5} y={7} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.12)" />
-      <rect x={18.5} y={10} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.12)" />
-      <rect x={14.5} y={21} width={15} height={9} rx={1.8} fill="#EEF3FF" opacity={0.95} />
-      <rect x={14.5} y={21} width={15} height={3} rx={1.4} fill="#FFFFFF" opacity={0.45} />
+      <rect x={18.5} y={3.2} width={7} height={2.4} rx={1.1} fill="rgba(255,255,255,0.65)" />
+      <rect x={18.5} y={7} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.14)" />
+      <rect x={18.5} y={10} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.14)" />
+      <rect x={14.5} y={21} width={15} height={9} rx={1.8} fill={`url(#${gCap})`} />
+      <rect x={14.5} y={21} width={15} height={3} rx={1.4} fill="#FFFFFF" opacity={0.5} />
+      <rect x={13} y={18} width={5} height={16} rx={2} fill="#FFFFFF" opacity={0.14} />
     </svg>
   );
 }
@@ -19191,11 +19219,22 @@ export default function App() {
                                 <div style={{ fontSize: 12, color: "#94a3b8" }}>Cargando bornes…</div>
                               ) : cajaBornesInfo ? (
                                 <>
-                                  <div style={{ position: "relative", background: "#2b2f38", borderRadius: 14, padding: "20px 16px 14px" }}>
-                                    <div style={{ position: "absolute", top: 8, left: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a" }} />
-                                    <div style={{ position: "absolute", top: 8, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a" }} />
+                                  <div style={{ position: "relative", background: "linear-gradient(165deg, #363c48 0%, #2b2f38 45%, #23262e 100%)", borderRadius: 14, padding: "20px 16px 14px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -8px 16px rgba(0,0,0,0.25)" }}>
+                                    <div style={{ position: "absolute", top: 8, left: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a", boxShadow: "inset 0 1px 1px rgba(0,0,0,0.4), 0 0.5px 0 rgba(255,255,255,0.15)" }} />
+                                    <div style={{ position: "absolute", top: 8, right: 10, width: 8, height: 8, borderRadius: "50%", background: "#52586a", boxShadow: "inset 0 1px 1px rgba(0,0,0,0.4), 0 0.5px 0 rgba(255,255,255,0.15)" }} />
                                     <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#8d93a3", marginBottom: 10 }}>
                                       SPLITTER 1:{cajaBornesInfo.capacidad}
+                                    </div>
+                                    {/* Fibra troncal de entrada -- un solo cordon que "se reparte" en los
+                                        N puertos de salida, para que se lea como un splitter real y no
+                                        solo una fila de conectores sueltos. */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12, paddingBottom: 10, borderBottom: "1px dashed #454b59" }}>
+                                      <svg width="20" height="14" viewBox="0 0 20 14">
+                                        <path d="M0 7 H10" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" />
+                                        <path d="M10 7 L17 2 M10 7 L17 7 M10 7 L17 12" stroke="#6b7280" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity={0.7} />
+                                        <circle cx="10" cy="7" r="2" fill="#f59e0b" />
+                                      </svg>
+                                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", color: "#9aa1b0" }}>ENTRADA TRONCAL</span>
                                     </div>
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(50px, 1fr))", gap: 10 }}>
                                       {Array.from({ length: cajaBornesInfo.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
@@ -19223,7 +19262,7 @@ export default function App() {
                                               width: 36, height: 42, position: "relative",
                                               filter: sel || infoAbierta ? "drop-shadow(0 0 0 2px #1d4ed8)" : "none",
                                             }}>
-                                              <PortIconWeb ocupado={!libre} colorOverride={colorOverride} />
+                                              <PortIconWeb ocupado={!libre} colorOverride={colorOverride} uid={`${orden.cajaNap}-${puerto}`} />
                                               {suspendido && (
                                                 <span className="borne-susp-dot" style={{ position: "absolute", top: -2, right: -2, width: 10, height: 10, borderRadius: "50%", background: "#dc2626", border: "2px solid #2b2f38" }} title="Suspendido" />
                                               )}
