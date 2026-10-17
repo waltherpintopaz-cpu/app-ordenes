@@ -652,6 +652,12 @@ const getGlobalCSS = (T) => `
     50% { background-position: 100% 50%; }
   }
   .sb-header-glow { background-size: 200% 200%; animation: sbHeaderGlow 10s ease-in-out infinite; }
+  @keyframes sbBadgePulse {
+    0%   { box-shadow: 0 0 0 0 var(--pulse-c); }
+    70%  { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  .sb-badge-pulse { animation: sbBadgePulse 1.8s ease-out infinite; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 4px; }
 `;
 
@@ -5543,8 +5549,19 @@ export default function SidebarApp() {
       {/* ── Cliente cargado ── */}
       {cliente && !loading && (<>
 
-        {/* ══ HEADER CLIENTE — fondo claro con acento azul ══ */}
-        <div className="sb-header-glow" style={{ background:`linear-gradient(120deg, ${T.card} 0%, ${T.accent} 50%, ${T.card} 100%)`, borderBottom:`2px solid ${T.blue}`, padding:"14px 14px 12px", position:"relative" }}>
+        {/* ══ HEADER CLIENTE — el acento (borde, badge) cambia de color segun
+            estado -- un cliente SUSPENDIDO/CORTADO debe notarse de
+            inmediato, no solo en una etiqueta chica igual de discreta que
+            el resto del header. ══ */}
+        {(() => {
+          const _vencida = estadoServicio === "ACTIVO" && factPend.some(f => {
+            if (String(f.estado || "").toLowerCase() === "vencido") return true;
+            const v = f.vencimiento ? new Date(f.vencimiento) : null;
+            return v && v < new Date();
+          });
+          const _ec = estadoServicio === "ACTIVO" ? (_vencida ? T.amber : T.green) : estadoServicio === "SUSPENDIDO" ? T.amber : T.red;
+          return (
+        <div className="sb-header-glow" style={{ background:`linear-gradient(120deg, ${T.card} 0%, ${T.accent} 50%, ${T.card} 100%)`, borderBottom:`2px solid ${_ec}`, padding:"14px 14px 12px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
             <div style={{ display:"flex", alignItems:"flex-start", gap:10, minWidth:0 }}>
               {(() => {
@@ -5566,15 +5583,26 @@ export default function SidebarApp() {
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:5, flexWrap:"wrap" }}>
                 <span style={{ fontSize:12, color:T.muted }}>#{cliente.mikrowisp_id}</span>
-                <span style={{ background:
+                <span className={estadoServicio !== "ACTIVO" ? "sb-badge-pulse" : ""}
+                  style={{ background:
                   estadoServicio === "ACTIVO" ? T.greenLt :
                   estadoServicio === "SUSPENDIDO" ? T.amberLt : T.redLt,
                   color:
                   estadoServicio === "ACTIVO" ? T.green :
                   estadoServicio === "SUSPENDIDO" ? T.amber : T.red,
-                  borderRadius:3, padding:"2px 8px", fontSize:11, fontWeight:700 }}>
+                  borderRadius:4, padding: estadoServicio === "ACTIVO" ? "2px 8px" : "3px 9px",
+                  fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4,
+                  "--pulse-c": estadoServicio === "SUSPENDIDO" ? `${T.amber}55` : `${T.red}55` }}>
+                  {estadoServicio === "SUSPENDIDO" && <Lock size={11} />}
+                  {estadoServicio && estadoServicio !== "ACTIVO" && estadoServicio !== "SUSPENDIDO" && <XCircle size={11} />}
                   {estadoServicio || "ACTIVO"}
                 </span>
+                {_vencida && (
+                  <span style={{ background:T.amberLt, color:T.amber, borderRadius:4, padding:"2px 8px",
+                    fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4 }}>
+                    <AlertTriangle size={11} /> Deuda vencida
+                  </span>
+                )}
                 {svc && (
                   <span style={{ display:"flex", alignItems:"center", gap:4 }}>
                     <span style={{ position:"relative", width:7, height:7, display:"inline-block" }}>
@@ -5636,6 +5664,7 @@ export default function SidebarApp() {
             </div>
           </div>
         </div>
+        ); })()}
 
         {/* ══ AVISO: TELEFONO CON VARIOS SERVICIOS ══ */}
         {serviciosTelefono.length > 1 && (
