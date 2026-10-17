@@ -811,6 +811,30 @@ function clearStoredAgente() {
   localStorage.removeItem("sb_agente");
 }
 
+// ─── Cifra que sube desde 0 hasta el valor real al montar -- usado en el
+// monto de "Deuda pendiente" para que la cifra clave del banner tenga un
+// momento de atencion en vez de aparecer de golpe. Se re-anima solo cuando
+// cambia el valor objetivo (cliente nuevo / factura distinta).
+function CifraAnimada({ value, prefix = "", decimals = 2 }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    const target = Number(value) || 0;
+    const duracionMs = 450;
+    const inicio = performance.now();
+    let raf;
+    const tick = (ahora) => {
+      const t = Math.min(1, (ahora - inicio) / duracionMs);
+      const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      setDisplay(target * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else setDisplay(target);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>{prefix}{display.toFixed(decimals)}</>;
+}
+
 // ─── Badge: zona de cobertura para un punto lat/lng ────────────────────────
 function BadgeCobertura({ lat, lng }) {
   const [zona, setZona] = useState(undefined); // undefined=cargando, null=fuera, obj=dentro
@@ -5692,7 +5716,7 @@ export default function SidebarApp() {
                       style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer" }}>
                       <div style={{ position:"relative", width:7, height:7, flexShrink:0 }}>
                         <div style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
-                        {isConn && <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />}
+                        <div className="sb-pulse" style={{ position:"absolute", inset:0, borderRadius:"50%", background:c }} />
                       </div>
                       <span style={{ fontWeight:700, fontSize:11, color:c }}>{isConn ? "Conectado" : "Desconectado"}</span>
                       <span style={{ fontSize:10, color:T.muted, flex:1 }}>{resumen}</span>
@@ -5985,7 +6009,7 @@ export default function SidebarApp() {
               <div>
                 <div style={{ fontSize:11, fontWeight:700, color:T.amber, textTransform:"uppercase", letterSpacing:"0.3px" }}>Deuda pendiente</div>
                 <div style={{ fontWeight:800, fontSize:18, color:isDark ? "#fff" : T.navy, lineHeight:1.2, marginTop:2 }}>
-                  S/ {Number(factPend[0]?.total||factPend[0]?.monto||0).toFixed(2)}
+                  S/ <CifraAnimada value={factPend[0]?.total||factPend[0]?.monto||0} />
                 </div>
                 <div style={{ fontSize:11, color:T.muted, marginTop:1 }}>
                   {factPend.length > 1 ? `${factPend.length} facturas pendientes` : `Vence ${factPend[0]?.vencimiento||"—"}`}
