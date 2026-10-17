@@ -2462,17 +2462,30 @@ const handleActualizarContactoChatwoot = async (body) => {
     }
   }
 
-  const getClientsDetails = async (idcliente) => {
-    const url = buildAbsoluteApiUrl(tenantCfg.mikrowisp_url, "/GetClientsDetails");
+  // mikrowisp_clientes.nodo es el id de ROUTER de Mikrowisp (no "Nod_XX"), y
+  // los routers 4/5/11 (ver MKW_PROXY_NODOS_DIM) viven en la instancia de
+  // Mikrowisp de DIM (dimfiber.com), no en la de Americanet (tenantCfg.
+  // mikrowisp_url). Antes esto SIEMPRE consultaba la instancia de Americanet
+  // sin importar el nodo -- para un cliente de Nod_04 el idcliente no
+  // existia ahi (o coincidia con otro cliente distinto), asi que el chequeo
+  // de seguridad de telefono (mas abajo) descartaba la respuesta y el
+  // contacto se quedaba sin datos reales de facturacion/servicio -- el
+  // "nombre" compacto completo nunca terminaba de actualizarse bien para
+  // esos clientes. Bug real reportado: contactos de Nod_04 sin actualizar.
+  const getClientsDetails = async (idcliente, routerNodo) => {
+    const esDim = MKW_PROXY_NODOS_DIM.has(Number(routerNodo || 0));
+    const base = esDim ? MIKROWISP_NOD04_API_BASE : tenantCfg.mikrowisp_url;
+    const token = esDim ? MKW_PROXY_DEFAULT_TOKEN_DIM : tenantCfg.mikrowisp_token;
+    const url = buildAbsoluteApiUrl(base, "/GetClientsDetails");
     const res = await fetchConTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ token: tenantCfg.mikrowisp_token, idcliente }),
+      body: JSON.stringify({ token, idcliente }),
     });
     return readProxyJsonResponse(res, "Mikrowisp GetClientsDetails");
   };
 
-  const detalle = mkw ? await getClientsDetails(mkw.mikrowisp_id).catch((e) => {
+  const detalle = mkw ? await getClientsDetails(mkw.mikrowisp_id, mkw.nodo).catch((e) => {
     console.warn("[actualizar-contacto] GetClientsDetails error:", e.message);
     return null;
   }) : null;
