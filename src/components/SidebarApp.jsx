@@ -5897,16 +5897,20 @@ export default function SidebarApp() {
 
         {/* ══ BOTONES ACTIVAR / SUSPENDER ══ */}
         {!cliente.sinMikrowisp && (suspendido || estadoServicio === "ACTIVO") && (
-          <div style={{ padding:"8px 8px 0", display:"flex", gap:6 }}>
+          <div style={{ padding:"8px 8px 0", display:"flex", justifyContent:"flex-end", gap:6 }}>
             {suspendido && (
               <button onClick={activarServicio} disabled={activando} className="sb-btn-action"
-                style={{ ...S.btn(T.green), flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:activando?0.6:1, borderRadius:5 }}>
+                style={{ background:T.green, color:"#fff", border:"none", borderRadius:5,
+                  padding:"9px 16px", fontWeight:700, fontSize:12, cursor:"pointer",
+                  display:"flex", alignItems:"center", gap:6, opacity:activando?0.6:1 }}>
                 <Zap size={14} />{activando ? "Activando..." : "Activar servicio"}
               </button>
             )}
             {estadoServicio === "ACTIVO" && (
               <button onClick={suspenderServicio} disabled={suspendiendo} className="sb-btn-action"
-                style={{ ...S.btn(T.amber), flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:suspendiendo?0.6:1, borderRadius:5 }}>
+                style={{ background:"transparent", color:T.amber, border:`1px solid ${T.amber}66`, borderRadius:5,
+                  padding:"8px 16px", fontWeight:700, fontSize:12, cursor:"pointer",
+                  display:"flex", alignItems:"center", gap:6, opacity:suspendiendo?0.6:1 }}>
                 <Zap size={14} />{suspendiendo ? "Suspendiendo..." : "Suspender servicio"}
               </button>
             )}
