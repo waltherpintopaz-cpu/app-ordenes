@@ -639,6 +639,19 @@ const getGlobalCSS = (T) => `
   .sb-skel { display:inline-block; border-radius:5px; background:linear-gradient(90deg, ${T.border} 25%, ${T.accent} 50%, ${T.border} 75%); background-size:240px 100%; animation:sbShimmer 1.2s ease-in-out infinite; }
   @keyframes sbTabFade { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
   .sb-tab-fade { animation:sbTabFade .22s ease both; }
+  @keyframes sbSpin { to { transform: rotate(360deg); } }
+  .sb-spin { animation: sbSpin .8s linear infinite; }
+  @keyframes sbParticle {
+    0% { transform: translate(0,0) scale(1); opacity:1; }
+    100% { transform: translate(var(--px), var(--py)) scale(0); opacity:0; }
+  }
+  .sb-particle { position:absolute; top:50%; left:50%; width:5px; height:5px; border-radius:50%;
+    animation: sbParticle .55s cubic-bezier(.2,.8,.4,1) both .15s; pointer-events:none; }
+  @keyframes sbHeaderGlow {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  .sb-header-glow { background-size: 200% 200%; animation: sbHeaderGlow 10s ease-in-out infinite; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 4px; }
 `;
 
@@ -833,6 +846,25 @@ function CifraAnimada({ value, prefix = "", decimals = 2 }) {
     return () => cancelAnimationFrame(raf);
   }, [value]);
   return <>{prefix}{display.toFixed(decimals)}</>;
+}
+
+// ─── Anillo tipo gauge para la señal optica (dBm) -- antes era solo texto
+// plano, un anillo que se llena segun la calidad se lee de un vistazo
+// (igual que un indicador de bateria/wifi) en vez de tener que leer el
+// numero y pensar si es bueno o malo.
+function AnilloSenal({ rx, color, size = 22 }) {
+  const pct = Math.min(100, Math.max(0, ((parseFloat(rx) || 0) + 35) / 15 * 100));
+  const r = (size - 4) / 2;
+  const c = size / 2;
+  const circunf = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink:0, transform:"rotate(-90deg)" }}>
+      <circle cx={c} cy={c} r={r} fill="none" stroke={`${color}26`} strokeWidth="3" />
+      <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round"
+        strokeDasharray={circunf} strokeDashoffset={circunf * (1 - pct / 100)}
+        style={{ transition:"stroke-dashoffset .5s ease" }} />
+    </svg>
+  );
 }
 
 // ─── Badge: zona de cobertura para un punto lat/lng ────────────────────────
@@ -4571,10 +4603,19 @@ export default function SidebarApp() {
             border:`1px solid ${T.border}`, display:"flex", flexDirection:"column",
             alignItems:"center", gap:10, textAlign:"center",
             animation:`${msgLeaving ? "sbToastCardOut .22s ease both" : "sbToastCardIn .42s cubic-bezier(.34,1.56,.64,1) both"}` }}>
-            <div style={{ width:56, height:56, borderRadius:"50%",
+            <div style={{ width:56, height:56, borderRadius:"50%", position:"relative",
               background: msg.ok ? T.greenLt : T.redLt,
               display:"flex", alignItems:"center", justifyContent:"center",
               animation:"sbToastRingIn .35s ease both .05s" }}>
+              {msg.ok && !msgLeaving && [0,60,120,180,240,300].map((deg) => {
+                const rad = (deg * Math.PI) / 180;
+                const dist = 30;
+                return (
+                  <span key={deg} className="sb-particle"
+                    style={{ background:T.green,
+                      "--px": `${Math.cos(rad) * dist}px`, "--py": `${Math.sin(rad) * dist}px` }} />
+                );
+              })}
               {msg.ok ? (
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
                   <path d="M5 13l4.5 4.5L19 7" stroke={T.green} strokeWidth="3"
@@ -5503,7 +5544,7 @@ export default function SidebarApp() {
       {cliente && !loading && (<>
 
         {/* ══ HEADER CLIENTE — fondo claro con acento azul ══ */}
-        <div style={{ background:T.card, borderBottom:`2px solid ${T.blue}`, padding:"14px 14px 12px", position:"relative" }}>
+        <div className="sb-header-glow" style={{ background:`linear-gradient(120deg, ${T.card} 0%, ${T.accent} 50%, ${T.card} 100%)`, borderBottom:`2px solid ${T.blue}`, padding:"14px 14px 12px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
             <div style={{ display:"flex", alignItems:"flex-start", gap:10, minWidth:0 }}>
               {(() => {
@@ -5726,7 +5767,7 @@ export default function SidebarApp() {
                 })()}
                 <button onClick={consultarDiagnostico} disabled={diagLoad} className="sb-btn-ghost"
                   title="Refrescar diagnóstico" style={{ opacity:diagLoad?0.5:1, flexShrink:0 }}>
-                  <RefreshCw size={13}/>
+                  <RefreshCw size={13} className={diagLoad ? "sb-spin" : ""}/>
                 </button>
               </div>
 
@@ -5883,6 +5924,7 @@ export default function SidebarApp() {
                     return (
                       <div onClick={() => setShowSenalDetail(v => !v)}
                         style={{ display:"flex", alignItems:"center", gap:6, flex:1, cursor:"pointer" }}>
+                        <AnilloSenal rx={senal.rx} color={c} />
                         <span style={{ fontWeight:700, fontSize:12, color:c, fontFamily:"monospace" }}>{senal.rx} dBm</span>
                         <span style={{ fontSize:10, fontWeight:600, color:c }}>{lbl}</span>
                         <span style={{ fontSize:10, color:T.muted, marginLeft:"auto" }}>{showSenalDetail ? "▲" : "▼"}</span>
@@ -5892,7 +5934,7 @@ export default function SidebarApp() {
                   {!senalLoad && !senal && <span style={{ fontSize:10, color:T.muted }}>—</span>}
                   <button onClick={consultarSenal} disabled={senalLoad} className="sb-btn-ghost"
                     title="Refrescar señal" style={{ opacity:senalLoad?0.5:1, flexShrink:0 }}>
-                    <RefreshCw size={13}/>
+                    <RefreshCw size={13} className={senalLoad ? "sb-spin" : ""}/>
                   </button>
                 </div>
 
