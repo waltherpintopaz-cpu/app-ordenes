@@ -683,7 +683,7 @@ const DARK_T = {
 
 const getS = (T) => ({
   root:   { fontFamily:"'Inter','Segoe UI',sans-serif", fontSize:13, color:T.navy, background:T.bg, minHeight:"100vh" },
-  card:   { background:T.card, borderRadius:6, border:`1px solid ${T.border}`, marginBottom:8, overflow:"hidden" },
+  card:   { background:T.card, borderRadius:10, border:`1px solid ${T.border}66`, boxShadow:"0 1px 2px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.05)", marginBottom:8, overflow:"hidden" },
   label:  { fontSize:11, fontWeight:700, color:T.slate, marginBottom:3, display:"block", textTransform:"uppercase", letterSpacing:"0.4px" },
   val:    { fontWeight:600, color:T.navy, fontSize:13, lineHeight:1.4 },
   mono:   { fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12 },
