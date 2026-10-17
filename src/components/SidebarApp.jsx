@@ -903,6 +903,71 @@ function AnilloSenal({ rx, color, size = 22 }) {
   );
 }
 
+// ─── Distancia en metros entre dos puntos lat/lng (igual que App.jsx) ──────
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ─── Icono de puerto/adaptador optico -- mismo diseño realista (degradados,
+// cordon con curva) ya usado en App.jsx "Crear orden". ────────────────────
+const PORT_ICON_COLORS = { plate: "#E7EAEF", plateEdge: "#B7BEC9", adapter: "#2F9E46", adapter2: "#3FBF5A", dustcap: "#D7DCE2", cable: "#1B1F26", cableCore: "#454C58", boot: "#454C58" };
+function PortIconSB({ ocupado, colorOverride, uid = "p" }) {
+  const C = PORT_ICON_COLORS;
+  const adapterColor = colorOverride || C.adapter;
+  const adapterColor2 = colorOverride || C.adapter2;
+  const gPlate = `sgp-${uid}`, gBody = `sgb-${uid}`, gCap = `sgc-${uid}`;
+  const defs = (
+    <defs>
+      <linearGradient id={gPlate} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#F4F6F9" /><stop offset="55%" stopColor={C.plate} /><stop offset="100%" stopColor="#CBD2DC" />
+      </linearGradient>
+      <linearGradient id={gBody} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor={adapterColor2} /><stop offset="45%" stopColor={adapterColor} /><stop offset="100%" stopColor={adapterColor} stopOpacity={0.82} />
+      </linearGradient>
+      <linearGradient id={gCap} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#FFFFFF" /><stop offset="100%" stopColor="#D7E0F5" />
+      </linearGradient>
+    </defs>
+  );
+  if (!ocupado) {
+    return (
+      <svg viewBox="0 0 44 52" width="100%" height="100%">
+        {defs}
+        <rect x={3} y={15} width={38} height={22} rx={6} fill={`url(#${gPlate})`} stroke={C.plateEdge} strokeWidth={1.2} />
+        <rect x={8} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.38} />
+        <rect x={30} y={21} width={6} height={10} rx={1.6} fill={C.adapter} opacity={0.38} />
+        <rect x={13} y={18} width={18} height={16} rx={3.5} fill={C.adapter} opacity={0.38} />
+        <rect x={16.5} y={22} width={11} height={8} rx={2} fill={C.dustcap} />
+        <rect x={3} y={15} width={38} height={6} rx={4} fill="#FFFFFF" opacity={0.3} />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 44 52" width="100%" height="100%">
+      {defs}
+      <rect x={3} y={15} width={38} height={22} rx={6} fill={`url(#${gPlate})`} stroke={C.plateEdge} strokeWidth={1.2} />
+      <path d="M22 38 C21 42, 23 44, 22 50" fill="none" stroke={C.cable} strokeWidth={5.5} strokeLinecap="round" />
+      <path d="M22 38 C21 42, 23 44, 22 50" fill="none" stroke={C.cableCore} strokeWidth={1.6} strokeLinecap="round" opacity={0.5} />
+      <path d="M20 38 C19.2 42, 20.8 44, 20.2 50" fill="none" stroke="#FFFFFF" strokeWidth={0.8} strokeLinecap="round" opacity={0.18} />
+      <rect x={19} y={34} width={6} height={7} rx={1.8} fill={C.boot} />
+      <rect x={8} y={21} width={6} height={10} rx={1.6} fill={`url(#${gBody})`} />
+      <rect x={30} y={21} width={6} height={10} rx={1.6} fill={`url(#${gBody})`} />
+      <rect x={13} y={18} width={18} height={16} rx={3.5} fill={`url(#${gBody})`} />
+      <rect x={16.5} y={1} width={11} height={19} rx={3} fill={adapterColor2} />
+      <rect x={18.5} y={3.2} width={7} height={2.4} rx={1.1} fill="rgba(255,255,255,0.65)" />
+      <rect x={18.5} y={7} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.14)" />
+      <rect x={18.5} y={10} width={7} height={1.4} rx={0.7} fill="rgba(0,0,0,0.14)" />
+      <rect x={14.5} y={21} width={15} height={9} rx={1.8} fill={`url(#${gCap})`} />
+      <rect x={14.5} y={21} width={15} height={3} rx={1.4} fill="#FFFFFF" opacity={0.5} />
+      <rect x={13} y={18} width={5} height={16} rx={2} fill="#FFFFFF" opacity={0.14} />
+    </svg>
+  );
+}
+
 // ─── Badge: zona de cobertura para un punto lat/lng ────────────────────────
 function BadgeCobertura({ lat, lng }) {
   const [zona, setZona] = useState(undefined); // undefined=cargando, null=fuera, obj=dentro
@@ -1104,7 +1169,74 @@ export default function SidebarApp() {
   const [showMensajesRapidos, setShowMensajesRapidos] = useState(false);
   const [mensajesRapidosDisponibles, setMensajesRapidosDisponibles] = useState([]);
   // Crear orden desde sidebar
-  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"", idPlantilla:"", codigoAbonadoExistente:"" });
+  const [ordenForm,   setOrdenForm]   = useState({ ordenTipo:"ORDEN DE SERVICIO", tipoActuacion:"Incidencia Internet", fechaActuacion:new Date().toISOString().split("T")[0], hora:"", prioridad:"Normal", tecnico:"", autorOrden:"", descripcion:"", coordenadas:"", ubicacionReferencial:false, nombre:"", dni:"", celular:"", email:"", direccion:"", contacto:"", empresa:"Americanet", nodo:"", vlan:"", velocidad:"", precioPlan:"", usuarioNodo:"", passwordUsuario:"", snOnu:"", cajaNap:"", puertoNap:"", solicitarPago:"SI", montoCobrar:"", idPerfil:"", idRedIpv4:"", ipMikrotik:"", idPlantilla:"", codigoAbonadoExistente:"" });
+  // ── Caja NAP / selector de puerto al crear orden (igual que App.jsx) ────
+  const [napCajasOrden, setNapCajasOrden] = useState([]); // todas las cajas del nodo elegido
+  const [napPickerAbierto, setNapPickerAbierto] = useState(false);
+  const [cajaBornesInfoSB, setCajaBornesInfoSB] = useState(null);
+  const [cajaBornesLoadingSB, setCajaBornesLoadingSB] = useState(false);
+  const [bornePuertoInfoSB, setBornePuertoInfoSB] = useState(null);
+  const cajaNapDesdClienteRefSB = useRef(false);
+
+  // Cajas del nodo elegido, ordenadas por cercania al cliente
+  const napCajasNearbySB = useMemo(() => {
+    const [lat, lng] = (ordenForm.coordenadas || "").split(",").map(Number);
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return [];
+    return napCajasOrden
+      .filter(c => c.lat && c.lng)
+      .map(c => ({ ...c, dist: haversineM(lat, lng, Number(c.lat), Number(c.lng)) }))
+      .sort((a, b) => a.dist - b.dist);
+  }, [napCajasOrden, ordenForm.coordenadas]);
+
+  // Cargar cajas NAP del nodo elegido
+  useEffect(() => {
+    if (!ordenForm.nodo) { setNapCajasOrden([]); return; }
+    supabase.from("nap_cajas").select("codigo,sector,nodo,lat,lng,capacidad,puertos_ocupados").eq("nodo", ordenForm.nodo)
+      .then(({ data }) => setNapCajasOrden(data || []))
+      .catch(() => setNapCajasOrden([]));
+  }, [ordenForm.nodo]);
+
+  // Auto-asignar la caja mas cercana -- Nod_02 todavia no tiene todas sus
+  // cajas registradas en nap_cajas, asi que auto-asignar ahi puede terminar
+  // eligiendo una caja de OTRO nodo por error de datos; se desactiva para
+  // Nod_02 hasta que su catalogo este completo (mismo criterio que
+  // App.jsx/OrdersScreen.js).
+  useEffect(() => {
+    if (!ordenForm.coordenadas || ordenForm.cajaNap) return;
+    if (cajaNapDesdClienteRefSB.current) return;
+    if (ordenForm.nodo === "Nod_02") return;
+    if (!napCajasNearbySB.length) return;
+    const nearest = napCajasNearbySB[0];
+    if (nearest.dist <= 1500) setOrdenForm(p => ({ ...p, cajaNap: nearest.codigo }));
+  }, [ordenForm.coordenadas, ordenForm.nodo, napCajasNearbySB]);
+
+  // Bornes/puertos de la caja elegida
+  useEffect(() => {
+    const codigo = String(ordenForm.cajaNap || "").trim();
+    setBornePuertoInfoSB(null);
+    if (!codigo) { setCajaBornesInfoSB(null); return; }
+    let cancelado = false;
+    setCajaBornesLoadingSB(true);
+    const nodoActual = String(ordenForm.nodo || "").trim();
+    let qCaja = supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).limit(1);
+    let qCli = supabase.from("clientes").select("id,nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap,nodo").ilike("caja_nap", codigo);
+    if (nodoActual) { qCaja = qCaja.eq("nodo", nodoActual); qCli = qCli.eq("nodo", nodoActual); }
+    Promise.all([qCaja.maybeSingle(), qCli]).then(([cajaRes, cliRes]) => {
+      if (cancelado) return;
+      const codigoNorm = codigo.toLowerCase();
+      const lista = (cliRes.data || []).filter(c => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
+      const porPuerto = {};
+      lista.forEach(c => {
+        const p = String(c.puerto_nap || "").trim();
+        if (!p) return;
+        if (!porPuerto[p]) porPuerto[p] = [];
+        porPuerto[p].push(c);
+      });
+      setCajaBornesInfoSB({ capacidad: Number(cajaRes.data?.capacidad) || 8, porPuerto, sinPuerto: lista.filter(c => !String(c.puerto_nap || "").trim()) });
+    }).finally(() => { if (!cancelado) setCajaBornesLoadingSB(false); });
+    return () => { cancelado = true; };
+  }, [ordenForm.cajaNap, ordenForm.nodo]);
+
   // ── Automatizacion Mikrowisp Nod_04 al crear orden (piloto) ─────────────
   const [mkwPerfilesOrden, setMkwPerfilesOrden] = useState([]);
   const [mkwRedesOrden,    setMkwRedesOrden]    = useState([]);
@@ -3816,6 +3948,7 @@ export default function SidebarApp() {
         sn_onu:         snOnuFinal,
         codigo_abonado: codigoAbonadoOrden || null,
         caja_nap:       ordenForm.cajaNap || "",
+        puerto_nap:     ordenForm.puertoNap || null,
         ubicacion:      ordenForm.coordenadas || "",
         ubicacion_referencial: !!ordenForm.ubicacionReferencial,
         descripcion:    [
@@ -5438,7 +5571,17 @@ export default function SidebarApp() {
                     )}
                     {fila("Contraseña PPP", inp("passwordUsuario", "aqp0021"))}
                     {fila("SN ONU", inp("snOnu","HWTC12345678"))}
-                    {fila("Caja NAP", inp("cajaNap","NAP-01"))}
+                    {fila("Caja NAP", (
+                      <button type="button" onClick={() => setNapPickerAbierto(true)}
+                        style={{ width:"100%", background:"none", border:"none", borderRadius:0, padding:"7px 10px",
+                          fontSize:12, color: ordenForm.cajaNap ? T.navy : T.muted, textAlign:"left", cursor:"pointer",
+                          display:"flex", alignItems:"center", justifyContent:"space-between", fontFamily:"inherit" }}>
+                        <span>{ordenForm.cajaNap || "Elegir caja NAP..."}</span>
+                        <span style={{ fontSize:11, color:T.blue, fontWeight:700 }}>
+                          {ordenForm.cajaNap ? "Cambiar" : "📍 Elegir"}
+                        </span>
+                      </button>
+                    ))}
                     {fila("Coordenadas",
                       <div style={{display:"flex",flexDirection:"column"}}>
                         <div style={{display:"flex",alignItems:"center"}}>
@@ -7840,6 +7983,175 @@ export default function SidebarApp() {
               </>
             )}
           </div>
+        )}
+
+        {/* ══ SELECTOR DE CAJA NAP / PUERTO — al crear orden, mismo
+            comportamiento y diseño que App.jsx (lista de cajas cercanas +
+            splitter de puertos, sin auto-asignar en Nod_02). ══ */}
+        {napPickerAbierto && (
+          <>
+            <div onClick={() => setNapPickerAbierto(false)}
+              style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.35)",
+                animation:"sbToastBackdropIn .2s ease both" }} />
+            <div style={{ position:"fixed", inset:"6% 5%", zIndex:9998, maxWidth:520, margin:"0 auto",
+              display:"flex", flexDirection:"column", background:"#fff", borderRadius:16,
+              border:`1px solid ${T.border}`, boxShadow:"0 24px 60px rgba(0,0,0,0.3)", overflow:"hidden",
+              animation:"sbToastCardIn .28s cubic-bezier(.34,1.56,.64,1) both" }}>
+              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10,
+                padding:"16px 18px 12px", borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+                <div>
+                  <div style={{ fontSize:15, fontWeight:800, color:"#0f172a" }}>Elegir caja NAP</div>
+                  <div style={{ fontSize:11, color:"#64748b", marginTop:2 }}>
+                    {ordenForm.nodo ? `Nodo ${ordenForm.nodo}` : "Elige el nodo primero"}
+                    {ordenForm.cajaNap ? ` · Caja ${ordenForm.cajaNap}` : ""}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setNapPickerAbierto(false)}
+                  style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:"#94a3b8", lineHeight:1 }}>✕</button>
+              </div>
+
+              <div style={{ overflowY:"auto", padding:"14px 18px 18px" }}>
+                {!ordenForm.nodo ? (
+                  <div style={{ fontSize:12, color:"#94a3b8" }}>Selecciona el nodo del cliente para ver sus cajas NAP.</div>
+                ) : !ordenForm.cajaNap ? (
+                  <>
+                    {ordenForm.nodo === "Nod_02" && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, background:T.amberLt, color:T.amber,
+                        borderRadius:8, padding:"7px 10px", fontSize:11, fontWeight:600, marginBottom:10 }}>
+                        <AlertTriangle size={13} /> Nod_02 no tiene todas sus cajas registradas todavía — revisa bien antes de elegir.
+                      </div>
+                    )}
+                    <div style={{ fontSize:11, fontWeight:700, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:8 }}>
+                      {napCajasNearbySB.length ? "Cajas cercanas" : "Cajas de este nodo"}
+                    </div>
+                    {(napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).length === 0 ? (
+                      <div style={{ fontSize:12, color:"#94a3b8" }}>Sin cajas NAP registradas para este nodo.</div>
+                    ) : (
+                      <div style={{ display:"grid", gap:6 }}>
+                        {(napCajasNearbySB.length ? napCajasNearbySB : napCajasOrden).slice(0, 10).map(c => {
+                          const p = c.capacidad ? Math.round((c.puertos_ocupados || 0) / c.capacidad * 100) : 0;
+                          const color = p >= 90 ? "#dc2626" : p >= 70 ? "#ea580c" : "#16a34a";
+                          return (
+                            <button key={c.codigo} type="button"
+                              onClick={() => { cajaNapDesdClienteRefSB.current = true; setOrdenForm(p => ({ ...p, cajaNap: c.codigo, puertoNap:"" })); }}
+                              style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8,
+                                background:"#f8faff", border:`1px solid ${T.border}`, borderRadius:10, padding:"9px 12px",
+                                cursor:"pointer", textAlign:"left" }}>
+                              <div>
+                                <div style={{ fontSize:12.5, fontWeight:700, color:"#0f172a" }}>{c.codigo}</div>
+                                <div style={{ fontSize:10.5, color:"#64748b" }}>{c.sector || ""} · {c.nodo}</div>
+                              </div>
+                              <div style={{ textAlign:"right", flexShrink:0 }}>
+                                {c.dist != null && <div style={{ fontSize:10.5, color:"#94a3b8" }}>{c.dist < 1000 ? `${Math.round(c.dist)}m` : `${(c.dist/1000).toFixed(1)}km`}</div>}
+                                <div style={{ fontSize:10.5, fontWeight:700, color }}>{c.puertos_ocupados||0}/{c.capacidad||8}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                ) : cajaBornesLoadingSB ? (
+                  <div style={{ fontSize:12, color:"#94a3b8" }}>Cargando bornes…</div>
+                ) : cajaBornesInfoSB ? (
+                  <>
+                    <button type="button" onClick={() => setOrdenForm(p => ({ ...p, cajaNap:"", puertoNap:"" }))}
+                      style={{ background:"none", border:"none", color:T.blue, fontSize:11, fontWeight:700, cursor:"pointer", padding:0, marginBottom:10 }}>
+                      ← Elegir otra caja
+                    </button>
+                    {ordenForm.puertoNap && (
+                      <div style={{ display:"flex", alignItems:"center", gap:6, background:"#eff6ff", color:T.blue, borderRadius:8, padding:"5px 10px", fontSize:12, fontWeight:700, marginBottom:12, width:"fit-content" }}>
+                        Puerto {ordenForm.puertoNap} asignado
+                        <button type="button" onClick={() => setOrdenForm(p => ({ ...p, puertoNap:"" }))} style={{ background:"none", border:"none", color:T.blue, cursor:"pointer", fontWeight:800, padding:0, fontSize:13 }}>✕</button>
+                      </div>
+                    )}
+                    <div style={{ position:"relative", background:"linear-gradient(165deg, #f8faff 0%, #eef3fd 100%)", border:"1px solid #dbe4fb", borderRadius:16, padding:"20px 18px 16px", boxShadow:"0 1px 2px rgba(15,23,42,0.04)" }}>
+                      <div style={{ position:"absolute", top:10, left:12, width:7, height:7, borderRadius:"50%", background:"#c7d3ee" }} />
+                      <div style={{ position:"absolute", top:10, right:12, width:7, height:7, borderRadius:"50%", background:"#c7d3ee" }} />
+                      <div style={{ fontSize:10, fontWeight:800, letterSpacing:"0.12em", color:"#64748b", marginBottom:12 }}>
+                        SPLITTER 1:{cajaBornesInfoSB.capacidad}
+                      </div>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:14, paddingBottom:11, borderBottom:"1px dashed #c7d3ee" }}>
+                        <svg width="20" height="14" viewBox="0 0 20 14">
+                          <path d="M0 7 H10" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" />
+                          <path d="M10 7 L17 2 M10 7 L17 7 M10 7 L17 12" stroke="#94a3b8" strokeWidth="1.3" strokeLinecap="round" fill="none" opacity={0.8} />
+                          <circle cx="10" cy="7" r="2" fill="#f59e0b" />
+                        </svg>
+                        <span style={{ fontSize:10, fontWeight:700, letterSpacing:"0.08em", color:"#64748b" }}>ENTRADA TRONCAL</span>
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(56px, 1fr))", gap:12 }}>
+                        {Array.from({ length: cajaBornesInfoSB.capacidad }, (_, i) => String(i + 1)).map((puerto, idx) => {
+                          const ocupantes = cajaBornesInfoSB.porPuerto[puerto] || [];
+                          const confirmado = ocupantes.some(c => c.precinto_codigo);
+                          const suspendido = ocupantes.some(c => String(c.estado_servicio || "").toUpperCase() === "SUSPENDIDO");
+                          const libre = ocupantes.length === 0;
+                          const sel = ordenForm.puertoNap === puerto;
+                          const infoAbierta = bornePuertoInfoSB === puerto;
+                          const colorOverride = sel ? "#1d4ed8" : !libre && !confirmado ? "#f59e0b" : undefined;
+                          return (
+                            <div key={puerto}
+                              onClick={() => { if (libre) { setOrdenForm(p => ({ ...p, puertoNap: sel ? "" : puerto })); return; } setBornePuertoInfoSB(infoAbierta ? null : puerto); }}
+                              style={{ display:"flex", flexDirection:"column", alignItems:"center", cursor:"pointer" }}>
+                              <div style={{ width:48, height:56, position:"relative",
+                                filter: sel || infoAbierta ? "drop-shadow(0 0 0 2.5px #1d4ed8)" : "none" }}>
+                                <PortIconSB ocupado={!libre} colorOverride={colorOverride} uid={`${ordenForm.cajaNap}-${puerto}-${idx}`} />
+                                {suspendido && (
+                                  <span style={{ position:"absolute", top:-2, right:-2, width:12, height:12, borderRadius:"50%", background:"#dc2626", border:"2.5px solid #eef3fd" }} title="Suspendido" />
+                                )}
+                              </div>
+                              <span style={{ fontSize:12, fontWeight:800, color: sel ? "#1d4ed8" : !libre ? "#1e293b" : "#94a3b8", marginTop:3 }}>{puerto}</span>
+                              {!libre && (
+                                <span style={{ fontSize:9.5, fontWeight:600, maxWidth:60, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color: suspendido ? "#dc2626" : "#64748b" }}>
+                                  {ocupantes[0].nombre?.split(" ")[0] || "—"}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {bornePuertoInfoSB && (cajaBornesInfoSB.porPuerto[bornePuertoInfoSB] || []).length > 0 && (() => {
+                      const cli = cajaBornesInfoSB.porPuerto[bornePuertoInfoSB][0];
+                      const susp = String(cli.estado_servicio || "").toUpperCase() === "SUSPENDIDO";
+                      return (
+                        <div style={{ marginTop:12, background:"#fff", border:"1px solid #e2e8f0", borderRadius:14, padding:"12px 14px", boxShadow:"0 8px 24px rgba(15,23,42,0.08)" }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:800, color:"#0f172a" }}>{cli.nombre || "—"}</div>
+                              <div style={{ fontSize:11, color:"#64748b" }}>Puerto {bornePuertoInfoSB} · DNI {cli.dni || "—"}</div>
+                            </div>
+                            <button type="button" onClick={() => setBornePuertoInfoSB(null)} style={{ background:"none", border:"none", color:"#94a3b8", cursor:"pointer", fontSize:16 }}>✕</button>
+                          </div>
+                          <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:10 }}>
+                            <span style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:7, background: cli.precinto_codigo ? "#dcfce7" : "#fef3c7", color: cli.precinto_codigo ? "#15803d" : "#92400e" }}>
+                              🏷️ {cli.precinto_codigo ? `Etiqueta ${cli.precinto_codigo}` : "Sin etiqueta confirmada"}
+                            </span>
+                            {susp ? (
+                              <span style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:7, background:"#fee2e2", color:"#dc2626" }}>⛔ Suspendido</span>
+                            ) : (
+                              <span style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:7, background:"#dcfce7", color:"#15803d" }}>✓ {cli.estado_servicio || "ACTIVO"}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginTop:12, fontSize:11, color:"#64748b" }}>
+                      <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ width:9, height:9, borderRadius:3, background:"#16a34a", display:"inline-block" }} />Confirmado</span>
+                      <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ width:9, height:9, borderRadius:3, background:"#f59e0b", display:"inline-block" }} />Sin confirmar</span>
+                      <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ width:6, height:6, borderRadius:"50%", background:"#dc2626", display:"inline-block" }} />Suspendido</span>
+                      <span style={{ display:"flex", alignItems:"center", gap:4 }}><span style={{ width:9, height:9, borderRadius:3, background:"#f1f5f9", border:"1px solid #e2e8f0", display:"inline-block" }} />Libre</span>
+                    </div>
+                    <button type="button" onClick={() => setNapPickerAbierto(false)}
+                      style={{ marginTop:16, width:"100%", padding:"12px 0", background: ordenForm.puertoNap ? T.blue : "#e2e8f0", color: ordenForm.puertoNap ? "#fff" : "#94a3b8", border:"none", borderRadius:12, fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                      {ordenForm.puertoNap ? `Usar puerto ${ordenForm.puertoNap}` : "Toca un puerto libre"}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ fontSize:12, color:"#94a3b8" }}>Sin datos de bornes para esta caja.</div>
+                )}
+              </div>
+            </div>
+          </>
         )}
 
         {/* ══ NOTAS DEL CLIENTE — boton flotante, siempre al alcance sin
