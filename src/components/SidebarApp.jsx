@@ -4577,6 +4577,10 @@ export default function SidebarApp() {
     <div style={S.root} className="sb-panel">
       <style>{getGlobalCSS(T)}</style>
 
+      {napPickerAbierto && (
+        <div style={{ position:"fixed", top:0, left:0, width:220, height:220, background:"blue", zIndex:999999, color:"#fff", fontSize:20, fontWeight:900 }}>TEST TOP LEVEL</div>
+      )}
+
       {/* ── Zoom de foto de liquidacion ── */}
       {fotoZoomUrl && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:99999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
