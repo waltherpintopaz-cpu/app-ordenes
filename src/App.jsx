@@ -16965,10 +16965,13 @@ export default function App() {
     // acotar tambien por nodo o se mezclan los clientes de dos cajas
     // distintas.
     const nodoActual = String(orden.nodo || "").trim();
-    Promise.all([
-      supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).eq("nodo", nodoActual).limit(1).maybeSingle(),
-      supabase.from("clientes").select("id,nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap,sn_onu,nodo,vlan,rx_signal,signal_updated_at,fecha_suspendido").ilike("caja_nap", codigo).eq("nodo", nodoActual),
-    ]).then(([cajaRes, cliRes]) => {
+    let qCaja = supabase.from("nap_cajas").select("capacidad").ilike("codigo", codigo).limit(1);
+    let qCli = supabase.from("clientes").select("id,nombre,dni,puerto_nap,precinto_codigo,estado_servicio,caja_nap,sn_onu,nodo,vlan,rx_signal,signal_updated_at,fecha_suspendido").ilike("caja_nap", codigo);
+    // Si el nodo todavia no esta disponible en este momento, no filtrar por
+    // el (volveria vacio en vez de mostrar los puertos con el codigo viejo
+    // de comportamiento) -- mejor mostrar de mas por un instante que nada.
+    if (nodoActual) { qCaja = qCaja.eq("nodo", nodoActual); qCli = qCli.eq("nodo", nodoActual); }
+    Promise.all([qCaja.maybeSingle(), qCli]).then(([cajaRes, cliRes]) => {
       if (cancelado) return;
       const codigoNorm = codigo.toLowerCase();
       const lista = (cliRes.data || []).filter(c => String(c.caja_nap || "").trim().toLowerCase() === codigoNorm);
@@ -16982,7 +16985,7 @@ export default function App() {
       setCajaBornesInfo({ capacidad: Number(cajaRes.data?.capacidad) || 8, porPuerto, sinPuerto: lista.filter(c => !String(c.puerto_nap || "").trim()) });
     }).finally(() => { if (!cancelado) setCajaBornesLoading(false); });
     return () => { cancelado = true; };
-  }, [orden.cajaNap]);
+  }, [orden.cajaNap, orden.nodo]);
 
   // Dibujar líneas rectas cliente → cajas NAP cercanas
   useEffect(() => {
