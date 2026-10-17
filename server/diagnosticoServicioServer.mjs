@@ -2195,7 +2195,13 @@ const proxyMikrowispGenerico = async (req) => {
 // (mikrotik_routers/mikrotik_nodo_router) ya son editables desde Supabase
 // por nodo -- no hace falta otro mecanismo de configuracion para eso.
 const normalizarTelefono = (s) => String(s || "").replace(/\D/g, "");
-const DEFAULT_TENANT_ID = String(process.env.TENANT_ID || "dim").trim();
+// Esta tabla tenant_config solo tiene la fila "americanet" (la de DIM vive
+// en otro proyecto Supabase, via resolveTenantChatwootCreds). El webhook de
+// Chatwoot nunca manda tenant_id en el body, asi que cualquier llamada real
+// caia siempre en el default -- si el default es "dim" (que no existe aca),
+// falla siempre con "Falta mikrowisp_url/mikrowisp_token en tenant_config"
+// y el nombre del contacto nunca se actualiza.
+const DEFAULT_TENANT_ID = String(process.env.TENANT_ID || "americanet").trim();
 
 let _tenantConfigCache = null; // { data, en: ms }
 const TENANT_CONFIG_TTL_MS = 60_000;
