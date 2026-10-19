@@ -3027,6 +3027,19 @@ const server = http.createServer(async (req, res) => {
         const ficha = await fetch(`${HUAWEI_OLT_SNMP_API}/onu-info?sn=${encodeURIComponent(sn)}`).then((r) => r.json());
         if (!ficha?.ok) { writeJson(res, 200, { ok: false, error: ficha?.error || "No se encontró la ONU en la OLT." }); return; }
 
+        // Etiquetado de ONUs llama aca justo despues de desconectar un borne:
+        // el resto de la caja (mismo PON) sigue en linea, asi que es el
+        // momento de guardar sus MACs -- cuando desconecten el siguiente
+        // borne ya no se podrian leer. Fire-and-forget; huawei-olt-signal
+        // limita a 1 barrido cada 10 min por PON.
+        if (HUAWEI_ACCION_TOKEN && ficha.board != null && ficha.port != null) {
+          fetch(`${HUAWEI_OLT_SNMP_API}/barrido-macs-puerto`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
+            body: JSON.stringify({ board: ficha.board, port: ficha.port }),
+          }).catch(() => {});
+        }
+
         const normMac = (m) => String(m || "").toLowerCase().replace(/[^0-9a-f]/g, "");
         // ficha.wanMac ya viene con respaldo del propio huawei-olt-signal
         // (SNMP, o lo ya guardado antes en onu_mac_wan) -- si sigue sin
