@@ -191,6 +191,13 @@ const PASARELAS = {
 };
 
 const DIM_NODOS = new Set(["nod_04","nod_05","nod_06"]);
+// Mismos routers de Mikrowisp que el backend ya trata como DIM (ver
+// MKW_PROXY_NODOS_DIM en diagnosticoServicioServer.mjs) -- numero crudo de
+// router, no la etiqueta "Nod_0X". Antes solo se reconocian 2 casos sueltos
+// (nodoNum===5 y el router que resuelva "Nod_06"), lo que hacia que un
+// cliente del nodo 11 se mostrara como Americanet aunque el backend ya lo
+// consultaba contra el Mikrowisp de DIM.
+const NODOS_DIM_RAW = new Set([4, 5, 11]);
 // Algunos clientes (sincronizados desde Mikrowisp) guardan el nodo como el
 // numero crudo de router ("5") en vez de la etiqueta "Nod_04" — normalizar
 // antes de comparar.
@@ -1791,7 +1798,7 @@ export default function SidebarApp() {
     // un cliente de Nod_06 (router 12) cayera en el "else" y se mostrara
     // como si fuera de Americanet. Usamos el mapa dinamico MW_NODO_MAP para
     // no volver a hardcodear un numero que ya cambio una vez en produccion.
-    let empresa = nodoNum === 5 ? "dimfiber" : nodoNum === MW_NODO_MAP["Nod_06"] ? "nod06" : "americanet";
+    let empresa = nodoNum === 5 ? "dimfiber" : (nodoNum === MW_NODO_MAP["Nod_06"] || NODOS_DIM_RAW.has(nodoNum)) ? "nod06" : "americanet";
     // Colision real de numeracion: Nod_03 con VLAN 102 (Americanet) usa el
     // MISMO id de router Mikrowisp (12) que Nod_06 de DIM -- ver
     // mikrowispRouterIdParaCliente() mas abajo, que ya conoce este caso para
@@ -1900,7 +1907,7 @@ export default function SidebarApp() {
   // ── Cargar cliente que no tiene cuenta en MikroWisp (solo datos internos) ──
   async function cargarDesdeClienteLocal(row) {
     const nodoNum = Number(row.nodo);
-    const empresa = row.empresa || (nodoNum === 5 ? "dimfiber" : nodoNum === MW_NODO_MAP["Nod_06"] ? "nod06" : "americanet");
+    const empresa = row.empresa || (nodoNum === 5 ? "dimfiber" : (nodoNum === MW_NODO_MAP["Nod_06"] || NODOS_DIM_RAW.has(nodoNum)) ? "nod06" : "americanet");
     const cli = {
       mikrowisp_id: null,
       sinMikrowisp: true,
@@ -3103,7 +3110,7 @@ export default function SidebarApp() {
         // nodo 12 es ambiguo (Nod_06 DIM vs Nod_03 Americanet) -- usar el
         // "empresa" que ya viene en la fila cuando esta disponible (lo pone
         // cargarDesdeRow), en vez de dejar que el backend adivine por numero.
-        const esDimRow = row.empresa === "dimfiber" || row.empresa === "nod06" || (row.empresa == null && (nodoNum === 5 || nodoNum === MW_NODO_MAP["Nod_06"]));
+        const esDimRow = row.empresa === "dimfiber" || row.empresa === "nod06" || (row.empresa == null && (nodoNum === 5 || nodoNum === MW_NODO_MAP["Nod_06"] || NODOS_DIM_RAW.has(nodoNum)));
         const det = await mkwProxy(nodoNum, "GetClientsDetails", { idcliente }, null, esDimRow);
         const clientes = det?.clientes || det?.datos || [];
         const detCliente = Array.isArray(clientes) ? clientes[0] : clientes;
