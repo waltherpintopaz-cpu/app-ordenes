@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { Save, Power, Clock, MessageSquare, ShieldCheck, Banknote, Bell, Users, CalendarClock, AlertOctagon, Radio, Plus, Trash2, Pencil, Lock, CheckCircle, RefreshCw } from "lucide-react";
+import { Save, Power, Clock, MessageSquare, ShieldCheck, Banknote, Bell, Users, CalendarClock, AlertOctagon, Radio, Plus, Trash2, Pencil, Lock, CheckCircle, RefreshCw, Wifi } from "lucide-react";
 
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
@@ -24,6 +24,7 @@ const DEFAULT = {
   bancos_excepcion_anio: "",
   amer_metodos_1: "",
   amer_metodos_2: "",
+  planes_tv: "",
   nod06_yape_numero: "",
   nod06_yape_titular: "",
   nod06_bcp_cuenta: "",
@@ -360,6 +361,16 @@ export default function BotPagosV3ConfigPanel() {
           <div style={{ flex: 1 }}><label style={lbl}>Nod-06 BCP cuenta</label><input type="text" value={cfg.nod06_bcp_cuenta} onChange={e => set("nod06_bcp_cuenta", e.target.value)} style={inp} /></div>
           <div style={{ flex: 1 }}><label style={lbl}>Nod-06 BCP titular</label><input type="text" value={cfg.nod06_bcp_titular} onChange={e => set("nod06_bcp_titular", e.target.value)} style={inp} /></div>
         </div>
+      </div>
+
+      {/* Planes de internet/TV -- unico texto, no varia por marca/nodo (a
+          diferencia de metodos de pago arriba) -- lo responde el Modo IA
+          incluso a contactos nuevos sin cuenta identificada todavia. */}
+      <div style={card}>
+        <div style={cardTitle()}><Wifi size={16} color="#6366f1" /> Planes de internet / TV</div>
+        <label style={lbl}>Texto que responde el bot (planes, precios, pantallas, canales)</label>
+        <textarea value={cfg.planes_tv} onChange={e => set("planes_tv", e.target.value)} rows={8} style={{ ...inp, resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
+        <div style={hint}>Se usa tal cual, con emojis y saltos de línea. Si queda vacío, el bot deriva a un asesor en vez de inventar planes/precios.</div>
       </div>
 
       {/* Notificación / equipos */}
