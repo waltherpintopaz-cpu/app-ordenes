@@ -14,6 +14,7 @@ const DEFAULT = {
   modo_bot: "ia",
   inboxes_prueba: "",
   inbox_ventas: "",
+  telefonos_prueba_prospecto: "",
   horario_inicio: 8,
   horario_fin: 21,
   horario_dias: "1,2,3,4,5,6",
@@ -252,6 +253,12 @@ export default function BotPagosV3ConfigPanel() {
         <label style={lbl}>Nombre exacto del inbox en Chatwoot</label>
         <input type="text" value={cfg.inbox_ventas} onChange={e => set("inbox_ventas", e.target.value)} style={inp} placeholder="DIM Ventas" />
         <div style={hint}>Un número no identificado como cliente que escriba a esta bandeja recibe trato de prospecto nuevo (modo ventas: planes/precios, sin sonar a IA genérica). Si ya es cliente real, se le atiende normal.</div>
+
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e5e7eb" }}>
+          <label style={lbl}>Números de prueba (forzar trato de prospecto aunque ya sean clientes)</label>
+          <TagInput values={(cfg.telefonos_prueba_prospecto || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("telefonos_prueba_prospecto", arr.join(", "))} placeholder="949529785" />
+          <div style={hint}>Solo para pruebas del Modo Ventas sin usar un número real desconocido — no modifica ningún dato del cliente real.</div>
+        </div>
       </div>
 
       {/* Estado */}
