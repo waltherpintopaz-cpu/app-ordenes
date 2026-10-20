@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
-import { Save, Power, Clock, MessageSquare, ShieldCheck, Banknote, Bell, Users, CalendarClock, AlertOctagon, Radio, Plus, Trash2, Pencil, Lock, CheckCircle, RefreshCw, Wifi } from "lucide-react";
+import { Save, Power, Clock, MessageSquare, ShieldCheck, Banknote, Bell, Users, CalendarClock, AlertOctagon, Radio, Plus, Trash2, Pencil, Lock, CheckCircle, RefreshCw, Wifi, Gift } from "lucide-react";
 
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
@@ -26,6 +26,8 @@ const DEFAULT = {
   amer_metodos_1: "",
   amer_metodos_2: "",
   planes_tv: "",
+  promocion_activa: false,
+  promocion_texto: "",
   nod06_yape_numero: "",
   nod06_yape_titular: "",
   nod06_bcp_cuenta: "",
@@ -384,6 +386,22 @@ export default function BotPagosV3ConfigPanel() {
         <label style={lbl}>Texto que responde el bot (planes, precios, pantallas, canales)</label>
         <textarea value={cfg.planes_tv} onChange={e => set("planes_tv", e.target.value)} rows={8} style={{ ...inp, resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
         <div style={hint}>Se usa tal cual, con emojis y saltos de línea. Si queda vacío, el bot deriva a un asesor en vez de inventar planes/precios.</div>
+      </div>
+
+      {/* Promoción -- solo se usa en el Modo Ventas (ver procesarVentas en
+          server.mjs), Carla la menciona con naturalidad cuando tiene
+          sentido, nunca en cada mensaje. */}
+      <div style={card}>
+        <div style={cardTitle()}><Gift size={16} color={cfg.promocion_activa ? "#16a34a" : "#9ca3af"} /> Promoción (solo bandeja de Ventas)</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ fontSize: 13, color: "#6b7280" }}>{cfg.promocion_activa ? "Activa — Carla la menciona cuando tiene sentido." : "Inactiva — Carla no la menciona."}</div>
+          <button onClick={() => set("promocion_activa", !cfg.promocion_activa)} style={{ width: 52, height: 28, borderRadius: 14, border: "none", cursor: "pointer", background: cfg.promocion_activa ? "#16a34a" : "#d1d5db", position: "relative", flexShrink: 0, marginLeft: 16 }}>
+            <span style={{ position: "absolute", top: 3, left: cfg.promocion_activa ? 27 : 3, width: 22, height: 22, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+        <label style={lbl}>Texto de la promoción</label>
+        <textarea value={cfg.promocion_texto} onChange={e => set("promocion_texto", e.target.value)} rows={5} style={{ ...inp, resize: "vertical", fontFamily: "monospace", fontSize: 13 }} />
+        <div style={hint}>Describe también a qué plan(es) aplica y la condición (ej. prepago) — Carla lo usa tal cual para explicarlo si el cliente pregunta.</div>
       </div>
 
       {/* Notificación / equipos */}
