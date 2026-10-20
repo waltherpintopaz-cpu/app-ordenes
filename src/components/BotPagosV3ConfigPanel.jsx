@@ -13,6 +13,7 @@ const DEFAULT = {
   bot_activo: true,
   modo_bot: "ia",
   inboxes_prueba: "",
+  inbox_ventas: "",
   horario_inicio: 8,
   horario_fin: 21,
   horario_dias: "1,2,3,4,5,6",
@@ -237,6 +238,18 @@ export default function BotPagosV3ConfigPanel() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Bandeja de Ventas -- la del numero que va en publicidad. Un
+          numero NO identificado como cliente que escribe aqui entra al
+          "Modo Ventas" (persona de vendedora experta, ver
+          procesarVentas en server.mjs) en vez del router normal. Si ya
+          es cliente real, sigue el flujo normal igual. */}
+      <div style={card}>
+        <div style={cardTitle()}><Wifi size={16} color="#16a34a" /> Bandeja de Ventas (publicidad)</div>
+        <label style={lbl}>Nombre exacto del inbox en Chatwoot</label>
+        <input type="text" value={cfg.inbox_ventas} onChange={e => set("inbox_ventas", e.target.value)} style={inp} placeholder="DIM Ventas" />
+        <div style={hint}>Un número no identificado como cliente que escriba a esta bandeja recibe trato de prospecto nuevo (modo ventas: planes/precios, sin sonar a IA genérica). Si ya es cliente real, se le atiende normal.</div>
       </div>
 
       {/* Estado */}
