@@ -4816,7 +4816,7 @@ export default function SidebarApp() {
 
   const estadoColor = (e) => {
     const s = (e || "").toUpperCase();
-    return s === "ACTIVO" ? "#16a34a" : s === "SUSPENDIDO" ? "#d97706" : s === "CORTADO" ? "#dc2626" : "#64748b";
+    return s === "ACTIVO" ? "#16a34a" : s === "SUSPENDIDO" ? "#dc2626" : s === "CORTADO" ? "#dc2626" : "#64748b";
   };
 
   const factPend = facturas.filter(f => !ESTADOS_IGNORAR.includes(f.estado));
@@ -6208,13 +6208,13 @@ export default function SidebarApp() {
             const v = f.vencimiento ? new Date(f.vencimiento) : null;
             return v && v < new Date();
           });
-          const _ec = estadoServicio === "ACTIVO" ? (_vencida ? T.amber : T.green) : estadoServicio === "SUSPENDIDO" ? T.amber : T.red;
+          const _ec = estadoServicio === "ACTIVO" ? (_vencida ? T.amber : T.green) : T.red;
           return (
-        <div className="sb-header-glow" style={{ background:`linear-gradient(120deg, ${T.card} 0%, ${T.accent} 50%, ${T.card} 100%)`, borderBottom:`2px solid ${_ec}`, padding:"14px 14px 12px", position:"relative" }}>
+        <div className="sb-header-glow" style={{ background: suspendido ? `linear-gradient(120deg, ${T.redLt} 0%, ${T.card} 60%, ${T.redLt} 100%)` : `linear-gradient(120deg, ${T.card} 0%, ${T.accent} 50%, ${T.card} 100%)`, borderBottom:`${suspendido ? 3 : 2}px solid ${_ec}`, padding:"14px 14px 12px", position:"relative" }}>
           <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:8 }}>
             <div style={{ display:"flex", alignItems:"flex-start", gap:10, minWidth:0 }}>
               {(() => {
-                const ec = estadoServicio === "ACTIVO" ? T.green : estadoServicio === "SUSPENDIDO" ? T.amber : T.red;
+                const ec = estadoServicio === "ACTIVO" ? T.green : T.red;
                 const iniciales = String(cliente.nombre || "?")
                   .split(/[,\s]+/).filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase() || "?";
                 return (
@@ -6234,14 +6234,13 @@ export default function SidebarApp() {
                 <span style={{ fontSize:12, color:T.muted }}>#{cliente.mikrowisp_id}</span>
                 <span className={estadoServicio !== "ACTIVO" ? "sb-badge-pulse" : ""}
                   style={{ background:
-                  estadoServicio === "ACTIVO" ? T.greenLt :
-                  estadoServicio === "SUSPENDIDO" ? T.amberLt : T.redLt,
+                  estadoServicio === "ACTIVO" ? T.greenLt : T.red,
                   color:
-                  estadoServicio === "ACTIVO" ? T.green :
-                  estadoServicio === "SUSPENDIDO" ? T.amber : T.red,
-                  borderRadius:4, padding: estadoServicio === "ACTIVO" ? "2px 8px" : "3px 9px",
-                  fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4,
-                  "--pulse-c": estadoServicio === "SUSPENDIDO" ? `${T.amber}55` : `${T.red}55` }}>
+                  estadoServicio === "ACTIVO" ? T.green : "#fff",
+                  borderRadius:4, padding: estadoServicio === "ACTIVO" ? "2px 8px" : "4px 10px",
+                  fontSize: estadoServicio === "ACTIVO" ? 11 : 12, fontWeight:800, display:"inline-flex", alignItems:"center", gap:4,
+                  letterSpacing: estadoServicio === "ACTIVO" ? 0 : "0.3px",
+                  "--pulse-c": `${T.red}66` }}>
                   {estadoServicio === "SUSPENDIDO" && <Lock size={11} />}
                   {estadoServicio && estadoServicio !== "ACTIVO" && estadoServicio !== "SUSPENDIDO" && <XCircle size={11} />}
                   {estadoServicio || "ACTIVO"}
@@ -6526,7 +6525,7 @@ export default function SidebarApp() {
                     desajuste real: Mikrowisp dice que ya no esta suspendido
                     pero el Mikrotik lo sigue bloqueando. */}
                 {!morosoCargando && morosoInfo && morosoInfo.enMorosos && suspendido && (
-                  <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.amberLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.amber }}>
+                  <span style={{ display:"flex", alignItems:"center", gap:6, flex:1, background:T.redLt, borderRadius:5, padding:"5px 8px", fontSize:11, fontWeight:700, color:T.red }}>
                     <Lock size={13} /> Bloqueado (cliente sigue suspendido en Mikrowisp)
                   </span>
                 )}
