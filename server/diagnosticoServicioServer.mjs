@@ -2097,6 +2097,41 @@ const handleChatwootListarInboxes = async (payload, creds = null) => {
   return { inboxes };
 };
 
+// Lista las conversaciones de un inbox (por inbox_id) -- no existia antes,
+// solo se podia pedir mensajes de una conversacion YA conocida
+// (GetChatwootMessages). Usado para scripts de backfill (ej. copiar el
+// historial de Chatwoot a la memoria propia de un bot para conversaciones
+// que ya existian antes de que ese bot empezara a registrar su propia
+// memoria). Pagina hasta agotar resultados (Chatwoot pagina de a 25).
+const handleChatwootListarConversaciones = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const acctId = String(payload?.account_id || "1");
+  const inboxId = payload?.inbox_id;
+  if (!inboxId) throw new Error("inbox_id requerido");
+  const status = payload?.status || "all";
+  let todas = [];
+  for (let p = 1; p <= 20; p++) {
+    const res = await fetchConTimeout(
+      `${base}/api/v1/accounts/${acctId}/conversations?inbox_id=${inboxId}&status=${status}&page=${p}`,
+      { headers: { api_access_token: token } }
+    );
+    const data = await readProxyJsonResponse(res, "Chatwoot listar conversaciones");
+    const pagina = data?.data?.payload || data?.payload || [];
+    if (!pagina.length) break;
+    todas = todas.concat(
+      pagina.map((c) => ({
+        id: c.id,
+        status: c.status,
+        last_activity_at: c.last_activity_at || c.timestamp || null,
+        phone: c.meta?.sender?.phone_number || null,
+      }))
+    );
+    if (pagina.length < 25) break;
+  }
+  return { conversaciones: todas };
+};
+
 const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -2185,6 +2220,11 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootListarInboxes") {
       const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
       const data = await handleChatwootListarInboxes(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootListarConversaciones") {
+      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const data = await handleChatwootListarConversaciones(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
