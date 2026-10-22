@@ -1776,6 +1776,18 @@ async function resolveTenantChatwootCreds(tenantId, tenantToken) {
   return data;
 }
 
+// Override directo (sin pasar por el CRM/tenant_id) -- para un tenant que
+// ya tiene su Chatwoot propio y conocido (ej. DIM: chat.wolgest.com) y no
+// necesita el flujo de "onboarding" via el CRM. Mismo patron que ya usa
+// Mikrowisp (body.token/body.apiBase) para esto mismo. Si el payload trae
+// chatwoot_base + chatwoot_token, se usan tal cual, sin pisar nada mas.
+function resolveCredsConOverride(body) {
+  if (body?.payload?.chatwoot_base && body?.payload?.chatwoot_token) {
+    return Promise.resolve({ base: String(body.payload.chatwoot_base).trim().replace(/\/+$/, ""), token: String(body.payload.chatwoot_token).trim() });
+  }
+  return resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+}
+
 const cwBuscarContacto = async (phone, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -2085,6 +2097,45 @@ const handleVpnEliminarPeer = async (payload) => {
 // bot (ej. BotPagosV3ConfigPanel) para que el admin elija el nombre exacto
 // de un inbox en vez de tener que escribirlo a mano y arriesgarse a un
 // typo que deje el bot sin procesar nada.
+// Control manual de pausa del bot-pagos-comprobante por conversacion, desde
+// el sidebar de Chatwoot (SidebarApp.jsx) -- mismo efecto que lograria un
+// asesor humano escribiendole al cliente (pausar) o que resolver la
+// conversacion en Chatwoot (liberar), pero sin depender de que esos eventos
+// le lleguen bien al bot (bug real detectado 2026-10-22: el webhook de
+// "conversacion resuelta" no le llego al bot para la conv 16280, dejandola
+// pausada sin que nadie pudiera destrabarla salvo editando la base a mano).
+// Opera directo sobre bot_pagos_v3_estado (Supabase de Americanet, mismo
+// proyecto que usa este server por defecto) -- no existe tabla equivalente
+// para bot-pagos-dim todavia, este control por ahora es solo para Americanet.
+const handleBotPagosV3EstadoConv = async (payload) => {
+  const convId = String(payload?.conv_id || "").trim();
+  if (!convId) throw new Error("conv_id requerido");
+  const accionEstado = payload?.accion;
+  if (accionEstado === "pausar") {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/bot_pagos_v3_estado?on_conflict=conv_id`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({ conv_id: convId, fase: "atendido_por_humano", actualizado_en: new Date().toISOString() }),
+    });
+    if (!res.ok) throw new Error(`Supabase upsert bot_pagos_v3_estado: HTTP ${res.status} ${await res.text().catch(() => "")}`);
+    return { fase: "atendido_por_humano" };
+  }
+  if (accionEstado === "liberar") {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/bot_pagos_v3_estado?conv_id=eq.${encodeURIComponent(convId)}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, Prefer: "return=minimal" },
+    });
+    if (!res.ok) throw new Error(`Supabase delete bot_pagos_v3_estado: HTTP ${res.status}`);
+    return { fase: null };
+  }
+  throw new Error(`accion invalida: "${accionEstado}" (esperado "pausar" o "liberar")`);
+};
+
 const handleChatwootListarInboxes = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -2174,22 +2225,22 @@ const proxyMikrowispGenerico = async (req) => {
       // dado de alta en el CRM (no tiene instancia dedicada propia). Sin
       // ellos, se usa CHATWOOT_BASE/TOKEN de siempre (comportamiento actual
       // de Americanet/DIM/waw, sin cambios).
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootMessage(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootResolverConversacion") {
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootResolverConversacion(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootAsignarEquipo") {
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootAsignarEquipo(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootAsignarAgente") {
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootAsignarAgente(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
@@ -2217,18 +2268,22 @@ const proxyMikrowispGenerico = async (req) => {
       const data = await handleVpnVerComentario(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
+    if (accion === "BotPagosV3EstadoConv") {
+      const data = await handleBotPagosV3EstadoConv(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
     if (accion === "ChatwootListarInboxes") {
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootListarInboxes(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootListarConversaciones") {
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootListarConversaciones(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "GetChatwootMessages") {
-      const creds = await resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
+      const creds = await resolveCredsConOverride(body);
       const data = await handleGetChatwootMessages(body.payload || {}, creds);
       return { status: 200, json: { ok: true, ...data } };
     }

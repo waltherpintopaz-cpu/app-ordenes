@@ -5212,6 +5212,28 @@ export default function SidebarApp() {
           style={{ ...S.btnOut, fontSize:12, padding:"3px 8px", lineHeight:1 }}>
           {isDark ? "☀️" : "🌙"}
         </button>
+        {convId && (
+          <div style={{ display:"flex", alignItems:"center", gap:5 }} title="Pausa/libera el bot de Ventas SOLO en esta conversación -- mismo efecto que un asesor escribiendo o resolviendo el chat, pero sin depender de que ese aviso le llegue bien al bot">
+            <button onClick={async () => {
+              try {
+                const res = await fetch(PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+                  body: JSON.stringify({ accion:"BotPagosV3EstadoConv", payload:{ conv_id: convId, accion:"pausar" } }) });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok || !json.ok) throw new Error(json?.error || "Error");
+                notify("⏸ Bot pausado en esta conversación");
+              } catch (err) { notify("Error al pausar: " + (err?.message || err), false); }
+            }} style={{ ...S.btnOut, fontSize:10, padding:"2px 7px" }}>⏸ Pausar bot</button>
+            <button onClick={async () => {
+              try {
+                const res = await fetch(PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+                  body: JSON.stringify({ accion:"BotPagosV3EstadoConv", payload:{ conv_id: convId, accion:"liberar" } }) });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok || !json.ok) throw new Error(json?.error || "Error");
+                notify("▶ Bot liberado en esta conversación");
+              } catch (err) { notify("Error al liberar: " + (err?.message || err), false); }
+            }} style={{ ...S.btnOut, fontSize:10, padding:"2px 7px" }}>▶ Liberar bot</button>
+          </div>
+        )}
         {agente && (
           <div style={{ display:"flex", alignItems:"center", gap:5 }}>
             <span style={{ background:T.accent, color:T.blue, borderRadius:4, padding:"2px 8px", fontSize:11, fontWeight:600, border:`1px solid ${T.border}` }}>
