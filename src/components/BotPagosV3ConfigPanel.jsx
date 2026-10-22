@@ -254,6 +254,38 @@ export default function BotPagosV3ConfigPanel() {
         <input type="text" value={cfg.inbox_ventas} onChange={e => set("inbox_ventas", e.target.value)} style={inp} placeholder="DIM Ventas" />
         <div style={hint}>Un número no identificado como cliente que escriba a esta bandeja recibe trato de prospecto nuevo (modo ventas: planes/precios, sin sonar a IA genérica). Si ya es cliente real, se le atiende normal.</div>
 
+        <div style={{ marginTop: 10 }}>
+          <button
+            onClick={cargarInboxes}
+            disabled={cargandoInboxes}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 7, border: "1px solid #6366f1", background: "#fff", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: cargandoInboxes ? "wait" : "pointer" }}
+          >
+            <RefreshCw size={13} /> {cargandoInboxes ? "Cargando..." : "Ver inboxes reales de Chatwoot"}
+          </button>
+          {errorInboxes && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{errorInboxes}</div>}
+          {inboxesDisponibles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {inboxesDisponibles.map((ib) => {
+                const seleccionado = cfg.inbox_ventas === ib.nombre;
+                return (
+                  <button
+                    key={ib.id}
+                    disabled={seleccionado}
+                    onClick={() => set("inbox_ventas", ib.nombre)}
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: seleccionado ? "default" : "pointer",
+                      border: "1px solid #d1d5db", background: seleccionado ? "#f3f4f6" : "#eef2ff",
+                      color: seleccionado ? "#9ca3af" : "#4338ca",
+                    }}
+                  >
+                    {seleccionado ? "✓ " : "+ "}{ib.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #e5e7eb" }}>
           <label style={lbl}>Números de prueba (forzar trato de prospecto aunque ya sean clientes)</label>
           <TagInput values={(cfg.telefonos_prueba_prospecto || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("telefonos_prueba_prospecto", arr.join(", "))} placeholder="949529785" />
