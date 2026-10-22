@@ -312,28 +312,38 @@ export default function BotPagosV3ConfigPanel() {
             <input type="text" value={cfg.nodo_restringido} onChange={e => set("nodo_restringido", e.target.value)} style={inp} placeholder="Nod_04" />
           </div>
         </div>
-        {inboxesDisponibles.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-            {inboxesDisponibles.map((ib) => {
-              const seleccionado = cfg.inbox_nodo_restringido === ib.nombre;
-              return (
-                <button
-                  key={ib.id}
-                  disabled={seleccionado}
-                  onClick={() => set("inbox_nodo_restringido", ib.nombre)}
-                  style={{
-                    padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: seleccionado ? "default" : "pointer",
-                    border: "1px solid #d1d5db", background: seleccionado ? "#f3f4f6" : "#eef2ff",
-                    color: seleccionado ? "#9ca3af" : "#4338ca",
-                  }}
-                >
-                  {seleccionado ? "✓ " : "+ "}{ib.nombre}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div style={{ ...hint, marginTop: 8 }}>Usa el botón "Ver inboxes reales de Chatwoot" de la primera tarjeta para ver la lista y hacer clic acá también. Dejar ambos campos vacíos para no restringir ninguna bandeja.</div>
+        <div style={{ marginTop: 10 }}>
+          <button
+            onClick={cargarInboxes}
+            disabled={cargandoInboxes}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 7, border: "1px solid #6366f1", background: "#fff", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: cargandoInboxes ? "wait" : "pointer" }}
+          >
+            <RefreshCw size={13} /> {cargandoInboxes ? "Cargando..." : "Ver inboxes reales de Chatwoot"}
+          </button>
+          {errorInboxes && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{errorInboxes}</div>}
+          {inboxesDisponibles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {inboxesDisponibles.map((ib) => {
+                const seleccionado = cfg.inbox_nodo_restringido === ib.nombre;
+                return (
+                  <button
+                    key={ib.id}
+                    disabled={seleccionado}
+                    onClick={() => set("inbox_nodo_restringido", ib.nombre)}
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: seleccionado ? "default" : "pointer",
+                      border: "1px solid #d1d5db", background: seleccionado ? "#f3f4f6" : "#eef2ff",
+                      color: seleccionado ? "#9ca3af" : "#4338ca",
+                    }}
+                  >
+                    {seleccionado ? "✓ " : "+ "}{ib.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div style={{ ...hint, marginTop: 8 }}>Dejar ambos campos vacíos para no restringir ninguna bandeja.</div>
       </div>
 
       {/* Estado */}
