@@ -15,6 +15,8 @@ const DEFAULT = {
   inboxes_prueba: "",
   inbox_ventas: "",
   telefonos_prueba_prospecto: "",
+  inbox_nodo_restringido: "",
+  nodo_restringido: "",
   horario_inicio: 8,
   horario_fin: 21,
   horario_dias: "1,2,3,4,5,6",
@@ -291,6 +293,47 @@ export default function BotPagosV3ConfigPanel() {
           <TagInput values={(cfg.telefonos_prueba_prospecto || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("telefonos_prueba_prospecto", arr.join(", "))} placeholder="949529785" />
           <div style={hint}>Solo para pruebas del Modo Ventas sin usar un número real desconocido — no modifica ningún dato del cliente real.</div>
         </div>
+      </div>
+
+      {/* Bandeja restringida a un solo nodo -- ej. una bandeja donde
+          escriben clientes de varios nodos, pero el bot solo debe
+          contestarle a los de un nodo puntual. Silencio total (ni
+          siquiera escala) para cualquiera de otro nodo. */}
+      <div style={card}>
+        <div style={cardTitle()}><Radio size={16} color="#d97706" /> Bandeja restringida a un solo nodo (opcional)</div>
+        <div style={hint}>Si una bandeja se configura acá, el bot SOLO le contesta a clientes del nodo indicado — a cualquier otro número que escriba ahí (de otro nodo, o no identificado), lo ignora por completo, sin escalar ni avisar nada.</div>
+        <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>Nombre exacto del inbox</label>
+            <input type="text" value={cfg.inbox_nodo_restringido} onChange={e => set("inbox_nodo_restringido", e.target.value)} style={inp} placeholder="Soporte Nod_04" />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={lbl}>Nodo permitido</label>
+            <input type="text" value={cfg.nodo_restringido} onChange={e => set("nodo_restringido", e.target.value)} style={inp} placeholder="Nod_04" />
+          </div>
+        </div>
+        {inboxesDisponibles.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {inboxesDisponibles.map((ib) => {
+              const seleccionado = cfg.inbox_nodo_restringido === ib.nombre;
+              return (
+                <button
+                  key={ib.id}
+                  disabled={seleccionado}
+                  onClick={() => set("inbox_nodo_restringido", ib.nombre)}
+                  style={{
+                    padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: seleccionado ? "default" : "pointer",
+                    border: "1px solid #d1d5db", background: seleccionado ? "#f3f4f6" : "#eef2ff",
+                    color: seleccionado ? "#9ca3af" : "#4338ca",
+                  }}
+                >
+                  {seleccionado ? "✓ " : "+ "}{ib.nombre}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ ...hint, marginTop: 8 }}>Usa el botón "Ver inboxes reales de Chatwoot" de la primera tarjeta para ver la lista y hacer clic acá también. Dejar ambos campos vacíos para no restringir ninguna bandeja.</div>
       </div>
 
       {/* Estado */}
