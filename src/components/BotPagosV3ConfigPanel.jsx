@@ -17,6 +17,7 @@ const DEFAULT = {
   telefonos_prueba_prospecto: "",
   inbox_nodo_restringido: "",
   nodo_restringido: "",
+  inboxes_solo_clientes: "",
   horario_inicio: 8,
   horario_fin: 21,
   horario_dias: "1,2,3,4,5,6",
@@ -344,6 +345,52 @@ export default function BotPagosV3ConfigPanel() {
           )}
         </div>
         <div style={{ ...hint, marginTop: 8 }}>Dejar ambos campos vacíos para no restringir ninguna bandeja.</div>
+      </div>
+
+      {/* Bandejas solo-clientes -- ej. una bandeja donde NO se quiere
+          captar prospectos nuevos, solo atender a clientes ya existentes.
+          A cualquiera que escriba ahí y no se pueda identificar como
+          cliente real, el bot lo ignora por completo (ni Modo Ventas, ni
+          Modo IA, ni escalamiento). */}
+      <div style={card}>
+        <div style={cardTitle()}><Lock size={16} color="#dc2626" /> Bandejas solo-clientes (opcional)</div>
+        <div style={hint}>En las bandejas que agregues acá, el bot SOLO le contesta a quien pueda identificar como cliente real — a cualquier número no identificado (prospecto nuevo, desconocido) lo ignora por completo, sin Modo Ventas ni escalar ni avisar nada.</div>
+        <TagInput values={(cfg.inboxes_solo_clientes || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("inboxes_solo_clientes", arr.join(", "))} placeholder="Nombre exacto del inbox..." />
+
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e5e7eb" }}>
+          <button
+            onClick={cargarInboxes}
+            disabled={cargandoInboxes}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 7, border: "1px solid #6366f1", background: "#fff", color: "#6366f1", fontSize: 12, fontWeight: 600, cursor: cargandoInboxes ? "wait" : "pointer" }}
+          >
+            <RefreshCw size={13} /> {cargandoInboxes ? "Cargando..." : "Ver inboxes reales de Chatwoot"}
+          </button>
+          {errorInboxes && <div style={{ color: "#dc2626", fontSize: 12, marginTop: 8 }}>{errorInboxes}</div>}
+          {inboxesDisponibles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {inboxesDisponibles.map((ib) => {
+                const yaAgregado = (cfg.inboxes_solo_clientes || "").split(",").map(s => s.trim()).includes(ib.nombre);
+                return (
+                  <button
+                    key={ib.id}
+                    disabled={yaAgregado}
+                    onClick={() => {
+                      const actuales = (cfg.inboxes_solo_clientes || "").split(",").map(s => s.trim()).filter(Boolean);
+                      set("inboxes_solo_clientes", [...actuales, ib.nombre].join(", "));
+                    }}
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: yaAgregado ? "default" : "pointer",
+                      border: "1px solid #d1d5db", background: yaAgregado ? "#f3f4f6" : "#eef2ff",
+                      color: yaAgregado ? "#9ca3af" : "#4338ca",
+                    }}
+                  >
+                    {yaAgregado ? "✓ " : "+ "}{ib.nombre}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Estado */}
