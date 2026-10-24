@@ -1895,6 +1895,62 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     });
   }, [zonasAsignadas]);
 
+  // Vista previa en el mapa mientras se eligen zonas en "+ Agregar zonas"
+  // (todavia sin confirmar): las marcadas se dibujan con borde grueso y
+  // relleno mas fuerte que las ya asignadas; la que esta bajo el mouse en
+  // la lista se dibuja tenue. Al marcar/desmarcar, el mapa se ajusta para
+  // mostrar todas las marcadas.
+  const zonaPreviewPolygonsRef = useRef([]);
+  const [zonaHoverId, setZonaHoverId] = useState(null);
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current) return;
+    const maps = mapsRef.current;
+    zonaPreviewPolygonsRef.current.forEach((p) => p.setMap(null));
+    zonaPreviewPolygonsRef.current = [];
+    const pathDe = (z) => (Array.isArray(z.coordinates) ? z.coordinates : [])
+      .map((c) => ({ lat: Number(c.lat), lng: Number(c.lng) }))
+      .filter((c) => isValidCoord(c.lat, c.lng));
+    const dibujar = (z, marcada) => {
+      const path = pathDe(z);
+      if (path.length < 3) return;
+      zonaPreviewPolygonsRef.current.push(new maps.Polygon({
+        map: mapRef.current,
+        paths: path,
+        strokeColor: z.stroke_color || "#2563eb",
+        strokeOpacity: 1,
+        strokeWeight: marcada ? 4 : 2,
+        fillColor: z.fill_color || z.stroke_color || "#2563eb",
+        fillOpacity: marcada ? 0.35 : 0.15,
+        zIndex: 1,
+        clickable: false,
+      }));
+    };
+    zonasDisponibles.forEach((z) => {
+      if (zonasSeleccionadas.has(z.id)) dibujar(z, true);
+      else if (z.id === zonaHoverId) dibujar(z, false);
+    });
+  }, [zonasSeleccionadas, zonaHoverId, zonasDisponibles]);
+
+  // Al cerrar la lista el item desaparece sin disparar onMouseLeave --
+  // limpiar a mano para que no quede la vista previa tenue pegada.
+  useEffect(() => {
+    if (!selectorZonasAbierto) setZonaHoverId(null);
+  }, [selectorZonasAbierto]);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapsRef.current || zonasSeleccionadas.size === 0) return;
+    const bounds = new mapsRef.current.LatLngBounds();
+    let hay = false;
+    zonasDisponibles.forEach((z) => {
+      if (!zonasSeleccionadas.has(z.id)) return;
+      (Array.isArray(z.coordinates) ? z.coordinates : []).forEach((c) => {
+        const lat = Number(c.lat), lng = Number(c.lng);
+        if (isValidCoord(lat, lng)) { bounds.extend({ lat, lng }); hay = true; }
+      });
+    });
+    if (hay) mapRef.current.fitBounds(bounds, 40);
+  }, [zonasSeleccionadas, zonasDisponibles]);
+
   const exportarKml = useCallback(() => {
     const conRuta = Object.entries(trailById).filter(([id, pts]) => filas.some((f) => f.id === id) && pts.length > 1);
     if (conRuta.length === 0) return;
@@ -2168,7 +2224,12 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                     </p>
                   ) : (
                     zonasParaElegir.map((z) => (
-                      <label key={z.id} className="zona-picker-item">
+                      <label
+                        key={z.id}
+                        className="zona-picker-item"
+                        onMouseEnter={() => setZonaHoverId(z.id)}
+                        onMouseLeave={() => setZonaHoverId((h) => (h === z.id ? null : h))}
+                      >
                         <input
                           type="checkbox"
                           checked={zonasSeleccionadas.has(z.id)}
