@@ -18,6 +18,7 @@ const DEFAULT = {
   inbox_nodo_restringido: "",
   nodo_restringido: "",
   inboxes_solo_clientes: "",
+  botones_recordatorio_n8n: "Metodos de pago, Metodos de Pago, Monto de deuda, Portal del cliente, Unete a la comunidad, No recibir avisos, No recibir notificaciones, Participar, Ya pagué, Metodo de Pago DIM, Metodo de pago DIM, Monto deuda DIM, Portal DIM, Unete comunidad DIM, Descargar boleta, Descargar boleta DIM",
   horario_inicio: 8,
   horario_fin: 21,
   horario_dias: "1,2,3,4,5,6",
@@ -391,6 +392,19 @@ export default function BotPagosV3ConfigPanel() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Botones de recordatorio ya respondidos por n8n -- si el cliente
+          presiona un boton de una plantilla de WhatsApp (ej. "Metodos de
+          pago" del recordatorio de pago vencido), el flujo n8n viejo ya le
+          contesta directo, por fuera de este bot. Sin esta lista, el texto
+          exacto del boton le llega tambien a este bot y lo procesa de
+          nuevo con IA, mandando una SEGUNDA respuesta duplicada (bug real,
+          2026-10-23). */}
+      <div style={card}>
+        <div style={cardTitle()}><Bell size={16} color="#d97706" /> Botones de recordatorio (ya los responde n8n)</div>
+        <div style={hint}>Si el cliente escribe EXACTO uno de estos textos (viene de presionar un botón de una plantilla de WhatsApp/Meta), este bot se queda callado -- el flujo n8n viejo ya responde eso directo. Sin esto, el bot nuevo lo procesa de nuevo y manda una respuesta duplicada.</div>
+        <TagInput values={(cfg.botones_recordatorio_n8n || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("botones_recordatorio_n8n", arr.join(", "))} placeholder="Texto exacto del botón..." />
       </div>
 
       {/* Estado */}
