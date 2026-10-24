@@ -139,6 +139,21 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
 // se contaba entero como distancia/tiempo caminando al reanudar.
 const MAX_GAP_FOR_SEGMENT_SEC = 180;
 
+// Cortes de GPS mientras la persona SI caminaba: mas de 90s sin puntos
+// habiendo avanzado 30m o mas. No cuenta pausas voluntarias (el punto que
+// sigue es "session_start") ni ratos parado repartiendo (poco movimiento).
+// Es el sintoma del ahorro de bateria del celular pausando el GPS -- el
+// recorrido "se salta" calles (revisado en campo 2026-10-24).
+function contarCortesGps(pts) {
+  let cortes = 0;
+  for (let i = 1; i < (pts || []).length; i++) {
+    const seg = (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 1000;
+    if (seg <= 90 || pts[i].source === "session_start") continue;
+    if (haversineMeters(pts[i - 1].lat, pts[i - 1].lng, pts[i].lat, pts[i].lng) >= 30) cortes++;
+  }
+  return cortes;
+}
+
 const calcularEstadisticaDia = (rows) => {
   const points = Array.isArray(rows) ? rows : [];
   if (points.length === 0) return { totalPings: 0, distanciaKm: 0, tiempoCaminandoSec: 0, tiempoDetenidoSec: 0, inicio: null, fin: null };
@@ -997,14 +1012,15 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         const pos = currentById[v.id];
         const stats = statsByVolanteador[v.id] || null;
         const staleMin = pos ? Math.floor((Date.now() - new Date(pos.updated_at).getTime()) / 60000) : Infinity;
-        return { ...v, pos, stats, staleMin };
+        const cortesGps = contarCortesGps(trailById[v.id]);
+        return { ...v, pos, stats, staleMin, cortesGps };
       })
       .sort((a, b) => {
         const ta = a.pos ? new Date(a.pos.updated_at).getTime() : 0;
         const tb = b.pos ? new Date(b.pos.updated_at).getTime() : 0;
         return tb - ta;
       });
-  }, [volanteadoresVisibles, currentById, statsByVolanteador]);
+  }, [volanteadoresVisibles, currentById, statsByVolanteador, trailById]);
 
   const cargarTramosManuales = useCallback(async (targetDate = statsDate) => {
     const { data, error: err } = await supabase
@@ -2727,6 +2743,14 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   <p className="maptech-row-title" style={{ margin: 0 }}>
                     {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
                     {f.esSupervisor ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EDE9FE", color: "#6D28D9" }}>Supervisor</span> : null}
+                    {f.cortesGps >= 3 ? (
+                      <span
+                        title={`El GPS de su celular se cortó ${f.cortesGps} veces mientras caminaba (más de 90 s sin puntos). Su recorrido puede saltarse calles. Causa habitual: ahorro de batería del celular -- en la app, Ajustes > Apps > Amnet Gestión > Batería > "Sin restricciones".`}
+                        style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#FEF3C7", color: "#B45309", cursor: "help" }}
+                      >
+                        ⚠ GPS con cortes ({f.cortesGps})
+                      </span>
+                    ) : null}
                     {colorRepetidoDe(f.id) ? <span style={{ marginLeft: 6, fontSize: 10, color: "#DC2626", fontWeight: 700 }}>color repetido</span> : null}
                   </p>
                 </div>
