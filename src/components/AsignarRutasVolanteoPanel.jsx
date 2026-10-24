@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
 import { obtenerCallesDeZona, particionarGrafo, calcularRutaCobertura } from "../utils/rutaVolanteo";
 import { loadGoogleMapsSdk } from "./SeguimientoVolanteadoresPanel";
+import { FILTRO_USUARIOS_VOLANTEO } from "../utils/volanteoPerfiles";
 
 const TRAIL_COLORS = [
   "#EA580C", "#0891B2", "#7C3AED", "#16A34A", "#DB2777", "#CA8A04",
@@ -57,14 +58,15 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
 
       const { data: usuariosData, error: usuariosErr } = await supabase
         .from("usuarios")
-        .select("id,nombre,alias_volanteo,grupo_volanteo")
+        .select("id,nombre,alias_volanteo,grupo_volanteo,rol")
         .eq("grupo_volanteo", grupo)
-        .eq("rol", "Volanteador")
+        .or(FILTRO_USUARIOS_VOLANTEO)
         .eq("activo", true);
       if (usuariosErr) throw usuariosErr;
       const lista = (usuariosData || []).map((u) => ({
         id: String(u.id),
         nombre: u.alias_volanteo || u.nombre || String(u.id),
+        esSupervisor: u.rol === "Supervisor",
       }));
       setVolanteadores(lista);
       setSeleccionados(new Set(lista.map((v) => v.id)));
@@ -299,6 +301,9 @@ export default function AsignarRutasVolanteoPanel({ grupo, fecha, onClose }) {
                       <label key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
                         <input type="checkbox" checked={seleccionados.has(v.id)} onChange={() => toggleSeleccionado(v.id)} />
                         {v.nombre}
+                        {v.esSupervisor && (
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EDE9FE", color: "#6D28D9" }}>Supervisor</span>
+                        )}
                       </label>
                     ))
                   )}

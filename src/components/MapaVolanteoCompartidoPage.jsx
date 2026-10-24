@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { FILTRO_USUARIOS_VOLANTEO } from "../utils/volanteoPerfiles";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 
 const GOOGLE_MAPS_API_KEY = String(
@@ -116,8 +117,8 @@ export default function MapaVolanteoCompartidoPage() {
     for (let from = 0; from < 20000; from += PAGE) {
       let query = supabase
         .from("usuarios")
-        .select("id,nombre,grupo_volanteo,alias_volanteo,avatar_volanteo")
-        .eq("rol", "Volanteador")
+        .select("id,nombre,grupo_volanteo,alias_volanteo,avatar_volanteo,rol")
+        .or(FILTRO_USUARIOS_VOLANTEO)
         .eq("activo", true)
         .range(from, from + PAGE - 1);
       if (grupo) query = query.eq("grupo_volanteo", grupo);
@@ -129,7 +130,7 @@ export default function MapaVolanteoCompartidoPage() {
     setVolanteadores(
       (Array.isArray(data) ? data : []).map((u) => ({
         id: toText(u.id),
-        nombre: toText(u.alias_volanteo) || toText(u.nombre) || toText(u.id),
+        nombre: `${toText(u.alias_volanteo) || toText(u.nombre) || toText(u.id)}${u.rol === "Supervisor" ? " (Supervisor)" : ""}`,
         grupo: toText(u.grupo_volanteo) || "(sin grupo)",
         avatar: toText(u.avatar_volanteo),
       }))

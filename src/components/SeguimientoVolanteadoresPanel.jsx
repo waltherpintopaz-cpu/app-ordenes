@@ -3,7 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { isSupabaseConfigured, supabase } from "../supabaseClient";
-import { PERFILES_REGISTRO, PERFIL_DEFECTO } from "../utils/volanteoPerfiles";
+import { PERFILES_REGISTRO, PERFIL_DEFECTO, FILTRO_USUARIOS_VOLANTEO } from "../utils/volanteoPerfiles";
 import AsignarRutasVolanteoPanel from "./AsignarRutasVolanteoPanel";
 
 const GOOGLE_MAPS_API_KEY = String(
@@ -615,8 +615,8 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
     for (let from = 0; from < 20000; from += PAGE) {
       const { data: pagina, error: err } = await supabase
         .from("usuarios")
-        .select("id,nombre,celular,activo,grupo_volanteo,alias_volanteo,avatar_volanteo")
-        .eq("rol", "Volanteador")
+        .select("id,nombre,celular,activo,grupo_volanteo,alias_volanteo,avatar_volanteo,rol")
+        .or(FILTRO_USUARIOS_VOLANTEO)
         .eq("activo", true)
         .range(from, from + PAGE - 1);
       if (err) throw err;
@@ -631,6 +631,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         celular: toText(u.celular),
         grupo: toText(u.grupo_volanteo) || "(sin grupo)",
         avatar: toText(u.avatar_volanteo),
+        esSupervisor: u.rol === "Supervisor",
       }))
     );
   }, []);
@@ -926,6 +927,21 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
         const lng = Number(pos.coords.longitude);
         if (!isValidCoord(lat, lng)) return;
         const heading = Number(pos.coords.heading);
+        // Supervisor que tambien volantea: tecnico_ubicacion_actual tiene UNA
+        // fila por persona -- si su app esta reportando como Volanteador
+        // (sesion de volanteo en curso), escribir aca como "Supervisor" lo
+        // haria aparecer/desaparecer del seguimiento cada pocos segundos.
+        const { data: filaActual } = await supabase
+          .from("tecnico_ubicacion_actual")
+          .select("tecnico_rol,updated_at")
+          .eq("tecnico_id", myId)
+          .maybeSingle();
+        const volanteandoAhora = filaActual?.tecnico_rol === "Volanteador"
+          && Date.now() - new Date(filaActual.updated_at).getTime() < 10 * 60 * 1000;
+        if (volanteandoAhora) {
+          setGeoError("Tienes una sesión de volanteo activa: tu ubicación ya se comparte como volanteador.");
+          return;
+        }
         await supabase.from("tecnico_ubicacion_actual").upsert(
           {
             tecnico_id: myId,
@@ -1935,6 +1951,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
 
     const filasExcel = filas.map((f) => ({
       Nombre: f.nombre,
+      Rol: f.esSupervisor ? "Supervisor" : "Volanteador",
       Grupo: f.grupo,
       "Hora inicio": f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-",
       "Hora fin": f.stats?.fin ? formatDateTime(f.stats.fin) : "-",
@@ -1943,7 +1960,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       "Km recorridos": Number(f.stats?.distanciaKm || 0).toFixed(2),
     }));
     const wsPersonas = XLSX.utils.json_to_sheet(filasExcel);
-    wsPersonas["!cols"] = [{ wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
+    wsPersonas["!cols"] = [{ wch: 22 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
     XLSX.utils.book_append_sheet(wb, wsPersonas, "Volanteadores");
 
     if (coberturaPorZona.length > 0) {
@@ -1966,7 +1983,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
       startY: 38,
       head: [["Nombre", "Grupo", "Inicio", "Fin", "Caminando", "Detenido", "Km"]],
       body: filas.map((f) => [
-        f.nombre,
+        f.esSupervisor ? `${f.nombre} (Supervisor)` : f.nombre,
         f.grupo,
         f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-",
         f.stats?.fin ? formatDateTime(f.stats.fin) : "-",
@@ -2512,7 +2529,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   const totalDada = dada.reduce((acc, [, n]) => acc + n, 0);
                   return (
                     <tr key={`rep-${f.id}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                      <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.nombre}</td>
+                      <td style={{ padding: "6px 8px", fontWeight: 600 }}>{f.nombre}{f.esSupervisor ? " (Supervisor)" : ""}</td>
                       <td style={{ padding: "6px 8px" }}>{f.grupo}</td>
                       <td style={{ padding: "6px 8px" }}>{f.stats?.inicio ? formatDateTime(f.stats.inicio) : "-"}</td>
                       <td style={{ padding: "6px 8px" }}>{f.stats?.fin ? formatDateTime(f.stats.fin) : "-"}</td>
@@ -2648,6 +2665,7 @@ export default function SeguimientoVolanteadoresPanel({ sessionUser } = {}) {
                   />
                   <p className="maptech-row-title" style={{ margin: 0 }}>
                     {f.nombre} <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 12 }}>· {f.grupo}</span>
+                    {f.esSupervisor ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EDE9FE", color: "#6D28D9" }}>Supervisor</span> : null}
                     {colorRepetidoDe(f.id) ? <span style={{ marginLeft: 6, fontSize: 10, color: "#DC2626", fontWeight: 700 }}>color repetido</span> : null}
                   </p>
                 </div>

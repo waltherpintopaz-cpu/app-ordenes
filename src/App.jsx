@@ -23506,9 +23506,11 @@ export default function App() {
                           </select>
                         </div>
                         <div>
-                          {normalizarRolSimple(usuarioForm.rol) === "Volanteador" ? (
+                          {["Volanteador", "Supervisor"].includes(normalizarRolSimple(usuarioForm.rol)) ? (
                             <>
-                              <label style={labelStyle}>Grupo de volanteo</label>
+                              <label style={labelStyle}>
+                                Grupo de volanteo{normalizarRolSimple(usuarioForm.rol) === "Supervisor" ? " (solo si también volantea)" : ""}
+                              </label>
                               <input
                                 style={inputStyle}
                                 list="grupos-volanteo-existentes"
@@ -23520,7 +23522,9 @@ export default function App() {
                                 {gruposVolanteoExistentes.map((g) => <option key={g} value={g} />)}
                               </datalist>
                               <p style={{ margin: "4px 0 0", fontSize: 11, color: "#94A3B8" }}>
-                                Elige uno de la lista o escribe uno nuevo — los volanteadores con el mismo grupo se ven entre sí en tiempo real.
+                                {normalizarRolSimple(usuarioForm.rol) === "Supervisor"
+                                  ? "Déjalo vacío si solo supervisa. Con un grupo, además puede volantear: aparece en Asignar rutas y en el seguimiento con la etiqueta Supervisor."
+                                  : "Elige uno de la lista o escribe uno nuevo — los volanteadores con el mismo grupo se ven entre sí en tiempo real."}
                               </p>
                             </>
                           ) : (

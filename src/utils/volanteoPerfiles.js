@@ -21,3 +21,9 @@ export const PERFIL_DEFECTO = {
   distancia_maxima_m: 500,
   filtrado_adicional: true,
 };
+
+// Quien puede volantear: el rol Volanteador y tambien un Supervisor que
+// tenga grupo de volanteo asignado (supervisor que ademas sale a volantear,
+// pedido 2026-10-24). Un Supervisor SIN grupo solo supervisa, como antes.
+// Filtro PostgREST para .or() sobre la tabla usuarios.
+export const FILTRO_USUARIOS_VOLANTEO = "rol.eq.Volanteador,and(rol.eq.Supervisor,grupo_volanteo.not.is.null)";
