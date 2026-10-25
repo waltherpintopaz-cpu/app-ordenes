@@ -424,6 +424,176 @@ const closeRouterApiSafe = async (api) => {
   }
 };
 
+// ── Core (CCR2216): salida a internet por cliente ───────────────────────
+// El core decide por que linea sale cada cliente con reglas mangle
+// mark-routing en prerouting, evaluadas de arriba hacia abajo (gana la
+// primera, passthrough=no): reglas por src-address y despues las listas
+// Balanceo -> Misticom -> Empresa_mov. Sin coincidencia = balanceo por
+// defecto (tabla main). El core ve la IP privada del cliente (la misma de
+// "IP ACTIVA"). Solo aplica a Nod_01..Nod_04 (los que salen por este core).
+// Acceso por el tunel WG nuevo: VPS 10.91.0.30 -> core 10.91.0.1 (2026-10-25).
+// Credenciales SOLO por variables de entorno -- nunca en mikrotik_routers,
+// que hoy se puede leer con la clave publica.
+const CORE_API_HOST = String(process.env.CORE_API_HOST || "").trim();
+const CORE_API_PORT = Number(process.env.CORE_API_PORT || 8728);
+const CORE_API_USER = String(process.env.CORE_API_USER || "").trim();
+const CORE_API_PASSWORD = String(process.env.CORE_API_PASSWORD || "");
+const CORE_NODOS = new Set(["Nod_01", "Nod_02", "Nod_03", "Nod_04"]);
+const CORE_LINEAS = {
+  balanceo: { label: "Balanceo", lista: "Balanceo", mark: "to_balanceo" },
+  misticom: { label: "Dedicado Misticom", lista: "Misticom", mark: "to_misticom" },
+  movistar: { label: "Movistar", lista: "Empresa_mov", mark: "to_movistar" },
+};
+const CORE_DURACIONES = { "24h": "1d", "7d": "1w", permanente: null };
+// Condiciones que hacen que una regla NO dependa solo del cliente (ej. las
+// de Speedtest, que dependen del destino) -- no deciden la linea general.
+const CORE_CONDICIONES_DESTINO = [
+  "dst-address", "dst-address-list", "dst-address-type", "dst-port", "protocol",
+  "src-port", "port", "connection-mark", "packet-mark", "routing-mark", "connection-state",
+  "out-interface", "out-interface-list", "layer7-protocol", "content", "tls-host",
+];
+
+const ipv4ANumero = (ip) => {
+  const p = String(ip || "").trim().split(".");
+  if (p.length !== 4 || p.some((x) => !/^\d{1,3}$/.test(x) || Number(x) > 255)) return null;
+  return ((Number(p[0]) << 24) >>> 0) + (Number(p[1]) << 16) + (Number(p[2]) << 8) + Number(p[3]);
+};
+// "192.168.1.5", "10.101.0.0/24" o rango "a-b" (formatos de RouterOS).
+const ipEnRango = (ip, rango) => {
+  const n = ipv4ANumero(ip);
+  const r = String(rango || "").trim();
+  if (n == null || !r) return false;
+  if (r.includes("-")) {
+    const [a, b] = r.split("-").map(ipv4ANumero);
+    return a != null && b != null && n >= a && n <= b;
+  }
+  const [base, bitsTxt] = r.split("/");
+  const b = ipv4ANumero(base);
+  if (b == null) return false;
+  const bits = bitsTxt == null ? 32 : Number(bitsTxt);
+  if (!(bits >= 0 && bits <= 32)) return false;
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  return ((n & mask) >>> 0) === ((b & mask) >>> 0);
+};
+const coincideNegable = (valor, test) => {
+  const v = String(valor || "");
+  return v.startsWith("!") ? !test(v.slice(1)) : test(v);
+};
+const lineaPorMark = (mark) => {
+  const m = String(mark || "").toLowerCase();
+  return Object.entries(CORE_LINEAS).find(([, l]) => l.mark === m)?.[0] || null;
+};
+
+const conectarCore = async () => {
+  if (!CORE_API_HOST || !CORE_API_USER || !CORE_API_PASSWORD) {
+    throw new Error("Acceso al core no configurado (faltan CORE_API_HOST / CORE_API_USER / CORE_API_PASSWORD en diagno).");
+  }
+  return connectToRouter({ nombre: "Core", host: CORE_API_HOST, port: CORE_API_PORT, user: CORE_API_USER, password: CORE_API_PASSWORD });
+};
+
+// Simula el orden del core para una IP. Devuelve la linea y por que.
+const evaluarSalidaCore = async (api, ip) => {
+  const mangle = await withTimeout(api.write("/ip/firewall/mangle/print", []), 15000, "Leer mangle del core");
+  const reglas = (mangle || []).map((r, i) => ({ ...r, numero: i }))
+    .filter((r) => r.chain === "prerouting" && r.action === "mark-routing" && r.disabled !== "true");
+  const listasUsadas = [...new Set(reglas.map((r) => String(r["src-address-list"] || "").replace(/^!/, "")).filter(Boolean))];
+  const entradasPorLista = {};
+  for (const lista of listasUsadas) {
+    const filas = await withTimeout(api.write("/ip/firewall/address-list/print", [`?list=${lista}`]), 15000, `Leer lista ${lista}`);
+    entradasPorLista[lista] = (filas || []).filter((e) => e.disabled !== "true");
+  }
+  const entradaDe = (lista) => (entradasPorLista[lista] || []).find((e) => ipEnRango(ip, e.address)) || null;
+
+  for (const r of reglas) {
+    if (CORE_CONDICIONES_DESTINO.some((k) => r[k] != null && r[k] !== "")) continue;
+    const srcAddr = r["src-address"];
+    const srcLista = r["src-address-list"];
+    if (srcAddr && !coincideNegable(srcAddr, (v) => ipEnRango(ip, v))) continue;
+    if (srcLista && !coincideNegable(srcLista, (v) => !!entradaDe(v))) continue;
+    const linea = lineaPorMark(r["new-routing-mark"]);
+    const motivo = srcLista
+      ? { tipo: "lista", lista: srcLista.replace(/^!/, ""), entrada: entradaDe(srcLista.replace(/^!/, "")), regla: r.numero }
+      : { tipo: srcAddr ? "regla" : "regla-global", regla: r.numero, comentario: r.comment || null, srcAddress: srcAddr || null };
+    return { linea: linea || "otra", routingMark: r["new-routing-mark"], motivo };
+  }
+  return { linea: "balanceo", routingMark: null, motivo: { tipo: "defecto" } };
+};
+
+const resumirSalida = (ip, ev) => {
+  const e = ev.motivo?.entrada;
+  return {
+    ip,
+    linea: ev.linea,
+    label: CORE_LINEAS[ev.linea]?.label || `Otra (${ev.routingMark})`,
+    routingMark: ev.routingMark,
+    motivo: {
+      tipo: ev.motivo.tipo,
+      regla: ev.motivo.regla ?? null,
+      comentario: ev.motivo.comentario || e?.comment || null,
+      lista: ev.motivo.lista || null,
+      vence: e?.timeout || null,
+      desde: e?.["creation-time"] || null,
+      dinamica: e?.dynamic === "true",
+    },
+  };
+};
+
+const consultarSalidaCore = async (ip) => {
+  const conn = await conectarCore();
+  try {
+    return resumirSalida(ip, await evaluarSalidaCore(conn.api, ip));
+  } finally {
+    await closeRouterApiSafe(conn.api);
+  }
+};
+
+// Mueve la IP a la linea pedida: la saca de las 3 listas (solo entradas
+// exactas de esa IP -- nunca toca subredes compartidas) y la agrega a la
+// lista destino. Si una regla individual por src-address tiene prioridad,
+// no cambia nada y avisa (la lista no tendria efecto).
+const cambiarSalidaCore = async ({ ip, linea, duracion, usuario, cliente }) => {
+  const destino = CORE_LINEAS[linea];
+  if (!destino) throw new Error("Linea no valida.");
+  if (!(duracion in CORE_DURACIONES)) throw new Error("Duracion no valida.");
+  const conn = await conectarCore();
+  try {
+    const { api } = conn;
+    const antes = await evaluarSalidaCore(api, ip);
+    if (antes.motivo.tipo === "regla" || antes.motivo.tipo === "regla-global") {
+      return {
+        ok: false,
+        error: `El core tiene una regla individual (#${antes.motivo.regla}${antes.motivo.comentario ? ` "${antes.motivo.comentario}"` : ""}) que tiene prioridad sobre las listas. Desactivala en el core para poder cambiar la linea desde aqui.`,
+        actual: resumirSalida(ip, antes),
+      };
+    }
+    for (const l of Object.values(CORE_LINEAS)) {
+      const filas = await withTimeout(api.write("/ip/firewall/address-list/print", [`?list=${l.lista}`, `?address=${ip}`]), 15000, `Leer lista ${l.lista}`);
+      for (const f of filas || []) {
+        if (f.dynamic === "true" && !f.timeout) continue;
+        await withTimeout(api.write("/ip/firewall/address-list/remove", [`=.id=${f[".id"]}`]), 15000, `Quitar de ${l.lista}`);
+      }
+    }
+    const fecha = new Date().toLocaleString("es-PE", { timeZone: "America/Lima", dateStyle: "short", timeStyle: "short" });
+    const comentario = `Sistema: ${destino.label} por ${usuario || "?"} ${fecha}${cliente ? ` - ${cliente}` : ""}`.slice(0, 200);
+    const intermedio = await evaluarSalidaCore(api, ip);
+    // Balanceo sin lista ya es balanceo -- solo se agrega a la lista
+    // Balanceo si algo (ej. una subred en otra lista) lo sigue desviando.
+    if (linea !== "balanceo" || intermedio.linea !== "balanceo") {
+      const params = [`=list=${destino.lista}`, `=address=${ip}`, `=comment=${comentario}`];
+      if (CORE_DURACIONES[duracion]) params.push(`=timeout=${CORE_DURACIONES[duracion]}`);
+      await withTimeout(api.write("/ip/firewall/address-list/add", params), 15000, `Agregar a ${destino.lista}`);
+    }
+    const despues = resumirSalida(ip, await evaluarSalidaCore(api, ip));
+    console.log(`[core-salida] ${ip} -> ${despues.label} (${duracion}) por ${usuario || "?"}${cliente ? ` / ${cliente}` : ""}`);
+    if (despues.linea !== linea) {
+      return { ok: false, error: `Se aplico el cambio pero el core sigue resolviendo "${despues.label}" para esta IP. Revisa las reglas del core.`, actual: despues };
+    }
+    return { ok: true, actual: despues };
+  } finally {
+    await closeRouterApiSafe(conn.api);
+  }
+};
+
 // ── Cache de IPs por router (sync masivo) ───────────────────────────────
 // En vez de conectar al Mikrotik una vez por cada busqueda individual (lento
 // y con cuelgues intermitentes cuando el router tarda en responder), se trae
@@ -3636,6 +3806,45 @@ const server = http.createServer(async (req, res) => {
         writeJson(res, 200, { ok: true, dryRun: false, router, creados, omitidos, resultados });
       } catch (error) {
         writeJson(res, 400, { ok: false, error: formatErrorDetail(error), resultadosParciales: error?.resultadosParciales || [] });
+      }
+      return;
+    }
+
+    // GET /api/core/salida?ip=192.168.x.x&nodo=Nod_01 -- por que linea sale
+    // a internet ese cliente segun el core (Balanceo / Misticom / Movistar).
+    if (req.method === "GET" && String(req.url || "").split("?")[0] === "/api/core/salida") {
+      const params = new URL(req.url, "http://localhost").searchParams;
+      const ip = String(params.get("ip") || "").trim();
+      const nodo = String(params.get("nodo") || "").trim();
+      if (ipv4ANumero(ip) == null) { writeJson(res, 400, { ok: false, error: "IP no valida." }); return; }
+      if (nodo && !CORE_NODOS.has(nodo)) { writeJson(res, 200, { ok: false, noAplica: true, error: `${nodo} no sale por este core.` }); return; }
+      try {
+        writeJson(res, 200, { ok: true, salida: await consultarSalidaCore(ip) });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: formatErrorDetail(e) });
+      }
+      return;
+    }
+
+    // POST /api/core/salida { ip, nodo, linea: balanceo|misticom|movistar,
+    // duracion: 24h|7d|permanente, usuario, cliente } -- cambia la linea.
+    if (req.method === "POST" && req.url === "/api/core/salida") {
+      const body = await readJsonBody(req);
+      const ip = String(body?.ip || "").trim();
+      const nodo = String(body?.nodo || "").trim();
+      if (ipv4ANumero(ip) == null) { writeJson(res, 400, { ok: false, error: "IP no valida." }); return; }
+      if (nodo && !CORE_NODOS.has(nodo)) { writeJson(res, 400, { ok: false, error: `${nodo} no sale por este core.` }); return; }
+      try {
+        const r = await cambiarSalidaCore({
+          ip,
+          linea: String(body?.linea || "").trim(),
+          duracion: String(body?.duracion || "permanente").trim(),
+          usuario: String(body?.usuario || "").trim(),
+          cliente: String(body?.cliente || "").trim(),
+        });
+        writeJson(res, 200, r);
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: formatErrorDetail(e) });
       }
       return;
     }

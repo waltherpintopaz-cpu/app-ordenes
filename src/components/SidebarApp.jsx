@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 // Leaflet se carga dinamicamente (no en el import estatico del modulo) --
 // agregarlo como import normal corrio el orden de evaluacion de chunks del
 // bundle y disparaba "can't access lexical declaration before
@@ -1075,6 +1075,128 @@ function SplashAgente({ onSelect }) {
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
+// Salida a internet del cliente segun el core (CCR2216): Balanceo / Dedicado
+// Misticom / Movistar, y cambio de linea con un clic (agrega/quita la IP de
+// las address-list del core via diagno). Solo Nod_01..Nod_04 salen por ese
+// core. El comentario de la entrada en el core guarda quien y cuando.
+const CORE_NODOS_FE = new Set(["Nod_01", "Nod_02", "Nod_03", "Nod_04"]);
+const CORE_LINEAS_FE = [
+  { key: "misticom", label: "Dedicado Misticom", color: "#16a34a" },
+  { key: "movistar", label: "Movistar", color: "#0ea5e9" },
+  { key: "balanceo", label: "Balanceo", color: "#6366f1" },
+];
+function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
+  const [info, setInfo] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const [duracion, setDuracion] = useState("permanente");
+  const [guardando, setGuardando] = useState("");
+
+  const consultar = useCallback(async () => {
+    if (!ip) return;
+    setCargando(true);
+    setError("");
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/core/salida?ip=${encodeURIComponent(ip)}&nodo=${encodeURIComponent(nodo || "")}`, {
+        headers: { "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN_FE },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json?.ok) setInfo(json.salida);
+      else { setInfo(null); setError(json?.error || "No se pudo consultar el core."); }
+    } catch (e) {
+      setInfo(null);
+      setError(e.message || "No se pudo consultar el core.");
+    } finally {
+      setCargando(false);
+    }
+  }, [ip, nodo]);
+
+  useEffect(() => { setInfo(null); setError(""); setAbierto(false); void consultar(); }, [consultar]);
+
+  const cambiar = async (linea) => {
+    const destino = CORE_LINEAS_FE.find((l) => l.key === linea);
+    const textoDur = duracion === "24h" ? " por 24 horas" : duracion === "7d" ? " por 7 días" : "";
+    if (!window.confirm(`¿Cambiar la salida a internet de ${clienteNombre || ip} a ${destino.label}${textoDur}?\n\nSus conexiones abiertas se reinician (unos segundos).`)) return;
+    setGuardando(linea);
+    try {
+      const res = await fetch(`${DIAGNO_BASE}/api/core/salida`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-App-Token": DIAGNOSTICO_INTERNAL_TOKEN_FE },
+        body: JSON.stringify({ ip, nodo, linea, duracion, usuario: agente || "", cliente: clienteNombre || "" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (json?.actual) setInfo(json.actual);
+      if (json?.ok) { notify(`✅ Ahora sale por ${json.actual.label}`); setAbierto(false); }
+      else notify("Error: " + (json?.error || "No se pudo cambiar la línea."), false);
+    } catch (e) {
+      notify("Error: " + e.message, false);
+    } finally {
+      setGuardando("");
+    }
+  };
+
+  if (!ip || !CORE_NODOS_FE.has(nodo)) return null;
+  const actual = CORE_LINEAS_FE.find((l) => l.key === info?.linea);
+  const color = actual?.color || T.muted;
+  const m = info?.motivo || {};
+  const detalle = m.tipo === "defecto" ? "sin lista (por defecto)"
+    : m.tipo === "lista" ? [m.comentario, m.vence ? `vence en ${m.vence}` : ""].filter(Boolean).join(" · ") || `lista ${m.lista}`
+    : m.tipo === "regla" ? `regla individual #${m.regla}${m.comentario ? ` "${m.comentario}"` : ""} (tiene prioridad)`
+    : m.tipo === "regla-global" ? `regla global #${m.regla} activa (todo el tráfico)` : "";
+
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+      <div style={S.label}>Salida a internet</div>
+      {cargando && !info ? (
+        <div style={{ fontSize: 11, color: T.muted }}>Consultando core…</div>
+      ) : error ? (
+        <div style={{ fontSize: 11, color: T.red, display: "flex", gap: 6, alignItems: "center" }}>
+          {error}
+          <button onClick={consultar} style={{ ...S.btnOut, fontSize: 10, padding: "1px 6px" }}>Reintentar</button>
+        </div>
+      ) : info ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+            <span style={{ fontWeight: 700, fontSize: 12, color }}>{info.label}</span>
+            <button onClick={() => setAbierto((v) => !v)} style={{ ...S.btnOut, fontSize: 10, padding: "1px 8px", color: T.blue, borderColor: T.border }}>
+              {abierto ? "Cerrar" : "Cambiar"}
+            </button>
+            <button onClick={consultar} title="Volver a consultar el core" disabled={cargando}
+              style={{ ...S.btnOut, fontSize: 10, padding: "1px 6px", borderColor: T.border }}>{cargando ? "…" : "↻"}</button>
+          </div>
+          {detalle && <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{detalle}</div>}
+          {abierto && (
+            <div style={{ marginTop: 6, padding: 8, border: `1px solid ${T.border}`, borderRadius: 6, display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", fontSize: 11 }}>
+                <span style={{ color: T.muted }}>Duración:</span>
+                {[["24h", "24 h"], ["7d", "7 días"], ["permanente", "Permanente"]].map(([k, t]) => (
+                  <button key={k} onClick={() => setDuracion(k)}
+                    style={{ ...S.btnOut, fontSize: 10, padding: "1px 8px", borderColor: duracion === k ? T.blue : T.border, color: duracion === k ? T.blue : T.muted, fontWeight: duracion === k ? 700 : 500 }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {CORE_LINEAS_FE.filter((l) => l.key !== info.linea).map((l) => (
+                  <button key={l.key} onClick={() => cambiar(l.key)} disabled={!!guardando}
+                    style={{ ...S.btnOut, fontSize: 11, padding: "3px 10px", color: l.color, borderColor: l.color, fontWeight: 700 }}>
+                    {guardando === l.key ? "Cambiando…" : `Pasar a ${l.label}`}
+                  </button>
+                ))}
+              </div>
+              {duracion !== "permanente" && (
+                <div style={{ fontSize: 10, color: T.muted }}>Al vencer, vuelve solo a su línea anterior (Balanceo si no tenía lista).</div>
+              )}
+            </div>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SidebarApp() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("sb_theme") || "light"; } catch { return "light"; } });
   const isDark = theme === "dark";
@@ -6425,6 +6547,17 @@ export default function SidebarApp() {
                     style={{ fontFamily:"monospace", fontWeight:700, color:T.navy, fontSize:12, cursor:"pointer" }}
                   >{svc.ip}</div>
                 </div>
+              )}
+              {svc?.ip && (
+                <SalidaInternetCore
+                  ip={svc.ip}
+                  nodo={nodoReal}
+                  agente={agente}
+                  clienteNombre={cliente?.nombre}
+                  notify={notify}
+                  T={T}
+                  S={S}
+                />
               )}
               {(svc?.pppuser || cliente.usuario_nodo) && (
                 <div style={{ gridColumn:"1 / -1" }}>
