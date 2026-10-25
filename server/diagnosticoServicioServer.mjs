@@ -4111,3 +4111,67 @@ setTimeout(function ejecutarYProgramarRevisionPromo1000() {
     .catch((e) => console.error("Revision diaria de promo 1000 Mbps fallo:", e.message || e));
   setTimeout(ejecutarYProgramarRevisionPromo1000, DIA_EN_MS);
 }, msHastaProximaHoraLima(PROMO1000_SYNC_HORA_LIMA));
+
+// ─── Monitor de instancias de Evolution API (WhatsApp) ───────────────────
+// Pedido explicito del usuario (2026-10-25): un cliente le mando 2 fotos +
+// una pregunta por WhatsApp a la instancia "Persoal" (inbox "Privado-01")
+// y NUNCA llegaron -- ni siquiera a la base propia de Evolution API (se
+// confirmo consultando /chat/findMessages directo, el mensaje no existe
+// ahi). La sesion de WhatsApp se habia desconectado/perdido sync sin que
+// nadie se diera cuenta hasta dias despues. Este chequeo periodico avisa
+// al grupo de WhatsApp del equipo apenas detecta que CUALQUIER instancia
+// se cae (no solo "Persoal"), para que alguien reconecte el celular
+// rapido en vez de perder mensajes en silencio.
+const EVOLUTION_API_BASE = String(process.env.EVOLUTION_API_BASE || "https://api.americanet.space").trim().replace(/\/+$/, "");
+const EVOLUTION_API_KEY = String(process.env.EVOLUTION_API_KEY || "").trim();
+const MONITOR_INSTANCIAS_EVOLUTION_MS = Number(process.env.MONITOR_INSTANCIAS_EVOLUTION_MINUTOS || 5) * 60000;
+const estadoPrevioInstanciasEvolution = new Map(); // nombre de instancia -> "open" | "down"
+
+async function avisarGrupoWA(texto) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/bot_config?id=eq.1&select=notif_grupo_principal`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  const rows = await res.json().catch(() => []);
+  const numero = rows?.[0]?.notif_grupo_principal;
+  if (!numero) throw new Error("bot_config.notif_grupo_principal no configurado");
+  const waRes = await fetchConTimeout(WA_GRUPO_API, {
+    method: "POST",
+    headers: { apikey: WA_GRUPO_APIKEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ number: numero, text: texto }),
+  });
+  return await readProxyJsonResponse(waRes, "Aviso grupo WA (monitor instancias)");
+}
+
+async function monitorearInstanciasEvolution() {
+  if (!EVOLUTION_API_KEY) return; // sin API key configurada, no se puede consultar -- se omite en silencio
+  const res = await fetchConTimeout(`${EVOLUTION_API_BASE}/instance/fetchInstances`, {
+    headers: { apikey: EVOLUTION_API_KEY },
+  });
+  const instancias = await readProxyJsonResponse(res, "Evolution fetchInstances (monitor)");
+  if (!Array.isArray(instancias)) return;
+  for (const inst of instancias) {
+    const nombre = inst?.name;
+    if (!nombre) continue;
+    const inbox = inst?.Chatwoot?.nameInbox || "";
+    const estaAbierta = inst?.connectionStatus === "open";
+    const estadoAnterior = estadoPrevioInstanciasEvolution.get(nombre);
+    estadoPrevioInstanciasEvolution.set(nombre, estaAbierta ? "open" : "down");
+    // Primera vez que se ve esta instancia (recien arranco el proceso) --
+    // no alertar sobre el estado inicial, solo sobre CAMBIOS de estado a
+    // partir de ahora, para no spamear "caida" en cada reinicio del
+    // servicio si una instancia ya estaba caida de antes.
+    if (estadoAnterior === undefined) continue;
+    if (estadoAnterior === "open" && !estaAbierta) {
+      await avisarGrupoWA(
+        `⚠️ *WhatsApp desconectado*\n\nLa instancia "${nombre}"${inbox ? ` (bandeja "${inbox}")` : ""} se desconectó -- revisar el celular/sesión lo antes posible, los mensajes que lleguen mientras tanto se pueden perder.`
+      ).catch((e) => console.error("[monitor-evolution] no se pudo avisar caida:", e.message));
+    } else if (estadoAnterior === "down" && estaAbierta) {
+      await avisarGrupoWA(`✅ La instancia "${nombre}"${inbox ? ` (bandeja "${inbox}")` : ""} volvió a conectarse.`).catch((e) =>
+        console.error("[monitor-evolution] no se pudo avisar reconexion:", e.message)
+      );
+    }
+  }
+}
+setInterval(() => {
+  monitorearInstanciasEvolution().catch((e) => console.error("[monitor-evolution] fallo el chequeo:", e.message));
+}, MONITOR_INSTANCIAS_EVOLUTION_MS);
