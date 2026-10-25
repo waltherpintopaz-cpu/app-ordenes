@@ -1141,7 +1141,7 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
   const color = actual?.color || T.muted;
   const m = info?.motivo || {};
   const detalle = m.tipo === "defecto" ? "sin lista (por defecto)"
-    : m.tipo === "lista" ? [m.comentario, m.vence ? `vence en ${m.vence}` : ""].filter(Boolean).join(" · ") || `lista ${m.lista}`
+    : m.tipo === "lista" ? [m.comentario, m.vence ? `vence en ${m.vence}` : "", m.alVencer ? `luego vuelve a ${m.alVencer}` : ""].filter(Boolean).join(" · ") || `lista ${m.lista}`
     : m.tipo === "regla" ? `regla individual #${m.regla}${m.comentario ? ` "${m.comentario}"` : ""} (tiene prioridad)`
     : m.tipo === "regla-global" ? `regla global #${m.regla} activa (todo el tráfico)` : "";
 
@@ -1187,7 +1187,7 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
                 ))}
               </div>
               {duracion !== "permanente" && (
-                <div style={{ fontSize: 10, color: T.muted }}>Al vencer, vuelve solo a su línea anterior (Balanceo si no tenía lista).</div>
+                <div style={{ fontSize: 10, color: T.muted }}>Al vencer vuelve sola a su línea actual (en algunos casos a Balanceo). Después del cambio se muestra a cuál vuelve.</div>
               )}
             </div>
           )}

@@ -492,7 +492,10 @@ const conectarCore = async () => {
 };
 
 // Simula el orden del core para una IP. Devuelve la linea y por que.
-const evaluarSalidaCore = async (api, ip) => {
+// Lee del core las reglas mark-routing activas (en orden) y las entradas
+// de las listas que usan. Se separa de la evaluacion para poder evaluar
+// varias veces (ej. "a que linea vuelve al vencer") sin releer el core.
+const cargarEstadoCore = async (api) => {
   const mangle = await withTimeout(api.write("/ip/firewall/mangle/print", []), 15000, "Leer mangle del core");
   const reglas = (mangle || []).map((r, i) => ({ ...r, numero: i }))
     .filter((r) => r.chain === "prerouting" && r.action === "mark-routing" && r.disabled !== "true");
@@ -502,8 +505,13 @@ const evaluarSalidaCore = async (api, ip) => {
     const filas = await withTimeout(api.write("/ip/firewall/address-list/print", [`?list=${lista}`]), 15000, `Leer lista ${lista}`);
     entradasPorLista[lista] = (filas || []).filter((e) => e.disabled !== "true");
   }
-  const entradaDe = (lista) => (entradasPorLista[lista] || []).find((e) => ipEnRango(ip, e.address)) || null;
+  return { reglas, entradasPorLista };
+};
 
+// Simula el orden del core para una IP. ignorarIds: entradas de lista a
+// tratar como si no existieran (para calcular a donde vuelve al vencer).
+const evaluarSalidaCore = ({ reglas, entradasPorLista }, ip, ignorarIds = new Set()) => {
+  const entradaDe = (lista) => (entradasPorLista[lista] || []).find((e) => !ignorarIds.has(e[".id"]) && ipEnRango(ip, e.address)) || null;
   for (const r of reglas) {
     if (CORE_CONDICIONES_DESTINO.some((k) => r[k] != null && r[k] !== "")) continue;
     const srcAddr = r["src-address"];
@@ -519,12 +527,18 @@ const evaluarSalidaCore = async (api, ip) => {
   return { linea: "balanceo", routingMark: null, motivo: { tipo: "defecto" } };
 };
 
-const resumirSalida = (ip, ev) => {
+const labelLinea = (ev) => CORE_LINEAS[ev.linea]?.label || `Otra (${ev.routingMark})`;
+
+const resumirSalida = (estado, ip) => {
+  const ev = evaluarSalidaCore(estado, ip);
   const e = ev.motivo?.entrada;
+  // Entrada temporal: a que linea vuelve cuando vence (la siguiente que
+  // gane si esa entrada no existiera).
+  const alVencer = e?.timeout ? labelLinea(evaluarSalidaCore(estado, ip, new Set([e[".id"]]))) : null;
   return {
     ip,
     linea: ev.linea,
-    label: CORE_LINEAS[ev.linea]?.label || `Otra (${ev.routingMark})`,
+    label: labelLinea(ev),
     routingMark: ev.routingMark,
     motivo: {
       tipo: ev.motivo.tipo,
@@ -532,6 +546,7 @@ const resumirSalida = (ip, ev) => {
       comentario: ev.motivo.comentario || e?.comment || null,
       lista: ev.motivo.lista || null,
       vence: e?.timeout || null,
+      alVencer,
       desde: e?.["creation-time"] || null,
       dinamica: e?.dynamic === "true",
     },
@@ -541,16 +556,19 @@ const resumirSalida = (ip, ev) => {
 const consultarSalidaCore = async (ip) => {
   const conn = await conectarCore();
   try {
-    return resumirSalida(ip, await evaluarSalidaCore(conn.api, ip));
+    return resumirSalida(await cargarEstadoCore(conn.api), ip);
   } finally {
     await closeRouterApiSafe(conn.api);
   }
 };
 
-// Mueve la IP a la linea pedida: la saca de las 3 listas (solo entradas
-// exactas de esa IP -- nunca toca subredes compartidas) y la agrega a la
-// lista destino. Si una regla individual por src-address tiene prioridad,
-// no cambia nada y avisa (la lista no tendria efecto).
+// Mueve la IP a la linea pedida. Solo toca entradas EXACTAS de esa IP
+// (nunca subredes compartidas). Permanente: la saca de las 3 listas y la
+// agrega a la destino. Temporal: solo quita las entradas que impedirian el
+// cambio (listas con mas prioridad que la destino, segun el orden del
+// mangle) y conserva las demas -- asi al vencer vuelve sola a su linea de
+// antes. Si una regla individual por src-address tiene prioridad, no
+// cambia nada y avisa (la lista no tendria efecto).
 const cambiarSalidaCore = async ({ ip, linea, duracion, usuario, cliente }) => {
   const destino = CORE_LINEAS[linea];
   if (!destino) throw new Error("Linea no valida.");
@@ -558,32 +576,41 @@ const cambiarSalidaCore = async ({ ip, linea, duracion, usuario, cliente }) => {
   const conn = await conectarCore();
   try {
     const { api } = conn;
-    const antes = await evaluarSalidaCore(api, ip);
+    const estadoAntes = await cargarEstadoCore(api);
+    const antes = evaluarSalidaCore(estadoAntes, ip);
     if (antes.motivo.tipo === "regla" || antes.motivo.tipo === "regla-global") {
       return {
         ok: false,
         error: `El core tiene una regla individual (#${antes.motivo.regla}${antes.motivo.comentario ? ` "${antes.motivo.comentario}"` : ""}) que tiene prioridad sobre las listas. Desactivala en el core para poder cambiar la linea desde aqui.`,
-        actual: resumirSalida(ip, antes),
+        actual: resumirSalida(estadoAntes, ip),
       };
     }
+    const temporal = !!CORE_DURACIONES[duracion];
+    const prioridad = (lista) => {
+      const r = estadoAntes.reglas.find((x) => String(x["src-address-list"] || "") === lista);
+      return r ? r.numero : Infinity;
+    };
+    const prioridadDestino = prioridad(destino.lista);
     for (const l of Object.values(CORE_LINEAS)) {
-      const filas = await withTimeout(api.write("/ip/firewall/address-list/print", [`?list=${l.lista}`, `?address=${ip}`]), 15000, `Leer lista ${l.lista}`);
-      for (const f of filas || []) {
+      const quitar = !temporal || l.lista === destino.lista || prioridad(l.lista) < prioridadDestino;
+      if (!quitar) continue;
+      for (const f of estadoAntes.entradasPorLista[l.lista] || []) {
+        if (f.address !== ip && f.address !== `${ip}/32`) continue;
         if (f.dynamic === "true" && !f.timeout) continue;
         await withTimeout(api.write("/ip/firewall/address-list/remove", [`=.id=${f[".id"]}`]), 15000, `Quitar de ${l.lista}`);
       }
     }
     const fecha = new Date().toLocaleString("es-PE", { timeZone: "America/Lima", dateStyle: "short", timeStyle: "short" });
     const comentario = `Sistema: ${destino.label} por ${usuario || "?"} ${fecha}${cliente ? ` - ${cliente}` : ""}`.slice(0, 200);
-    const intermedio = await evaluarSalidaCore(api, ip);
-    // Balanceo sin lista ya es balanceo -- solo se agrega a la lista
-    // Balanceo si algo (ej. una subred en otra lista) lo sigue desviando.
+    const intermedio = evaluarSalidaCore(await cargarEstadoCore(api), ip);
+    // Balanceo permanente sin lista ya es balanceo -- solo se agrega a la
+    // lista Balanceo si algo (ej. una subred en otra lista) lo desvia.
     if (linea !== "balanceo" || intermedio.linea !== "balanceo") {
       const params = [`=list=${destino.lista}`, `=address=${ip}`, `=comment=${comentario}`];
-      if (CORE_DURACIONES[duracion]) params.push(`=timeout=${CORE_DURACIONES[duracion]}`);
+      if (temporal) params.push(`=timeout=${CORE_DURACIONES[duracion]}`);
       await withTimeout(api.write("/ip/firewall/address-list/add", params), 15000, `Agregar a ${destino.lista}`);
     }
-    const despues = resumirSalida(ip, await evaluarSalidaCore(api, ip));
+    const despues = resumirSalida(await cargarEstadoCore(api), ip);
     console.log(`[core-salida] ${ip} -> ${despues.label} (${duracion}) por ${usuario || "?"}${cliente ? ` / ${cliente}` : ""}`);
     if (despues.linea !== linea) {
       return { ok: false, error: `Se aplico el cambio pero el core sigue resolviendo "${despues.label}" para esta IP. Revisa las reglas del core.`, actual: despues };
