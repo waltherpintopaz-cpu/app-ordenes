@@ -93,6 +93,23 @@ function TagInput({ values = [], onChange, placeholder = "Agregar...", hint: hin
   );
 }
 
+// Averia por sector/nodo (averias_sectores) -- tabla vieja del n8n v2,
+// la usa procesarAveriaPorNodo() en bot-pagos-comprobante. La clave
+// real ahi es el numero de router de Mikrowisp, no la etiqueta "Nod_XX"
+// -- varios numeros caen bajo la misma etiqueta (ver NODO_LABELS en
+// server.mjs), asi que para cubrir a CUALQUIER cliente de un nodo hay
+// que escribir la fila de CADA numero que calza con esa etiqueta, no
+// solo una.
+const SECTORES_AVERIA = [
+  { label: "Nod_01", nodos: [1, 7, 8, 9] },
+  { label: "Nod_02", nodos: [2] },
+  { label: "Nod_03", nodos: [3, 10] },
+  { label: "Nod_04", nodos: [5, 6] },
+  { label: "Nod_06", nodos: [11] },
+];
+const AVERIA_SECTOR_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+const AVERIA_SECTOR_DEFAULT = { averia_activa: false, contexto: "", tiempo_estimado: "" };
+
 export default function BotPagosV3ConfigPanel() {
   const [cfg, setCfg] = useState(DEFAULT);
   const [loading, setLoading] = useState(true);
@@ -103,8 +120,43 @@ export default function BotPagosV3ConfigPanel() {
   const [inboxesDisponibles, setInboxesDisponibles] = useState([]);
   const [cargandoInboxes, setCargandoInboxes] = useState(false);
   const [errorInboxes, setErrorInboxes] = useState("");
+  const [averiasSector, setAveriasSector] = useState(() =>
+    Object.fromEntries(SECTORES_AVERIA.map((s) => [s.label, AVERIA_SECTOR_DEFAULT]))
+  );
+  const [guardandoSector, setGuardandoSector] = useState(null);
+  const [msgSector, setMsgSector] = useState(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadAveriasSector(); }, []);
+
+  async function loadAveriasSector() {
+    const { data, error } = await supabase.from("averias_sectores").select("nodo,averia_activa,contexto,tiempo_estimado");
+    if (error || !data) return;
+    const porNumero = Object.fromEntries(data.map((fila) => [Number(fila.nodo), fila]));
+    const siguiente = {};
+    for (const sector of SECTORES_AVERIA) {
+      const fila = porNumero[sector.nodos[0]];
+      siguiente[sector.label] = fila
+        ? { averia_activa: !!fila.averia_activa, contexto: fila.contexto || "", tiempo_estimado: fila.tiempo_estimado || "" }
+        : AVERIA_SECTOR_DEFAULT;
+    }
+    setAveriasSector(siguiente);
+  }
+
+  function setSector(label, campo, valor) {
+    setAveriasSector((prev) => ({ ...prev, [label]: { ...prev[label], [campo]: valor } }));
+  }
+
+  async function guardarAveriaSector(label) {
+    const sector = SECTORES_AVERIA.find((s) => s.label === label);
+    const datos = averiasSector[label];
+    setGuardandoSector(label);
+    setMsgSector(null);
+    const filas = sector.nodos.map((nodo) => ({ nodo, ...datos, tenant_id: AVERIA_SECTOR_TENANT_ID }));
+    const { error } = await supabase.from("averias_sectores").upsert(filas, { onConflict: "nodo" });
+    setGuardandoSector(null);
+    setMsgSector({ label, ok: !error, text: error ? "Error: " + error.message : "✓ Guardado" });
+    setTimeout(() => setMsgSector(null), 3000);
+  }
 
   async function cargarInboxes() {
     setCargandoInboxes(true);
@@ -605,6 +657,50 @@ export default function BotPagosV3ConfigPanel() {
             </div>
           </>
         )}
+      </div>
+
+      {/* Avería por sector/nodo -- independiente del toggle global de
+          arriba, solo afecta a los clientes del nodo puntual que se
+          active. Cada tarjeta se guarda por separado (tabla distinta,
+          con muchas filas, no forma parte del "Guardar cambios"
+          general de bot_pagos_v3_config). */}
+      <div style={card}>
+        <div style={cardTitle()}><AlertOctagon size={16} color="#d97706" /> Avería por sector (solo un nodo puntual)</div>
+        <div style={hint}>Independiente de la avería masiva de arriba -- activa esto SOLO para los clientes del nodo que elijas, el resto sigue con el flujo normal. Cada tarjeta se guarda aparte, con su propio botón.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+          {SECTORES_AVERIA.map((sector) => {
+            const datos = averiasSector[sector.label] || AVERIA_SECTOR_DEFAULT;
+            const feedback = msgSector?.label === sector.label ? msgSector : null;
+            return (
+              <div key={sector.label} style={{ border: "1px solid #e5e7eb", borderRadius: 9, padding: 12, background: datos.averia_activa ? "#fff7ed" : "#fff" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: datos.averia_activa ? "#d97706" : "#374151" }}>{sector.label}</div>
+                  <button onClick={() => setSector(sector.label, "averia_activa", !datos.averia_activa)} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: datos.averia_activa ? "#d97706" : "#d1d5db", position: "relative", flexShrink: 0 }}>
+                    <span style={{ position: "absolute", top: 2, left: datos.averia_activa ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+                  </button>
+                </div>
+                {datos.averia_activa && (
+                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div>
+                      <label style={lbl}>Contexto</label>
+                      <textarea value={datos.contexto} onChange={e => setSector(sector.label, "contexto", e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} />
+                    </div>
+                    <div>
+                      <label style={lbl}>Tiempo estimado</label>
+                      <input type="text" value={datos.tiempo_estimado} onChange={e => setSector(sector.label, "tiempo_estimado", e.target.value)} style={inp} placeholder="2 horas" />
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                  <button onClick={() => guardarAveriaSector(sector.label)} disabled={guardandoSector === sector.label} style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: "#6366f1", color: "#fff", fontSize: 12, fontWeight: 600, cursor: guardandoSector === sector.label ? "wait" : "pointer" }}>
+                    {guardandoSector === sector.label ? "Guardando..." : "Guardar " + sector.label}
+                  </button>
+                  {feedback && <span style={{ fontSize: 12, color: feedback.ok ? "#16a34a" : "#dc2626" }}>{feedback.text}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Timeout de escalamiento */}
