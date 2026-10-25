@@ -1114,10 +1114,16 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
 
   useEffect(() => { setInfo(null); setError(""); setAbierto(false); void consultar(); }, [consultar]);
 
+  // Confirmacion propia (animada, mismo estilo que los avisos del sidebar)
+  // en vez de window.confirm del navegador.
+  const [confirmar, setConfirmar] = useState(null); // { linea } | null
+  const [confirmarSaliendo, setConfirmarSaliendo] = useState(false);
+  const cerrarConfirmar = () => {
+    setConfirmarSaliendo(true);
+    setTimeout(() => { setConfirmar(null); setConfirmarSaliendo(false); }, 180);
+  };
+
   const cambiar = async (linea) => {
-    const destino = CORE_LINEAS_FE.find((l) => l.key === linea);
-    const textoDur = duracion === "24h" ? " por 24 horas" : duracion === "7d" ? " por 7 días" : "";
-    if (!window.confirm(`¿Cambiar la salida a internet de ${clienteNombre || ip} a ${destino.label}${textoDur}?\n\nSus conexiones abiertas se reinician (unos segundos).`)) return;
     setGuardando(linea);
     try {
       const res = await fetch(`${DIAGNO_BASE}/api/core/salida`, {
@@ -1133,6 +1139,7 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
       notify("Error: " + e.message, false);
     } finally {
       setGuardando("");
+      cerrarConfirmar();
     }
   };
 
@@ -1180,7 +1187,7 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {CORE_LINEAS_FE.filter((l) => l.key !== info.linea).map((l) => (
-                  <button key={l.key} onClick={() => cambiar(l.key)} disabled={!!guardando}
+                  <button key={l.key} onClick={() => setConfirmar({ linea: l.key })} disabled={!!guardando}
                     style={{ ...S.btnOut, fontSize: 11, padding: "3px 10px", color: l.color, borderColor: l.color, fontWeight: 700 }}>
                     {guardando === l.key ? "Cambiando…" : `Pasar a ${l.label}`}
                   </button>
@@ -1193,6 +1200,61 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
           )}
         </>
       ) : null}
+
+      {confirmar && (() => {
+        const destino = CORE_LINEAS_FE.find((l) => l.key === confirmar.linea);
+        const textoDur = duracion === "24h" ? "Por 24 horas" : duracion === "7d" ? "Por 7 días" : "Permanente";
+        const enProceso = guardando === confirmar.linea;
+        return (
+          <div
+            onClick={() => { if (!enProceso) cerrarConfirmar(); }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 99998, background: "rgba(15,23,42,0.55)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+              animation: `${confirmarSaliendo ? "sbToastBackdropOut" : "sbToastBackdropIn"} .18s ease forwards`,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "min(340px, 100%)", background: T.card, borderRadius: 12, padding: "18px 18px 14px",
+                boxShadow: "0 20px 50px rgba(0,0,0,0.35)", border: `1px solid ${T.border}`,
+                animation: `${confirmarSaliendo ? "sbToastCardOut .18s ease" : "sbToastCardIn .38s cubic-bezier(.2,.9,.3,1.2)"} forwards`,
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 14, color: T.navy, marginBottom: 2 }}>Cambiar salida a internet</div>
+              <div style={{ fontSize: 11, color: T.muted, marginBottom: 14 }}>{clienteNombre || ip} · {ip}</div>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: `${color}18`, color, fontWeight: 700, fontSize: 12 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />{info?.label}
+                </span>
+                <span style={{ fontSize: 18, color: T.muted, animation: "sbFadeUp .5s ease .15s both" }}>→</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 8, background: `${destino.color}18`, color: destino.color, fontWeight: 700, fontSize: 12, animation: "sbFadeUp .45s ease .25s both" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: destino.color }} />{destino.label}
+                </span>
+              </div>
+
+              <div style={{ fontSize: 11, color: T.slate, background: T.accent, borderRadius: 6, padding: "6px 8px", marginBottom: 14 }}>
+                <b>{textoDur}</b> · Sus conexiones abiertas se reinician (unos segundos).
+              </div>
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button onClick={cerrarConfirmar} disabled={enProceso}
+                  style={{ ...S.btnOut, padding: "6px 14px", fontSize: 12, opacity: enProceso ? 0.5 : 1 }}>
+                  Cancelar
+                </button>
+                <button onClick={() => cambiar(confirmar.linea)} disabled={enProceso}
+                  style={{ border: "none", borderRadius: 6, padding: "6px 16px", fontSize: 12, fontWeight: 700, cursor: enProceso ? "default" : "pointer",
+                    background: destino.color, color: "#fff", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {enProceso && <span style={{ width: 11, height: 11, border: "2px solid rgba(255,255,255,.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "sbSpin .7s linear infinite" }} />}
+                  {enProceso ? "Cambiando…" : "Sí, cambiar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
