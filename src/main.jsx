@@ -35,7 +35,11 @@ const isLibroReclamaciones = path === "/libro-reclamaciones";
 const isSeguimientoCompartido = path === "/seguimiento";
 const isMapaVolanteoCompartido = path === "/mapa-volanteo";
 const isMapaAveriaCompartido = path === "/averia-mapa";
-const isAgendarInstalacion = path === "/agendar-instalacion";
+// startsWith, no === -- el link ahora lleva el token como parte de la ruta
+// ("/agendar-instalacion/<token>"), no como query string (pedido explicito
+// del usuario, 2026-10-26: el link con "?conv=...&tel=...&tok=..." se veia
+// largo y sospechoso, tipo phishing).
+const isAgendarInstalacion = path === "/agendar-instalacion" || path.startsWith("/agendar-instalacion/");
 
 // Fallback minimo mientras carga el chunk de la ruta (App y las paginas
 // compartidas). El sidebar no pasa por aca -- es estatico, ya esta listo.

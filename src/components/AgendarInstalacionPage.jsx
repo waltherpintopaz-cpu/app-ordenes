@@ -5,12 +5,18 @@ import { MapPin, CheckCircle2, Loader2, User } from "lucide-react";
 // Formulario web OPCIONAL para los datos de instalacion -- alternativa al
 // ida-y-vuelta por WhatsApp (pedido explicito del usuario, 2026-10-26). El
 // link lo genera el bot (ver generarLinkFormularioInstalacion en
-// bot-pagos-comprobante/server.mjs) con conv/tel/tok en la URL -- SIN login,
-// quien lo abre es un prospecto, no alguien con cuenta en el panel. El envio
-// NUNCA agenda directo: pasa server-a-server por diagno hacia
-// bot-pagos-comprobante (accion FormularioInstalacionEnviar), que reusa el
-// MISMO flujo de confirmacion por WhatsApp que ya tiene el chat normal --
-// el cliente sigue confirmando por su cuenta antes de que se cree la orden.
+// bot-pagos-comprobante/server.mjs) como "/agendar-instalacion/<token>" --
+// SOLO el token en la URL, sin conv_id ni telefono (pedido explicito del
+// usuario, 2026-10-26: el link con "?conv=...&tel=...&tok=..." se veia
+// largo y sospechoso, tipo phishing). El token es la UNICA credencial --
+// esta pagina lo resuelve al cargar (accion FormularioInstalacionResolver)
+// para saber si es valido y precargar el celular, sin exponer esos datos
+// en la URL. SIN login, quien lo abre es un prospecto, no alguien con
+// cuenta en el panel. El envio NUNCA agenda directo: pasa server-a-server
+// por diagno hacia bot-pagos-comprobante (accion
+// FormularioInstalacionEnviar), que reusa el MISMO flujo de confirmacion
+// por WhatsApp que ya tiene el chat normal -- el cliente sigue confirmando
+// por su cuenta antes de que se cree la orden.
 const DIAGNO_BASE = import.meta.env.PROD ? "https://amnet-diagno.0lthka.easypanel.host" : "";
 const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 
@@ -72,18 +78,15 @@ const inp = { width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", 
 const field = { marginBottom: 14 };
 
 export default function AgendarInstalacionPage() {
-  const params = new URLSearchParams(window.location.search);
-  const conv = params.get("conv") || "";
-  const tel = params.get("tel") || "";
-  const tok = params.get("tok") || "";
+  // Token como ultimo segmento de la ruta ("/agendar-instalacion/<token>"),
+  // no como query string -- ver nota arriba.
+  const tok = window.location.pathname.split("/agendar-instalacion/")[1]?.split(/[/?]/)[0] || "";
 
-  // Ultimos 9 digitos del "tel" de la URL -- defensivo, por si llega un
-  // link viejo generado antes del fix que mandaba el numero completo con
-  // codigo de pais (11 digitos), que no pasaba la validacion de celular.
-  const telLimpio = tel.replace(/\D/g, "").slice(-9);
+  const [resolviendo, setResolviendo] = useState(true);
+  const [linkInvalido, setLinkInvalido] = useState(false);
 
   const [planes, setPlanes] = useState([]);
-  const [form, setForm] = useState({ dni: "", celular_titular: telLimpio, direccion: "", plan: "", fecha: "", horario: "", correo: "" });
+  const [form, setForm] = useState({ dni: "", celular_titular: "", direccion: "", plan: "", fecha: "", horario: "", correo: "" });
   const [nombreDni, setNombreDni] = useState("");
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [dniNoEncontrado, setDniNoEncontrado] = useState(false);
@@ -109,6 +112,26 @@ export default function AgendarInstalacionPage() {
       .then(({ data }) => setPlanes(parsearPlanesConPromo(data?.planes_tv, !!(data?.promocion_activa && data?.promocion_texto))))
       .catch(() => {});
   }, []);
+
+  // Resuelve el token al cargar -- confirma que el link es valido ANTES de
+  // mostrar el formulario (si no, no tiene sentido dejar que alguien llene
+  // todo para recien enterarse al final que el link estaba vencido), y de
+  // paso precarga el celular guardado del lado del servidor.
+  useEffect(() => {
+    if (!tok) { setResolviendo(false); setLinkInvalido(true); return; }
+    fetch(PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accion: "FormularioInstalacionResolver", payload: { token: tok } }),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res?.ok || !res.data?.ok) { setLinkInvalido(true); return; }
+        setForm((f) => ({ ...f, celular_titular: res.data.telefono || "" }));
+      })
+      .catch(() => setLinkInvalido(true))
+      .finally(() => setResolviendo(false));
+  }, [tok]);
 
   // DNI -> nombre completo (RENIEC) apenas llega a 8 digitos -- pedido
   // explicito del usuario (2026-10-26), igual que ya hace SidebarApp.jsx
@@ -243,7 +266,7 @@ export default function AgendarInstalacionPage() {
         body: JSON.stringify({
           accion: "FormularioInstalacionEnviar",
           payload: {
-            conv_id: conv, phone: tel, token: tok,
+            token: tok,
             dni: form.dni.trim(), celular_titular: form.celular_titular.trim(), direccion: form.direccion.trim(),
             plan: form.plan, dia_horario: diaHorario, correo: form.correo.trim() || null,
             lat: ubicacion?.lat ?? null, lng: ubicacion?.lng ?? null,
@@ -260,11 +283,19 @@ export default function AgendarInstalacionPage() {
     }
   };
 
-  if (!conv || !tel || !tok) {
+  if (resolviendo) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc" }}>
+        <Loader2 size={24} color="#64748b" />
+      </div>
+    );
+  }
+
+  if (linkInvalido) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc" }}>
         <div style={card}>
-          <p style={{ fontSize: 14, color: "#475569" }}>Este link no es válido. Pide uno nuevo por WhatsApp.</p>
+          <p style={{ fontSize: 14, color: "#475569" }}>Este link no es válido o ya venció. Pide uno nuevo por WhatsApp.</p>
         </div>
       </div>
     );

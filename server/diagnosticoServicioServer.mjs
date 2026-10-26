@@ -2264,6 +2264,22 @@ const handleFormularioInstalacionLinkManual = async (payload) => {
   return json;
 };
 
+// Resuelve el token del link corto (ver generarLinkFormularioInstalacion en
+// bot-pagos-comprobante -- el link ya NO lleva conv/tel en la URL, pedido
+// explicito del usuario 2026-10-26: se veia largo y sospechoso) a
+// conv_id/telefono. El formulario lo llama al cargar la pagina.
+const handleFormularioInstalacionResolver = async (payload) => {
+  if (!BOT_PAGOS_URL || !BOT_PAGOS_WEBHOOK_SECRET) throw new Error("BOT_PAGOS_URL/BOT_PAGOS_WEBHOOK_SECRET no configurados en este servicio");
+  const res = await fetchConTimeout(`${BOT_PAGOS_URL}/formulario-instalacion/resolver`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-webhook-secret": BOT_PAGOS_WEBHOOK_SECRET },
+    body: JSON.stringify({ token: payload?.token }),
+  });
+  const json = await readProxyJsonResponse(res, "Formulario instalacion resolver");
+  if (!json?.ok) throw new Error(json?.error || "Link invalido");
+  return json;
+};
+
 // Chequeo de cobertura en vivo para el mapa interactivo del formulario web
 // (ver AgendarInstalacionPage.jsx) -- reenvia a bot-pagos-comprobante
 // (/cobertura-check, SINCRONO a diferencia del resto de rutas de ese
@@ -2558,6 +2574,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "FormularioCoberturaCheck") {
       const data = await handleFormularioCoberturaCheck(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "FormularioInstalacionResolver") {
+      const data = await handleFormularioInstalacionResolver(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "FormularioInstalacionLinkManual") {
