@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { supabase } from "../supabaseClient";
 import { MapPin, CheckCircle2, Loader2, User } from "lucide-react";
 
@@ -28,50 +26,39 @@ const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 // reusarla aca (otra pagina publica) no expone nada nuevo.
 const DNI_API_KEY = "cGVydWRldnMucHJvZHVjdGlvbi5maXRjb2RlcnMuNjllMTNmNDYxYzlhY2M1YmI0MjI2YTcx";
 
-// Mapa con OpenStreetMap (Leaflet) -- sin API key, sin facturacion, sin
-// restriccion de dominio. Se cambio de Google Maps a esto (pedido
-// explicito del usuario, 2026-10-26) porque el mapa se quedaba en blanco
-// en produccion por un problema de configuracion de la API key de Google
-// (dominio no autorizado o API no habilitada en Google Cloud) que nadie
-// tenia a mano para arreglar en el momento -- para solo marcar un pin esto
-// alcanza de sobra, y ya es la misma libreria que usa CoberturaMapaModal.jsx
-// en el panel principal (mismo patron de L.map/L.tileLayer/L.marker).
-const CENTRO_DEFAULT = { lat: -16.409, lng: -71.537 };
-
-// Mismo pin (persona + globo de estado) que ya usa CoberturaMapaModal.jsx
-// en el panel -- estado: undefined="verificando", true="cobertura",
-// false="fuera de cobertura". Copiado tal cual para no acoplar esta pagina
-// publica a un componente del panel autenticado.
-function pinClienteIcon(estado, size = 36) {
-  const w = size, h = Math.round(size * 1.35);
-  const badgeColor = estado === undefined ? "#94a3b8" : estado ? "#16a34a" : "#dc2626";
-  const badgeGlyph = estado === undefined
-    ? `<circle cx="0" cy="0" r="2.2" fill="#fff"/>`
-    : estado
-      ? `<path d="M-3 0.5 L-1 2.5 L3.2 -2.2" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
-      : `<path d="M-2.4 -2.4 L2.4 2.4 M2.4 -2.4 L-2.4 2.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 36 49">
-    <defs>
-      <filter id="s" x="-60%" y="-20%" width="220%" height="170%">
-        <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#0f172a" flood-opacity="0.45"/>
-      </filter>
-    </defs>
-    <path filter="url(#s)" d="M18 0C8.6 0 1 7.6 1 17c0 12.7 17 29 17 29s17-16.3 17-29C35 7.6 27.4 0 18 0z" fill="#2563eb"/>
-    <circle cx="18" cy="17" r="12.5" fill="rgba(255,255,255,0.18)"/>
-    <circle cx="18" cy="12.3" r="3.6" fill="#fff"/>
-    <path d="M9.5 24.5c1.6-4.6 5-6.9 8.5-6.9s6.9 2.3 8.5 6.9c-2.3 2-5.3 3.2-8.5 3.2s-6.2-1.2-8.5-3.2z" fill="#fff"/>
-    <g transform="translate(28,9)">
-      <circle r="6.2" fill="${badgeColor}" stroke="#fff" stroke-width="1.8"/>
-      ${badgeGlyph}
-    </g>
-  </svg>`;
-  return L.icon({
-    iconUrl: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
-    iconSize: [w, h],
-    iconAnchor: [w / 2, h],
-    popupAnchor: [0, -h],
+// Google Maps -- vuelto a esto desde Leaflet/OpenStreetMap (pedido
+// explicito del usuario, 2026-10-26) una vez confirmado que el mapa en
+// blanco NO era un problema de la API key de Google, sino un bug de
+// timing en React (ver el useEffect del mapa mas abajo: dependia de []
+// pero el <div> del mapa no existia todavia en el primer render por el
+// loader de "resolviendo"). Con ese fix, Google Maps funciona igual.
+const GOOGLE_MAPS_API_KEY = String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
+const loadGoogleMapsSdk = () => {
+  if (typeof window === "undefined") return Promise.reject(new Error("Sin navegador."));
+  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  if (window.__gmapsPromise) return window.__gmapsPromise;
+  window.__gmapsPromise = new Promise((resolve, reject) => {
+    // Google llama a esto cuando la API key esta mal, restringida a otro
+    // dominio, o la "Maps JavaScript API" no esta habilitada -- en ese
+    // caso el script SI carga (no dispara onerror) pero el mapa se queda
+    // vacio y gris, sin ningun aviso visible. Con este hook al menos se
+    // detecta y se muestra el fallback en vez de quedar en silencio total.
+    window.gm_authFailure = () => reject(new Error("Google Maps rechazo la API key (dominio no autorizado, o la API no esta habilitada/facturada en Google Cloud)."));
+    const script = document.createElement("script");
+    script.id = "google-maps-js-sdk";
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
+    script.onload = () => resolve(window.google.maps);
+    script.onerror = () => reject(new Error("No se pudo cargar el mapa."));
+    document.head.appendChild(script);
   });
-}
+  return window.__gmapsPromise;
+};
+
+// Centro por defecto del mapa (Arequipa) -- solo para encuadrar al abrir,
+// no tiene nada que ver con la cobertura real.
+const CENTRO_DEFAULT = { lat: -16.409, lng: -71.537 };
 
 const DIAS_SEMANA_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 const HORARIOS = ["Mañana (8:00am - 11:30am)", "Mediodía (11:30am - 2:30pm)", "Tarde (2:30pm - 5:30pm)"];
@@ -121,6 +108,7 @@ export default function AgendarInstalacionPage() {
   const [errorUbicacion, setErrorUbicacion] = useState("");
   const [coberturaEstado, setCoberturaEstado] = useState(null); // null | "revisando" | true | false
   const [mapaError, setMapaError] = useState(false);
+  const [vistaSatelital, setVistaSatelital] = useState(false);
 
   const [enviando, setEnviando] = useState(false);
   const [errores, setErrores] = useState({}); // { campo: mensaje } -- uno por campo, no solo el primero
@@ -197,36 +185,35 @@ export default function AgendarInstalacionPage() {
     // apenas termina de resolverse el token y el formulario real (con el
     // div del mapa) recien se monta.
     if (resolviendo || !mapRef.current || mapObjRef.current) return;
-    try {
+    let cancelado = false;
+    loadGoogleMapsSdk().then((maps) => {
+      if (cancelado || !mapRef.current || mapObjRef.current) return;
       const centro = ubicacion || CENTRO_DEFAULT;
-      // Leaflet mueve el mapa con 1 solo dedo/clic por defecto (a
-      // diferencia de Google Maps embebido en una pagina con scroll, que
-      // exigia 2 dedos -- queja real del usuario, 2026-10-26: "cuando jalo
-      // el mapa a la derecha o izquierda no se puede interactuar"), asi
-      // que no hace falta ninguna config especial para esto.
-      const mapa = L.map(mapRef.current, { attributionControl: false, zoomControl: true }).setView([centro.lat, centro.lng], ubicacion ? 16 : 13);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(mapa);
-      const marker = L.marker([centro.lat, centro.lng], { icon: pinClienteIcon(undefined), draggable: true }).addTo(mapa);
+      // gestureHandling "greedy": sin esto, el mapa (al estar dentro de una
+      // pagina con scroll normal) exige "usar 2 dedos" para moverlo en
+      // celular -- con 1 dedo simplemente se scrollea la pagina y el mapa
+      // no reacciona (queja real del usuario, 2026-10-26). fullscreenControl
+      // true: boton nativo de Google para ampliar el mapa a pantalla
+      // completa (pedido explicito del usuario, "posibilidad de ampliar
+      // mapa") -- el boton de vista satelital es propio (mas chico y
+      // simple que el selector nativo de Google), ver botonSatelital abajo.
+      const mapa = new maps.Map(mapRef.current, { center: centro, zoom: ubicacion ? 16 : 13, streetViewControl: false, mapTypeControl: false, fullscreenControl: true, gestureHandling: "greedy" });
+      const marker = new maps.Marker({ position: centro, map: mapa, draggable: true });
       mapObjRef.current = mapa;
       markerRef.current = marker;
-      // Leaflet calcula el tamaño del mapa en el instante en que se crea --
-      // si el contenedor todavia no tenia su tamaño final en ese instante
-      // exacto (comun dentro de React, sobre todo en una pagina cargada por
-      // lazy()), el mapa queda pensando que mide 0x0 y no dibuja ningun
-      // tile, aunque el div se vea con su alto normal (bug real reportado
-      // en vivo, 2026-10-26: mapa en blanco). invalidateSize() le fuerza a
-      // remedir el contenedor real.
-      setTimeout(() => mapa.invalidateSize(), 0);
-      setTimeout(() => mapa.invalidateSize(), 300);
-      const actualizar = (latlng) => setUbicacion({ lat: latlng.lat, lng: latlng.lng });
-      marker.on("dragend", () => actualizar(marker.getLatLng()));
-      mapa.on("click", (e) => { marker.setLatLng(e.latlng); actualizar(e.latlng); });
-    } catch {
-      setMapaError(true);
-    }
-    return () => { mapObjRef.current?.remove(); mapObjRef.current = null; };
+      const actualizar = (pos) => setUbicacion({ lat: pos.lat(), lng: pos.lng() });
+      marker.addListener("dragend", () => actualizar(marker.getPosition()));
+      mapa.addListener("click", (e) => { marker.setPosition(e.latLng); actualizar(e.latLng); });
+    }).catch(() => { if (!cancelado) setMapaError(true); });
+    return () => { cancelado = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolviendo]);
+
+  // Boton propio de vista satelital -- mas chico y simple que el selector
+  // nativo de Google (pedido explicito del usuario, 2026-10-26).
+  useEffect(() => {
+    mapObjRef.current?.setMapTypeId(vistaSatelital ? "satellite" : "roadmap");
+  }, [vistaSatelital]);
 
   // Chequeo de cobertura EN VIVO mientras se mueve el pin -- SOLO pide
   // true/false al backend (accion FormularioCoberturaCheck), nunca la
@@ -236,8 +223,8 @@ export default function AgendarInstalacionPage() {
   // cubierto es informacion segura de compartir.
   useEffect(() => {
     if (!ubicacion) { setCoberturaEstado(null); return; }
-    if (mapObjRef.current) mapObjRef.current.panTo([ubicacion.lat, ubicacion.lng]);
-    if (markerRef.current) markerRef.current.setLatLng([ubicacion.lat, ubicacion.lng]);
+    if (mapObjRef.current) mapObjRef.current.panTo(ubicacion);
+    if (markerRef.current) markerRef.current.setPosition(ubicacion);
     setCoberturaEstado("revisando");
     clearTimeout(coberturaTimerRef.current);
     coberturaTimerRef.current = setTimeout(() => {
@@ -253,13 +240,13 @@ export default function AgendarInstalacionPage() {
     return () => clearTimeout(coberturaTimerRef.current);
   }, [ubicacion]);
 
-  // Pin verde/rojo/gris segun el resultado de cobertura -- mas intuitivo
+  // Pin verde/ambar/azul segun el resultado de cobertura -- mas intuitivo
   // directo en el mapa que solo el texto debajo del boton (pedido del
-  // usuario, 2026-10-26). Mismo icono con globo de estado que usa
-  // CoberturaMapaModal.jsx en el panel (ver pinClienteIcon arriba).
+  // usuario, 2026-10-26). Iconos clasicos de Google (dot) por color.
   useEffect(() => {
     if (!markerRef.current) return;
-    markerRef.current.setIcon(pinClienteIcon(coberturaEstado === "revisando" ? undefined : coberturaEstado));
+    const color = coberturaEstado === true ? "green" : coberturaEstado === false ? "orange" : "blue";
+    markerRef.current.setIcon(`http://maps.google.com/mapfiles/ms/icons/${color}-dot.png`);
   }, [coberturaEstado]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -400,7 +387,20 @@ export default function AgendarInstalacionPage() {
           {mapaError ? (
             <p style={{ fontSize: 12, color: "#dc2626", margin: "0 0 8px" }}>No se pudo cargar el mapa -- usa el botón de abajo o describe bien la dirección arriba, igual podemos confirmar por WhatsApp.</p>
           ) : (
-            <div ref={mapRef} style={{ width: "100%", height: 220, borderRadius: 8, border: "1px solid #d1d5db", background: "#f1f5f9" }} />
+            <div style={{ position: "relative" }}>
+              <div ref={mapRef} style={{ width: "100%", height: 220, borderRadius: 8, border: "1px solid #d1d5db", background: "#f1f5f9" }} />
+              {/* Chico y propio en vez del selector nativo de Google (pedido
+                  explicito del usuario, 2026-10-26) -- el boton nativo de
+                  "ampliar" (fullscreen) ya lo pone Google solo abajo a la
+                  derecha (fullscreenControl:true en el useEffect del mapa). */}
+              <button
+                type="button"
+                onClick={() => setVistaSatelital((v) => !v)}
+                style={{ position: "absolute", top: 8, left: 8, zIndex: 1, padding: "5px 9px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#334155", fontSize: 11, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
+              >
+                {vistaSatelital ? "🗺️ Mapa" : "🛰️ Satélite"}
+              </button>
+            </div>
           )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, flexWrap: "wrap", gap: 8 }}>
             <button type="button" onClick={pedirUbicacion} disabled={buscandoUbicacion} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #2563eb", background: "#eff6ff", color: "#2563eb", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
