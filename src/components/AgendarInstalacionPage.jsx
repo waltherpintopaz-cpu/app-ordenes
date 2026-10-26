@@ -200,6 +200,15 @@ export default function AgendarInstalacionPage() {
       const marker = L.marker([centro.lat, centro.lng], { icon: pinClienteIcon(undefined), draggable: true }).addTo(mapa);
       mapObjRef.current = mapa;
       markerRef.current = marker;
+      // Leaflet calcula el tamaño del mapa en el instante en que se crea --
+      // si el contenedor todavia no tenia su tamaño final en ese instante
+      // exacto (comun dentro de React, sobre todo en una pagina cargada por
+      // lazy()), el mapa queda pensando que mide 0x0 y no dibuja ningun
+      // tile, aunque el div se vea con su alto normal (bug real reportado
+      // en vivo, 2026-10-26: mapa en blanco). invalidateSize() le fuerza a
+      // remedir el contenedor real.
+      setTimeout(() => mapa.invalidateSize(), 0);
+      setTimeout(() => mapa.invalidateSize(), 300);
       const actualizar = (latlng) => setUbicacion({ lat: latlng.lat, lng: latlng.lng });
       marker.on("dragend", () => actualizar(marker.getLatLng()));
       mapa.on("click", (e) => { marker.setLatLng(e.latlng); actualizar(e.latlng); });
