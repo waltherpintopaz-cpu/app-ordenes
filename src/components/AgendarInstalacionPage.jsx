@@ -130,7 +130,13 @@ export default function AgendarInstalacionPage() {
     loadGoogleMapsSdk().then((maps) => {
       if (cancelado || !mapRef.current) return;
       const centro = ubicacion || CENTRO_DEFAULT;
-      const mapa = new maps.Map(mapRef.current, { center: centro, zoom: ubicacion ? 16 : 13, streetViewControl: false, mapTypeControl: false, fullscreenControl: false });
+      // gestureHandling "greedy": sin esto, el mapa (al estar dentro de una
+      // pagina con scroll normal) exige "usar 2 dedos" para moverlo en
+      // celular -- con 1 dedo simplemente se scrollea la pagina y el mapa
+      // no reacciona, se siente roto (queja real del usuario, 2026-10-26:
+      // "cuando jalo el mapa a la derecha o izquierda no se puede
+      // interactuar"). Con "greedy", un solo dedo/clic ya mueve el mapa.
+      const mapa = new maps.Map(mapRef.current, { center: centro, zoom: ubicacion ? 16 : 13, streetViewControl: false, mapTypeControl: false, fullscreenControl: false, gestureHandling: "greedy" });
       const marker = new maps.Marker({ position: centro, map: mapa, draggable: true });
       mapObjRef.current = mapa;
       markerRef.current = marker;
