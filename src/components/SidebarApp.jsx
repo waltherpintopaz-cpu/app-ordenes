@@ -5416,6 +5416,33 @@ export default function SidebarApp() {
                 notify("▶ Bot liberado en esta conversación");
               } catch (err) { notify("Error al liberar: " + (err?.message || err), false); }
             }} style={{ ...S.btnOut, fontSize:10, padding:"2px 7px" }}>▶ Liberar bot</button>
+            {/* A diferencia de Pausar/Liberar (solo esta conversacion, y
+                vuelve a activarse si se resuelve o con el tiempo), esto
+                bloquea el NUMERO permanentemente en bot_pagos_v3_config
+                (numeros_bloqueados) -- el bot no se reactiva solo, ni al
+                resolver ni pasadas 24h, hasta que alguien lo quite desde
+                el panel "Números bloqueados" del sidebar. Pide clave por
+                ser una accion sensible (pedido explicito del usuario,
+                2026-10-26). */}
+            <button
+              title="Bloquea este número PERMANENTEMENTE para el bot (no solo esta conversación) -- pide clave"
+              onClick={async () => {
+                if (!contact?.phone_number) return;
+                const clave = window.prompt("Clave para bloquear este número permanentemente:");
+                if (clave === null) return;
+                if (clave !== "americanet2026") { notify("Clave incorrecta", false); return; }
+                if (!window.confirm(`¿Bloquear ${contact.phone_number} permanentemente? El bot no volverá a responderle hasta que lo quites a mano desde "Números bloqueados".`)) return;
+                try {
+                  const { data } = await supabase.from("bot_pagos_v3_config").select("numeros_bloqueados").eq("id", 1).maybeSingle();
+                  const lista = (data?.numeros_bloqueados || "").split(",").map(s => s.trim()).filter(Boolean);
+                  if (lista.includes(contact.phone_number)) { notify("Ese número ya estaba bloqueado"); return; }
+                  const { error } = await supabase.from("bot_pagos_v3_config").upsert({ id: 1, numeros_bloqueados: [...lista, contact.phone_number].join(", "), actualizado_en: new Date().toISOString() }, { onConflict: "id" });
+                  if (error) throw error;
+                  notify("🚫 Número bloqueado permanentemente");
+                } catch (err) { notify("Error al bloquear: " + (err?.message || err), false); }
+              }}
+              style={{ ...S.btnOut, fontSize:10, padding:"2px 7px", color:"#dc2626", borderColor:"#dc2626" }}
+            >🚫 Bloquear</button>
           </div>
         )}
         {agente && (
