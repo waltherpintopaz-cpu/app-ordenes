@@ -187,7 +187,16 @@ export default function AgendarInstalacionPage() {
   // usuario, 2026-10-26: util tambien cuando el cliente no esta fisicamente
   // en su casa en ese momento, puede marcarla a ojo en el mapa igual).
   useEffect(() => {
-    if (!mapRef.current || mapObjRef.current) return;
+    // "resolviendo" en las dependencias: mientras es true, esta pantalla
+    // muestra SOLO el loader (ver el early-return mas abajo), asi que el
+    // <div> del mapa ni existe en el DOM todavia -- si este efecto corriera
+    // una sola vez al montar (deps []), se ejecutaria ANTES de que el div
+    // exista, mapRef.current seria null, y el mapa nunca se inicializaria
+    // (bug real reportado en vivo, 2026-10-26: mapa en blanco sin ningun
+    // error). Al depender de "resolviendo", el efecto se vuelve a evaluar
+    // apenas termina de resolverse el token y el formulario real (con el
+    // div del mapa) recien se monta.
+    if (resolviendo || !mapRef.current || mapObjRef.current) return;
     try {
       const centro = ubicacion || CENTRO_DEFAULT;
       // Leaflet mueve el mapa con 1 solo dedo/clic por defecto (a
@@ -217,7 +226,7 @@ export default function AgendarInstalacionPage() {
     }
     return () => { mapObjRef.current?.remove(); mapObjRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [resolviendo]);
 
   // Chequeo de cobertura EN VIVO mientras se mueve el pin -- SOLO pide
   // true/false al backend (accion FormularioCoberturaCheck), nunca la
