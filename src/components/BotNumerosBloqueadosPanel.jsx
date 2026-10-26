@@ -52,10 +52,16 @@ export default function BotNumerosBloqueadosPanel() {
     return true;
   }
 
+  // Mismo criterio que numeroBloqueado() en server.mjs: comparar por los
+  // ultimos 9 digitos, no por el string exacto -- si no, un numero ya
+  // bloqueado con otro formato (con/sin +51, espacios) se podia "agregar"
+  // de nuevo sin avisar que ya estaba.
+  const last9 = (s) => String(s || "").replace(/\D/g, "").slice(-9);
+
   async function agregar() {
     const limpio = nuevoNumero.trim();
     if (!limpio || !desbloqueado) return;
-    if (numeros.includes(limpio)) { setMsg({ tipo: "error", texto: "Ese número ya está en la lista." }); return; }
+    if (numeros.some((n) => last9(n) === last9(limpio))) { setMsg({ tipo: "error", texto: "Ese número ya está en la lista." }); return; }
     const ok = await guardarLista([...numeros, limpio]);
     if (ok) setNuevoNumero("");
   }

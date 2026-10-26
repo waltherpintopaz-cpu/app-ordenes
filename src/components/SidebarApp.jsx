@@ -5492,7 +5492,13 @@ export default function SidebarApp() {
                   try {
                     const { data } = await supabase.from("bot_pagos_v3_config").select("numeros_bloqueados").eq("id", 1).maybeSingle();
                     const lista = (data?.numeros_bloqueados || "").split(",").map(s => s.trim()).filter(Boolean);
-                    if (lista.includes(contact.phone_number)) { notify("Ese número ya estaba bloqueado"); setBloqueoAbierto(false); return; }
+                    // Comparar por los ultimos 9 digitos (mismo criterio que
+                    // numeroBloqueado() en server.mjs) -- una comparacion
+                    // exacta de string no detectaba que ya estaba bloqueado
+                    // si se habia guardado con otro formato (con/sin +51,
+                    // espacios), dejaba "agregar" un duplicado sin avisar.
+                    const last9 = (s) => String(s || "").replace(/\D/g, "").slice(-9);
+                    if (lista.some(n => last9(n) === last9(contact.phone_number))) { notify("Ese número ya estaba bloqueado"); setBloqueoAbierto(false); return; }
                     const { error } = await supabase.from("bot_pagos_v3_config").upsert({ id: 1, numeros_bloqueados: [...lista, contact.phone_number].join(", "), actualizado_en: new Date().toISOString() }, { onConflict: "id" });
                     if (error) throw error;
                     notify("🚫 Número bloqueado permanentemente");
