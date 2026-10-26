@@ -26,6 +26,13 @@ const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABAS
 const SUPABASE_ANON_KEY = String(process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
 const WA_GRUPO_API = String(process.env.WA_GRUPO_API || DEFAULT_WA_GRUPO_API).trim();
 const WA_GRUPO_APIKEY = String(process.env.WA_GRUPO_APIKEY || DEFAULT_WA_GRUPO_APIKEY).trim();
+// Reenvio server-a-server del formulario web opcional de instalacion (ver
+// FormularioInstalacionEnviar mas abajo) hacia bot-pagos-comprobante -- sin
+// default a proposito, ninguno de los dos valores existia antes de este
+// feature. BOT_PAGOS_WEBHOOK_SECRET debe ser EXACTAMENTE el mismo valor que
+// WEBHOOK_SECRET configurado en el servicio bot-pagos-comprobante.
+const BOT_PAGOS_URL = String(process.env.BOT_PAGOS_URL || "").trim().replace(/\/+$/, "");
+const BOT_PAGOS_WEBHOOK_SECRET = String(process.env.BOT_PAGOS_WEBHOOK_SECRET || "").trim();
 const MIKROWISP_API_BASE =
   String(process.env.MIKROWISP_API_BASE || DEFAULT_MIKROWISP_API_BASE).trim().replace(/\/+$/, "") || DEFAULT_MIKROWISP_API_BASE;
 const MIKROWISP_TOKEN = String(process.env.MIKROWISP_TOKEN || DEFAULT_MIKROWISP_TOKEN).trim();
@@ -2216,6 +2223,21 @@ const handleChatwootTyping = async (payload, creds = null) => {
   return await readProxyJsonResponse(res, "Chatwoot typing status");
 };
 
+// Reenvia los datos del formulario web opcional de instalacion (ver
+// AgendarInstalacionPage.jsx) hacia bot-pagos-comprobante, agregando el
+// secreto compartido server-side -- el navegador del prospecto nunca lo
+// conoce, solo manda conv_id/phone/token (ya verificados por el bot contra
+// bot_pagos_v3_instalacion.form_token) mas los datos que escribio.
+const handleFormularioInstalacionEnviar = async (payload) => {
+  if (!BOT_PAGOS_URL || !BOT_PAGOS_WEBHOOK_SECRET) throw new Error("BOT_PAGOS_URL/BOT_PAGOS_WEBHOOK_SECRET no configurados en este servicio");
+  const res = await fetchConTimeout(`${BOT_PAGOS_URL}/formulario-instalacion`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-webhook-secret": BOT_PAGOS_WEBHOOK_SECRET },
+    body: JSON.stringify(payload || {}),
+  });
+  return await readProxyJsonResponse(res, "Formulario instalacion");
+};
+
 // Avisa al grupo de WhatsApp del equipo cuando un tecnico pausa su jornada
 // (ver pausarJornada() en TecnicoSessionContext.js de la app movil). Lee
 // el numero del grupo de bot_config -- mismo patron de credencial server-
@@ -2485,6 +2507,10 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootTyping") {
       const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootTyping(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "FormularioInstalacionEnviar") {
+      const data = await handleFormularioInstalacionEnviar(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "NotificarPausaJornada") {
