@@ -17,7 +17,7 @@ async function cargarLeaflet() {
 }
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
-import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock, Ban } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo, NODOS_CONFIG_DEFAULT, cargarNodosConfig, nodosActivosOrdenados, mwNodoMapDesdeConfig, nodoUsuarioRulesDesdeConfig, nodoPasswordRulesDesdeConfig, vlanPorNodoDesdeConfig, nodosMkwAutoDesdeConfig, esDimNodoDesdeConfig, empresaPorNodoDesdeConfig } from "../utils/nodos.js";
