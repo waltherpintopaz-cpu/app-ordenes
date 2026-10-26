@@ -1371,6 +1371,35 @@ export default function SidebarApp() {
   const [bloqueoAbierto, setBloqueoAbierto] = useState(false);
   const [bloqueoClave,   setBloqueoClave]   = useState("");
   const [bloqueoBusy,    setBloqueoBusy]    = useState(false);
+  // Ver/quitar la lista completa de bloqueados -- pedido explicito del
+  // usuario, 2026-10-26: queria verla desde este mismo panel (el que
+  // llama "sidebar", el que trabaja con Chatwoot), no desde el panel web
+  // aparte de app-ordenes.
+  const [listaBloqueadosAbierta, setListaBloqueadosAbierta] = useState(false);
+  const [listaBloqueados,        setListaBloqueados]        = useState([]);
+  const [listaBloqueadosCargando,setListaBloqueadosCargando]= useState(false);
+  const [listaBloqueadosClave,   setListaBloqueadosClave]   = useState("");
+  const [listaBloqueadosBusyNum, setListaBloqueadosBusyNum] = useState(null);
+  async function cargarListaBloqueados() {
+    setListaBloqueadosCargando(true);
+    try {
+      const { data } = await supabase.from("bot_pagos_v3_config").select("numeros_bloqueados").eq("id", 1).maybeSingle();
+      setListaBloqueados((data?.numeros_bloqueados || "").split(",").map(s => s.trim()).filter(Boolean));
+    } catch (err) { notify("Error al cargar lista: " + (err?.message || err), false); }
+    finally { setListaBloqueadosCargando(false); }
+  }
+  async function quitarDeListaBloqueados(numero) {
+    if (listaBloqueadosClave !== "madrid0021") { notify("Clave incorrecta", false); return; }
+    setListaBloqueadosBusyNum(numero);
+    try {
+      const nueva = listaBloqueados.filter(n => n !== numero);
+      const { error } = await supabase.from("bot_pagos_v3_config").upsert({ id: 1, numeros_bloqueados: nueva.join(", "), actualizado_en: new Date().toISOString() }, { onConflict: "id" });
+      if (error) throw error;
+      setListaBloqueados(nueva);
+      notify("✅ Número desbloqueado");
+    } catch (err) { notify("Error al desbloquear: " + (err?.message || err), false); }
+    finally { setListaBloqueadosBusyNum(null); }
+  }
   // Búsqueda flexible cuando teléfono no encontrado
   const [dniBusq,      setDniBusq]      = useState("");
   const [dniBuscando,  setDniBuscando]  = useState(false);
@@ -6095,6 +6124,47 @@ export default function SidebarApp() {
                   void extraerCoordsDeChat();
                 }
               }} />
+          </div>
+
+          {/* ── Ver/quitar números bloqueados (lista completa) ── */}
+          <div style={{ marginTop:8 }}>
+            <ActionBtn isDark={isDark} icon={Ban} color="#dc2626" label="Números bloqueados" active={listaBloqueadosAbierta} activeLabel="Cerrar" activeColor="#64748b"
+              onClick={() => {
+                const abriendo = !listaBloqueadosAbierta;
+                setListaBloqueadosAbierta(v => !v);
+                setListaBloqueadosClave("");
+                if (abriendo) void cargarListaBloqueados();
+              }} />
+            {listaBloqueadosAbierta && (
+              <div style={{ marginTop:6, padding:10, borderRadius:10, border:`1px solid ${T.border}`, background:T.card, display:"flex", flexDirection:"column", gap:8 }}>
+                {listaBloqueadosCargando ? (
+                  <div style={{ fontSize:12, color:T.muted }}>Cargando...</div>
+                ) : listaBloqueados.length === 0 ? (
+                  <div style={{ fontSize:12, color:T.muted }}>No hay números bloqueados.</div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    {listaBloqueados.map(n => (
+                      <div key={n} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"5px 8px", borderRadius:6, background: isDark ? "#dc262633" : "#fef2f2", border:"1px solid #fecaca" }}>
+                        <span style={{ fontSize:12, color:"#991b1b", fontWeight:600 }}>{n}</span>
+                        <button
+                          onClick={() => quitarDeListaBloqueados(n)}
+                          disabled={listaBloqueadosBusyNum === n || !listaBloqueadosClave}
+                          title={listaBloqueadosClave ? "Quitar bloqueo" : "Escribe la clave abajo primero"}
+                          style={{ ...S.btnOut, fontSize:10, padding:"2px 7px", color:"#dc2626", borderColor:"#dc2626", opacity: !listaBloqueadosClave ? 0.5 : 1 }}
+                        >{listaBloqueadosBusyNum === n ? "..." : "Quitar"}</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input
+                  type="password"
+                  value={listaBloqueadosClave}
+                  onChange={e => setListaBloqueadosClave(e.target.value)}
+                  placeholder="Clave para poder quitar..."
+                  style={{ fontSize:12, padding:"5px 8px", borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:T.navy }}
+                />
+              </div>
+            )}
           </div>
 
           {showOrdenNuevo && (<>
