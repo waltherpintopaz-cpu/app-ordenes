@@ -2175,6 +2175,47 @@ const handleChatwootAsignarAgente = async (payload, creds = null) => {
   return await readProxyJsonResponse(res, "Chatwoot asignar agente");
 };
 
+// Marca la conversacion como leida y prende/apaga el indicador "escribiendo..."
+// -- usado por bot-pagos-comprobante justo antes de mandar cada respuesta,
+// para que no aparezca de la nada como un mensaje "robotico": un humano real
+// primero ve el mensaje (check azul) y aparece escribiendo un rato antes de
+// contestar. Ambas llamadas son best-effort puro (ver uso en server.mjs,
+// chatwootTyping): si la version de Chatwoot no expone alguno de estos
+// endpoints o la llamada falla, no debe romper ni demorar el envio real del
+// mensaje, por eso cada una atrapa su propio error por separado.
+const handleChatwootTyping = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const phone = String(payload?.phone || "").replace(/\D/g, "");
+  const acctId = String(payload?.account_id || "1");
+  const status = payload?.status === "off" ? "off" : "on";
+  let convId = payload?.conv_id || null;
+  if (!convId) {
+    if (!phone) throw new Error("phone o conv_id requerido");
+    const contactId = await cwBuscarContacto(phone, creds);
+    if (!contactId) throw new Error("Contacto no encontrado: " + phone);
+    const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
+      headers: { api_access_token: token },
+    }).then((r) => r.json()).catch(() => ({}));
+    const convs = cr?.payload || [];
+    const conv = convs.find((c) => c.status === "open") || convs[0];
+    convId = conv?.id;
+  }
+  if (!convId) throw new Error("Sin conversación");
+  if (status === "on") {
+    await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${convId}/update_last_seen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", api_access_token: token },
+    }).catch(() => {});
+  }
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/conversations/${convId}/toggle_typing_status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", api_access_token: token },
+    body: JSON.stringify({ typing_status: status }),
+  });
+  return await readProxyJsonResponse(res, "Chatwoot typing status");
+};
+
 // Avisa al grupo de WhatsApp del equipo cuando un tecnico pausa su jornada
 // (ver pausarJornada() en TecnicoSessionContext.js de la app movil). Lee
 // el numero del grupo de bot_config -- mismo patron de credencial server-
@@ -2439,6 +2480,11 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootAsignarAgente") {
       const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootAsignarAgente(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootTyping") {
+      const creds = await resolveCredsConOverride(body);
+      const data = await handleChatwootTyping(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "NotificarPausaJornada") {
