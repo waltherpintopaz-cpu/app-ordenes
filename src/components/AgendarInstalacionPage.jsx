@@ -56,6 +56,42 @@ const loadGoogleMapsSdk = () => {
   return window.__gmapsPromise;
 };
 
+// Pin propio (persona + globo de estado) en vez del puntito de color por
+// defecto -- pedido explicito del usuario (2026-10-26: "icono mas
+// atractivo"). Mismo diseño que ya usa CoberturaMapaModal.jsx en el panel
+// principal, adaptado al formato de icono que espera un Marker de Google
+// (url + scaledSize + anchor, en vez de L.icon de Leaflet). estado:
+// undefined="verificando", true="cobertura", false="fuera de cobertura".
+function pinClienteIcon(maps, estado, size = 40) {
+  const w = size, h = Math.round(size * 1.35);
+  const badgeColor = estado === undefined ? "#94a3b8" : estado ? "#16a34a" : "#dc2626";
+  const badgeGlyph = estado === undefined
+    ? `<circle cx="0" cy="0" r="2.2" fill="#fff"/>`
+    : estado
+      ? `<path d="M-3 0.5 L-1 2.5 L3.2 -2.2" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      : `<path d="M-2.4 -2.4 L2.4 2.4 M2.4 -2.4 L-2.4 2.4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="49" viewBox="0 0 36 49">
+    <defs>
+      <filter id="s" x="-60%" y="-20%" width="220%" height="170%">
+        <feDropShadow dx="0" dy="1.5" stdDeviation="1.6" flood-color="#0f172a" flood-opacity="0.45"/>
+      </filter>
+    </defs>
+    <path filter="url(#s)" d="M18 0C8.6 0 1 7.6 1 17c0 12.7 17 29 17 29s17-16.3 17-29C35 7.6 27.4 0 18 0z" fill="#2563eb"/>
+    <circle cx="18" cy="17" r="12.5" fill="rgba(255,255,255,0.18)"/>
+    <circle cx="18" cy="12.3" r="3.6" fill="#fff"/>
+    <path d="M9.5 24.5c1.6-4.6 5-6.9 8.5-6.9s6.9 2.3 8.5 6.9c-2.3 2-5.3 3.2-8.5 3.2s-6.2-1.2-8.5-3.2z" fill="#fff"/>
+    <g transform="translate(28,9)">
+      <circle r="6.2" fill="${badgeColor}" stroke="#fff" stroke-width="1.8"/>
+      ${badgeGlyph}
+    </g>
+  </svg>`;
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    scaledSize: new maps.Size(w, h),
+    anchor: new maps.Point(w / 2, h),
+  };
+}
+
 // Centro por defecto del mapa (Arequipa) -- solo para encuadrar al abrir,
 // no tiene nada que ver con la cobertura real.
 const CENTRO_DEFAULT = { lat: -16.409, lng: -71.537 };
@@ -198,7 +234,7 @@ export default function AgendarInstalacionPage() {
       // mapa") -- el boton de vista satelital es propio (mas chico y
       // simple que el selector nativo de Google), ver botonSatelital abajo.
       const mapa = new maps.Map(mapRef.current, { center: centro, zoom: ubicacion ? 16 : 13, streetViewControl: false, mapTypeControl: false, fullscreenControl: true, gestureHandling: "greedy" });
-      const marker = new maps.Marker({ position: centro, map: mapa, draggable: true });
+      const marker = new maps.Marker({ position: centro, map: mapa, draggable: true, icon: pinClienteIcon(maps, undefined) });
       mapObjRef.current = mapa;
       markerRef.current = marker;
       const actualizar = (pos) => setUbicacion({ lat: pos.lat(), lng: pos.lng() });
@@ -240,13 +276,13 @@ export default function AgendarInstalacionPage() {
     return () => clearTimeout(coberturaTimerRef.current);
   }, [ubicacion]);
 
-  // Pin verde/ambar/azul segun el resultado de cobertura -- mas intuitivo
-  // directo en el mapa que solo el texto debajo del boton (pedido del
-  // usuario, 2026-10-26). Iconos clasicos de Google (dot) por color.
+  // Pin propio (persona + globo de estado) segun el resultado de cobertura
+  // -- mas intuitivo directo en el mapa que solo el texto debajo del boton,
+  // y mas atractivo que el puntito de color por defecto (pedido del
+  // usuario, 2026-10-26).
   useEffect(() => {
-    if (!markerRef.current) return;
-    const color = coberturaEstado === true ? "green" : coberturaEstado === false ? "orange" : "blue";
-    markerRef.current.setIcon(`http://maps.google.com/mapfiles/ms/icons/${color}-dot.png`);
+    if (!markerRef.current || !window.google?.maps) return;
+    markerRef.current.setIcon(pinClienteIcon(window.google.maps, coberturaEstado === "revisando" ? undefined : coberturaEstado));
   }, [coberturaEstado]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
