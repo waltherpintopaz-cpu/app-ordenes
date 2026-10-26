@@ -5430,7 +5430,7 @@ export default function SidebarApp() {
                 if (!contact?.phone_number) return;
                 const clave = window.prompt("Clave para bloquear este número permanentemente:");
                 if (clave === null) return;
-                if (clave !== "americanet2026") { notify("Clave incorrecta", false); return; }
+                if (clave !== "madrid0021") { notify("Clave incorrecta", false); return; }
                 if (!window.confirm(`¿Bloquear ${contact.phone_number} permanentemente? El bot no volverá a responderle hasta que lo quites a mano desde "Números bloqueados".`)) return;
                 try {
                   const { data } = await supabase.from("bot_pagos_v3_config").select("numeros_bloqueados").eq("id", 1).maybeSingle();

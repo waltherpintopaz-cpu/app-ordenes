@@ -15,7 +15,7 @@ import { Ban, Lock, Unlock, Trash2, Plus } from "lucide-react";
 // de encontrar, y pide una clave antes de agregar o quitar un número --
 // una acción así de sensible (silenciar al bot para un cliente real) no
 // debe poder hacerse con un click por error.
-const CLAVE_BLOQUEO = "americanet2026";
+const CLAVE_BLOQUEO = "madrid0021";
 
 const card = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "20px 22px", marginBottom: 14, maxWidth: 560 };
 const cardTitle = { fontSize: 14, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: "1px solid #f3f4f6" };
