@@ -32,6 +32,13 @@ const loadGoogleMapsSdk = () => {
   if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (window.__gmapsPromise) return window.__gmapsPromise;
   window.__gmapsPromise = new Promise((resolve, reject) => {
+    // Google llama a esto cuando la API key esta mal, restringida a otro
+    // dominio, o la "Maps JavaScript API" no esta habilitada -- en ese
+    // caso el script SI carga (no dispara onerror) pero el mapa se queda
+    // vacio y gris, sin ningun aviso visible (bug real reportado en vivo,
+    // 2026-10-26). Con este hook al menos se detecta y se muestra el
+    // fallback en vez de quedar en silencio total.
+    window.gm_authFailure = () => reject(new Error("Google Maps rechazo la API key (dominio no autorizado, o la API no esta habilitada/facturada en Google Cloud)."));
     const script = document.createElement("script");
     script.id = "google-maps-js-sdk";
     script.async = true;
