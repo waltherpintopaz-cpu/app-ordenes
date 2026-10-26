@@ -1364,6 +1364,13 @@ export default function SidebarApp() {
   const [autoLoad,       setAutoLoad]       = useState(0);
   // Agente logueado (detectado de Chatwoot o seleccionado manualmente)
   const [agente, setAgente] = useState(() => getStoredAgente());
+  // Bloqueo permanente de numero -- formulario inline en vez de
+  // window.prompt/confirm (nada confiable dentro del iframe embebido de
+  // Chatwoot: funcionó la primera vez y despues dejó de abrir el diálogo,
+  // bug real reportado 2026-10-26).
+  const [bloqueoAbierto, setBloqueoAbierto] = useState(false);
+  const [bloqueoClave,   setBloqueoClave]   = useState("");
+  const [bloqueoBusy,    setBloqueoBusy]    = useState(false);
   // Búsqueda flexible cuando teléfono no encontrado
   const [dniBusq,      setDniBusq]      = useState("");
   const [dniBuscando,  setDniBuscando]  = useState(false);
@@ -5421,28 +5428,52 @@ export default function SidebarApp() {
                 bloquea el NUMERO permanentemente en bot_pagos_v3_config
                 (numeros_bloqueados) -- el bot no se reactiva solo, ni al
                 resolver ni pasadas 24h, hasta que alguien lo quite desde
-                el panel "Números bloqueados" del sidebar. Pide clave por
-                ser una accion sensible (pedido explicito del usuario,
+                el panel "Números bloqueados" del sidebar. Formulario
+                inline (no window.prompt/confirm -- esos dialogos nativos
+                no son confiables dentro del iframe embebido de Chatwoot,
+                bug real: funciono la primera vez y despues dejo de abrir,
                 2026-10-26). */}
             <button
               title="Bloquea este número PERMANENTEMENTE para el bot (no solo esta conversación) -- pide clave"
-              onClick={async () => {
-                if (!contact?.phone_number) return;
-                const clave = window.prompt("Clave para bloquear este número permanentemente:");
-                if (clave === null) return;
-                if (clave !== "madrid0021") { notify("Clave incorrecta", false); return; }
-                if (!window.confirm(`¿Bloquear ${contact.phone_number} permanentemente? El bot no volverá a responderle hasta que lo quites a mano desde "Números bloqueados".`)) return;
-                try {
-                  const { data } = await supabase.from("bot_pagos_v3_config").select("numeros_bloqueados").eq("id", 1).maybeSingle();
-                  const lista = (data?.numeros_bloqueados || "").split(",").map(s => s.trim()).filter(Boolean);
-                  if (lista.includes(contact.phone_number)) { notify("Ese número ya estaba bloqueado"); return; }
-                  const { error } = await supabase.from("bot_pagos_v3_config").upsert({ id: 1, numeros_bloqueados: [...lista, contact.phone_number].join(", "), actualizado_en: new Date().toISOString() }, { onConflict: "id" });
-                  if (error) throw error;
-                  notify("🚫 Número bloqueado permanentemente");
-                } catch (err) { notify("Error al bloquear: " + (err?.message || err), false); }
-              }}
+              onClick={() => { setBloqueoClave(""); setBloqueoAbierto(v => !v); }}
               style={{ ...S.btnOut, fontSize:10, padding:"2px 7px", color:"#dc2626", borderColor:"#dc2626" }}
             >🚫 Bloquear</button>
+          </div>
+        )}
+        {bloqueoAbierto && contact?.phone_number && (
+          <div style={{ position:"fixed", top:34, right:8, zIndex:10000, background:T.card, border:`1px solid ${T.border}`, borderRadius:8, padding:10, boxShadow:"0 4px 16px rgba(0,0,0,0.25)", display:"flex", flexDirection:"column", gap:6, width:230 }}>
+            <div style={{ fontSize:11, color:T.muted }}>Bloquear <b>{contact.phone_number}</b> permanentemente. El bot no le responde más hasta que lo quites desde "Números bloqueados".</div>
+            <input
+              type="password"
+              autoFocus
+              value={bloqueoClave}
+              onChange={e => setBloqueoClave(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") document.getElementById("btn-confirmar-bloqueo")?.click(); if (e.key === "Escape") setBloqueoAbierto(false); }}
+              placeholder="Clave..."
+              style={{ fontSize:12, padding:"5px 8px", borderRadius:6, border:`1px solid ${T.border}`, background:T.bg, color:T.navy }}
+            />
+            <div style={{ display:"flex", gap:6, justifyContent:"flex-end" }}>
+              <button onClick={() => setBloqueoAbierto(false)} style={{ ...S.btnOut, fontSize:11, padding:"3px 9px" }}>Cancelar</button>
+              <button
+                id="btn-confirmar-bloqueo"
+                disabled={bloqueoBusy || !bloqueoClave}
+                onClick={async () => {
+                  if (bloqueoClave !== "madrid0021") { notify("Clave incorrecta", false); return; }
+                  setBloqueoBusy(true);
+                  try {
+                    const { data } = await supabase.from("bot_pagos_v3_config").select("numeros_bloqueados").eq("id", 1).maybeSingle();
+                    const lista = (data?.numeros_bloqueados || "").split(",").map(s => s.trim()).filter(Boolean);
+                    if (lista.includes(contact.phone_number)) { notify("Ese número ya estaba bloqueado"); setBloqueoAbierto(false); return; }
+                    const { error } = await supabase.from("bot_pagos_v3_config").upsert({ id: 1, numeros_bloqueados: [...lista, contact.phone_number].join(", "), actualizado_en: new Date().toISOString() }, { onConflict: "id" });
+                    if (error) throw error;
+                    notify("🚫 Número bloqueado permanentemente");
+                    setBloqueoAbierto(false);
+                  } catch (err) { notify("Error al bloquear: " + (err?.message || err), false); }
+                  finally { setBloqueoBusy(false); }
+                }}
+                style={{ ...S.btnOut, fontSize:11, padding:"3px 9px", background:"#dc2626", color:"#fff", borderColor:"#dc2626", opacity: (bloqueoBusy || !bloqueoClave) ? 0.6 : 1 }}
+              >{bloqueoBusy ? "..." : "Confirmar"}</button>
+            </div>
           </div>
         )}
         {agente && (
