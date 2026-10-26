@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Star, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera } from "lucide-react";
+﻿import { LayoutDashboard, PlusCircle, Clock, History, RefreshCw, FileSpreadsheet, Stethoscope, BarChart2, Map as MapIcon, Search, Star, Cpu, Users2, Database, Package, Warehouse, UserCog, Contact, MessageCircle, FileText, Activity, Radio, MapPin, Bell, ScrollText, Signal, ChevronDown, Tv, Sun, Moon, AlertTriangle, CheckCircle2, ClipboardList, Calendar, Check, User, RotateCcw, XCircle, Truck, MonitorPlay, Wallet, Film, Footprints, Phone, Wifi, DollarSign, KeyRound, MessageSquare, Hash, Briefcase, Edit3, ArrowLeft, Download, Send, CreditCard, ScanLine, Box, Camera, Ban, Lock } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 // cache-bust: forzar commit nuevo porque EasyPanel estaba sirviendo un
@@ -25,6 +25,7 @@ import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import BotControlPanel from "./components/BotControlPanel";
 import BotConfigPanel from "./components/BotConfigPanel";
 import BotPagosV3ConfigPanel from "./components/BotPagosV3ConfigPanel";
+import BotNumerosBloqueadosPanel from "./components/BotNumerosBloqueadosPanel";
 import TelegramAgentesPanel from "./components/TelegramAgentesPanel";
 import MetaPlantillasPanel from "./components/MetaPlantillasPanel";
 import MkwEstadoPanel from "./components/MkwEstadoPanel";
@@ -570,12 +571,14 @@ const BOT_SUBMENU_ITEMS = [
   { key: "botConfig",  label: "Config Bot",  sideLabel: "Config Bot"  },
   { key: "agentes",    label: "Agentes",     sideLabel: "Agentes"     },
   { key: "botPagosV3", label: "Bot Pagos v3", sideLabel: "Bot Pagos v3" },
+  { key: "botBloqueados", label: "Números bloqueados", sideLabel: "Bloqueados" },
 ];
 const BOT_LUCIDE_ICONS = {
   botControl: Activity,
   botConfig:  Cpu,
   agentes:    Users2,
   botPagosV3: Radio,
+  botBloqueados: Ban,
 };
 
 const MAXPLAYER_SUBMENU_ITEMS = [
@@ -25373,6 +25376,10 @@ export default function App() {
 
         {vistaActiva === "bot" && botSubmenu === "botPagosV3" && (
           <BotPagosV3ConfigPanel />
+        )}
+
+        {vistaActiva === "bot" && botSubmenu === "botBloqueados" && (
+          <BotNumerosBloqueadosPanel />
         )}
 
         {vistaActiva === "metaPlantillas" && (

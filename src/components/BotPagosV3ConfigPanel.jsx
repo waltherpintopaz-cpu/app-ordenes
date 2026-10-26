@@ -18,7 +18,6 @@ const DEFAULT = {
   inbox_nodo_restringido: "",
   nodo_restringido: "",
   inboxes_solo_clientes: "",
-  numeros_bloqueados: "",
   botones_recordatorio_n8n: "Metodos de pago, Metodos de Pago, Monto de deuda, Portal del cliente, Unete a la comunidad, No recibir avisos, No recibir notificaciones, Participar, Ya pagué, Metodo de Pago DIM, Metodo de pago DIM, Monto deuda DIM, Portal DIM, Unete comunidad DIM, Descargar boleta, Descargar boleta DIM",
   horario_inicio: 8,
   horario_fin: 21,
@@ -445,16 +444,6 @@ export default function BotPagosV3ConfigPanel() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Numeros bloqueados -- numeros donde el bot NUNCA debe activarse,
-          sin importar bandeja, fase o tipo de mensaje (texto, ubicacion,
-          foto/comprobante). El mensaje sigue quedando registrado en
-          Chatwoot igual, pero el bot no lo toca para nada. */}
-      <div style={card}>
-        <div style={cardTitle()}><AlertOctagon size={16} color="#dc2626" /> Números bloqueados (el bot nunca se activa)</div>
-        <div style={hint}>Agrega acá los números donde el bot NUNCA debe responder, sin importar la bandeja ni el tipo de mensaje. El mensaje queda registrado en Chatwoot igual, solo que el bot lo ignora por completo.</div>
-        <TagInput values={(cfg.numeros_bloqueados || "").split(",").map(s => s.trim()).filter(Boolean)} onChange={arr => set("numeros_bloqueados", arr.join(", "))} placeholder="Ej. 987654321 o +51987654321..." />
       </div>
 
       {/* Botones de recordatorio ya respondidos por n8n -- si el cliente
