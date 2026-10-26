@@ -2780,9 +2780,18 @@ export default function SidebarApp() {
     setSuspendiendo(false);
   }
 
-  // ── Eliminar factura ─────────────────────────────────────────────────────
+  // ── Eliminar factura / Anular pago ──────────────────────────────────────
+  // Confirmacion inline (en vez de window.confirm) -- mismo motivo que ya
+  // se aplico en otro lado del sidebar (commit a9c5012, "Sidebar salida a
+  // internet: confirmacion animada en vez de window.confirm") y en el
+  // Panel de Agentes (boton Bloquear, 2026-10-26): window.confirm no es
+  // confiable dentro del iframe embebido de Chatwoot -- puede no abrir el
+  // dialogo en absoluto, dejando el boton "sin hacer nada" en silencio
+  // (reportado por el usuario: "no me deja anular pago de una
+  // facturacion"). confirmarAccion sirve para ambas (factura y pago).
+  const [confirmarAccion, setConfirmarAccion] = useState(null); // { tipo: "factura"|"pago", fid } | null
+
   async function eliminarFactura(fid) {
-    if (!window.confirm(`¿Eliminar factura #${fid}?\nEsta acción no se puede deshacer.`)) return;
     setDeletingFact(fid);
     try {
       const tkn = getToken(cliente.empresa, agente);
@@ -2794,9 +2803,7 @@ export default function SidebarApp() {
     setDeletingFact(null);
   }
 
-  // ── Eliminar pago ─────────────────────────────────────────────────────────
   async function eliminarPago(fid) {
-    if (!window.confirm(`¿Eliminar el pago de la factura #${fid}?\nEsta acción no se puede deshacer.`)) return;
     setDeletingPago(fid);
     try {
       const tkn = getToken(cliente.empresa, agente);
@@ -7359,7 +7366,7 @@ export default function SidebarApp() {
                                     </button>
                                   )}
                                   {isPag && (
-                                    <button onClick={() => { eliminarPago(fid); setMenuAbierto(null); }}
+                                    <button onClick={() => setConfirmarAccion({ tipo:"pago", fid })}
                                       disabled={deletingPago===fid}
                                       style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
                                         border:`1px solid ${T.border}`, borderRadius:6, background:T.card, cursor:"pointer", fontSize:11, fontWeight:600,
@@ -7367,13 +7374,32 @@ export default function SidebarApp() {
                                       <XCircle size={13}/> {deletingPago===fid?"Eliminando...":"Anular pago"}
                                     </button>
                                   )}
-                                  <button onClick={() => { eliminarFactura(fid); setMenuAbierto(null); }}
+                                  <button onClick={() => setConfirmarAccion({ tipo:"factura", fid })}
                                     disabled={deletingFact===fid}
                                     style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
                                       border:"none", borderRadius:6, background:T.red, cursor:"pointer", fontSize:11, fontWeight:600,
                                       color:"#fff", fontFamily:"inherit", opacity:deletingFact===fid?0.5:1 }}>
                                     <Trash2 size={13}/> {deletingFact===fid?"Eliminando...":"Eliminar factura"}
                                   </button>
+                                  {confirmarAccion?.fid === fid && (
+                                    <div style={{ width:"100%", marginTop:4, padding:"8px 10px", borderRadius:6, border:`1px solid ${T.red}`, background: isDark ? "#dc262633" : "#fef2f2", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                                      <span style={{ fontSize:11, color:T.navy, fontWeight:600 }}>
+                                        {confirmarAccion.tipo === "pago" ? `¿Eliminar el pago de la factura #${fid}?` : `¿Eliminar factura #${fid}?`} Esta acción no se puede deshacer.
+                                      </span>
+                                      <div style={{ display:"flex", gap:6, marginLeft:"auto" }}>
+                                        <button onClick={() => setConfirmarAccion(null)} style={{ ...S.btnOut, fontSize:10, padding:"3px 8px" }}>Cancelar</button>
+                                        <button
+                                          onClick={() => {
+                                            const accion = confirmarAccion;
+                                            setConfirmarAccion(null);
+                                            setMenuAbierto(null);
+                                            if (accion.tipo === "pago") eliminarPago(accion.fid); else eliminarFactura(accion.fid);
+                                          }}
+                                          style={{ fontSize:10, padding:"3px 10px", borderRadius:6, border:"none", background:T.red, color:"#fff", fontWeight:700, cursor:"pointer" }}
+                                        >Sí, eliminar</button>
+                                      </div>
+                                    </div>
+                                  )}
                                   {f.urlpdf && (
                                     <a href={f.urlpdf} target="_blank" rel="noopener noreferrer"
                                       style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 12px",
