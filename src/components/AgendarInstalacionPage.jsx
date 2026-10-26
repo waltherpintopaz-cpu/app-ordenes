@@ -77,8 +77,13 @@ export default function AgendarInstalacionPage() {
   const tel = params.get("tel") || "";
   const tok = params.get("tok") || "";
 
+  // Ultimos 9 digitos del "tel" de la URL -- defensivo, por si llega un
+  // link viejo generado antes del fix que mandaba el numero completo con
+  // codigo de pais (11 digitos), que no pasaba la validacion de celular.
+  const telLimpio = tel.replace(/\D/g, "").slice(-9);
+
   const [planes, setPlanes] = useState([]);
-  const [form, setForm] = useState({ dni: "", celular_titular: tel, direccion: "", plan: "", fecha: "", horario: "", correo: "" });
+  const [form, setForm] = useState({ dni: "", celular_titular: telLimpio, direccion: "", plan: "", fecha: "", horario: "", correo: "" });
   const [nombreDni, setNombreDni] = useState("");
   const [buscandoDni, setBuscandoDni] = useState(false);
   const [dniNoEncontrado, setDniNoEncontrado] = useState(false);
