@@ -397,6 +397,7 @@ const MENU_VISTAS_WEB = [
   { key: "suspendidos", label: "Suspendidos", gestoraVisible: true },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "bot", label: "Bot" },
+  { key: "botBloqueados", label: "Números bloqueados" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
   { key: "mkwEstado", label: "Estado MikroWisp" },
   { key: "nap", label: "Cajas NAP" },
@@ -430,7 +431,7 @@ const MENU_GRUPO_POR_KEY_WEB = {
   reportes: "Reportes",
   iptv: "IPTV", maxplayerCuentas: "IPTV",
   finanzas: "Finanzas", misGastos: "Finanzas",
-  usuarios: "Administración", logs: "Administración", reclamaciones: "Administración", vpnAccesos: "Administración",
+  usuarios: "Administración", logs: "Administración", reclamaciones: "Administración", vpnAccesos: "Administración", botBloqueados: "Administración",
 };
 
 // Permisos por defecto al CREAR un usuario nuevo (se pueden modificar libremente)
@@ -521,6 +522,7 @@ const MENU_LUCIDE_ICONS = {
   finanzas:            BarChart2,
   misGastos:           Wallet,
   bot:                 Cpu,
+  botBloqueados:       Ban,
 };
 
 const HIST_APPSHEET_LUCIDE_ICONS = {
@@ -571,14 +573,12 @@ const BOT_SUBMENU_ITEMS = [
   { key: "botConfig",  label: "Config Bot",  sideLabel: "Config Bot"  },
   { key: "agentes",    label: "Agentes",     sideLabel: "Agentes"     },
   { key: "botPagosV3", label: "Bot Pagos v3", sideLabel: "Bot Pagos v3" },
-  { key: "botBloqueados", label: "Números bloqueados", sideLabel: "Bloqueados" },
 ];
 const BOT_LUCIDE_ICONS = {
   botControl: Activity,
   botConfig:  Cpu,
   agentes:    Users2,
   botPagosV3: Radio,
-  botBloqueados: Ban,
 };
 
 const MAXPLAYER_SUBMENU_ITEMS = [
@@ -25378,7 +25378,7 @@ export default function App() {
           <BotPagosV3ConfigPanel />
         )}
 
-        {vistaActiva === "bot" && botSubmenu === "botBloqueados" && (
+        {vistaActiva === "botBloqueados" && (
           <BotNumerosBloqueadosPanel />
         )}
 
