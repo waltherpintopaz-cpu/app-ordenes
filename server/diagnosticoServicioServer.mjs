@@ -2238,6 +2238,23 @@ const handleFormularioInstalacionEnviar = async (payload) => {
   return await readProxyJsonResponse(res, "Formulario instalacion");
 };
 
+// Chequeo de cobertura en vivo para el mapa interactivo del formulario web
+// (ver AgendarInstalacionPage.jsx) -- reenvia a bot-pagos-comprobante
+// (/cobertura-check, SINCRONO a diferencia del resto de rutas de ese
+// servicio) para reusar la MISMA logica de punto-en-poligono que ya usa el
+// bot por WhatsApp (buscarZonaCobertura), sin duplicarla aca. Solo
+// devuelve un booleano -- nunca la geometria real de las zonas, que es
+// informacion propia del negocio y este formulario es publico.
+const handleFormularioCoberturaCheck = async (payload) => {
+  if (!BOT_PAGOS_URL || !BOT_PAGOS_WEBHOOK_SECRET) throw new Error("BOT_PAGOS_URL/BOT_PAGOS_WEBHOOK_SECRET no configurados en este servicio");
+  const res = await fetchConTimeout(`${BOT_PAGOS_URL}/cobertura-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-webhook-secret": BOT_PAGOS_WEBHOOK_SECRET },
+    body: JSON.stringify({ lat: payload?.lat, lng: payload?.lng }),
+  });
+  return await readProxyJsonResponse(res, "Cobertura check");
+};
+
 // Avisa al grupo de WhatsApp del equipo cuando un tecnico pausa su jornada
 // (ver pausarJornada() en TecnicoSessionContext.js de la app movil). Lee
 // el numero del grupo de bot_config -- mismo patron de credencial server-
@@ -2511,6 +2528,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "FormularioInstalacionEnviar") {
       const data = await handleFormularioInstalacionEnviar(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "FormularioCoberturaCheck") {
+      const data = await handleFormularioCoberturaCheck(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "NotificarPausaJornada") {
