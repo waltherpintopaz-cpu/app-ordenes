@@ -2235,7 +2235,33 @@ const handleFormularioInstalacionEnviar = async (payload) => {
     headers: { "Content-Type": "application/json", "x-webhook-secret": BOT_PAGOS_WEBHOOK_SECRET },
     body: JSON.stringify(payload || {}),
   });
-  return await readProxyJsonResponse(res, "Formulario instalacion");
+  const json = await readProxyJsonResponse(res, "Formulario instalacion");
+  // bot-pagos-comprobante ahora valida el token SINCRONO y devuelve
+  // {ok:false, error} de verdad cuando el link no es valido (ver
+  // tokenFormularioValido en ese servicio) -- si no se revisa aca y se
+  // relanza como error real, este wrapper lo meteria dentro de "data" de
+  // un {ok:true,...} exterior, y el formulario nunca se enteraria de que
+  // en realidad fallo (mismo bug que motivo este cambio).
+  if (!json?.ok) throw new Error(json?.error || "No se pudo enviar el formulario");
+  return json;
+};
+
+// Envio MANUAL del link del formulario desde el Panel de Agentes
+// (SidebarApp.jsx, boton "Enviar link de formulario") -- reenvia a
+// bot-pagos-comprobante (/formulario-instalacion/enviar-manual), que
+// genera el link y lo manda por WhatsApp de una. A diferencia de
+// handleFormularioInstalacionEnviar, esta llamada SI espera la respuesta
+// real (el agente necesita saber de inmediato si se mando bien).
+const handleFormularioInstalacionLinkManual = async (payload) => {
+  if (!BOT_PAGOS_URL || !BOT_PAGOS_WEBHOOK_SECRET) throw new Error("BOT_PAGOS_URL/BOT_PAGOS_WEBHOOK_SECRET no configurados en este servicio");
+  const res = await fetchConTimeout(`${BOT_PAGOS_URL}/formulario-instalacion/enviar-manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-webhook-secret": BOT_PAGOS_WEBHOOK_SECRET },
+    body: JSON.stringify({ conv_id: payload?.conv_id, phone: payload?.phone }),
+  });
+  const json = await readProxyJsonResponse(res, "Formulario instalacion link manual");
+  if (!json?.ok) throw new Error(json?.error || "No se pudo enviar el link");
+  return json;
 };
 
 // Chequeo de cobertura en vivo para el mapa interactivo del formulario web
@@ -2532,6 +2558,10 @@ const proxyMikrowispGenerico = async (req) => {
     }
     if (accion === "FormularioCoberturaCheck") {
       const data = await handleFormularioCoberturaCheck(body.payload || {});
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "FormularioInstalacionLinkManual") {
+      const data = await handleFormularioInstalacionLinkManual(body.payload || {});
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "NotificarPausaJornada") {

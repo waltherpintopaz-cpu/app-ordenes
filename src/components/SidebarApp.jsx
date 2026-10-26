@@ -1700,6 +1700,7 @@ export default function SidebarApp() {
       }
     }
   }, [mkwRedesOrden, ordenForm.ipMikrotik, ordenForm.idRedIpv4]);
+  const [enviandoLinkFormulario, setEnviandoLinkFormulario] = useState(false);
   const [showOrdenNuevo,    setShowOrdenNuevo]    = useState(false);
   const [buscandoDniNew,    setBuscandoDniNew]    = useState(false);
   const [usuariosNodo,      setUsuariosNodo]      = useState([]);
@@ -6138,6 +6139,27 @@ export default function SidebarApp() {
                 }
               }} />
           </div>
+
+          {/* ── Mandar el link del formulario web de instalacion de una vez,
+              sin esperar a que el bot se lo ofrezca solo (ej. ya esta
+              escalado con un humano, o el asesor prefiere mandarlo de
+              entrada) -- pedido explicito del usuario, 2026-10-26. */}
+          {convId && contact?.phone_number && (
+            <div style={{ marginTop:8 }}>
+              <ActionBtn isDark={isDark} icon={Send} color="#0d9488" label={enviandoLinkFormulario ? "Enviando..." : "Enviar link de formulario"} disabled={enviandoLinkFormulario}
+                onClick={async () => {
+                  setEnviandoLinkFormulario(true);
+                  try {
+                    const res = await fetch(PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+                      body: JSON.stringify({ accion:"FormularioInstalacionLinkManual", payload:{ conv_id: convId, phone: contact.phone_number } }) });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok || !json.ok) throw new Error(json?.error || json?.data?.error || "Error");
+                    notify("📋 Link del formulario enviado por WhatsApp");
+                  } catch (err) { notify("Error al enviar el link: " + (err?.message || err), false); }
+                  finally { setEnviandoLinkFormulario(false); }
+                }} />
+            </div>
+          )}
 
           {/* ── Ver/quitar números bloqueados (lista completa) ── */}
           <div style={{ marginTop:8 }}>
