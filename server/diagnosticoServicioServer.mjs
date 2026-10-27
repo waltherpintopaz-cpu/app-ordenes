@@ -1992,13 +1992,13 @@ function resolveCredsConOverride(body) {
   return resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
 }
 
-const cwBuscarContacto = async (phone, creds = null) => {
+const cwBuscarContacto = async (phone, creds = null, acctId = "1") => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
   const local = String(phone || "").slice(-9);
   for (const q of [phone, "51" + local, local]) {
     const sr = await fetchConTimeout(
-      `${base}/api/v1/accounts/1/contacts/search?q=${encodeURIComponent(q)}`,
+      `${base}/api/v1/accounts/${acctId}/contacts/search?q=${encodeURIComponent(q)}`,
       { headers: { api_access_token: token } },
     ).then((r) => r.json()).catch(() => ({}));
     const contacts = sr?.payload?.contacts || sr?.payload || [];
@@ -2057,7 +2057,7 @@ const handleChatwootMessage = async (payload, creds = null) => {
   let convId = payload?.conv_id || null;
   if (!convId) {
     if (!phone) throw new Error("phone o conv_id requeridos");
-    const contactId = await cwBuscarContacto(phone, creds);
+    const contactId = await cwBuscarContacto(phone, creds, acctId);
     if (!contactId) throw new Error("Contacto no encontrado: " + phone);
     const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
       headers: { api_access_token: token },
@@ -2110,7 +2110,7 @@ const handleChatwootResolverConversacion = async (payload, creds = null) => {
   let convId = directConvId;
   if (!convId) {
     if (!phone) throw new Error("phone o conv_id requerido");
-    const contactId = await cwBuscarContacto(phone, creds);
+    const contactId = await cwBuscarContacto(phone, creds, acctId);
     if (!contactId) throw new Error("Contacto no encontrado: " + phone);
     const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
       headers: { api_access_token: token },
@@ -2143,7 +2143,7 @@ const handleChatwootAsignarEquipo = async (payload, creds = null) => {
   let convId = directConvId;
   if (!convId) {
     if (!phone) throw new Error("phone o conv_id requerido");
-    const contactId = await cwBuscarContacto(phone, creds);
+    const contactId = await cwBuscarContacto(phone, creds, acctId);
     if (!contactId) throw new Error("Contacto no encontrado: " + phone);
     const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
       headers: { api_access_token: token },
@@ -2199,7 +2199,7 @@ const handleChatwootTyping = async (payload, creds = null) => {
   let convId = payload?.conv_id || null;
   if (!convId) {
     if (!phone) throw new Error("phone o conv_id requerido");
-    const contactId = await cwBuscarContacto(phone, creds);
+    const contactId = await cwBuscarContacto(phone, creds, acctId);
     if (!contactId) throw new Error("Contacto no encontrado: " + phone);
     const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
       headers: { api_access_token: token },
@@ -2508,20 +2508,22 @@ const handleGetChatwootMessages = async (payload, creds = null) => {
   const phone = String(payload?.phone || "").replace(/\D/g, "");
   const acctId = String(payload?.account_id || "1");
   const directConvId = payload?.conv_id || null;
-  if (directConvId) return { messages: await cwFetchAllMessages(directConvId, acctId, creds) };
+  if (directConvId) return { messages: await cwFetchAllMessages(directConvId, acctId, creds), convIds: [directConvId] };
   if (!phone) throw new Error("phone o conv_id requerido");
-  const contactId = await cwBuscarContacto(phone, creds);
+  const contactId = await cwBuscarContacto(phone, creds, acctId);
   if (!contactId) throw new Error("Contacto no encontrado");
   const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
     headers: { api_access_token: token },
   }).then((r) => r.json()).catch(() => ({}));
   const convs = cr?.payload || [];
   let allMessages = [];
+  const convIds = [];
   for (const conv of convs.slice(0, 3)) {
     if (!conv?.id) continue;
+    convIds.push(conv.id);
     allMessages = allMessages.concat(await cwFetchAllMessages(conv.id, acctId, creds));
   }
-  return { messages: allMessages };
+  return { messages: allMessages, convIds };
 };
 
 const handleSmartOltSignal = async (sn) => {
