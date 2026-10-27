@@ -177,6 +177,13 @@ export default function AgendarInstalacionPage() {
       .then((res) => {
         if (!res?.ok || !res.data?.ok) { setLinkInvalido(true); return; }
         setForm((f) => ({ ...f, celular_titular: res.data.telefono || "" }));
+        // Si el cliente ya compartio su ubicacion GPS por WhatsApp antes de
+        // abrir este link (ej. al confirmar cobertura), se precarga el pin
+        // en vez de hacerlo marcarla de nuevo a mano (pedido explicito del
+        // usuario, 2026-10-26).
+        if (res.data.ubicacion?.lat != null && res.data.ubicacion?.lng != null) {
+          setUbicacion({ lat: res.data.ubicacion.lat, lng: res.data.ubicacion.lng });
+        }
       })
       .catch(() => setLinkInvalido(true))
       .finally(() => setResolviendo(false));
