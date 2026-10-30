@@ -3410,6 +3410,37 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // POST /api/onu-barrido-puerto { board, port } -- Etiquetado de ONUs lo
+    // llama apenas carga una caja cuyo PON ya se conoce (consenso de 2+
+    // clientes ya confirmados en esa caja), ANTES de que el tecnico
+    // desconecte ningun borne. Sin esto, el barrido de MACs solo se
+    // disparaba DESPUES de cada desconexion (ver mas abajo, dentro de
+    // onu-diagnostico-completo) -- eso barre el RESTO de ONUs que siguen
+    // conectadas, pero nunca alcanza a capturar la MAC de la ONU que
+    // justo se acaba de desconectar, y si es la primera caja que se
+    // etiqueta en el dia (nadie disparo un barrido antes), esa primera
+    // ONU desconectada siempre fallaba con "no se pudo obtener la MAC"
+    // (bug real reportado en vivo, 2026-10-30). Proxea a huawei-olt-snmp
+    // con el token server-side -- el movil nunca tiene ese token.
+    if (req.method === "POST" && req.url === "/api/onu-barrido-puerto") {
+      if (!HUAWEI_ACCION_TOKEN) { writeJson(res, 200, { ok: false, error: "HUAWEI_ACCION_TOKEN no configurado." }); return; }
+      const body = await readJsonBody(req).catch(() => ({}));
+      const board = String(body?.board ?? "").trim();
+      const port = String(body?.port ?? "").trim();
+      if (!board || !port) { writeJson(res, 400, { ok: false, error: "Falta board o port" }); return; }
+      try {
+        const r = await fetch(`${HUAWEI_OLT_SNMP_API}/barrido-macs-puerto`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-debug-token": HUAWEI_ACCION_TOKEN },
+          body: JSON.stringify({ board, port }),
+        }).then((rr) => rr.json()).catch((e) => ({ ok: false, error: e.message }));
+        writeJson(res, 200, r);
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e) });
+      }
+      return;
+    }
+
     // GET /api/onu-diagnostico-completo?sn=XXXX -- cadena completa pedida
     // por el usuario: SN de ONU -> MAC (SNMP, con fallback a Telnet-por-
     // puerto si esa ONU no tiene wanMac por SNMP) -> secret de MikroTik
