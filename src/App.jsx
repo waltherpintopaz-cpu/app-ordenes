@@ -69,6 +69,10 @@ import { generarContratoPdf, empresaInfoContrato } from "./utils/contratoPdf.js"
 import { subirContratoPdf, enviarContratoWhatsapp } from "./utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo, cargarNodosConfig, nodosActivosOrdenados, mwNodoMapDesdeConfig, nodoUsuarioRulesDesdeConfig, nodoPasswordRulesDesdeConfig, vlanPorNodoDesdeConfig, nodosMkwAutoDesdeConfig } from "./utils/nodos.js";
 
+// Link a Chatwoot cuando una tarea no tiene DNI (prospecto sin registrar,
+// ver guardarTarea en SidebarApp.jsx).
+const CHATWOOT_URL_DEFAULT = "https://chat.americanet.club";
+
 const REPORTES_PAGE_SIZE = 25;
 const CLIENTES_PAGE_SIZE = 25;
 const HISTORIAL_PAGE_SIZE = 25;
@@ -3805,6 +3809,98 @@ export default function App() {
   const esGestorSesion = rolSesion === "Gestora";
   const esAlmacenSesion = rolSesion === "Almacen";
 
+  // Tareas/pendientes creadas desde el sidebar de Chatwoot (tareas_clientes)
+  // asignadas a este usuario por nombre. Tabla sin RLS -- se consulta
+  // directo, sin RPC, cada minuto.
+  const [misTareasPendientes, setMisTareasPendientes] = useState(0);
+  const [mostrarMisTareas, setMostrarMisTareas] = useState(false);
+  const [misTareasLista, setMisTareasLista] = useState([]);
+  const [misTareasCargando, setMisTareasCargando] = useState(false);
+  const consultarMisTareasRef = useRef(null);
+  useEffect(() => {
+    const nombreUsuario = usuarioSesion?.nombre;
+    if (!nombreUsuario || !isSupabaseConfigured) { setMisTareasPendientes(0); consultarMisTareasRef.current = null; return undefined; }
+    let cancelado = false;
+    const consultar = async () => {
+      const { count, error } = await supabase.from("tareas_clientes")
+        .select("id", { count: "exact", head: true })
+        .eq("asignado_a", nombreUsuario).eq("estado", "pendiente");
+      if (cancelado) return;
+      if (!error) setMisTareasPendientes(count ?? 0);
+    };
+    consultarMisTareasRef.current = consultar;
+    void consultar();
+    const timer = setInterval(() => { void consultar(); }, 60000);
+    return () => { cancelado = true; clearInterval(timer); };
+  }, [usuarioSesion?.nombre]);
+  async function cargarMisTareasLista() {
+    const nombreUsuario = usuarioSesion?.nombre;
+    if (!nombreUsuario) return;
+    setMisTareasCargando(true);
+    const { data } = await supabase.from("tareas_clientes")
+      .select("id,dni,cliente_nombre,descripcion,asignado_por,estado,prioridad,conv_id,account_id,created_at")
+      .eq("asignado_a", nombreUsuario).eq("estado", "pendiente")
+      .order("created_at", { ascending: false }).limit(50);
+    const ordenado = (data || []).slice().sort((a, b) => {
+      if ((a.prioridad === "alta") !== (b.prioridad === "alta")) return a.prioridad === "alta" ? -1 : 1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    setMisTareasLista(ordenado);
+    setMisTareasCargando(false);
+  }
+
+  // Aviso sonoro + notificacion de escritorio cuando me asignan una tarea
+  // URGENTE (client-side, via Realtime) -- funciona sin servidor de push
+  // (Americanet no tiene uno propio, a diferencia de DIM).
+  function avisarTareaUrgente(tarea) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        [0, 0.22, 0.44].forEach((t0) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.frequency.value = 760;
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          gain.gain.setValueAtTime(0.16, ctx.currentTime + t0);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t0 + 0.18);
+          osc.start(ctx.currentTime + t0);
+          osc.stop(ctx.currentTime + t0 + 0.19);
+        });
+      }
+    } catch { /* sin audio */ }
+    try {
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(`🔴 Tarea urgente · ${tarea?.cliente_nombre || "Cliente"}`, {
+          body: `${tarea?.asignado_por || "Alguien"}: ${tarea?.descripcion || ""}`,
+          tag: `tarea-urgente-${tarea?.id}`,
+        });
+      }
+    } catch { /* sin notificaciones */ }
+  }
+
+  useEffect(() => {
+    const nombreUsuario = usuarioSesion?.nombre;
+    if (!nombreUsuario || !isSupabaseConfigured) return undefined;
+    const channel = supabase
+      .channel("tareas-urgentes-" + nombreUsuario)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "tareas_clientes" }, (payload) => {
+        const t = payload.new;
+        if (!t || t.prioridad !== "alta" || String(t.asignado_a || "") !== nombreUsuario) return;
+        avisarTareaUrgente(t);
+        void consultarMisTareasRef.current?.();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [usuarioSesion?.nombre]);
+  async function marcarMisTareaHecha(id) {
+    const ahora = new Date().toISOString();
+    await supabase.from("tareas_clientes").update({ estado: "hecha", completado_en: ahora }).eq("id", id);
+    setMisTareasLista((prev) => prev.filter((t) => t.id !== id));
+    setMisTareasPendientes((n) => Math.max(0, n - 1));
+  }
+
   // Nombres (en minusculas) que un tecnico puede ver: el suyo propio + los de
   // cualquier otro tecnico que comparta su mismo "grupo" (equipo). Mismo criterio
   // que ya usa la app movil. null = sin restriccion (no es tecnico).
@@ -5917,6 +6013,12 @@ export default function App() {
     }
 
     return Array.from(fotosSet);
+  };
+
+  const abrirClientePorDni = async (dni) => {
+    if (!dni) return;
+    const { data } = await supabase.from(CLIENTES_TABLE).select("*").eq("dni", String(dni)).maybeSingle();
+    if (data) void abrirDetalleCliente(data);
   };
 
   const abrirDetalleCliente = async (cliente = null) => {
@@ -18195,6 +18297,87 @@ export default function App() {
           <span style={{ display: "block", width: "18px", height: "2px", background: "#fff", borderRadius: "2px", transition: "transform 0.2s, opacity 0.2s", transform: sidebarOpen ? "rotate(-45deg) translate(4px, -4px)" : "none" }} />
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {!!usuarioSesion?.nombre && (
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => { const abrir = !mostrarMisTareas; setMostrarMisTareas(abrir); if (abrir) void cargarMisTareasLista(); }}
+                title="Tareas asignadas a mí desde el sidebar de Chatwoot"
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px", cursor: "pointer",
+                  background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)",
+                  color: "#ffffff", borderRadius: "8px", padding: "6px 10px", fontWeight: 600, fontSize: "13px",
+                }}
+              >
+                <ClipboardList size={16} />
+                {!isMobile && <span>Mis tareas</span>}
+                <span style={{
+                  minWidth: "20px", padding: "1px 6px", borderRadius: "999px", fontSize: "11px", fontWeight: 800, textAlign: "center",
+                  background: misTareasPendientes > 0 ? "#ef4444" : "rgba(255,255,255,0.25)", color: "#ffffff",
+                }}>
+                  {misTareasPendientes > 99 ? "99+" : misTareasPendientes}
+                </span>
+              </button>
+              {mostrarMisTareas && (
+                <>
+                  <div onClick={() => setMostrarMisTareas(false)} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 9998,
+                    width: 340, maxWidth: "calc(100vw - 24px)", maxHeight: "70vh", overflowY: "auto",
+                    background: theme === "dark" ? "#1e293b" : "#ffffff", borderRadius: 12,
+                    border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.25)", padding: "10px 12px",
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: theme === "dark" ? "#e2e8f0" : "#0f172a", marginBottom: 8 }}>
+                      Mis tareas pendientes
+                    </div>
+                    {misTareasCargando ? (
+                      <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Cargando…</div>
+                    ) : misTareasLista.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>No tienes tareas pendientes.</div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {misTareasLista.map((t) => {
+                          const urgente = t.prioridad === "alta";
+                          return (
+                          <div key={t.id} style={{
+                            background: urgente ? (theme === "dark" ? "#450a0a" : "#fef2f2") : (theme === "dark" ? "#0f172a" : "#f8faff"),
+                            border: `1px solid ${urgente ? "#dc2626" : (theme === "dark" ? "#334155" : "#e2e8f0")}`,
+                            borderLeft: urgente ? "3px solid #dc2626" : undefined,
+                            borderRadius: 8, padding: "8px 10px",
+                          }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
+                              <button type="button" onClick={() => {
+                                  setMostrarMisTareas(false);
+                                  if (t.dni) { void abrirClientePorDni(t.dni); return; }
+                                  // Prospecto sin DNI (tarea ligada por conv_id) -- no hay ficha
+                                  // de cliente que abrir, se abre la conversacion de Chatwoot
+                                  // directamente.
+                                  if (t.conv_id) {
+                                    window.open(`${CHATWOOT_URL_DEFAULT}/app/accounts/${t.account_id || "1"}/conversations/${t.conv_id}`, "_blank", "noopener");
+                                  }
+                                }}
+                                style={{ background: "none", border: "none", padding: 0, cursor: (t.dni || t.conv_id) ? "pointer" : "default",
+                                  fontSize: 11.5, fontWeight: 700, color: urgente ? "#dc2626" : "#7c3aed", textAlign: "left" }}>
+                                {urgente ? "🔴 " : ""}{t.cliente_nombre || t.dni || "Cliente"}{!t.dni && t.conv_id ? " ↗" : ""}
+                              </button>
+                              <button type="button" onClick={() => marcarMisTareaHecha(t.id)} title="Marcar hecha"
+                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#16a34a", flexShrink: 0 }}>✓</button>
+                            </div>
+                            <div style={{ fontSize: 12.5, color: theme === "dark" ? "#e2e8f0" : "#0f172a", lineHeight: 1.4 }}>{t.descripcion}</div>
+                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>
+                              Asignada por {t.asignado_por || "—"} · {new Date(t.created_at).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+                            </div>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className="theme-toggle-btn"

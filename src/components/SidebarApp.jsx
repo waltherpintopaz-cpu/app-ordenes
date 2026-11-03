@@ -17,7 +17,7 @@ async function cargarLeaflet() {
 }
 import { supabase } from "../supabaseClient";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
-import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ChevronRight, CheckCircle2, AlertTriangle, Lock, Ban } from "lucide-react";
+import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ListChecks, ChevronRight, CheckCircle2, AlertTriangle, Lock, Ban } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
 import { subirContratoPdf, enviarContratoWhatsapp } from "../utils/contratoEnvio.js";
 import { normalizarEtiquetaNodo, NODOS_CONFIG_DEFAULT, cargarNodosConfig, nodosActivosOrdenados, mwNodoMapDesdeConfig, nodoUsuarioRulesDesdeConfig, nodoPasswordRulesDesdeConfig, vlanPorNodoDesdeConfig, nodosMkwAutoDesdeConfig, esDimNodoDesdeConfig, empresaPorNodoDesdeConfig } from "../utils/nodos.js";
@@ -681,6 +681,14 @@ const getGlobalCSS = (T) => `
     100% { box-shadow: 0 0 0 0 transparent; }
   }
   .sb-badge-pulse { animation: sbBadgePulse 1.8s ease-out infinite; }
+  @keyframes sbFabPulseRing {
+    0%   { box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 0 0 var(--fab-pulse-c, rgba(124,58,237,0.5)); }
+    70%  { box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 0 11px transparent; }
+    100% { box-shadow: 0 4px 14px rgba(0,0,0,0.25), 0 0 0 0 transparent; }
+  }
+  .sb-fab-pulse { animation: sbFabPulseRing 2s ease-out infinite; }
+  .sb-fab-btn:hover { transform: scale(1.08); }
+  .sb-fab-btn:active { transform: scale(0.94); }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: ${T.border}; border-radius: 4px; }
 `;
 
@@ -1757,6 +1765,20 @@ export default function SidebarApp() {
   const [showNotas,     setShowNotas]     = useState(false);
   const [notaNueva,     setNotaNueva]     = useState("");
   const [notaGuardando, setNotaGuardando] = useState(false);
+  // Para asignar tareas: solo Gestoras y Administrador, nunca tecnicos.
+  const [usuariosAsignablesTareas, setUsuariosAsignablesTareas] = useState([]);
+  useEffect(() => {
+    supabase.from("usuarios").select("nombre").eq("activo", true).in("rol", ["Administrador", "Gestora"]).order("nombre")
+      .then(({ data }) => { if (data?.length) setUsuariosAsignablesTareas(data.map(u => u.nombre)); })
+      .catch(() => {});
+  }, []);
+  // Tareas/pendientes del cliente, asignables a un usuario del panel.
+  const [tareasCliente,   setTareasCliente]   = useState([]);
+  const [showTareas,      setShowTareas]      = useState(false);
+  const [tareaNueva,      setTareaNueva]      = useState("");
+  const [tareaAsignadoA,  setTareaAsignadoA]  = useState("");
+  const [tareaPrioridad,  setTareaPrioridad]  = useState("normal");
+  const [tareaGuardando,  setTareaGuardando]  = useState(false);
   // ── Mini-wizard Mikrowisp (sidebar) ──────────────────────────────────────
   const [mwOpen,         setMwOpen]         = useState(false);
   const [mwBusqVal,      setMwBusqVal]      = useState("");
@@ -1984,8 +2006,19 @@ export default function SidebarApp() {
     setOrdenCreada(null);
     setOrdenesCliente([]); setLiquidacionesCliente([]);
     setRecojoInfo(null);
+    setTareasCliente([]);
     setModoBusquedaManual(false);
   }
+
+  // Tareas: a diferencia del historial/notas (que exigen DNI real), un
+  // prospecto sin DNI resuelto tambien puede tener tareas, ligadas por
+  // conv_id -- por eso va en un efecto aparte en vez de junto a las demas
+  // cargas (que solo disparan si hay cedula/dni).
+  useEffect(() => {
+    const dni = cliente?.cedula || detalle?.cedula || "";
+    cargarTareas(dni, convId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente?.cedula, detalle?.cedula, convId]);
 
   function volverABuscar() {
     resetEstado();
@@ -3702,6 +3735,56 @@ export default function SidebarApp() {
   async function eliminarNota(id) {
     await supabase.from("notas_clientes").delete().eq("id", id);
     setNotasCliente(prev => prev.filter(n => n.id !== id));
+  }
+
+  // dni puede venir vacio (prospecto aun sin DNI resuelto) -- en ese caso se
+  // busca por conv_id en su lugar, para que un contacto no registrado
+  // tambien pueda tener tareas ligadas a su conversacion.
+  async function cargarTareas(dni, convIdFallback) {
+    const dniLimpio = String(dni || "").replace(/\D/g,"");
+    let query = supabase.from("tareas_clientes")
+      .select("id,descripcion,asignado_a,asignado_por,estado,prioridad,created_at,completado_en");
+    if (dniLimpio) query = query.eq("dni", dniLimpio);
+    else if (convIdFallback) query = query.eq("conv_id", String(convIdFallback));
+    else { setTareasCliente([]); return; }
+    const { data } = await query.order("created_at", { ascending: false }).limit(20);
+    const ordenado = (data || []).slice().sort((a, b) => {
+      if ((a.prioridad === "alta") !== (b.prioridad === "alta")) return a.prioridad === "alta" ? -1 : 1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    setTareasCliente(ordenado);
+  }
+
+  async function guardarTarea(dni, clienteNombre) {
+    const dniLimpio = String(dni || "").replace(/\D/g,"");
+    if (!tareaNueva.trim() || (!dniLimpio && !convId) || !tareaAsignadoA) return;
+    setTareaGuardando(true);
+    const { data, error } = await supabase.from("tareas_clientes").insert([{
+      dni: dniLimpio || null,
+      cliente_nombre: clienteNombre || null,
+      conv_id: convId || null,
+      account_id: acctId || null,
+      descripcion: tareaNueva.trim(),
+      asignado_a: tareaAsignadoA,
+      asignado_por: agente || "—",
+      prioridad: tareaPrioridad,
+    }]).select("id,descripcion,asignado_a,asignado_por,estado,prioridad,created_at,completado_en").single();
+    if (!error && data) {
+      setTareasCliente(prev => [data, ...prev].sort((a, b) => {
+        if ((a.prioridad === "alta") !== (b.prioridad === "alta")) return a.prioridad === "alta" ? -1 : 1;
+        return new Date(b.created_at) - new Date(a.created_at);
+      }));
+      setTareaNueva(""); setTareaAsignadoA(""); setTareaPrioridad("normal");
+    } else if (error) {
+      notify("No se pudo guardar la tarea: " + (error.message || "error desconocido"), false);
+    }
+    setTareaGuardando(false);
+  }
+
+  async function marcarTareaHecha(id) {
+    const ahora = new Date().toISOString();
+    await supabase.from("tareas_clientes").update({ estado: "hecha", completado_en: ahora }).eq("id", id);
+    setTareasCliente(prev => prev.map(t => t.id === id ? { ...t, estado: "hecha", completado_en: ahora } : t));
   }
 
   async function cargarHistorialOrdenes(cedula) {
@@ -6562,6 +6645,131 @@ export default function SidebarApp() {
             })()}
           </>)}
         </div>
+      )}
+
+      {/* ══ TAREAS DEL CLIENTE — boton flotante, FUERA del bloque "cliente
+          encontrado": a diferencia de notas/historial, las tareas si deben
+          funcionar para un contacto sin DNI/no registrado (se ligan por
+          conv_id en ese caso, ver cargarTareas/guardarTarea). ══ */}
+      {(() => {
+        const pendientes = tareasCliente.filter(t => t.estado === "pendiente").length;
+        const hayUrgente = tareasCliente.some(t => t.estado === "pendiente" && t.prioridad === "alta");
+        return (
+          <button onClick={() => setShowTareas(v => !v)}
+            title="Tareas del cliente"
+            className={pendientes > 0 ? "sb-fab-btn sb-fab-pulse" : "sb-fab-btn"}
+            style={{ position:"fixed", right:72, bottom:16, zIndex:9998,
+              width:50, height:50, borderRadius:"50%", border: hayUrgente ? "2px solid #fecaca" : "none", cursor:"pointer",
+              background: hayUrgente
+                ? "linear-gradient(135deg, #ef4444, #b91c1c)"
+                : `linear-gradient(135deg, #a855f7, ${shade("#7c3aed")})`,
+              color:"#fff", boxShadow:"0 4px 14px rgba(0,0,0,0.25)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"transform .15s cubic-bezier(.34,1.56,.64,1)",
+              "--fab-pulse-c": hayUrgente ? "rgba(220,38,38,0.55)" : "rgba(168,85,247,0.5)" }}>
+            <ListChecks size={21} strokeWidth={2.3} />
+            {pendientes > 0 && (
+              <span style={{ position:"absolute", top:-3, right:-3, background: hayUrgente ? "#fff" : T.red,
+                color: hayUrgente ? "#b91c1c" : "#fff",
+                borderRadius:99, minWidth:19, height:19, padding:"0 4px", fontSize:10.5, fontWeight:800,
+                display:"flex", alignItems:"center", justifyContent:"center", border:`2px solid ${T.bg}`,
+                boxShadow:"0 2px 5px rgba(0,0,0,0.25)" }}>
+                {pendientes}
+              </span>
+            )}
+          </button>
+        );
+      })()}
+
+      {showTareas && (
+        <>
+          <div onClick={() => setShowTareas(false)}
+            style={{ position:"fixed", inset:0, zIndex:9997, background:"rgba(10,10,26,0.25)",
+              animation:"sbToastBackdropIn .2s ease both" }} />
+          <div style={{ position:"fixed", right:16, bottom:72, zIndex:9998, width:300, maxWidth:"calc(100vw - 32px)",
+            maxHeight:"70vh", display:"flex", flexDirection:"column",
+            background:T.card, borderRadius:12, border:`1px solid ${T.border}`,
+            boxShadow:"0 12px 32px rgba(0,0,0,0.25)", overflow:"hidden",
+            animation:"sbToastCardIn .28s cubic-bezier(.34,1.56,.64,1) both" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+              padding:"10px 12px", borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+              <span style={{ fontSize:12, fontWeight:700, color:T.navy, display:"flex", alignItems:"center", gap:6 }}>
+                <ListChecks size={14} color="#7c3aed" /> Tareas del cliente
+              </span>
+              <button onClick={() => setShowTareas(false)} className="sb-btn-ghost" title="Cerrar">
+                <XCircle size={16} />
+              </button>
+            </div>
+            <div style={{ padding:"10px 12px", overflowY:"auto" }}>
+              {!cliente && !convId && (
+                <div style={{ fontSize:11, color:T.amber || "#b45309", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:6, padding:"7px 9px", marginBottom:10 }}>
+                  Todavía no se identificó la conversación — espera un segundo e intenta de nuevo.
+                </div>
+              )}
+              {/* Formulario nueva tarea */}
+              <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
+                <textarea
+                  placeholder="Ej: Actualizar plan a este cliente..."
+                  value={tareaNueva}
+                  onChange={e => setTareaNueva(e.target.value)}
+                  rows={2}
+                  style={{ padding:"7px 9px", border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:12, fontFamily:"inherit", resize:"vertical", outline:"none", background:T.card, color:T.navy }}
+                />
+                <div style={{ display:"flex", gap:6 }}>
+                  <select value={tareaAsignadoA} onChange={e => setTareaAsignadoA(e.target.value)}
+                    style={{ flex:1, padding:"6px 8px", border:`1.5px solid ${T.border}`, borderRadius:6, fontSize:12, fontFamily:"inherit", outline:"none", background:T.card, color:T.navy }}>
+                    <option value="">Asignar a...</option>
+                    {usuariosAsignablesTareas.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setTareaPrioridad(p => p === "alta" ? "normal" : "alta")}
+                    title="Marcar como urgente"
+                    style={{ padding:"0 10px", background: tareaPrioridad === "alta" ? "#dc2626" : T.card,
+                      border:`1.5px solid ${tareaPrioridad === "alta" ? "#dc2626" : T.border}`,
+                      borderRadius:6, fontSize:12, fontWeight:700, cursor:"pointer",
+                      color: tareaPrioridad === "alta" ? "#fff" : T.muted, flexShrink:0 }}>
+                    🔴
+                  </button>
+                  <button onClick={() => guardarTarea(cliente?.cedula || detalle?.cedula, cliente?.nombre || detalle?.nombre || contact?.name)}
+                    disabled={tareaGuardando || !tareaNueva.trim() || !tareaAsignadoA || (!cliente?.cedula && !detalle?.cedula && !convId)}
+                    style={{ padding:"0 12px", background: (tareaNueva.trim() && tareaAsignadoA) ? "#7c3aed" : T.border, color:"#fff", border:"none", borderRadius:6, fontSize:12, fontWeight:700, cursor: (tareaNueva.trim() && tareaAsignadoA) ? "pointer" : "default" }}>
+                    {tareaGuardando ? "..." : "✓"}
+                  </button>
+                </div>
+              </div>
+              {/* Lista de tareas */}
+              {tareasCliente.length === 0 ? (
+                <div style={{ fontSize:11, color:T.muted, textAlign:"center", padding:"6px 0" }}>Sin tareas registradas</div>
+              ) : (
+                <div style={{ display:"grid", gap:6 }}>
+                  {tareasCliente.map(t => {
+                    const urgente = t.prioridad === "alta" && t.estado !== "hecha";
+                    return (
+                    <div key={t.id} style={{
+                      background: urgente ? "#fef2f2" : T.bg,
+                      border:`1px solid ${urgente ? "#fca5a5" : T.border}`,
+                      borderLeft: urgente ? "3px solid #dc2626" : `1px solid ${T.border}`,
+                      borderRadius:6, padding:"8px 10px", opacity: t.estado === "hecha" ? 0.6 : 1 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4, gap:6 }}>
+                        <div style={{ fontSize:10, color: urgente ? "#dc2626" : "#7c3aed", fontWeight:700 }}>
+                          {urgente ? "🔴 URGENTE · " : ""}→ {t.asignado_a} · {t.asignado_por || "—"} · {new Date(t.created_at).toLocaleDateString("es-PE",{day:"2-digit",month:"short"})}
+                        </div>
+                        {t.estado === "pendiente" ? (
+                          <button onClick={() => marcarTareaHecha(t.id)}
+                            title="Marcar hecha"
+                            style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"#16a34a", padding:"0 2px", lineHeight:1, flexShrink:0 }}>✓</button>
+                        ) : (
+                          <span style={{ fontSize:10, color:"#16a34a", fontWeight:700, flexShrink:0 }}>✓ Hecha</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize:12, color:T.navy, lineHeight:1.5, whiteSpace:"pre-wrap", textDecoration: t.estado === "hecha" ? "line-through" : "none" }}>{t.descripcion}</div>
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── Cliente cargado ── */}
