@@ -2528,6 +2528,26 @@ const handleChatwootCrearAgente = async (payload, creds = null) => {
   return { id: data?.id, nombre: data?.name, correo: data?.email, rol: data?.role };
 };
 
+// Elimina un agente de la cuenta de Chatwoot. Chatwoot responde 200 con
+// cuerpo vacio en un delete exitoso, por eso no se usa readProxyJsonResponse
+// (que espera JSON) sino que solo se valida el status.
+const handleChatwootEliminarAgente = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const acctId = String(payload?.account_id || "1");
+  const agenteId = payload?.agente_id;
+  if (!agenteId) throw new Error("agente_id requerido");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/agents/${agenteId}`, {
+    method: "DELETE",
+    headers: { api_access_token: token },
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`Chatwoot eliminar agente: HTTP ${res.status}${txt ? " — " + txt.slice(0, 200) : ""}`);
+  }
+  return { eliminado: true };
+};
+
 const handleChatwootListarInboxes = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -2701,6 +2721,11 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootCrearAgente") {
       const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootCrearAgente(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootEliminarAgente") {
+      const creds = await resolveCredsConOverride(body);
+      const data = await handleChatwootEliminarAgente(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootListarConversaciones") {
