@@ -2488,6 +2488,46 @@ const handleBotPagosV3EstadoConv = async (payload) => {
   throw new Error(`accion invalida: "${accionEstado}" (esperado "pausar" o "liberar")`);
 };
 
+// Lista los agentes (usuarios) de la cuenta de Chatwoot -- para poblar el
+// selector del panel "Crear agente" sin tener que entrar a Chatwoot.
+const handleChatwootListarAgentes = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const acctId = String(payload?.account_id || "1");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/agents`, {
+    headers: { api_access_token: token },
+  });
+  const data = await readProxyJsonResponse(res, "Chatwoot listar agentes");
+  const agentes = (Array.isArray(data) ? data : data?.payload || []).map((a) => ({
+    id: a.id, nombre: a.name, correo: a.email, rol: a.role, disponible: a.availability_status || null,
+  }));
+  return { agentes };
+};
+
+// Crea un agente nuevo en la cuenta de Chatwoot (pedido 2026-11-03, para no
+// tener que entrar directo al panel de Chatwoot cada vez que se contrata
+// alguien nuevo). Requiere que el token configurado (CHATWOOT_TOKEN o el
+// override del tenant) sea de un usuario Administrator de esa cuenta --
+// mismo token que ya se usa para listar inboxes/asignar conversaciones.
+// Chatwoot manda un correo de invitacion con el link para poner contraseña.
+const handleChatwootCrearAgente = async (payload, creds = null) => {
+  const base = creds?.base || CHATWOOT_BASE;
+  const token = creds?.token || CHATWOOT_TOKEN;
+  const acctId = String(payload?.account_id || "1");
+  const nombre = String(payload?.nombre || "").trim();
+  const correo = String(payload?.correo || "").trim();
+  const rol = payload?.rol === "administrator" ? "administrator" : "agent";
+  if (!nombre) throw new Error("nombre requerido");
+  if (!correo) throw new Error("correo requerido");
+  const res = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", api_access_token: token },
+    body: JSON.stringify({ name: nombre, email: correo, role: rol }),
+  });
+  const data = await readProxyJsonResponse(res, "Chatwoot crear agente");
+  return { id: data?.id, nombre: data?.name, correo: data?.email, rol: data?.role };
+};
+
 const handleChatwootListarInboxes = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
@@ -2651,6 +2691,16 @@ const proxyMikrowispGenerico = async (req) => {
     if (accion === "ChatwootListarInboxes") {
       const creds = await resolveCredsConOverride(body);
       const data = await handleChatwootListarInboxes(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootListarAgentes") {
+      const creds = await resolveCredsConOverride(body);
+      const data = await handleChatwootListarAgentes(body.payload || {}, creds);
+      return { status: 200, json: { ok: true, data } };
+    }
+    if (accion === "ChatwootCrearAgente") {
+      const creds = await resolveCredsConOverride(body);
+      const data = await handleChatwootCrearAgente(body.payload || {}, creds);
       return { status: 200, json: { ok: true, data } };
     }
     if (accion === "ChatwootListarConversaciones") {
