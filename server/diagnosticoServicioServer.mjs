@@ -1992,11 +1992,12 @@ function resolveCredsConOverride(body) {
   return resolveTenantChatwootCreds(body.tenant_id, body.tenant_token);
 }
 
-const cwBuscarContacto = async (phone, creds = null, acctId = "1") => {
+const cwBuscarContacto = async (phone, creds = null, acctId = "1", dni = "") => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
   const local = String(phone || "").slice(-9);
   for (const q of [phone, "51" + local, local]) {
+    if (!q) continue;
     const sr = await fetchConTimeout(
       `${base}/api/v1/accounts/${acctId}/contacts/search?q=${encodeURIComponent(q)}`,
       { headers: { api_access_token: token } },
@@ -2004,6 +2005,38 @@ const cwBuscarContacto = async (phone, creds = null, acctId = "1") => {
     const contacts = sr?.payload?.contacts || sr?.payload || [];
     const found = Array.isArray(contacts) ? contacts[0] : null;
     if (found?.id) return found.id;
+  }
+  // Fallback: el celular registrado en la ficha puede no ser el que el
+  // cliente realmente usa para escribir por WhatsApp (celular distinto al
+  // de instalacion) -- confirmado con un caso real 2026-11-03. El DNI si
+  // suele coincidir (es un atributo personalizado de contacto en
+  // Chatwoot), asi que se intenta filtrar por ese atributo antes de
+  // rendirse. Se prueban un par de variantes de la clave del atributo
+  // porque no hay forma de confirmar el slug exacto sin acceso directo al
+  // panel de Chatwoot de cada tenant.
+  const dniLimpio = String(dni || "").replace(/\D/g, "");
+  if (dniLimpio) {
+    for (const attrKey of ["dni", "DNI"]) {
+      const fr = await fetchConTimeout(
+        `${base}/api/v1/accounts/${acctId}/contacts/filter`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", api_access_token: token },
+          body: JSON.stringify({
+            payload: [{
+              attribute_key: attrKey,
+              filter_operator: "equal_to",
+              values: [dniLimpio],
+              query_operator: null,
+              attribute_model: "custom_attribute",
+            }],
+          }),
+        },
+      ).then((r) => r.json()).catch(() => ({}));
+      const contacts = fr?.payload || [];
+      const found = Array.isArray(contacts) ? contacts[0] : null;
+      if (found?.id) return found.id;
+    }
   }
   return null;
 };
@@ -2506,11 +2539,12 @@ const handleGetChatwootMessages = async (payload, creds = null) => {
   const base = creds?.base || CHATWOOT_BASE;
   const token = creds?.token || CHATWOOT_TOKEN;
   const phone = String(payload?.phone || "").replace(/\D/g, "");
+  const dni = String(payload?.dni || "").replace(/\D/g, "");
   const acctId = String(payload?.account_id || "1");
   const directConvId = payload?.conv_id || null;
   if (directConvId) return { messages: await cwFetchAllMessages(directConvId, acctId, creds), convIds: [directConvId] };
-  if (!phone) throw new Error("phone o conv_id requerido");
-  const contactId = await cwBuscarContacto(phone, creds, acctId);
+  if (!phone && !dni) throw new Error("phone, dni o conv_id requerido");
+  const contactId = await cwBuscarContacto(phone, creds, acctId, dni);
   if (!contactId) throw new Error("Contacto no encontrado");
   const cr = await fetchConTimeout(`${base}/api/v1/accounts/${acctId}/contacts/${contactId}/conversations`, {
     headers: { api_access_token: token },
