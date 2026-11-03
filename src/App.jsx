@@ -9,6 +9,7 @@ import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import ChatTecnico from "./components/ChatTecnico";
 import OrdenChat from "./components/OrdenChat";
 import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
+import ClienteChatHistorial from "./components/ClienteChatHistorial";
 import VpnAccesosPanel from "./components/VpnAccesosPanel";
 import SeguimientoTecnicosPanel from "./components/SeguimientoTecnicosPanel";
 import AsistenciasPanel from "./components/AsistenciasPanel";
@@ -26947,6 +26948,10 @@ export default function App() {
                   );
                 })()}
               </div>
+
+              {/* ── Historial de conversación: mensajes de todos los chats
+                  por-orden de este cliente en una sola línea de tiempo ── */}
+              <ClienteChatHistorial cli={cli} onAbrirChatOrden={(item) => setChatFlotanteOrden(item)} />
 
               {/* ── Señal ONU — VSOL/SSH ── */}
               {cli.snOnu && nodoUsaOltSsh(cli.nodo) && (
