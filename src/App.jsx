@@ -6,6 +6,9 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
+import ChatTecnico from "./components/ChatTecnico";
+import OrdenChat from "./components/OrdenChat";
+import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
 import VpnAccesosPanel from "./components/VpnAccesosPanel";
 import SeguimientoTecnicosPanel from "./components/SeguimientoTecnicosPanel";
 import AsistenciasPanel from "./components/AsistenciasPanel";
@@ -3170,6 +3173,12 @@ export default function App() {
 
   const [ordenEnLiquidacion, setOrdenEnLiquidacion] = useState(null);
   const [ordenDetalle, setOrdenDetalle] = useState(null);
+  // Chat de la orden como acceso directo flotante -- sin pasar por el modal
+  // completo de detalle.
+  const [chatFlotanteOrden, setChatFlotanteOrden] = useState(null);
+  // Chat directo tecnico <-> oficina (coordinacion general, no atada a una
+  // orden) -- guarda el nombre del tecnico cuyo hilo esta abierto.
+  const [chatTecnicoAbierto, setChatTecnicoAbierto] = useState(null);
   const [fotosOrdenDetalle, setFotosOrdenDetalle] = useState([]);
   const [liquidacion, setLiquidacion] = useState(initialLiquidacion);
   const [etiquetaFiltro, setEtiquetaFiltro] = useState("");
@@ -30855,9 +30864,77 @@ export default function App() {
                   </div>
                 </div>
               )}
+              <OrdenChat ordenId={ordenDetalle.id} ordenCodigo={ordenDetalle.codigo} tecnicoAsignado={ordenDetalle.tecnico} autor={usuarioSesion?.nombre} autorRol={rolSesion} />
               <div style={{ marginTop: "20px" }}>
                 <button onClick={() => { setOrdenDetalle(null); setFotosOrdenDetalle([]); }} style={secondaryButton}>Cerrar</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Boton flotante global: avisa en que ordenes hay mensajes de
+            chat sin ver, sin tener que recorrerlas una por una. ── */}
+        {!!usuarioSesion?.nombre && (
+          <ChatOrdenesFlotante
+            ordenes={ordenes}
+            tecnicos={rolSesion === "Tecnico" ? (usuarioSesion?.nombre ? [usuarioSesion.nombre] : []) : tecnicosActivos.map((t) => t.nombre)}
+            tecnicosDirectorio={rolSesion === "Tecnico" ? null : tecnicosActivos}
+            autor={usuarioSesion.nombre}
+            onAbrirOrden={(item) => setChatFlotanteOrden(item)}
+            onAbrirTecnico={(nombre) => setChatTecnicoAbierto(nombre)}
+          />
+        )}
+
+        {/* ── Chat de la orden como acceso directo flotante -- no abre el
+            modal completo de detalle, solo el chat. ── */}
+        {chatFlotanteOrden && (
+          <div className="chat-popup-in" style={{
+            position: "fixed", right: 20, bottom: 20, zIndex: 9999,
+            width: 360, maxWidth: "calc(100vw - 32px)", maxHeight: "72vh", display: "flex", flexDirection: "column",
+            background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
+            boxShadow: "0 16px 44px rgba(15,23,42,0.28)", overflow: "hidden",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #e2e8f0", background: "#f5f3ff", flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0f172a" }}>{chatFlotanteOrden.codigo} · {chatFlotanteOrden.nombre || "Cliente"}</div>
+                <div style={{ fontSize: 10.5, color: "#94a3b8" }}>Chat de la orden</div>
+              </div>
+              <button onClick={() => setChatFlotanteOrden(null)} title="Cerrar" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "#94a3b8" }}>✕</button>
+            </div>
+            <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+              <OrdenChat
+                ordenId={chatFlotanteOrden.id}
+                ordenCodigo={chatFlotanteOrden.codigo}
+                tecnicoAsignado={chatFlotanteOrden.tecnico}
+                autor={usuarioSesion?.nombre}
+                autorRol={rolSesion}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── Chat directo tecnico <-> oficina, flotante -- separado del
+            chat por orden. ── */}
+        {chatTecnicoAbierto && (
+          <div className="chat-popup-in" style={{
+            position: "fixed", right: 20, bottom: 20, zIndex: 9999,
+            width: 360, maxWidth: "calc(100vw - 32px)", maxHeight: "72vh", display: "flex", flexDirection: "column",
+            background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
+            boxShadow: "0 16px 44px rgba(15,23,42,0.28)", overflow: "hidden",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #e2e8f0", background: "#eff6ff", flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: "#0f172a" }}>{chatTecnicoAbierto}</div>
+                <div style={{ fontSize: 10.5, color: "#94a3b8" }}>Chat con oficina</div>
+              </div>
+              <button onClick={() => setChatTecnicoAbierto(null)} title="Cerrar" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "#94a3b8" }}>✕</button>
+            </div>
+            <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+              <ChatTecnico
+                tecnicoNombre={chatTecnicoAbierto}
+                autor={usuarioSesion?.nombre}
+                autorRol={rolSesion}
+              />
             </div>
           </div>
         )}
