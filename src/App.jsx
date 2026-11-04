@@ -56,6 +56,7 @@ import MaxPlayerReportesPanel from "./components/MaxPlayerReportesPanel";
 import MaxPlayerEnVivoPanel from "./components/MaxPlayerEnVivoPanel";
 import MaxPlayerCanalesPanel from "./components/MaxPlayerCanalesPanel";
 import StreetViewThumb from "./components/StreetViewThumb";
+import Cliente360Extra from "./components/Cliente360Extra";
 import GastosPersonalesPanel from "./components/GastosPersonalesPanel";
 import NocEquiposPanel from "./components/NocEquiposPanel";
 import InventarioCatalogoPanel from "./components/InventarioCatalogoPanel";
@@ -26948,6 +26949,9 @@ export default function App() {
                   );
                 })()}
               </div>
+
+              {/* ── Vista 360 (prototipo): facturación + WhatsApp reciente ── */}
+              <Cliente360Extra cli={cli} esDim={esDimNodo(cli.nodo)} routerId={mikrowispRouterIdParaCliente(cli.nodo, cli.vlan)} />
 
               {/* ── Historial de conversación: mensajes de todos los chats
                   por-orden de este cliente en una sola línea de tiempo ── */}
