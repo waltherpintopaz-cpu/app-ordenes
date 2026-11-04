@@ -18319,6 +18319,20 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
           {!!usuarioSesion?.nombre && (
             <div style={{ position: "relative" }}>
+              <style>{`
+                @keyframes mtCardIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+                @keyframes mtBadgePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.4); } 50% { box-shadow: 0 0 0 5px rgba(220,38,38,0); } }
+                .mt-card { animation: mtCardIn .22s ease-out backwards; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+                .mt-card:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(15,23,42,0.1); }
+                .mt-check-btn { transition: transform .12s ease, background .12s ease; }
+                .mt-check-btn:hover { transform: scale(1.14); background: rgba(22,163,74,0.14) !important; }
+                .mt-reasignar-select { transition: background .15s ease, border-color .15s ease; cursor: pointer; }
+                .mt-reasignar-select:hover { border-color: #7c3aed !important; background: rgba(124,58,237,0.08) !important; }
+                .mt-bell-badge { animation: mtBadgePulse 2s ease-in-out infinite; }
+                .mt-scroll::-webkit-scrollbar { width: 6px; }
+                .mt-scroll::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.35); border-radius: 999px; }
+                .mt-scroll::-webkit-scrollbar-track { background: transparent; }
+              `}</style>
               <button
                 type="button"
                 onClick={() => { const abrir = !mostrarMisTareas; setMostrarMisTareas(abrir); if (abrir) void cargarMisTareasLista(); }}
@@ -18327,11 +18341,14 @@ export default function App() {
                   display: "flex", alignItems: "center", gap: "6px", cursor: "pointer",
                   background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.25)",
                   color: "#ffffff", borderRadius: "8px", padding: "6px 10px", fontWeight: 600, fontSize: "13px",
+                  transition: "background .15s ease, transform .1s ease",
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.25)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.15)"; }}
               >
                 <ClipboardList size={16} />
                 {!isMobile && <span>Mis tareas</span>}
-                <span style={{
+                <span className={misTareasPendientes > 0 ? "mt-bell-badge" : undefined} style={{
                   minWidth: "20px", padding: "1px 6px", borderRadius: "999px", fontSize: "11px", fontWeight: 800, textAlign: "center",
                   background: misTareasPendientes > 0 ? "#ef4444" : "rgba(255,255,255,0.25)", color: "#ffffff",
                 }}>
@@ -18341,79 +18358,138 @@ export default function App() {
               {mostrarMisTareas && (
                 <>
                   <div onClick={() => setMostrarMisTareas(false)} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
-                  <div style={{
+                  <div className="chat-popup-in" style={{
                     position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 9998,
-                    width: 340, maxWidth: "calc(100vw - 24px)", maxHeight: "70vh", overflowY: "auto",
-                    background: theme === "dark" ? "#1e293b" : "#ffffff", borderRadius: 12,
+                    width: 360, maxWidth: "calc(100vw - 24px)", display: "flex", flexDirection: "column",
+                    background: theme === "dark" ? "#1e293b" : "#ffffff", borderRadius: 14,
                     border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
-                    boxShadow: "0 12px 32px rgba(0,0,0,0.25)", padding: "10px 12px",
+                    boxShadow: "0 16px 40px rgba(15,23,42,0.22)", overflow: "hidden",
                   }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: theme === "dark" ? "#e2e8f0" : "#0f172a", marginBottom: 8 }}>
-                      Mis tareas pendientes
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "14px 16px",
+                      background: theme === "dark"
+                        ? "linear-gradient(135deg, #312e81, #1e293b)"
+                        : "linear-gradient(135deg, #ede9fe, #ffffff)",
+                      borderBottom: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
+                    }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+                        background: "linear-gradient(135deg, #a78bfa, #7c3aed)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        boxShadow: "0 3px 8px rgba(124,58,237,0.35)",
+                      }}>
+                        <ClipboardList size={16} color="#fff" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: theme === "dark" ? "#f1f5f9" : "#0f172a" }}>
+                          Mis tareas pendientes
+                        </div>
+                        <div style={{ fontSize: 10.5, color: theme === "dark" ? "#94a3b8" : "#7c7fa0" }}>
+                          {misTareasLista.length} {misTareasLista.length === 1 ? "tarea asignada a ti" : "tareas asignadas a ti"}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setMostrarMisTareas(false)} title="Cerrar"
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: theme === "dark" ? "#94a3b8" : "#9ca3af", padding: 2, lineHeight: 1 }}>
+                        ✕
+                      </button>
                     </div>
+                    <div className="mt-scroll" style={{ padding: "10px 12px", maxHeight: "62vh", overflowY: "auto" }}>
                     {misTareasCargando ? (
-                      <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Cargando…</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "22px 0" }}>Cargando…</div>
                     ) : misTareasLista.length === 0 ? (
-                      <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>No tienes tareas pendientes.</div>
+                      <div style={{ textAlign: "center", padding: "26px 0" }}>
+                        <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
+                        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>No tienes tareas pendientes.</div>
+                      </div>
                     ) : (
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {misTareasLista.map((t) => {
+                      <div style={{ display: "grid", gap: 7 }}>
+                        {misTareasLista.map((t, idx) => {
                           const urgente = t.prioridad === "alta";
+                          const nombreMostrado = t.cliente_nombre || t.dni || "Cliente";
+                          const iniciales = nombreMostrado.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join("").toUpperCase() || "?";
                           return (
-                          <div key={t.id} style={{
+                          <div key={t.id} className="mt-card" style={{
+                            animationDelay: `${Math.min(idx, 8) * 30}ms`,
                             background: urgente ? (theme === "dark" ? "#450a0a" : "#fef2f2") : (theme === "dark" ? "#0f172a" : "#f8faff"),
                             border: `1px solid ${urgente ? "#dc2626" : (theme === "dark" ? "#334155" : "#e2e8f0")}`,
-                            borderLeft: urgente ? "3px solid #dc2626" : undefined,
-                            borderRadius: 8, padding: "8px 10px",
+                            borderLeft: urgente ? "3px solid #dc2626" : `3px solid ${theme === "dark" ? "#334155" : "#e0e7ff"}`,
+                            borderRadius: 10, padding: "10px 11px",
                           }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
-                              <button type="button" onClick={() => {
-                                  setMostrarMisTareas(false);
-                                  if (t.dni) { void abrirClientePorDni(t.dni); return; }
-                                  // Prospecto sin DNI (tarea ligada por conv_id) -- no hay ficha
-                                  // de cliente que abrir, se abre la conversacion de Chatwoot
-                                  // directamente.
-                                  if (t.conv_id) {
-                                    window.open(`${CHATWOOT_URL_DEFAULT}/app/accounts/${t.account_id || "1"}/conversations/${t.conv_id}`, "_blank", "noopener");
-                                  }
-                                }}
-                                style={{ background: "none", border: "none", padding: 0, cursor: (t.dni || t.conv_id) ? "pointer" : "default",
-                                  fontSize: 11.5, fontWeight: 700, color: urgente ? "#dc2626" : "#7c3aed", textAlign: "left" }}>
-                                {urgente ? "🔴 " : ""}{t.cliente_nombre || t.dni || "Cliente"}{!t.dni && t.conv_id ? " ↗" : ""}
-                              </button>
-                              <button type="button" onClick={() => marcarMisTareaHecha(t.id)} title="Marcar hecha"
-                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#16a34a", flexShrink: 0 }}>✓</button>
-                            </div>
-                            <div style={{ fontSize: 12.5, color: theme === "dark" ? "#e2e8f0" : "#0f172a", lineHeight: 1.4 }}>{t.descripcion}</div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: 4 }}>
-                              <div style={{ fontSize: 10, color: "#94a3b8" }}>
-                                Asignada por {t.asignado_por || "—"} · {new Date(t.created_at).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                              <div style={{
+                                width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 10.5, fontWeight: 800, color: "#fff",
+                                background: urgente ? "linear-gradient(135deg, #f87171, #dc2626)" : "linear-gradient(135deg, #a78bfa, #7c3aed)",
+                                boxShadow: urgente ? "0 2px 6px rgba(220,38,38,0.35)" : "0 2px 6px rgba(124,58,237,0.3)",
+                                marginTop: 1,
+                              }}>
+                                {iniciales}
                               </div>
-                              {usuariosAsignablesTareasPanel.length > 0 && (
-                                <select
-                                  defaultValue=""
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={(e) => { const v = e.target.value; if (v) void reasignarMiTarea(t.id, v); }}
-                                  title="Reasignar a otro usuario"
-                                  style={{
-                                    fontSize: 10, padding: "2px 4px", borderRadius: 6, flexShrink: 0,
-                                    border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
-                                    background: theme === "dark" ? "#0f172a" : "#fff",
-                                    color: theme === "dark" ? "#cbd5e1" : "#475569",
-                                  }}
-                                >
-                                  <option value="">↪ Reasignar…</option>
-                                  {usuariosAsignablesTareasPanel.filter((u) => u !== usuarioSesion?.nombre).map((u) => (
-                                    <option key={u} value={u}>{u}</option>
-                                  ))}
-                                </select>
-                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6 }}>
+                                  <button type="button" onClick={() => {
+                                      setMostrarMisTareas(false);
+                                      if (t.dni) { void abrirClientePorDni(t.dni); return; }
+                                      // Prospecto sin DNI (tarea ligada por conv_id) -- no hay ficha
+                                      // de cliente que abrir, se abre la conversacion de Chatwoot
+                                      // directamente.
+                                      if (t.conv_id) {
+                                        window.open(`${CHATWOOT_URL_DEFAULT}/app/accounts/${t.account_id || "1"}/conversations/${t.conv_id}`, "_blank", "noopener");
+                                      }
+                                    }}
+                                    style={{ background: "none", border: "none", padding: 0, cursor: (t.dni || t.conv_id) ? "pointer" : "default",
+                                      fontSize: 12, fontWeight: 700, color: urgente ? "#dc2626" : "#7c3aed", textAlign: "left" }}>
+                                    {nombreMostrado}{!t.dni && t.conv_id ? " ↗" : ""}
+                                  </button>
+                                  <button type="button" onClick={() => marcarMisTareaHecha(t.id)} title="Marcar hecha" className="mt-check-btn"
+                                    style={{
+                                      background: "rgba(22,163,74,0.08)", border: "none", borderRadius: "50%",
+                                      width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
+                                      cursor: "pointer", fontSize: 12, color: "#16a34a", flexShrink: 0,
+                                    }}>✓</button>
+                                </div>
+                                {urgente && (
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", gap: 3, marginTop: 3,
+                                    fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", color: "#fff",
+                                    background: "#dc2626", borderRadius: 999, padding: "1.5px 7px",
+                                  }}>● URGENTE</span>
+                                )}
+                                <div style={{ fontSize: 12.5, color: theme === "dark" ? "#e2e8f0" : "#0f172a", lineHeight: 1.4, marginTop: urgente ? 4 : 3 }}>{t.descripcion}</div>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: 6 }}>
+                                  <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                    {t.asignado_por || "—"} · {new Date(t.created_at).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+                                  </div>
+                                  {usuariosAsignablesTareasPanel.length > 0 && (
+                                    <select
+                                      defaultValue=""
+                                      className="mt-reasignar-select"
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => { const v = e.target.value; if (v) void reasignarMiTarea(t.id, v); }}
+                                      title="Reasignar a otro usuario"
+                                      style={{
+                                        fontSize: 10, padding: "2px 5px", borderRadius: 999, flexShrink: 0,
+                                        border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
+                                        background: theme === "dark" ? "#1e293b" : "#fff",
+                                        color: theme === "dark" ? "#cbd5e1" : "#475569",
+                                      }}
+                                    >
+                                      <option value="">↪ Reasignar…</option>
+                                      {usuariosAsignablesTareasPanel.filter((u) => u !== usuarioSesion?.nombre).map((u) => (
+                                        <option key={u} value={u}>{u}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
                           );
                         })}
                       </div>
                     )}
+                    </div>
                   </div>
                 </>
               )}
