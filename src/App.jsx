@@ -3819,6 +3819,16 @@ export default function App() {
   const [misTareasLista, setMisTareasLista] = useState([]);
   const [misTareasCargando, setMisTareasCargando] = useState(false);
   const consultarMisTareasRef = useRef(null);
+  // Para reasignar una tarea a otro usuario desde "Mis tareas" -- mismo
+  // filtro de roles que usa SidebarApp.jsx al crearlas (solo Gestoras y
+  // Administrador, nunca técnicos).
+  const [usuariosAsignablesTareasPanel, setUsuariosAsignablesTareasPanel] = useState([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    supabase.from("usuarios").select("nombre").eq("activo", true).in("rol", ["Administrador", "Gestora"]).order("nombre")
+      .then(({ data }) => { if (data?.length) setUsuariosAsignablesTareasPanel(data.map((u) => u.nombre)); })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     const nombreUsuario = usuarioSesion?.nombre;
     if (!nombreUsuario || !isSupabaseConfigured) { setMisTareasPendientes(0); consultarMisTareasRef.current = null; return undefined; }
@@ -3901,6 +3911,14 @@ export default function App() {
     await supabase.from("tareas_clientes").update({ estado: "hecha", completado_en: ahora }).eq("id", id);
     setMisTareasLista((prev) => prev.filter((t) => t.id !== id));
     setMisTareasPendientes((n) => Math.max(0, n - 1));
+  }
+  async function reasignarMiTarea(id, nuevoUsuario) {
+    if (!nuevoUsuario) return;
+    await supabase.from("tareas_clientes").update({ asignado_a: nuevoUsuario }).eq("id", id);
+    // Deja de ser "mi" tarea una vez reasignada -- se saca de la lista propia.
+    setMisTareasLista((prev) => prev.filter((t) => t.id !== id));
+    setMisTareasPendientes((n) => Math.max(0, n - 1));
+    mostrarNotifToast(`Tarea reasignada a ${nuevoUsuario}`, true);
   }
 
   // Nombres (en minusculas) que un tecnico puede ver: el suyo propio + los de
@@ -18367,8 +18385,29 @@ export default function App() {
                                 style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#16a34a", flexShrink: 0 }}>✓</button>
                             </div>
                             <div style={{ fontSize: 12.5, color: theme === "dark" ? "#e2e8f0" : "#0f172a", lineHeight: 1.4 }}>{t.descripcion}</div>
-                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>
-                              Asignada por {t.asignado_por || "—"} · {new Date(t.created_at).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, marginTop: 4 }}>
+                              <div style={{ fontSize: 10, color: "#94a3b8" }}>
+                                Asignada por {t.asignado_por || "—"} · {new Date(t.created_at).toLocaleDateString("es-PE", { day: "2-digit", month: "short" })}
+                              </div>
+                              {usuariosAsignablesTareasPanel.length > 0 && (
+                                <select
+                                  defaultValue=""
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => { const v = e.target.value; if (v) void reasignarMiTarea(t.id, v); }}
+                                  title="Reasignar a otro usuario"
+                                  style={{
+                                    fontSize: 10, padding: "2px 4px", borderRadius: 6, flexShrink: 0,
+                                    border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
+                                    background: theme === "dark" ? "#0f172a" : "#fff",
+                                    color: theme === "dark" ? "#cbd5e1" : "#475569",
+                                  }}
+                                >
+                                  <option value="">↪ Reasignar…</option>
+                                  {usuariosAsignablesTareasPanel.filter((u) => u !== usuarioSesion?.nombre).map((u) => (
+                                    <option key={u} value={u}>{u}</option>
+                                  ))}
+                                </select>
+                              )}
                             </div>
                           </div>
                           );
