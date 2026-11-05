@@ -1181,30 +1181,64 @@ const activarRouter = async ({ nodo, userPppoe, ip = "", mikrowispId = "" }) => 
   }
 };
 
-// ── Reconciliacion automatica de la lista "morosos" ───────────────────────
-// Corre sola cada cierto tiempo en segundo plano: revisa la lista
-// "morosos" de cada Mikrotik (consulta liviana, solo trae los bloqueados
-// ahi, no el total de clientes) y, para cada entrada con el comentario
-// "Corte_Servicio_<mikrowisp_id>" que Mikrowisp mismo genera, cruza contra
-// mikrowisp_clientes.estado -- si ya no esta SUSPENDIDO (es decir, ya
-// pago), la saca de la lista. Resuelve el caso real: Mikrowisp marca
-// ACTIVO en su base pero su propia sincronizacion con el Mikrotik falla o
-// se demora, dejando al cliente pagado pero cortado de verdad, sin que
-// nadie se entere hasta que reclama.
-const reconciliarMorosos = async () => {
+// ── Reconciliacion de la lista "morosos" (version EN VIVO, 2026-11-05) ───
+// Caso que resuelve: el cliente paga, Mikrowisp lo marca ACTIVO, pero no
+// llega a sacar su IP de "morosos" en el Mikrotik (se le cae la conexion
+// al router o se demora) -- el cliente queda pagado pero cortado.
+//
+// La version anterior decidia con mikrowisp_clientes.estado (tabla espejo
+// que NO se actualiza) y borraba cortes reales: cada "Reparar" de
+// Mikrowisp quedaba deshecho a los minutos (incidente 2026-11-05). Esta
+// version nunca usa la tabla espejo para decidir:
+//   1. lee "morosos" del Mikrotik y toma cada "Corte_Servicio_<idcliente>"
+//      (el numero ES el id de cliente de Mikrowisp, verificado por IP);
+//   2. le pregunta EN VIVO a Mikrowisp (GetClientsDetails por idcliente);
+//   3. solo es candidato a salir si Mikrowisp responde ACTIVO **y** uno de
+//      sus servicios tiene exactamente la IP de esa entrada (asegura que
+//      es el mismo cliente y el Mikrowisp correcto -- ej. una entrada de un
+//      router DIM consultada contra el Mikrowisp de Americanet no calza
+//      por IP y no se toca);
+//   4. cualquier duda (sin respuesta, error, estado raro, IP distinta) =
+//      no se toca.
+// Modo informe por defecto: solo lista a quien sacaria. Saca de verdad
+// unicamente si se pide aplicar Y RECONCILIAR_MOROSOS_APLICAR=1, y nunca
+// mas de RECONCILIAR_MOROSOS_MAX por pasada contando TODOS los routers
+// (si hay mas candidatos que eso, algo anda mal: no saca a nadie y avisa).
+const RECONCILIAR_MOROSOS_APLICAR = String(process.env.RECONCILIAR_MOROSOS_APLICAR || "").trim() === "1";
+const RECONCILIAR_MOROSOS_MAX = Math.max(Number(process.env.RECONCILIAR_MOROSOS_MAX) || 20, 1);
+
+async function consultarMikrowispPorIdCliente(idcliente) {
+  const endpoint = buildAbsoluteApiUrl(MIKROWISP_API_BASE, "/GetClientsDetails");
+  const response = await fetchConTimeout(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ token: MIKROWISP_TOKEN, idcliente: Number(idcliente) }),
+  }, 20000);
+  return readProxyJsonResponse(response, "Mikrowisp GetClientsDetails (reconciliar morosos)");
+}
+
+const reconciliarMorosos = async ({ aplicar = false } = {}) => {
+  const aplicarDeVerdad = aplicar && RECONCILIAR_MOROSOS_APLICAR;
   const routers = (await loadRoutersConfigFromSupabase()) || buildEnvRouters();
-  const resumen = { routersRevisados: 0, entradasRevisadas: 0, removidas: 0, errores: [] };
+  const resumen = {
+    modo: aplicarDeVerdad ? "aplicar" : "informe",
+    routersRevisados: 0, entradasRevisadas: 0,
+    candidatos: [], noSeToca: { suspendido: 0, ipDistinta: 0, sinRespuesta: 0, estadoRaro: 0 },
+    removidas: 0, bloqueadoPorTope: false, errores: [],
+  };
+  const paraSacar = [];
+
+  // Paso 1: juntar candidatos de todos los routers (solo lectura).
   for (const router of Object.values(routers)) {
     if (buildRouterConfigError(router)) continue;
     resumen.routersRevisados++;
-
     let connection = null;
     let rows = [];
     try {
       connection = await connectToRouter(router);
       rows = await withTimeout(
         connection.api.write("/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`]),
-        10000,
+        15000,
         `Consulta address-list ${MOROSOS_ADDRESS_LIST} en ${router.nombre}`
       ).catch((error) => {
         const code = String(error?.errno || error?.code || "").toUpperCase();
@@ -1216,81 +1250,108 @@ const reconciliarMorosos = async () => {
       });
     } catch (e) {
       resumen.errores.push(`${router.nombre}: ${e.message || e}`);
-      if (connection?.api) await closeRouterApiSafe(connection.api);
       continue;
+    } finally {
+      if (connection?.api) await closeRouterApiSafe(connection.api);
     }
-
     rows = Array.isArray(rows) ? rows : [];
-    if (!rows.length) {
-      if (connection?.api) await closeRouterApiSafe(connection.api);
-      continue;
-    }
     resumen.entradasRevisadas += rows.length;
 
-    const porId = new Map();
     for (const row of rows) {
       const comment = String(pickFirst(row?.comment) || "");
       const m = comment.match(/corte_servicio_(\d+)/i);
-      if (m) porId.set(m[1], row);
-    }
-
-    if (!porId.size) {
-      if (connection?.api) await closeRouterApiSafe(connection.api);
-      continue;
-    }
-
-    try {
-      const ids = [...porId.keys()];
-      const estados = await fetchSupabaseRows(
-        "mikrowisp_clientes",
-        `select=mikrowisp_id,estado&mikrowisp_id=in.(${ids.join(",")})`
-      );
-      for (const est of Array.isArray(estados) ? estados : []) {
-        const estadoNorm = String(est?.estado || "").trim().toUpperCase();
-        if (!estadoNorm || estadoNorm === "SUSPENDIDO") continue; // sigue suspendido de verdad, no tocar
-        const row = porId.get(String(est.mikrowisp_id));
-        if (!row) continue;
-        const rowId = pickFirst(row?.[".id"], row?.id);
-        if (!rowId) continue;
-        await withTimeout(
-          connection.api.write("/ip/firewall/address-list/remove", [`=.id=${rowId}`]),
-          10000,
-          `Baja address-list ${MOROSOS_ADDRESS_LIST} en ${router.nombre}`
-        );
-        resumen.removidas++;
-        console.log(`[reconciliar-morosos] ${router.nombre}: IP ${pickFirst(row?.address)} (mikrowisp_id ${est.mikrowisp_id}, estado ${estadoNorm}) retirada de ${MOROSOS_ADDRESS_LIST}.`);
+      if (!m) continue;
+      const idcliente = m[1];
+      const ipEntrada = String(pickFirst(row?.address) || "").trim();
+      let resp;
+      try {
+        resp = await consultarMikrowispPorIdCliente(idcliente);
+      } catch (_) {
+        resumen.noSeToca.sinRespuesta++;
+        continue;
       }
-    } catch (e) {
-      resumen.errores.push(`${router.nombre} (reconciliar): ${e.message || e}`);
-    } finally {
-      if (connection?.api) await closeRouterApiSafe(connection.api);
+      await new Promise((r) => setTimeout(r, 150)); // no saturar la API de Mikrowisp
+      const datos = Array.isArray(resp?.datos) ? resp.datos : (resp?.datos ? [resp.datos] : []);
+      const cliente = datos.find((d) => String(d?.id) === idcliente) || null;
+      if (!cliente) { resumen.noSeToca.sinRespuesta++; continue; }
+      const estado = normalizarEstadoMikrowispSync(cliente.estado);
+      if (estado === "SUSPENDIDO") { resumen.noSeToca.suspendido++; continue; }
+      if (estado !== "ACTIVO") { resumen.noSeToca.estadoRaro++; continue; }
+      const ipsCliente = (Array.isArray(cliente.servicios) ? cliente.servicios : [])
+        .map((s) => String(s?.ip || "").trim())
+        .filter(Boolean);
+      if (!ipEntrada || !ipsCliente.includes(ipEntrada)) { resumen.noSeToca.ipDistinta++; continue; }
+      const candidato = { router: router.nombre, idcliente, nombre: cliente.nombre || "", ip: ipEntrada };
+      resumen.candidatos.push(candidato);
+      paraSacar.push({ ...candidato, routerObj: router, rowId: pickFirst(row?.[".id"], row?.id) });
+    }
+  }
+
+  // Paso 2: recien con TODOS los candidatos juntos se decide. Si superan el
+  // tope, no se saca a nadie.
+  if (aplicarDeVerdad && paraSacar.length) {
+    if (paraSacar.length > RECONCILIAR_MOROSOS_MAX) {
+      resumen.bloqueadoPorTope = true;
+      console.warn(`[reconciliar-morosos] ${paraSacar.length} candidatos superan el tope (${RECONCILIAR_MOROSOS_MAX}) -- NO se saco a nadie. Revisar manualmente.`);
+    } else {
+      const porRouter = new Map();
+      for (const c of paraSacar) {
+        if (!porRouter.has(c.routerObj)) porRouter.set(c.routerObj, []);
+        porRouter.get(c.routerObj).push(c);
+      }
+      for (const [router, lista] of porRouter) {
+        let connection = null;
+        try {
+          connection = await connectToRouter(router);
+          for (const c of lista) {
+            if (!c.rowId) continue;
+            try {
+              await withTimeout(
+                connection.api.write("/ip/firewall/address-list/remove", [`=.id=${c.rowId}`]),
+                10000,
+                `Baja address-list ${MOROSOS_ADDRESS_LIST} en ${router.nombre}`
+              );
+              resumen.removidas++;
+              console.log(`[reconciliar-morosos] ${router.nombre}: IP ${c.ip} (idcliente ${c.idcliente}, ${c.nombre}) retirada de ${MOROSOS_ADDRESS_LIST} -- Mikrowisp en vivo: ACTIVO, IP coincide.`);
+            } catch (e) {
+              resumen.errores.push(`${router.nombre} (sacar ${c.ip}): ${e.message || e}`);
+            }
+          }
+        } catch (e) {
+          resumen.errores.push(`${router.nombre} (conectar para sacar): ${e.message || e}`);
+        } finally {
+          if (connection?.api) await closeRouterApiSafe(connection.api);
+        }
+      }
     }
   }
   return resumen;
 };
 
-// DESACTIVADO por defecto (2026-11-05): decidia con mikrowisp_clientes.estado,
-// que esta desactualizado (muchos clientes figuran ACTIVO desde junio/agosto
-// aunque Mikrowisp ya los suspendio). Resultado real: cada vez que se
-// tocaba "Reparar" en Mikrowisp, a los pocos minutos este barrido borraba
-// de "morosos" los cortes recien puestos (ej. Corte_Servicio_2070, 2068,
-// 1943...) y esos clientes suspendidos volvian a tener internet. No volver
-// a activarlo mientras decida con la tabla espejo -- tiene que consultar el
-// estado EN VIVO a Mikrowisp antes de sacar a nadie.
-// Solo corre si RECONCILIAR_MOROSOS_ACTIVO=1 (a proposito, nunca por defecto).
+// El barrido automatico NO corre por defecto. Para encenderlo:
+//   RECONCILIAR_MOROSOS_ACTIVO=1  -> corre cada RECONCILIAR_MOROSOS_MINUTOS
+//                                   en modo INFORME (solo loguea a quien
+//                                   sacaria, no toca el router)
+//   + RECONCILIAR_MOROSOS_APLICAR=1 -> ademas saca de verdad (con el tope)
+// Encender APLICAR solo despues de revisar varios informes.
 const RECONCILIAR_MOROSOS_ACTIVO = String(process.env.RECONCILIAR_MOROSOS_ACTIVO || "").trim() === "1";
 // Acotado a [1, 1440] min: setInterval con mas de ~24.8 dias (2^31 ms) o
 // con NaN lo ejecuta practicamente cada 1 ms.
 const RECONCILIAR_MOROSOS_MS = Math.min(Math.max(Number(process.env.RECONCILIAR_MOROSOS_MINUTOS) || 7, 1), 1440) * 60000;
+let reconciliarMorososEnCurso = false;
 if (RECONCILIAR_MOROSOS_ACTIVO) setInterval(() => {
-  reconciliarMorosos()
+  if (reconciliarMorososEnCurso) return; // una pasada lenta no se pisa con la siguiente
+  reconciliarMorososEnCurso = true;
+  reconciliarMorosos({ aplicar: true })
     .then((r) => {
-      if (r.removidas > 0 || r.errores.length > 0) {
-        console.log(`[reconciliar-morosos] routers=${r.routersRevisados} entradas=${r.entradasRevisadas} removidas=${r.removidas} errores=${r.errores.length}`);
+      if (r.candidatos.length || r.errores.length) {
+        console.log(`[reconciliar-morosos] modo=${r.modo} routers=${r.routersRevisados} entradas=${r.entradasRevisadas} candidatos=${r.candidatos.length} removidas=${r.removidas} tope=${r.bloqueadoPorTope ? "SUPERADO" : "ok"} noSeToca=${JSON.stringify(r.noSeToca)}`);
+        r.candidatos.forEach((c) => console.log(`[reconciliar-morosos] candidato: ${c.router} ${c.ip} idcliente ${c.idcliente} ${c.nombre}`));
         if (r.errores.length) console.warn("[reconciliar-morosos] errores:", r.errores);
       }
     })
-    .catch((e) => console.error("[reconciliar-morosos] fallo el barrido completo:", e));
+    .catch((e) => console.error("[reconciliar-morosos] fallo el barrido completo:", e))
+    .finally(() => { reconciliarMorososEnCurso = false; });
 }, RECONCILIAR_MOROSOS_MS);
 
 const buildAbsoluteApiUrl = (base, path = "") => {
@@ -4217,13 +4278,21 @@ const server = http.createServer(async (req, res) => {
     // pasada manual del barrido automatico (el mismo que corre solo cada
     // RECONCILIAR_MOROSOS_MINUTOS), util para probar sin esperar el timer.
     if (req.method === "POST" && req.url === "/api/diagnostico-servicio/morosos-reconciliar") {
-      // Misma razon que el timer de arriba: desactivado mientras decida con
-      // la tabla espejo desactualizada (borraba cortes reales de Mikrowisp).
-      if (!RECONCILIAR_MOROSOS_ACTIVO) {
-        writeJson(res, 200, { ok: false, error: "Reconciliacion de morosos desactivada (RECONCILIAR_MOROSOS_ACTIVO != 1)." });
+      // Siempre en modo INFORME desde este endpoint: devuelve a quien sacaria
+      // (Mikrowisp en vivo = ACTIVO y la IP coincide) sin tocar el router.
+      // Sacar de verdad queda solo para el barrido automatico con
+      // RECONCILIAR_MOROSOS_APLICAR=1 -- un POST suelto nunca descorta a nadie.
+      if (reconciliarMorososEnCurso) {
+        writeJson(res, 200, { ok: false, error: "Ya hay una pasada de reconciliacion en curso, intenta en unos minutos." });
         return;
       }
-      const resumen = await reconciliarMorosos();
+      reconciliarMorososEnCurso = true;
+      let resumen;
+      try {
+        resumen = await reconciliarMorosos({ aplicar: false });
+      } finally {
+        reconciliarMorososEnCurso = false;
+      }
       writeJson(res, 200, { ok: true, resumen });
       return;
     }
