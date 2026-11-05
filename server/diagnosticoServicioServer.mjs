@@ -1269,8 +1269,20 @@ const reconciliarMorosos = async () => {
   return resumen;
 };
 
-const RECONCILIAR_MOROSOS_MS = Number(process.env.RECONCILIAR_MOROSOS_MINUTOS || 7) * 60000;
-setInterval(() => {
+// DESACTIVADO por defecto (2026-11-05): decidia con mikrowisp_clientes.estado,
+// que esta desactualizado (muchos clientes figuran ACTIVO desde junio/agosto
+// aunque Mikrowisp ya los suspendio). Resultado real: cada vez que se
+// tocaba "Reparar" en Mikrowisp, a los pocos minutos este barrido borraba
+// de "morosos" los cortes recien puestos (ej. Corte_Servicio_2070, 2068,
+// 1943...) y esos clientes suspendidos volvian a tener internet. No volver
+// a activarlo mientras decida con la tabla espejo -- tiene que consultar el
+// estado EN VIVO a Mikrowisp antes de sacar a nadie.
+// Solo corre si RECONCILIAR_MOROSOS_ACTIVO=1 (a proposito, nunca por defecto).
+const RECONCILIAR_MOROSOS_ACTIVO = String(process.env.RECONCILIAR_MOROSOS_ACTIVO || "").trim() === "1";
+// Acotado a [1, 1440] min: setInterval con mas de ~24.8 dias (2^31 ms) o
+// con NaN lo ejecuta practicamente cada 1 ms.
+const RECONCILIAR_MOROSOS_MS = Math.min(Math.max(Number(process.env.RECONCILIAR_MOROSOS_MINUTOS) || 7, 1), 1440) * 60000;
+if (RECONCILIAR_MOROSOS_ACTIVO) setInterval(() => {
   reconciliarMorosos()
     .then((r) => {
       if (r.removidas > 0 || r.errores.length > 0) {
@@ -4205,6 +4217,12 @@ const server = http.createServer(async (req, res) => {
     // pasada manual del barrido automatico (el mismo que corre solo cada
     // RECONCILIAR_MOROSOS_MINUTOS), util para probar sin esperar el timer.
     if (req.method === "POST" && req.url === "/api/diagnostico-servicio/morosos-reconciliar") {
+      // Misma razon que el timer de arriba: desactivado mientras decida con
+      // la tabla espejo desactualizada (borraba cortes reales de Mikrowisp).
+      if (!RECONCILIAR_MOROSOS_ACTIVO) {
+        writeJson(res, 200, { ok: false, error: "Reconciliacion de morosos desactivada (RECONCILIAR_MOROSOS_ACTIVO != 1)." });
+        return;
+      }
       const resumen = await reconciliarMorosos();
       writeJson(res, 200, { ok: true, resumen });
       return;
