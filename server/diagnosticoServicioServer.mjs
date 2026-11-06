@@ -4322,7 +4322,9 @@ const server = http.createServer(async (req, res) => {
           ok: true,
           enMorosos: entries.length > 0,
           router: buildRouterInfo(router),
-          entradas: entries.map((e) => ({ ip: pickFirst(e?.address), comment: pickFirst(e?.comment) || "" })),
+          // creado: "creation-time" del Mikrotik (ej. "2026-11-05 18:02:05"),
+          // para poder ver que cortes se pusieron hoy sin entrar a WinBox.
+          entradas: entries.map((e) => ({ ip: pickFirst(e?.address), comment: pickFirst(e?.comment) || "", creado: pickFirst(e?.["creation-time"]) || null })),
         });
       } catch (e) {
         writeJson(res, 200, { ok: false, error: e.message || String(e) });
