@@ -31171,7 +31171,7 @@ export default function App() {
                   </div>
                 </div>
               )}
-              <OrdenChat ordenId={ordenDetalle.id} ordenCodigo={ordenDetalle.codigo} tecnicoAsignado={ordenDetalle.tecnico} autor={usuarioSesion?.nombre} autorRol={rolSesion} />
+              <OrdenChat ordenId={ordenDetalle.id} ordenCodigo={ordenDetalle.codigo} tecnicoAsignado={ordenDetalle.tecnico} autor={usuarioSesion?.nombre} autorRol={rolSesion} orden={ordenDetalle} />
               <div style={{ marginTop: "20px" }}>
                 <button onClick={() => { setOrdenDetalle(null); setFotosOrdenDetalle([]); }} style={secondaryButton}>Cerrar</button>
               </div>
@@ -31211,6 +31211,7 @@ export default function App() {
             <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
               <OrdenChat
                 ordenId={chatFlotanteOrden.id}
+                orden={chatFlotanteOrden}
                 ordenCodigo={chatFlotanteOrden.codigo}
                 tecnicoAsignado={chatFlotanteOrden.tecnico}
                 autor={usuarioSesion?.nombre}
