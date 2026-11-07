@@ -291,7 +291,11 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     lecturas
       .filter((l) => norm(l.usuario) !== norm(autor) && new Date(l.visto_at) >= new Date(m.created_at))
       .map((l) => l.usuario);
-  const telCliente = String(orden?.celular || "").replace(/[^\d+]/g, "");
+  // Celulares guardados como 51XXXXXXXXX (sin +) no marcan bien desde Peru: se pasa a +51.
+  const telCliente = (() => {
+    const t = String(orden?.celular || "").replace(/[^\d+]/g, "");
+    return /^51\d{9}$/.test(t) ? `+${t}` : t;
+  })();
   const destinoCliente = String(orden?.ubicacion || "").trim() || String(orden?.direccion || "").trim();
 
   if (!ordenId) return null;
