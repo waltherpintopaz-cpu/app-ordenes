@@ -26,6 +26,7 @@ import OnuAveriasPanel from "./components/OnuAveriasPanel";
 import OnuAveriasPanelVsol from "./components/OnuAveriasPanelVsol";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
+import AlertasWhatsappPanel from "./components/AlertasWhatsappPanel";
 import BotControlPanel from "./components/BotControlPanel";
 import BotConfigPanel from "./components/BotConfigPanel";
 import BotPagosV3ConfigPanel from "./components/BotPagosV3ConfigPanel";
@@ -405,6 +406,7 @@ const MENU_VISTAS_WEB = [
   { key: "clientes", label: "Clientes" },
   { key: "suspendidos", label: "Suspendidos", gestoraVisible: true },
   { key: "whatsapp", label: "WhatsApp" },
+  { key: "alertasWhatsapp", label: "Alertas WhatsApp" },
   { key: "bot", label: "Bot" },
   { key: "botBloqueados", label: "Números bloqueados" },
   { key: "metaPlantillas", label: "Plantillas Meta" },
@@ -435,7 +437,7 @@ const MENU_GRUPO_POR_KEY_WEB = {
   diagnosticoServicio: "Red y Diagnóstico", mapa: "Red y Diagnóstico", smartOlt: "Red y Diagnóstico", onuInventario: "Red y Diagnóstico", onuAverias: "Red y Diagnóstico", monitorSenales: "Red y Diagnóstico", nap: "Red y Diagnóstico", cobertura: "Red y Diagnóstico", mkwEstado: "Red y Diagnóstico", noc: "Red y Diagnóstico",
   clientes: "Clientes", consultaCliente: "Clientes", suspendidos: "Clientes",
   seguimientoTecnicos: "Seguimiento", asistencias: "Seguimiento", seguimientoVehiculos: "Seguimiento", seguimientoVolanteadores: "Seguimiento", plantaExterna: "Seguimiento",
-  whatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
+  whatsapp: "Comunicación", alertasWhatsapp: "Comunicación", bot: "Comunicación", metaPlantillas: "Comunicación", wispro: "Comunicación", mensajesRapidos: "Comunicación", recordatorios: "Comunicación", promociones: "Comunicación",
   inventario: "Inventario",
   reportes: "Reportes",
   iptv: "IPTV", maxplayerCuentas: "IPTV",
@@ -25669,6 +25671,10 @@ export default function App() {
 
         {vistaActiva === "whatsapp" && (
           <WhatsAppConfigPanel />
+        )}
+
+        {vistaActiva === "alertasWhatsapp" && (
+          <AlertasWhatsappPanel usuario={usuarioSesion?.nombre} empresa="americanet" />
         )}
 
         {vistaActiva === "bot" && botSubmenu === "botControl" && (
