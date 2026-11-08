@@ -117,7 +117,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     (async () => {
       const { data } = await supabase
         .from("chat_ordenes_mensajes")
-        .select("id,texto,foto_url,autor,autor_rol,created_at")
+        .select("*")
         .eq("orden_id", ordenId)
         .order("created_at", { ascending: true })
         .limit(200);
@@ -214,7 +214,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       const { data, error } = await supabase
         .from("chat_ordenes_mensajes")
         .insert([{ orden_id: ordenId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null }])
-        .select("id,texto,foto_url,autor,autor_rol,created_at")
+        .select("*")
         .single();
       if (error || !data) throw error || new Error("Sin respuesta");
       setPendientes((prev) => prev.filter((x) => x.tempId !== p.tempId));
@@ -354,8 +354,9 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </button>
           )}
           <div style={{
-            position: "relative", maxWidth: "78%", background: esMio ? "#2563eb" : "#fff", color: esMio ? "#fff" : "#0f172a",
-            border: esMio ? "none" : "1px solid #e2e8f0", borderRadius: 16, padding: soloMedia ? 4 : "7px 10px 6px",
+            position: "relative", maxWidth: "78%", color: esMio ? "#fff" : "#0f172a",
+            background: m.urgente ? (esMio ? "#dc2626" : "#fef2f2") : esMio ? "#2563eb" : "#fff",
+            border: m.urgente && !esMio ? "1.5px solid #fca5a5" : esMio ? "none" : "1px solid #e2e8f0", borderRadius: 16, padding: soloMedia ? 4 : "7px 10px 6px",
             borderBottomRightRadius: esMio && inicioDeGrupo ? 4 : 16, borderBottomLeftRadius: !esMio && inicioDeGrupo ? 4 : 16,
             boxShadow: "0 1px 2px rgba(15,23,42,0.06)", opacity: pend?.estado === "error" ? 0.6 : 1,
           }}>
@@ -363,6 +364,11 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, padding: soloMedia ? "4px 6px 2px" : 0 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 800, color: colorAutor }}>{m.autor}</span>
                 {rol && <span style={{ fontSize: 9.5, fontWeight: 800, color: rol.c, background: rol.bg, borderRadius: 999, padding: "1px 6px" }}>{rol.t}</span>}
+              </div>
+            )}
+            {m.urgente && (
+              <div style={{ display: "table", fontSize: 10, fontWeight: 900, letterSpacing: "0.03em", color: "#fff", background: esMio ? "rgba(255,255,255,0.22)" : "#dc2626", borderRadius: 999, padding: "2px 8px", marginBottom: 4 }}>
+                🚨 URGENTE · aviso por WhatsApp
               </div>
             )}
             {ubicacion ? (
