@@ -42,6 +42,8 @@ function avisarChatOrdenNuevo(ordenInfo, msg) {
 
 export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirectorio, autor, onAbrirOrden, onAbrirTecnico }) {
   const [abierto, setAbierto] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [soloNoLeidos, setSoloNoLeidos] = useState(false);
   const [chats, setChats] = useState([]);
   const [cargando, setCargando] = useState(false);
   const ordenesRef = useRef(ordenes);
@@ -178,6 +180,26 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
   }, [autor, recalcular]);
 
   const totalNoLeidos = chats.reduce((s, it) => s + it.count, 0);
+
+  // Buscador: filtra al instante por codigo de orden, cliente, tecnico,
+  // direccion o texto del ultimo mensaje (sin tildes ni mayusculas; varias
+  // palabras = todas deben aparecer).
+  const plano = (v) => String(v || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const terminos = plano(busqueda).split(/\s+/).filter(Boolean);
+  const coincide = (...campos) => {
+    if (!terminos.length) return true;
+    const t = plano(campos.filter(Boolean).join(" "));
+    return terminos.every((w) => t.includes(w));
+  };
+  const noLeidosDe = (nombre) => chats.find((c) => c.tipo === "tecnico" && String(c.tecnicoNombre) === String(nombre))?.count || 0;
+  const chatsFiltrados = chats.filter((c) =>
+    (!soloNoLeidos || c.count > 0) &&
+    coincide(c.titulo, c.tecnicoNombre, c.ordenInfo?.codigo, c.ordenInfo?.nombre, c.ordenInfo?.tecnico,
+      c.ordenInfo?.direccion, c.ordenInfo?.celular, c.ultimo?.texto, c.ultimo?.autor));
+  const directorioFiltrado = (Array.isArray(tecnicosDirectorio) ? tecnicosDirectorio : [])
+    .filter((t) => (!soloNoLeidos || noLeidosDe(t.nombre) > 0) && coincide(t.nombre));
+  const chatsConNoLeidos = chats.filter((c) => c.count > 0).length;
+  const cerrarBandeja = () => { setAbierto(false); setBusqueda(""); setSoloNoLeidos(false); };
   // Siempre visible -- antes se escondia del todo si no habia chats, y el
   // usuario no queria que el boton desapareciera (pedido explicito).
 
@@ -230,7 +252,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
 
       {abierto && (
         <>
-          <div onClick={() => setAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
+          <div onClick={cerrarBandeja} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
           <div className="chat-popup-in" style={{
             position: "fixed", right: 20, bottom: 150, zIndex: 9998,
             width: 340, maxWidth: "calc(100vw - 32px)", maxHeight: "60vh", display: "flex", flexDirection: "column",
@@ -241,20 +263,53 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
               <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>
                 Chats recientes
               </div>
-              {Array.isArray(tecnicosDirectorio) && tecnicosDirectorio.length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "#f1f5f9", borderRadius: 8, padding: "0 8px", height: 32 }}>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>🔍</span>
+                  <input
+                    autoFocus
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") { if (busqueda) setBusqueda(""); else cerrarBandeja(); } }}
+                    placeholder="Buscar orden, cliente, técnico..."
+                    style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 12.5, color: "#0f172a", font: "inherit" }}
+                  />
+                  {!!busqueda && (
+                    <button type="button" onClick={() => setBusqueda("")} title="Limpiar"
+                      style={{ border: "none", background: "transparent", cursor: "pointer", color: "#94a3b8", fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSoloNoLeidos((v) => !v)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5, height: 32, padding: "0 9px", borderRadius: 8, cursor: "pointer", font: "inherit",
+                    fontSize: 11.5, fontWeight: 800, whiteSpace: "nowrap",
+                    background: soloNoLeidos ? "#7c3aed" : "#f5f3ff", color: soloNoLeidos ? "#fff" : "#7c3aed",
+                    border: `1px solid ${soloNoLeidos ? "#7c3aed" : "#ddd6fe"}`,
+                  }}
+                >
+                  No leídos
+                  {chatsConNoLeidos > 0 && (
+                    <span style={{ minWidth: 16, height: 16, borderRadius: 8, padding: "0 4px", fontSize: 10, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      background: soloNoLeidos ? "#fff" : "#7c3aed", color: soloNoLeidos ? "#7c3aed" : "#fff" }}>{chatsConNoLeidos}</span>
+                  )}
+                </button>
+              </div>
+              {directorioFiltrado.length > 0 && (
                 <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #e2e8f0" }}>
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
                     Iniciar chat con técnico
                   </div>
                   <div style={{ display: "flex", flexWrap: "nowrap", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
-                    {tecnicosDirectorio.map((tec) => {
+                    {directorioFiltrado.map((tec) => {
                       const iniciales = String(tec.nombre || "")
                         .trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
                       return (
                         <button
                           key={tec.id || tec.nombre}
                           type="button"
-                          onClick={() => { setAbierto(false); onAbrirTecnico && onAbrirTecnico(tec.nombre); }}
+                          onClick={() => { cerrarBandeja(); onAbrirTecnico && onAbrirTecnico(tec.nombre); }}
                           title={`Chat con ${tec.nombre}`}
                           style={{
                             display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
@@ -283,20 +338,22 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
               )}
             </div>
             <div style={{ padding: "0 12px 10px", overflowY: "auto", flex: 1, minHeight: 0 }}>
-            {cargando ? (
+            {cargando && chats.length === 0 ? (
               <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Cargando…</div>
-            ) : chats.length === 0 ? (
-              <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Todavía no hay chats.</div>
+            ) : chatsFiltrados.length === 0 ? (
+              <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>
+                {terminos.length ? `Sin resultados para "${busqueda.trim()}".` : soloNoLeidos ? "No tienes chats sin leer 👍" : "Todavía no hay chats."}
+              </div>
             ) : (
               <div style={{ display: "grid", gap: 6 }}>
-                {chats.map((item) => {
+                {chatsFiltrados.map((item) => {
                   const esMio = String(item.ultimo.autor || "").trim().toLowerCase() === String(autor || "").trim().toLowerCase();
                   return (
                     <button
                       key={item.key}
                       type="button"
                       onClick={() => {
-                        setAbierto(false);
+                        cerrarBandeja();
                         if (item.tipo === "tecnico") {
                           onAbrirTecnico && onAbrirTecnico(item.tecnicoNombre);
                         } else {
