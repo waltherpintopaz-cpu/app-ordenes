@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, Plus, Trash2, RefreshCw, Send, Users, Phone, CircleCheck, CircleAlert, Save } from "lucide-react";
+import { BellRing, Plus, Trash2, RefreshCw, Send, Users, Phone, CircleCheck, CircleAlert, Save, Lock } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 // Configuracion de las alertas 🚨 URGENTE del chat de la orden: a que grupo
@@ -38,6 +38,9 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
   const [cambios, setCambios] = useState(false);
   const [probando, setProbando] = useState(false);
   const [aviso, setAviso] = useState(null);
+  const [reglas, setReglas] = useState([]); // nodos privados: [{ nodo, numeros: [{numero,nombre}], con_grupo }]
+  const [tieneReglas, setTieneReglas] = useState(true);
+  const [nuevoNodo, setNuevoNodo] = useState("");
 
   const mostrarAviso = (texto, ok = true) => {
     setAviso({ texto, ok });
@@ -48,13 +51,15 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
     setCargando(true);
     const { data, error } = await supabase
       .from("alertas_whatsapp_config")
-      .select("activo,grupo_id,grupo_nombre,numeros")
+      .select("*")
       .eq("id", 1)
       .maybeSingle();
     if (error) {
       setFaltaTabla(true);
     } else {
       setFaltaTabla(false);
+      setTieneReglas(!data || Object.prototype.hasOwnProperty.call(data, "reglas_nodo"));
+      setReglas(Array.isArray(data?.reglas_nodo) ? data.reglas_nodo : []);
       setActivo(data?.activo ?? true);
       setGrupoId(data?.grupo_id || "");
       setGrupoNombre(data?.grupo_nombre || "");
@@ -103,6 +108,15 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
       grupo_id: grupoId || null,
       grupo_nombre: grupoId ? grupoNombre : null,
       numeros: numeros.map((x) => ({ numero: normalizarNumero(x.numero), nombre: String(x.nombre || "").trim() })),
+      ...(tieneReglas ? {
+        reglas_nodo: reglas
+          .filter((r) => String(r.nodo || "").trim())
+          .map((r) => ({
+            nodo: String(r.nodo).trim(),
+            con_grupo: !!r.con_grupo,
+            numeros: (r.numeros || []).map((x) => ({ numero: normalizarNumero(x.numero), nombre: String(x.nombre || "").trim() })),
+          })),
+      } : {}),
       updated_at: new Date().toISOString(),
       updated_by: usuario || null,
     });
@@ -112,11 +126,28 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
     mostrarAviso("Guardado. Las próximas alertas usarán esta configuración.");
   };
 
-  const probar = async () => {
+  // Nodos privados
+  const claveNodo = (v) => { const m = String(v ?? "").match(/\d+/); return m ? String(Number(m[0])) : String(v ?? "").trim().toLowerCase(); };
+  const agregarRegla = () => {
+    const n = nuevoNodo.trim();
+    if (!n) return mostrarAviso("Escribe el nodo, por ejemplo Nod_01.", false);
+    if (reglas.some((r) => claveNodo(r.nodo) === claveNodo(n))) return mostrarAviso("Ese nodo ya tiene una regla.", false);
+    setReglas((p) => [...p, { nodo: n, con_grupo: false, numeros: [] }]);
+    setNuevoNodo("");
+    setCambios(true);
+  };
+  const cambiarRegla = (i, cambiosRegla) => { setReglas((p) => p.map((r, k) => (k === i ? { ...r, ...cambiosRegla } : r))); setCambios(true); };
+  const quitarRegla = (i) => {
+    if (!window.confirm(`¿Quitar la regla del nodo ${reglas[i]?.nodo}? Sus alertas volverán a ir al grupo y a los números generales.`)) return;
+    setReglas((p) => p.filter((_, k) => k !== i));
+    setCambios(true);
+  };
+
+  const probar = async (nodo = "") => {
     if (cambios) return mostrarAviso("Primero guarda los cambios; la prueba usa lo que está guardado.", false);
     setProbando(true);
     try {
-      const r = await fetch(`${NOTIF_URL}/alertas/prueba${q}`, { method: "POST" }).then((x) => x.json());
+      const r = await fetch(`${NOTIF_URL}/alertas/prueba${q}${nodo ? `&nodo=${encodeURIComponent(nodo)}` : ""}`, { method: "POST" }).then((x) => x.json());
       if (r?.ok) mostrarAviso(`Prueba enviada a ${r.enviados} de ${r.total} destino(s).${r.errores?.length ? ` Fallaron: ${r.errores.join(", ")}` : ""}`, !r.errores?.length);
       else mostrarAviso(r?.error || "No se pudo enviar la prueba.", false);
     } catch {
@@ -210,6 +241,38 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
         </div>
       </div>
 
+      {/* Nodos privados */}
+      <div style={caja}>
+        <div style={tituloSeccion}><Lock size={16} /> Nodos privados</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 10 }}>
+          Si una orden es de uno de estos nodos, el 🚨 urgente le llega <b>solo</b> a los números de ese nodo (no al grupo ni a los números de arriba).
+        </div>
+        {!tieneReglas && (
+          <div style={{ fontSize: 12.5, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
+            Falta agregar la columna <code>reglas_nodo</code> en Supabase para poder guardar nodos privados.
+          </div>
+        )}
+        {reglas.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8", padding: "2px 0 10px" }}>Ningún nodo privado.</div>}
+        <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+          {reglas.map((r, i) => (
+            <ReglaNodo
+              key={i}
+              regla={r}
+              onCambiar={(c) => cambiarRegla(i, c)}
+              onQuitar={() => quitarRegla(i)}
+              onProbar={() => void probar(r.nodo)}
+              probando={probando}
+              hayGrupo={!!grupoId}
+              avisar={mostrarAviso}
+            />
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input value={nuevoNodo} onChange={(e) => setNuevoNodo(e.target.value)} onKeyDown={(e) => e.key === "Enter" && agregarRegla()} placeholder="Nodo, ej. Nod_01" style={{ ...input, width: 190 }} disabled={!tieneReglas} />
+          <button type="button" onClick={agregarRegla} style={btnSecundario} disabled={!tieneReglas}><Plus size={15} /> Agregar nodo privado</button>
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={() => void guardar()} disabled={guardando || faltaTabla || !cambios} style={{ ...btnPrimario, opacity: guardando || faltaTabla || !cambios ? 0.55 : 1 }}>
           <Save size={16} /> {guardando ? "Guardando…" : "Guardar cambios"}
@@ -231,6 +294,51 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
         (máximo uno por orden cada 10 minutos). Se contesta desde el chat de la orden, en la app o en la web.
       </div>
       <style>{"@keyframes spin { to { transform: rotate(360deg); } }"}</style>
+    </div>
+  );
+}
+
+// Una regla de nodo privado: el nodo, sus numeros y si tambien avisa al grupo.
+function ReglaNodo({ regla, onCambiar, onQuitar, onProbar, probando, hayGrupo, avisar }) {
+  const [num, setNum] = useState("");
+  const [nom, setNom] = useState("");
+  const numeros = regla.numeros || [];
+  const agregar = () => {
+    const n = normalizarNumero(num);
+    if (n.length < 11) return avisar("Escribe un celular válido (9 dígitos, ej. 989521677).", false);
+    if (numeros.some((x) => normalizarNumero(x.numero) === n)) return avisar("Ese número ya está en este nodo.", false);
+    onCambiar({ numeros: [...numeros, { numero: n, nombre: nom.trim() }] });
+    setNum("");
+    setNom("");
+  };
+  return (
+    <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 12, padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <Lock size={15} color="#b45309" />
+        <input value={regla.nodo} onChange={(e) => onCambiar({ nodo: e.target.value })} style={{ ...input, width: 130, padding: "6px 10px", fontWeight: 800 }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: hayGrupo ? "#0f172a" : "#94a3b8" }}>
+          <input type="checkbox" checked={!!regla.con_grupo} disabled={!hayGrupo} onChange={(e) => onCambiar({ con_grupo: e.target.checked })} />
+          También avisar al grupo
+        </label>
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={onProbar} disabled={probando} style={{ ...btnSecundario, padding: "6px 10px" }}><Send size={14} /> Probar</button>
+        <button type="button" onClick={onQuitar} title="Quitar regla" style={{ ...btnIcono, color: "#dc2626" }}><Trash2 size={16} /></button>
+      </div>
+      {numeros.length === 0 && <div style={{ fontSize: 12.5, color: "#b45309", marginBottom: 8 }}>Sin números: las alertas de este nodo no llegarán a nadie.</div>}
+      <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+        {numeros.map((x, k) => (
+          <div key={`${x.numero}-${k}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "4px 6px 4px 12px" }}>
+            <span style={{ fontWeight: 700, fontSize: 13.5, color: "#0f172a", minWidth: 140 }}>{formatoNumero(x.numero)}</span>
+            <input value={x.nombre || ""} onChange={(e) => onCambiar({ numeros: numeros.map((y, j) => (j === k ? { ...y, nombre: e.target.value } : y)) })} placeholder="Nombre (opcional)" style={{ ...input, flex: 1, padding: "5px 10px" }} />
+            <button type="button" onClick={() => onCambiar({ numeros: numeros.filter((_, j) => j !== k) })} title="Quitar" style={{ ...btnIcono, color: "#dc2626" }}><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <input value={num} onChange={(e) => setNum(e.target.value)} onKeyDown={(e) => e.key === "Enter" && agregar()} placeholder="Celular" style={{ ...input, width: 150, padding: "6px 10px" }} />
+        <input value={nom} onChange={(e) => setNom(e.target.value)} onKeyDown={(e) => e.key === "Enter" && agregar()} placeholder="Nombre (opcional)" style={{ ...input, flex: 1, minWidth: 120, padding: "6px 10px" }} />
+        <button type="button" onClick={agregar} style={{ ...btnSecundario, padding: "6px 10px" }}><Plus size={14} /> Agregar número</button>
+      </div>
     </div>
   );
 }
