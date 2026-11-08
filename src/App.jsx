@@ -27,6 +27,7 @@ import OnuAveriasPanelVsol from "./components/OnuAveriasPanelVsol";
 import ConciliacionOnusPanel from "./components/ConciliacionOnusPanel";
 import WhatsAppConfigPanel from "./components/WhatsAppConfigPanel";
 import AlertasWhatsappPanel from "./components/AlertasWhatsappPanel";
+import useChatsOrdenesNoLeidos from "./hooks/useChatsOrdenesNoLeidos";
 import BotControlPanel from "./components/BotControlPanel";
 import BotConfigPanel from "./components/BotConfigPanel";
 import BotPagosV3ConfigPanel from "./components/BotPagosV3ConfigPanel";
@@ -3807,6 +3808,10 @@ export default function App() {
     if (!usuarioSesionId) return null;
     return usuariosActivos.find((u) => Number(u.id) === Number(usuarioSesionId)) || null;
   }, [usuariosActivos, usuarioSesionId]);
+
+  // Mapa { ordenId -> no leidos } para el badge del boton de chat en cada
+  // tarjeta de orden (mismo que la web de DIM).
+  const chatsNoLeidosPorOrden = useChatsOrdenesNoLeidos(ordenes, usuarioSesion?.nombre);
 
   const rolSesion = useMemo(() => normalizarRolSimple(usuarioSesion?.rol), [usuarioSesion]);
   const esAdminSesion = rolSesion === "Administrador";
@@ -20489,6 +20494,28 @@ export default function App() {
                           {!bloqueadoPorNodo && <button onClick={() => abrirWhatsApp(item.celular)} title="WhatsApp" style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", border: "1px solid #86efac", color: "#16a34a", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>💬</button>}
                           {!bloqueadoPorNodo && <button onClick={() => navegarRuta(item.ubicacion, item.direccion)} title="Navegar" style={{ width: 32, height: 32, borderRadius: 8, background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗺️</button>}
                           {!bloqueadoPorNodo && <button onClick={() => compartirUbicacionConCliente(item)} title="Compartir ubicacion con el cliente" style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", border: "1px solid #c7d2fe", color: "#4338ca", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🔗</button>}
+                          {!bloqueadoPorNodo && (() => {
+                            const noLeidosOrden = chatsNoLeidosPorOrden.get(String(item.id)) || 0;
+                            return (
+                              <button onClick={(e) => { e.stopPropagation(); setChatFlotanteOrden(item); }} title="Chat de la orden (técnico ↔ gestoras/admin)" style={{
+                                position: "relative", width: 36, height: 36, borderRadius: 9, cursor: "pointer",
+                                background: "linear-gradient(135deg, #a855f7, #6d28d9)", border: "none", color: "#fff", fontSize: 15,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                boxShadow: noLeidosOrden > 0 ? "0 2px 8px rgba(109,40,217,0.45)" : "0 1px 3px rgba(15,23,42,0.15)",
+                              }}>
+                                🗨️
+                                {noLeidosOrden > 0 && (
+                                  <span style={{
+                                    position: "absolute", top: -5, right: -5, minWidth: 17, height: 17, borderRadius: 9,
+                                    background: "#ef4444", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                                    padding: "0 4px", fontSize: 9.5, fontWeight: 800, border: "2px solid #fff",
+                                  }}>
+                                    {noLeidosOrden > 9 ? "9+" : noLeidosOrden}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
 
