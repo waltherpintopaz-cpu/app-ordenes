@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { marcarChatOrdenVisto } from "../services/chatOrdenesUnread";
+import { notificarMensajeChat } from "../services/chatPush";
 
 const AVATAR_COLORS = ["#7c3aed", "#0ea5e9", "#16a34a", "#ea580c", "#db2777", "#0891b2"];
 const norm = (s) => String(s || "").trim().toLowerCase();
@@ -219,6 +220,10 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       if (error || !data) throw error || new Error("Sin respuesta");
       setPendientes((prev) => prev.filter((x) => x.tempId !== p.tempId));
       setMensajes((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
+      void notificarMensajeChat(supabase, {
+        ordenId, ordenCodigo: ordenCodigo || orden?.codigo, tecnicoOrden: tecnicoAsignado || orden?.tecnico,
+        autor, autorRol, texto: data.texto, fotoUrl: data.foto_url, urgente: !!data.urgente,
+      });
     } catch {
       actualizarPend(p.tempId, { estado: "error", fotoUrl });
     }

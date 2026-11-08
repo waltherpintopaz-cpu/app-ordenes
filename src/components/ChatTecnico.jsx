@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { marcarChatTecnicoVisto } from "../services/chatTecnicosUnread";
+import { notificarMensajeChat } from "../services/chatPush";
 
 const AVATAR_COLORS = ["#7c3aed", "#0ea5e9", "#16a34a", "#ea580c", "#db2777", "#0891b2"];
 function colorParaAutor(nombre) {
@@ -74,6 +75,7 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
     if (!error && data) {
       setMensajes((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data]);
       setTexto("");
+      void notificarMensajeChat(supabase, { hiloTecnico: tecnicoNombre, autor, autorRol, texto: data.texto, fotoUrl: data.foto_url });
     }
     setEnviando(false);
   };
