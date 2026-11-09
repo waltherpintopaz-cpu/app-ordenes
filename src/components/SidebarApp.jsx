@@ -6228,19 +6228,29 @@ export default function SidebarApp() {
               escalado con un humano, o el asesor prefiere mandarlo de
               entrada) -- pedido explicito del usuario, 2026-10-26. */}
           {convId && contact?.phone_number && (
-            <div style={{ marginTop:8 }}>
-              <ActionBtn isDark={isDark} icon={Send} color="#0d9488" label={enviandoLinkFormulario ? "Enviando..." : "Enviar link de formulario"} disabled={enviandoLinkFormulario}
-                onClick={async () => {
-                  setEnviandoLinkFormulario(true);
-                  try {
-                    const res = await fetch(PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
-                      body: JSON.stringify({ accion:"FormularioInstalacionLinkManual", payload:{ conv_id: convId, phone: contact.phone_number } }) });
-                    const json = await res.json().catch(() => ({}));
-                    if (!res.ok || !json.ok) throw new Error(json?.error || json?.data?.error || "Error");
-                    notify("📋 Link del formulario enviado por WhatsApp");
-                  } catch (err) { notify("Error al enviar el link: " + (err?.message || err), false); }
-                  finally { setEnviandoLinkFormulario(false); }
-                }} />
+            // Dos versiones del mismo formulario (pedido del usuario,
+            // 2026-11-09): Americanet o DIM (agenda.dimperu.pe). Las dos las
+            // procesa el bot de Americanet -- solo cambia marca y dominio.
+            <div style={{ marginTop:8, display:"flex", gap:6 }}>
+              {[
+                { marca: "americanet", label: "Formulario Americanet", color: "#F47A20" },
+                { marca: "dim", label: "Formulario DIM", color: "#0A2FD6" },
+              ].map((op) => (
+                <div key={op.marca} style={{ flex:1, minWidth:0 }}>
+                  <ActionBtn isDark={isDark} icon={Send} color={op.color} label={enviandoLinkFormulario === op.marca ? "Enviando..." : op.label} disabled={!!enviandoLinkFormulario}
+                    onClick={async () => {
+                      setEnviandoLinkFormulario(op.marca);
+                      try {
+                        const res = await fetch(PROXY_URL, { method:"POST", headers:{ "Content-Type":"application/json" },
+                          body: JSON.stringify({ accion:"FormularioInstalacionLinkManual", payload:{ conv_id: convId, phone: contact.phone_number, marca: op.marca } }) });
+                        const json = await res.json().catch(() => ({}));
+                        if (!res.ok || !json.ok) throw new Error(json?.error || json?.data?.error || "Error");
+                        notify(`📋 Link del formulario ${op.marca === "dim" ? "DIM" : "Americanet"} enviado por WhatsApp`);
+                      } catch (err) { notify("Error al enviar el link: " + (err?.message || err), false); }
+                      finally { setEnviandoLinkFormulario(false); }
+                    }} />
+                </div>
+              ))}
             </div>
           )}
 

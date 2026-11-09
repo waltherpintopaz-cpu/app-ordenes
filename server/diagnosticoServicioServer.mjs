@@ -2363,7 +2363,8 @@ const handleFormularioInstalacionLinkManual = async (payload) => {
   const res = await fetchConTimeout(`${BOT_PAGOS_URL}/formulario-instalacion/enviar-manual`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-webhook-secret": BOT_PAGOS_WEBHOOK_SECRET },
-    body: JSON.stringify({ conv_id: payload?.conv_id, phone: payload?.phone }),
+    // marca: "americanet" | "dim" (boton del Panel de Agentes, 2026-11-09).
+    body: JSON.stringify({ conv_id: payload?.conv_id, phone: payload?.phone, marca: payload?.marca || "americanet" }),
   });
   const json = await readProxyJsonResponse(res, "Formulario instalacion link manual");
   if (!json?.ok) throw new Error(json?.error || "No se pudo enviar el link");
