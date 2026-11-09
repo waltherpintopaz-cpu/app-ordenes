@@ -275,6 +275,9 @@ export default function AgendarInstalacionPage() {
   const [errorEnvio, setErrorEnvio] = useState("");
   const [enviado, setEnviado] = useState(false);
 
+  // Titulo propio en la pestaña (no el nombre del panel interno).
+  useEffect(() => { document.title = "Agenda tu instalación | Americanet"; }, []);
+
   const mapRef = useRef(null);
   const mapObjRef = useRef(null);
   const markerRef = useRef(null);
