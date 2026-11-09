@@ -3904,6 +3904,7 @@ const server = http.createServer(async (req, res) => {
       writeJson(res, 200, {
         ok: true,
         service: "diagnostico-servicio",
+        build: "2026-11-09 formulario-marca-dim",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
         mikrowisp: {
