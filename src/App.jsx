@@ -18451,6 +18451,21 @@ export default function App() {
                                       fontSize: 12, fontWeight: 700, color: urgente ? "#dc2626" : "#7c3aed", textAlign: "left" }}>
                                     {nombreMostrado}{!t.dni && t.conv_id ? " ↗" : ""}
                                   </button>
+                                  {t.conv_id && (
+                                    // Acceso directo al MISMO chat de Chatwoot donde se creo la
+                                    // tarea (pedido del usuario 2026-11-09) -- antes solo se podia
+                                    // llegar al chat si el cliente no tenia DNI.
+                                    <button type="button" title="Abrir el chat de esta tarea"
+                                      onClick={() => {
+                                        const base = CHATWOOT_URL_DEFAULT;
+                                        window.open(`${base}/app/accounts/${t.account_id || "1"}/conversations/${t.conv_id}`, "_blank", "noopener");
+                                      }}
+                                      style={{
+                                        marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
+                                        background: "rgba(37,99,235,0.1)", border: "none", borderRadius: 999,
+                                        padding: "3px 9px", cursor: "pointer", fontSize: 10.5, fontWeight: 700, color: "#2563eb",
+                                      }}>💬 Abrir chat</button>
+                                  )}
                                   <button type="button" onClick={() => marcarMisTareaHecha(t.id)} title="Marcar hecha" className="mt-check-btn"
                                     style={{
                                       background: "rgba(22,163,74,0.08)", border: "none", borderRadius: "50%",
