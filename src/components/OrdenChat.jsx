@@ -98,7 +98,17 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const mapDivRef = useRef(null);
   const pinRef = useRef(UBICACION_DEFAULT);
 
-  const rapidas = sinTildes(autorRol) === "tecnico" ? RAPIDAS_TECNICO : RAPIDAS_OFICINA;
+  const esTecnico = sinTildes(autorRol) === "tecnico";
+  const rapidas = esTecnico ? RAPIDAS_TECNICO : RAPIDAS_OFICINA;
+
+  // Boton 🚨 Urgente (igual que la app): solo si las alertas estan activas
+  // (alertas_whatsapp_config). Oficina -> WhatsApp + alarma al tecnico;
+  // tecnico -> WhatsApp a la oficina. El envio lo hace el servidor.
+  const [alertasActivas, setAlertasActivas] = useState(false);
+  useEffect(() => {
+    supabase.from("alertas_whatsapp_config").select("activo").eq("id", 1).maybeSingle()
+      .then(({ data, error }) => setAlertasActivas(!error && !!data?.activo), () => setAlertasActivas(false));
+  }, []);
 
   const registrarLectura = () => {
     marcarChatOrdenVisto(ordenId);
@@ -151,7 +161,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
 
   const items = useMemo(() => [
     ...mensajes,
-    ...pendientes.map((p) => ({ id: p.tempId, texto: p.texto, foto_url: p.fotoUrl || p.fotoPreview, autor, autor_rol: autorRol, created_at: p.created_at, pend: p })),
+    ...pendientes.map((p) => ({ id: p.tempId, texto: p.texto, foto_url: p.fotoUrl || p.fotoPreview, autor, autor_rol: autorRol, urgente: p.urgente, created_at: p.created_at, pend: p })),
   ], [mensajes, pendientes, autor, autorRol]);
 
   useLayoutEffect(() => {
@@ -214,7 +224,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       if (p.archivo && !fotoUrl) fotoUrl = await subirArchivo(p.archivo);
       const { data, error } = await supabase
         .from("chat_ordenes_mensajes")
-        .insert([{ orden_id: ordenId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null }])
+        .insert([{ orden_id: ordenId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}) }])
         .select("*")
         .single();
       if (error || !data) throw error || new Error("Sin respuesta");
@@ -228,10 +238,10 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       actualizarPend(p.tempId, { estado: "error", fotoUrl });
     }
   };
-  const encolar = ({ texto: t = "", archivo = null }) => {
+  const encolar = ({ texto: t = "", archivo = null, urgente = false }) => {
     const p = {
       tempId: `t${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "",
+      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente,
       estado: "enviando", created_at: new Date().toISOString(),
     };
     cercaRef.current = true;
@@ -244,6 +254,19 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     if (!t) return;
     setTexto("");
     encolar({ texto: t });
+  };
+  // Maximo un urgente por chat cada 10 minutos (por persona).
+  const ultimoUrgenteMio = [...items].reverse().find((m) => m.urgente && norm(m.autor) === norm(autor) && m.pend?.estado !== "error");
+  const minDesdeUrgente = ultimoUrgenteMio ? (Date.now() - new Date(ultimoUrgenteMio.created_at).getTime()) / 60000 : Infinity;
+  const urgenteBloqueado = minDesdeUrgente < 10;
+  const enviarUrgente = () => {
+    const t = texto.trim();
+    if (!t) return alert("🚨 Urgente: primero escribe qué pasa y luego aprieta 🚨.");
+    if (urgenteBloqueado) return alert(`Ya mandaste un urgente en este chat hace ${Math.max(1, Math.floor(minDesdeUrgente))} min. Podrás mandar otro en ${Math.ceil(10 - minDesdeUrgente)} min; mientras tanto envíalo como mensaje normal.`);
+    const a = esTecnico ? "a la oficina por WhatsApp" : "al técnico por WhatsApp y con alarma en su app";
+    if (!window.confirm(`¿Mandar como URGENTE? 🚨\n\n"${t}"\n\nLlega al instante ${a}. Úsalo solo si necesitas respuesta ya.`)) return;
+    setTexto("");
+    encolar({ texto: t, urgente: true });
   };
   const encolarArchivos = (files) => {
     Array.from(files || []).filter((f) => String(f.type || "").startsWith("image/")).forEach((f) => encolar({ archivo: f }));
@@ -556,6 +579,13 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           rows={1}
           style={{ flex: 1, padding: "9px 14px", border: "none", background: "#f1f5f9", borderRadius: 20, fontSize: 13.5, fontFamily: "inherit", resize: "none", outline: "none", lineHeight: "18px", minHeight: 36, maxHeight: 96, boxSizing: "border-box" }}
         />
+        {alertasActivas && (
+          <button type="button" onClick={enviarUrgente}
+            title={esTecnico ? "Mandar URGENTE (WhatsApp a la oficina)" : "Mandar URGENTE (WhatsApp + alarma al técnico)"}
+            style={{ ...icBtn, background: texto.trim() && !urgenteBloqueado ? "#fee2e2" : "#f1f5f9", border: `1px solid ${texto.trim() && !urgenteBloqueado ? "#fca5a5" : "#e2e8f0"}`, fontSize: 16, opacity: texto.trim() && !urgenteBloqueado ? 1 : 0.5, cursor: "pointer" }}>
+            🚨
+          </button>
+        )}
         <button type="button" onClick={enviarTexto} disabled={!texto.trim()} title="Enviar (Enter)"
           style={{ ...icBtn, background: texto.trim() ? "#2563eb" : "#cbd5e1", cursor: texto.trim() ? "pointer" : "default" }}>
           <Send size={16} color="#fff" style={{ marginLeft: -1 }} />

@@ -31,6 +31,15 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
   const [imagenAmpliada, setImagenAmpliada] = useState(null);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
+  const esTecnico = String(autorRol || "").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "") === "tecnico";
+
+  // Boton 🚨 Urgente: solo si las alertas estan activas (alertas_whatsapp_config).
+  // Oficina -> WhatsApp + alarma en la app del tecnico; tecnico -> WhatsApp a la oficina.
+  const [alertasActivas, setAlertasActivas] = useState(false);
+  useEffect(() => {
+    supabase.from("alertas_whatsapp_config").select("activo").eq("id", 1).maybeSingle()
+      .then(({ data, error }) => setAlertasActivas(!error && !!data?.activo), () => setAlertasActivas(false));
+  }, []);
 
   useEffect(() => {
     if (!tecnicoNombre) { setCargando(false); return undefined; }
@@ -38,7 +47,7 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
     (async () => {
       const { data } = await supabase
         .from("chat_tecnicos_mensajes")
-        .select("id,texto,foto_url,autor,autor_rol,created_at")
+        .select("*")
         .eq("tecnico_nombre", tecnicoNombre)
         .order("created_at", { ascending: true })
         .limit(200);
@@ -63,21 +72,40 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
 
   // El push lo dispara un Database Webhook de Supabase sobre esta misma
   // tabla (dim-notificaciones-server, /webhook/chat-tecnicos).
-  const mandarMensaje = async (fotoUrl = "") => {
+  const mandarMensaje = async (fotoUrl = "", urgente = false) => {
     const textoEnviado = texto.trim();
     if (!textoEnviado && !fotoUrl) return;
     setEnviando(true);
     const { data, error } = await supabase
       .from("chat_tecnicos_mensajes")
-      .insert([{ tecnico_nombre: tecnicoNombre, texto: textoEnviado || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null }])
-      .select("id,texto,foto_url,autor,autor_rol,created_at")
+      .insert([{ tecnico_nombre: tecnicoNombre, texto: textoEnviado || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(urgente ? { urgente: true } : {}) }])
+      .select("*")
       .single();
     if (!error && data) {
       setMensajes((prev) => prev.some((m) => m.id === data.id) ? prev : [...prev, data]);
       setTexto("");
       void notificarMensajeChat(supabase, { hiloTecnico: tecnicoNombre, autor, autorRol, texto: data.texto, fotoUrl: data.foto_url });
+    } else if (error && urgente) {
+      alert("No se pudo mandar el urgente: " + error.message);
     }
     setEnviando(false);
+  };
+
+  // Maximo un urgente por chat cada 10 minutos (por persona).
+  const ultimoUrgenteMio = [...mensajes].reverse().find((m) => m.urgente && String(m.autor || "").trim().toLowerCase() === String(autor || "").trim().toLowerCase());
+  const minDesdeUrgente = ultimoUrgenteMio ? (Date.now() - new Date(ultimoUrgenteMio.created_at).getTime()) / 60000 : Infinity;
+  const urgenteBloqueado = minDesdeUrgente < 10;
+  const mandarUrgente = () => {
+    const t = texto.trim();
+    if (!t) return alert("🚨 Urgente: primero escribe qué pasa y luego aprieta 🚨.");
+    if (urgenteBloqueado) return alert(`Ya mandaste un urgente en este chat hace ${Math.max(1, Math.floor(minDesdeUrgente))} min. Podrás mandar otro en ${Math.ceil(10 - minDesdeUrgente)} min; mientras tanto envíalo como mensaje normal.`);
+    const a = esTecnico ? "a la oficina por WhatsApp" : `a ${tecnicoNombre} por WhatsApp y con alarma en su app`;
+    if (!window.confirm(`¿Mandar como URGENTE? 🚨
+
+"${t}"
+
+Llega al instante ${a}. Úsalo solo si necesitas respuesta ya.`)) return;
+    void mandarMensaje("", true);
   };
 
   const subirFoto = async (file) => {
@@ -157,8 +185,8 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
                       </button>
                     )}
                     <div style={{
-                      maxWidth: "76%", background: esMio ? "#2563eb" : "#fff", color: esMio ? "#fff" : "#0f172a",
-                      border: esMio ? "none" : "1px solid #e2e8f0", borderRadius: 12, padding: "7px 10px",
+                      maxWidth: "76%", background: m.urgente ? (esMio ? "#dc2626" : "#fef2f2") : esMio ? "#2563eb" : "#fff", color: esMio ? "#fff" : "#0f172a",
+                      border: m.urgente && !esMio ? "1.5px solid #fca5a5" : esMio ? "none" : "1px solid #e2e8f0", borderRadius: 12, padding: "7px 10px",
                       borderBottomRightRadius: esMio && inicioDeGrupo ? 3 : 12,
                       borderBottomLeftRadius: !esMio && inicioDeGrupo ? 3 : 12,
                       boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
@@ -166,6 +194,11 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
                       {!esMio && inicioDeGrupo && (
                         <div style={{ fontSize: 10.5, fontWeight: 800, color: colorParaAutor(m.autor), marginBottom: 2 }}>
                           {m.autor}{m.autor_rol ? ` · ${m.autor_rol}` : ""}
+                        </div>
+                      )}
+                      {m.urgente && (
+                        <div style={{ display: "table", fontSize: 10, fontWeight: 900, letterSpacing: "0.03em", color: "#fff", background: esMio ? "rgba(255,255,255,0.22)" : "#dc2626", borderRadius: 999, padding: "2px 8px", marginBottom: 4 }}>
+                          🚨 URGENTE · aviso por WhatsApp
                         </div>
                       )}
                       {m.texto && <div style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{m.texto}</div>}
@@ -209,6 +242,13 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
           rows={1}
           style={{ flex: 1, padding: "7px 10px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", resize: "vertical", outline: "none", maxHeight: 80 }}
         />
+        {alertasActivas && (
+          <button type="button" onClick={mandarUrgente} disabled={enviando}
+            title={esTecnico ? "Mandar URGENTE (WhatsApp a la oficina)" : "Mandar URGENTE (WhatsApp + alarma al técnico)"}
+            style={{ background: texto.trim() && !urgenteBloqueado ? "#fee2e2" : "#f1f5f9", border: `1px solid ${texto.trim() && !urgenteBloqueado ? "#fca5a5" : "#e2e8f0"}`, borderRadius: 8, padding: "6px 10px", fontSize: 15, cursor: "pointer", opacity: texto.trim() && !urgenteBloqueado ? 1 : 0.5 }}>
+            🚨
+          </button>
+        )}
         <button type="button" onClick={() => void mandarMensaje()} disabled={enviando || !texto.trim()}
           style={{ background: texto.trim() ? "#1e40af" : "#cbd5e1", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: texto.trim() ? "pointer" : "default" }}>
           {enviando ? "…" : "Enviar"}

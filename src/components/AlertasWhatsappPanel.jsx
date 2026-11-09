@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BellRing, Plus, Trash2, RefreshCw, Send, Users, Phone, CircleCheck, CircleAlert, Save, Lock } from "lucide-react";
+import { BellRing, Plus, Trash2, RefreshCw, Send, Users, Phone, CircleCheck, CircleAlert, Save, Lock, HardHat, Siren } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 // Configuracion de las alertas 🚨 URGENTE del chat de la orden: a que grupo
@@ -41,6 +41,12 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
   const [reglas, setReglas] = useState([]); // nodos privados: [{ nodo, numeros: [{numero,nombre}], con_grupo }]
   const [tieneReglas, setTieneReglas] = useState(true);
   const [nuevoNodo, setNuevoNodo] = useState("");
+  // Urgentes de la oficina al tecnico: WhatsApp a su celular + push fuerte.
+  const [avisoTecnico, setAvisoTecnico] = useState(true);
+  const [pushFuerte, setPushFuerte] = useState(true);
+  const [tieneOpcionesTecnico, setTieneOpcionesTecnico] = useState(true);
+  const [tecnicos, setTecnicos] = useState([]); // [{ id, nombre, celular, original }]
+  const [probandoTec, setProbandoTec] = useState("");
 
   const mostrarAviso = (texto, ok = true) => {
     setAviso({ texto, ok });
@@ -64,7 +70,18 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
       setGrupoId(data?.grupo_id || "");
       setGrupoNombre(data?.grupo_nombre || "");
       setNumeros(Array.isArray(data?.numeros) ? data.numeros : []);
+      setTieneOpcionesTecnico(!data || Object.prototype.hasOwnProperty.call(data, "aviso_tecnico_whatsapp"));
+      setAvisoTecnico(data?.aviso_tecnico_whatsapp ?? true);
+      setPushFuerte(data?.push_fuerte ?? true);
       setCambios(false);
+    }
+    const tec = await supabase.from("usuarios").select("id,nombre,rol,celular,activo").eq("activo", true);
+    if (!tec.error) {
+      const sinTilde = (r) => String(r || "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      setTecnicos((tec.data || [])
+        .filter((u) => sinTilde(u.rol) === "tecnico")
+        .map((u) => ({ id: u.id, nombre: u.nombre, celular: u.celular || "", original: u.celular || "" }))
+        .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es")));
     }
     setCargando(false);
   }, []);
@@ -101,7 +118,23 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
   const renombrar = (i, nombre) => { setNumeros((p) => p.map((x, k) => (k === i ? { ...x, nombre } : x))); setCambios(true); };
 
   const guardar = async () => {
+    // Celulares de tecnicos: se validan antes de guardar nada.
+    const tecCambiados = tecnicos.filter((t) => soloDigitos(t.celular) !== soloDigitos(t.original));
+    const malo = tecCambiados.find((t) => soloDigitos(t.celular) && normalizarNumero(t.celular).length < 11);
+    if (malo) return mostrarAviso(`El celular de ${malo.nombre} no es válido (9 dígitos, ej. 980196764).`, false);
     setGuardando(true);
+    for (const t of tecCambiados) {
+      const cel = soloDigitos(t.celular) ? normalizarNumero(t.celular) : null;
+      const r = await supabase.from("usuarios").update({ celular: cel }).eq("id", t.id);
+      if (r.error) {
+        setGuardando(false);
+        return mostrarAviso(`No se pudo guardar el celular de ${t.nombre}: ${r.error.message}`, false);
+      }
+    }
+    setTecnicos((p) => p.map((t) => {
+      const c = soloDigitos(t.celular) ? normalizarNumero(t.celular) : "";
+      return { ...t, celular: c, original: c };
+    }));
     const { error } = await supabase.from("alertas_whatsapp_config").upsert({
       id: 1,
       activo,
@@ -117,6 +150,7 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
             numeros: (r.numeros || []).map((x) => ({ numero: normalizarNumero(x.numero), nombre: String(x.nombre || "").trim() })),
           })),
       } : {}),
+      ...(tieneOpcionesTecnico ? { aviso_tecnico_whatsapp: avisoTecnico, push_fuerte: pushFuerte } : {}),
       updated_at: new Date().toISOString(),
       updated_by: usuario || null,
     });
@@ -157,6 +191,21 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
     }
   };
 
+  const probarTecnico = async (t) => {
+    if (cambios) return mostrarAviso("Primero guarda los cambios; la prueba usa el celular guardado.", false);
+    setProbandoTec(t.nombre);
+    try {
+      const r = await fetch(`${NOTIF_URL}/alertas/prueba-tecnico${q}&nombre=${encodeURIComponent(t.nombre)}`, { method: "POST" }).then((x) => x.json());
+      if (r?.ok) mostrarAviso(`Prueba enviada a ${t.nombre}.`);
+      else mostrarAviso(r?.error || "No se pudo enviar la prueba.", false);
+    } catch {
+      mostrarAviso("No se pudo conectar con el servidor de notificaciones.", false);
+    } finally {
+      setProbandoTec("");
+    }
+  };
+  const cambiarCelularTec = (id, celular) => { setTecnicos((p) => p.map((t) => (t.id === id ? { ...t, celular } : t))); setCambios(true); };
+
   const lineaOk = estadoLinea?.ok && estadoLinea?.estado === "open";
 
   if (cargando) return <div style={{ padding: 24, color: "#64748b" }}>Cargando…</div>;
@@ -169,7 +218,7 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
         </div>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a" }}>Alertas WhatsApp</h2>
-          <div style={{ fontSize: 13, color: "#64748b" }}>A quién le llega el WhatsApp cuando un técnico aprieta 🚨 <b>Urgente</b> en el chat de una orden.</div>
+          <div style={{ fontSize: 13, color: "#64748b" }}>A quién le llega el WhatsApp cuando alguien aprieta 🚨 <b>Urgente</b> en un chat (de la orden o con oficina).</div>
         </div>
       </div>
 
@@ -273,6 +322,48 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
         </div>
       </div>
 
+      {/* Tecnicos: urgentes de la oficina hacia el tecnico */}
+      <div style={caja}>
+        <div style={tituloSeccion}><HardHat size={16} /> Técnicos (urgentes de la oficina)</div>
+        <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 10 }}>
+          Cuando una gestora o el admin manda 🚨 <b>Urgente</b> en el chat, al técnico le llega un WhatsApp a este celular y una alarma en su app.
+        </div>
+        {!tieneOpcionesTecnico && (
+          <div style={{ fontSize: 12.5, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
+            Falta correr el SQL <code>20261109_urgente_todos_los_chats.sql</code> en Supabase para guardar estas opciones.
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginBottom: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#0f172a", cursor: "pointer" }}>
+            <input type="checkbox" checked={avisoTecnico} disabled={!tieneOpcionesTecnico} onChange={(e) => { setAvisoTecnico(e.target.checked); setCambios(true); }} />
+            <Phone size={15} /> WhatsApp al técnico
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#0f172a", cursor: "pointer" }}>
+            <input type="checkbox" checked={pushFuerte} disabled={!tieneOpcionesTecnico} onChange={(e) => { setPushFuerte(e.target.checked); setCambios(true); }} />
+            <Siren size={15} color="#dc2626" /> Push fuerte (alarma) en la app
+          </label>
+        </div>
+        {tecnicos.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8", padding: "2px 0 6px" }}>No hay técnicos activos.</div>}
+        <div style={{ display: "grid", gap: 8 }}>
+          {tecnicos.map((t) => {
+            const vacio = !soloDigitos(t.celular);
+            return (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: vacio ? "#fffbeb" : "#f8fafc", border: `1px solid ${vacio ? "#fde68a" : "#e2e8f0"}`, borderRadius: 10, padding: "6px 8px 6px 12px" }}>
+                <span style={{ fontWeight: 700, fontSize: 13.5, color: "#0f172a", flex: "1 1 200px" }}>{t.nombre}</span>
+                <input value={t.celular} onChange={(e) => cambiarCelularTec(t.id, e.target.value)} placeholder="Celular, ej. 980196764" style={{ ...input, width: 190, padding: "6px 10px" }} />
+                <button type="button" onClick={() => void probarTecnico(t)} disabled={vacio || !!probandoTec} title="Mandar WhatsApp de prueba a este técnico" style={{ ...btnSecundario, padding: "6px 10px", opacity: vacio ? 0.5 : 1 }}>
+                  <Send size={14} /> {probandoTec === t.nombre ? "Enviando…" : "Probar"}
+                </button>
+                {vacio && <span style={{ width: "100%", fontSize: 12, color: "#b45309" }}>Sin celular: no le llegará el WhatsApp de urgentes (solo la alarma en la app).</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
+          El celular se guarda en el usuario del técnico. Pídele que mande un "hola" a la línea que envía para que WhatsApp no lo tome como spam.
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={() => void guardar()} disabled={guardando || faltaTabla || !cambios} style={{ ...btnPrimario, opacity: guardando || faltaTabla || !cambios ? 0.55 : 1 }}>
           <Save size={16} /> {guardando ? "Guardando…" : "Guardar cambios"}
@@ -290,8 +381,9 @@ export default function AlertasWhatsappPanel({ usuario, empresa = "dim" }) {
       )}
 
       <div style={{ ...caja, marginTop: 18, background: "#f8fafc", fontSize: 12.5, color: "#475569", lineHeight: 1.5 }}>
-        <b>Cómo funciona:</b> los mensajes y fotos normales del chat solo llegan a la app. Únicamente cuando el técnico escribe algo y aprieta 🚨 <b>Urgente</b> se manda el WhatsApp
-        (máximo uno por orden cada 10 minutos). Se contesta desde el chat de la orden, en la app o en la web.
+        <b>Cómo funciona:</b> los mensajes y fotos normales del chat solo llegan a la app. Cuando alguien escribe algo y aprieta 🚨 <b>Urgente</b> (en el chat de la orden o en el chat con oficina):
+        si es el <b>técnico</b>, el WhatsApp llega al grupo y números de arriba; si es la <b>oficina</b>, llega al celular del técnico con alarma en su app.
+        Máximo uno por chat cada 10 minutos por persona. Se contesta desde el chat, en la app o en la web.
       </div>
       <style>{"@keyframes spin { to { transform: rotate(360deg); } }"}</style>
     </div>
