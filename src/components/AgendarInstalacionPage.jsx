@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { MapPin, CheckCircle2, Loader2, User } from "lucide-react";
+import { MapPin, Loader2, User, Sunrise, Sun, Sunset, CalendarDays, CalendarCheck, Send, Lock } from "lucide-react";
 
 // Formulario web OPCIONAL para los datos de instalacion -- alternativa al
 // ida-y-vuelta por WhatsApp (pedido explicito del usuario, 2026-10-26). El
@@ -103,9 +103,9 @@ const MESES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "se
 // "fin" en minutos del dia: el turno de HOY se puede elegir solo si falta al
 // menos 1 hora para que termine (tiempo minimo para que llegue el tecnico).
 const HORARIOS = [
-  { valor: "Mañana (8:00am - 11:30am)", nombre: "Mañana", rango: "8:00 – 11:30 am", icono: "🌅", fin: 11 * 60 + 30 },
-  { valor: "Mediodía (11:30am - 2:30pm)", nombre: "Mediodía", rango: "11:30 am – 2:30 pm", icono: "☀️", fin: 14 * 60 + 30 },
-  { valor: "Tarde (2:30pm - 5:30pm)", nombre: "Tarde", rango: "2:30 – 5:30 pm", icono: "🌇", fin: 17 * 60 + 30 },
+  { valor: "Mañana (8:00am - 11:30am)", nombre: "Mañana", rango: "8:00 – 11:30 am", Icono: Sunrise, color: "#f59e0b", fin: 11 * 60 + 30 },
+  { valor: "Mediodía (11:30am - 2:30pm)", nombre: "Mediodía", rango: "11:30 am – 2:30 pm", Icono: Sun, color: "#F47A20", fin: 14 * 60 + 30 },
+  { valor: "Tarde (2:30pm - 5:30pm)", nombre: "Tarde", rango: "2:30 – 5:30 pm", Icono: Sunset, color: "#1E4F9C", fin: 17 * 60 + 30 },
 ];
 const MARGEN_HOY_MIN = 60;
 
@@ -179,7 +179,9 @@ const ESTILOS = `
 .ai-dia.sel small, .ai-dia.sel em { color: rgba(255,255,255,0.9); }
 .ai-turnos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .ai-turno { padding: 11px 6px; border-radius: 14px; border: 1.5px solid var(--borde); background: #fff; cursor: pointer; text-align: center; font-family: inherit; color: var(--txt); transition: transform .18s, border-color .18s, background .18s, box-shadow .18s; }
-.ai-turno span { font-size: 20px; display: block; }
+.ai-turno-ic { width: 40px; height: 40px; margin: 0 auto 4px; border-radius: 12px; display: grid; place-items: center; transition: transform .25s; }
+.ai-turno.sel .ai-turno-ic { transform: scale(1.1); }
+.ai-turno.sel .ai-turno-ic svg { animation: ai-latir 1.6s ease-in-out infinite; }
 .ai-turno strong { display: block; font-size: 13px; margin-top: 2px; }
 .ai-turno em { display: block; font-size: 10.5px; font-style: normal; color: var(--sub); margin-top: 2px; }
 .ai-turno.sel { border-color: var(--az); background: #eef3fb; box-shadow: 0 6px 16px rgba(30,79,156,0.18); transform: translateY(-2px); }
@@ -204,6 +206,7 @@ const ESTILOS = `
 @keyframes ai-pulso { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.94); opacity: .6; } }
 @keyframes ai-trazo { to { stroke-dashoffset: 0; } }
 @keyframes ai-caer { to { transform: translateY(105vh) rotate(540deg); opacity: .2; } }
+@keyframes ai-latir { 0%,100% { transform: none; } 50% { transform: rotate(-8deg) scale(1.08); } }
 @keyframes ai-girar { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ai-root *, .ai-root *::before, .ai-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
 `;
@@ -554,7 +557,7 @@ export default function AgendarInstalacionPage() {
 
   const turnoSel = HORARIOS.find((h) => h.valor === form.horario);
   const fechaSelTexto = form.fecha
-    ? (() => { const d = new Date(form.fecha + "T00:00:00"); return `${DIAS_SEMANA_ES[d.getDay()]} ${d.getDate()} de ${MESES_CORTO[d.getMonth()]}`; })()
+    ? (() => { const d = new Date(form.fecha + "T00:00:00"); const t = `${DIAS_SEMANA_ES[d.getDay()]} ${d.getDate()} de ${MESES_CORTO[d.getMonth()]}`; return t[0].toUpperCase() + t.slice(1); })()
     : "";
   const esFechaDeLista = dias.some((d) => d.iso === form.fecha);
 
@@ -656,7 +659,7 @@ export default function AgendarInstalacionPage() {
                 onClick={() => setOtraFecha(true)}
               >
                 <small>Otra</small>
-                <strong>📅</strong>
+                <strong style={{ display: "grid", placeItems: "center", height: 25 }}><CalendarDays size={22} strokeWidth={2.2} /></strong>
                 <em>fecha</em>
               </button>
             </div>
@@ -678,7 +681,7 @@ export default function AgendarInstalacionPage() {
                     className={`ai-turno${form.horario === h.valor ? " sel" : ""}`}
                     onClick={() => { set("horario", h.valor); setErrores((e) => ({ ...e, horario: undefined })); }}
                   >
-                    <span>{h.icono}</span>
+                    <div className="ai-turno-ic" style={{ background: `${h.color}1f` }}><h.Icono size={22} color={h.color} strokeWidth={2.2} /></div>
                     <strong>{h.nombre}</strong>
                     <em>{disponible ? h.rango : "Ya pasó"}</em>
                   </button>
@@ -691,7 +694,7 @@ export default function AgendarInstalacionPage() {
 
           {fechaSelTexto && turnoSel && (
             <div className="ai-ok" style={{ background: "#fff7ed", color: "#c2410c", margin: "4px 0 16px", padding: "10px 12px", fontSize: 13 }}>
-              🗓️ Instalación el <b style={{ textTransform: "capitalize" }}>{fechaSelTexto}</b>, turno {turnoSel.nombre.toLowerCase()}
+              <CalendarCheck size={16} style={{ flex: "none" }} /> <span>Instalación el <b>{fechaSelTexto}</b>, turno {turnoSel.nombre.toLowerCase()}</span>
             </div>
           )}
 
@@ -701,9 +704,9 @@ export default function AgendarInstalacionPage() {
           {errorEnvio && <p className="ai-err" style={{ margin: "0 0 12px", fontSize: 13 }}>{errorEnvio}</p>}
 
           <button type="submit" className="ai-enviar" disabled={enviando}>
-            {enviando ? <><Loader2 size={18} className="ai-girar" /> Enviando...</> : "Enviar mis datos 🚀"}
+            {enviando ? <><Loader2 size={18} className="ai-girar" /> Enviando...</> : <>Enviar mis datos <Send size={17} /></>}
           </button>
-          <p className="ai-ayuda" style={{ textAlign: "center", margin: "12px 0 0" }}>🔒 Tus datos solo se usan para agendar tu instalación.</p>
+          <p className="ai-ayuda" style={{ textAlign: "center", margin: "12px 0 0" }}><Lock size={11} style={{ verticalAlign: "-1px" }} /> Tus datos solo se usan para agendar tu instalación.</p>
         </form>
       </div>
     </Fondo>
