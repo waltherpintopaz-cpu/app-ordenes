@@ -97,12 +97,137 @@ function pinClienteIcon(maps, estado, size = 40) {
 const CENTRO_DEFAULT = { lat: -16.409, lng: -71.537 };
 
 const DIAS_SEMANA_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
-const HORARIOS = ["Mañana (8:00am - 11:30am)", "Mediodía (11:30am - 2:30pm)", "Tarde (2:30pm - 5:30pm)"];
+const DIAS_CORTO = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+const MESES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+// "valor" es el texto EXACTO que recibe el bot en dia_horario (no cambiarlo).
+// "fin" en minutos del dia: el turno de HOY se puede elegir solo si falta al
+// menos 1 hora para que termine (tiempo minimo para que llegue el tecnico).
+const HORARIOS = [
+  { valor: "Mañana (8:00am - 11:30am)", nombre: "Mañana", rango: "8:00 – 11:30 am", icono: "🌅", fin: 11 * 60 + 30 },
+  { valor: "Mediodía (11:30am - 2:30pm)", nombre: "Mediodía", rango: "11:30 am – 2:30 pm", icono: "☀️", fin: 14 * 60 + 30 },
+  { valor: "Tarde (2:30pm - 5:30pm)", nombre: "Tarde", rango: "2:30 – 5:30 pm", icono: "🌇", fin: 17 * 60 + 30 },
+];
+const MARGEN_HOY_MIN = 60;
 
-function mananaISO() {
+// Fecha LOCAL del celular (antes usaba toISOString, que es UTC: despues de
+// las 7pm en Peru ya daba el dia siguiente y "mañana" salia pasado mañana).
+const pad2 = (n) => String(n).padStart(2, "0");
+const isoLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const hoyISO = () => isoLocal(new Date());
+
+function horarioDisponible(fechaIso, h) {
+  if (fechaIso !== hoyISO()) return true;
+  const ahora = new Date();
+  return ahora.getHours() * 60 + ahora.getMinutes() <= h.fin - MARGEN_HOY_MIN;
+}
+
+// Proximos dias habiles (sin domingos) como botones rapidos. HOY se incluye
+// solo si todavia queda algun turno disponible (pedido del usuario, 2026-11-09:
+// el bot ya aceptaba instalacion el mismo dia, pero el formulario empezaba
+// recien desde mañana).
+function proximosDias(cantidad = 6) {
+  const dias = [];
   const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  d.setHours(0, 0, 0, 0);
+  for (let i = 0; dias.length < cantidad && i < 14; i++) {
+    const iso = isoLocal(d);
+    const esHoy = i === 0;
+    if (d.getDay() !== 0 && (!esHoy || HORARIOS.some((h) => horarioDisponible(iso, h)))) {
+      dias.push({ iso, etiqueta: esHoy ? "Hoy" : i === 1 ? "Mañana" : DIAS_CORTO[d.getDay()], num: d.getDate(), mes: MESES_CORTO[d.getMonth()] });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+
+const ESTILOS = `
+.ai-root { --az: #1E4F9C; --az2: #163d7a; --nar: #F47A20; --nar2: #f5a623; --txt: #0f172a; --sub: #64748b; --borde: #e2e8f0;
+  min-height: 100vh; font-family: Inter, system-ui, -apple-system, sans-serif; background: #f1f5fb; color: var(--txt); position: relative; overflow-x: hidden; }
+.ai-hero { position: relative; height: 210px; background: linear-gradient(135deg, var(--az) 0%, var(--az2) 60%, #0f2c5c 100%); overflow: hidden; }
+.ai-hero::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 85% 20%, rgba(244,122,32,0.35), transparent 45%); }
+.ai-burbuja { position: absolute; border-radius: 50%; background: linear-gradient(135deg, var(--nar), var(--nar2)); opacity: 0.25; animation: ai-flotar 9s ease-in-out infinite; }
+.ai-onda { position: absolute; left: 50%; top: 58px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); animation: ai-onda 3.2s ease-out infinite; }
+.ai-wrap { position: relative; max-width: 460px; margin: -150px auto 0; padding: 0 16px 40px; z-index: 1; }
+.ai-logo { display: flex; justify-content: center; margin-bottom: 14px; animation: ai-bajar .6s cubic-bezier(.2,.8,.2,1) both; }
+.ai-logo div { background: #fff; padding: 10px 18px; border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); }
+.ai-logo img { height: 30px; display: block; }
+.ai-card { background: #fff; border-radius: 20px; padding: 24px 20px 22px; box-shadow: 0 14px 40px rgba(15,23,42,0.12); animation: ai-subir .55s cubic-bezier(.2,.8,.2,1) .1s both; }
+.ai-titulo { font-size: 21px; font-weight: 800; margin: 0 0 4px; letter-spacing: -0.01em; }
+.ai-titulo span { background: linear-gradient(90deg, var(--nar), var(--nar2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ai-lead { font-size: 13.5px; color: var(--sub); margin: 0 0 20px; line-height: 1.45; }
+.ai-sec { animation: ai-subir .5s cubic-bezier(.2,.8,.2,1) both; margin-bottom: 16px; }
+.ai-paso { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--az); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 12px; }
+.ai-paso b { width: 22px; height: 22px; border-radius: 50%; background: var(--az); color: #fff; display: grid; place-items: center; font-size: 11px; }
+.ai-paso::after { content: ""; flex: 1; height: 1px; background: var(--borde); }
+.ai-label { font-size: 12.5px; font-weight: 600; color: #334155; margin-bottom: 6px; display: block; }
+.ai-inp { width: 100%; padding: 12px 13px; border: 1.5px solid var(--borde); border-radius: 12px; font-size: 15px; color: var(--txt); font-family: inherit; box-sizing: border-box; background: #f8fafc; transition: border-color .2s, box-shadow .2s, background .2s; outline: none; }
+.ai-inp:focus { border-color: var(--nar); background: #fff; box-shadow: 0 0 0 4px rgba(244,122,32,0.15); }
+.ai-err { font-size: 12px; color: #dc2626; margin: 6px 0 0; animation: ai-sacudir .35s; }
+.ai-ok { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 12.5px; color: #15803d; font-weight: 600; background: #f0fdf4; padding: 6px 10px; border-radius: 8px; animation: ai-aparecer .35s both; }
+.ai-ayuda { font-size: 11.5px; color: #94a3b8; margin: 0 0 8px; }
+.ai-mapa { width: 100%; height: 230px; border-radius: 14px; border: 1.5px solid var(--borde); background: #e2e8f0; }
+.ai-btn-sec { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: 1.5px solid var(--az); background: #eef3fb; color: var(--az); font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; transition: transform .15s; }
+.ai-btn-sec:active { transform: scale(.96); }
+.ai-dias { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
+.ai-dias::-webkit-scrollbar { display: none; }
+.ai-dia { flex: 0 0 auto; min-width: 64px; padding: 9px 6px 8px; border-radius: 14px; border: 1.5px solid var(--borde); background: #fff; cursor: pointer; text-align: center; font-family: inherit; color: var(--txt); transition: transform .18s, border-color .18s, background .18s, box-shadow .18s; animation: ai-aparecer .4s both; }
+.ai-dia small { display: block; font-size: 11px; font-weight: 700; color: var(--sub); text-transform: capitalize; }
+.ai-dia strong { display: block; font-size: 22px; font-weight: 800; line-height: 1.15; }
+.ai-dia em { display: block; font-size: 11px; font-style: normal; color: var(--sub); }
+.ai-dia.hoy small { color: var(--nar); }
+.ai-dia.sel { background: linear-gradient(160deg, var(--nar), #ea6a10); border-color: transparent; color: #fff; transform: translateY(-2px); box-shadow: 0 8px 18px rgba(244,122,32,0.35); }
+.ai-dia.sel small, .ai-dia.sel em { color: rgba(255,255,255,0.9); }
+.ai-turnos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ai-turno { padding: 11px 6px; border-radius: 14px; border: 1.5px solid var(--borde); background: #fff; cursor: pointer; text-align: center; font-family: inherit; color: var(--txt); transition: transform .18s, border-color .18s, background .18s, box-shadow .18s; }
+.ai-turno span { font-size: 20px; display: block; }
+.ai-turno strong { display: block; font-size: 13px; margin-top: 2px; }
+.ai-turno em { display: block; font-size: 10.5px; font-style: normal; color: var(--sub); margin-top: 2px; }
+.ai-turno.sel { border-color: var(--az); background: #eef3fb; box-shadow: 0 6px 16px rgba(30,79,156,0.18); transform: translateY(-2px); }
+.ai-turno.sel strong { color: var(--az); }
+.ai-turno:disabled { opacity: .45; cursor: not-allowed; background: #f8fafc; }
+.ai-enviar { width: 100%; padding: 14px 0; border-radius: 14px; border: none; background: linear-gradient(90deg, var(--nar), var(--nar2), var(--nar)); background-size: 200% 100%; color: #fff; font-size: 15.5px; font-weight: 800; cursor: pointer; font-family: inherit; box-shadow: 0 10px 22px rgba(244,122,32,0.35); animation: ai-brillo 4s linear infinite; transition: transform .15s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.ai-enviar:active { transform: scale(.98); }
+.ai-enviar:disabled { opacity: .75; cursor: default; }
+.ai-centro { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; }
+.ai-pulso { animation: ai-pulso 1.4s ease-in-out infinite; }
+.ai-check circle { stroke-dasharray: 160; stroke-dashoffset: 160; animation: ai-trazo .7s ease-out forwards; }
+.ai-check path { stroke-dasharray: 50; stroke-dashoffset: 50; animation: ai-trazo .45s ease-out .55s forwards; }
+.ai-confeti { position: absolute; top: -12px; width: 8px; height: 12px; border-radius: 2px; animation: ai-caer linear forwards; }
+.ai-girar { animation: ai-girar 1s linear infinite; }
+@keyframes ai-flotar { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(14px,-18px) scale(1.08); } }
+@keyframes ai-onda { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(26); opacity: 0; } }
+@keyframes ai-bajar { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+@keyframes ai-subir { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes ai-aparecer { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes ai-sacudir { 0%,100% { transform: none; } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes ai-brillo { from { background-position: 0% 0; } to { background-position: 200% 0; } }
+@keyframes ai-pulso { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.94); opacity: .6; } }
+@keyframes ai-trazo { to { stroke-dashoffset: 0; } }
+@keyframes ai-caer { to { transform: translateY(105vh) rotate(540deg); opacity: .2; } }
+@keyframes ai-girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ai-root *, .ai-root *::before, .ai-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+`;
+
+const LOGO_URL = "/americanet-logo-clean.png";
+
+function Fondo({ children }) {
+  return (
+    <div className="ai-root">
+      <style>{ESTILOS}</style>
+      <div className="ai-hero" aria-hidden="true">
+        <div className="ai-burbuja" style={{ width: 160, height: 160, left: -40, top: 60 }} />
+        <div className="ai-burbuja" style={{ width: 90, height: 90, right: 20, top: 20, animationDelay: "-3s" }} />
+        <div className="ai-burbuja" style={{ width: 50, height: 50, right: "38%", top: 120, animationDelay: "-6s" }} />
+        <div className="ai-onda" />
+        <div className="ai-onda" style={{ animationDelay: "1.6s" }} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Logo() {
+  return <div className="ai-logo"><div><img src={LOGO_URL} alt="Americanet" /></div></div>;
 }
 
 function parsearPlanesConPromo(planesTv, promoActiva) {
@@ -120,10 +245,6 @@ function parsearPlanesConPromo(planesTv, promoActiva) {
   return planes;
 }
 
-const card = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: "28px 24px", maxWidth: 440, width: "100%", boxShadow: "0 4px 24px rgba(15,23,42,0.06)" };
-const label = { fontSize: 12, fontWeight: 600, color: "#334155", marginBottom: 6, display: "block" };
-const inp = { width: "100%", padding: "10px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 14, color: "#0f172a", fontFamily: "inherit", boxSizing: "border-box", background: "#fff" };
-const field = { marginBottom: 14 };
 
 export default function AgendarInstalacionPage() {
   // Token como ultimo segmento de la ruta ("/agendar-instalacion/<token>"),
@@ -294,6 +415,18 @@ export default function AgendarInstalacionPage() {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  const [otraFecha, setOtraFecha] = useState(false);
+  const dias = proximosDias();
+  const elegirFecha = (iso) => {
+    setForm((f) => {
+      const h = HORARIOS.find((x) => x.valor === f.horario);
+      // Si el turno ya elegido no esta disponible para la nueva fecha (ej.
+      // "Mañana" y se cambia a HOY por la tarde), se limpia.
+      return { ...f, fecha: iso, horario: h && !horarioDisponible(iso, h) ? "" : f.horario };
+    });
+    setErrores((e) => ({ ...e, fecha: undefined, horario: undefined }));
+  };
+
   const pedirUbicacion = () => {
     setErrorUbicacion("");
     if (!navigator.geolocation) { setErrorUbicacion("Tu navegador no permite compartir ubicación -- márcala en el mapa o escríbenos por WhatsApp."); return; }
@@ -318,8 +451,11 @@ export default function AgendarInstalacionPage() {
     if (!form.direccion.trim()) errs.direccion = "Falta la dirección.";
     if (!form.plan) errs.plan = "Elige un plan.";
     if (!form.fecha) errs.fecha = "Elige un día.";
+    else if (form.fecha < hoyISO()) errs.fecha = "Esa fecha ya pasó -- elige otro día.";
     else if (fechaEsDomingo(form.fecha)) errs.fecha = "Los domingos no hacemos instalaciones -- elige otro día.";
-    if (!form.horario) errs.horario = "Elige un horario.";
+    const turno = HORARIOS.find((h) => h.valor === form.horario);
+    if (!turno) errs.horario = "Elige un horario.";
+    else if (form.fecha && !horarioDisponible(form.fecha, turno)) errs.horario = "Ese horario de hoy ya pasó -- elige otro.";
     return errs;
   };
 
@@ -358,139 +494,218 @@ export default function AgendarInstalacionPage() {
 
   if (resolviendo) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc" }}>
-        <Loader2 size={24} color="#64748b" />
-      </div>
+      <Fondo>
+        <div className="ai-centro" style={{ minHeight: "auto", marginTop: -130 }}>
+          <Logo />
+          <div className="ai-card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px" }}>
+            <Loader2 size={20} color="#F47A20" className="ai-girar" />
+            <span className="ai-pulso" style={{ fontSize: 14, color: "#475569" }}>Cargando tu formulario...</span>
+          </div>
+        </div>
+      </Fondo>
     );
   }
 
   if (linkInvalido) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc" }}>
-        <div style={card}>
-          <p style={{ fontSize: 14, color: "#475569" }}>Este link no es válido o ya venció. Pide uno nuevo por WhatsApp.</p>
+      <Fondo>
+        <div className="ai-wrap">
+          <Logo />
+          <div className="ai-card" style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>⏳</div>
+            <h2 className="ai-titulo" style={{ fontSize: 18 }}>Este link ya no es válido</h2>
+            <p className="ai-lead" style={{ margin: 0 }}>Puede que haya vencido. Pide uno nuevo por WhatsApp y te lo enviamos al toque.</p>
+          </div>
         </div>
-      </div>
+      </Fondo>
     );
   }
 
   if (enviado) {
+    const colores = ["#F47A20", "#f5a623", "#1E4F9C", "#16a34a", "#60a5fa"];
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc" }}>
-        <div style={{ ...card, textAlign: "center" }}>
-          <CheckCircle2 size={40} color="#16a34a" style={{ marginBottom: 12 }} />
-          <h2 style={{ fontSize: 17, color: "#0f172a", margin: "0 0 8px" }}>¡Listo!</h2>
-          <p style={{ fontSize: 14, color: "#475569", margin: "0 0 20px" }}>Recibimos tus datos. Vuelve a WhatsApp -- te vamos a mostrar un resumen para que confirmes antes de agendar.</p>
-          {/* window.close() solo funciona si el navegador lo permite (ej. la
-              pestaña/webview en la que WhatsApp abrio este link) -- si no
-              hace nada, el cliente igual puede volver a WhatsApp a mano,
-              asi que es un boton de "mejor esfuerzo", nunca indispensable. */}
-          <button type="button" onClick={() => window.close()} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            Volver a WhatsApp
-          </button>
+      <Fondo>
+        <div aria-hidden="true" style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 2 }}>
+          {Array.from({ length: 28 }).map((_, i) => (
+            <span key={i} className="ai-confeti" style={{ left: `${(i * 37) % 100}%`, background: colores[i % colores.length], animationDuration: `${2.2 + (i % 5) * 0.35}s`, animationDelay: `${(i % 7) * 0.12}s` }} />
+          ))}
         </div>
-      </div>
+        <div className="ai-wrap">
+          <Logo />
+          <div className="ai-card" style={{ textAlign: "center" }}>
+            <svg className="ai-check" width="76" height="76" viewBox="0 0 52 52" style={{ marginBottom: 10 }}>
+              <circle cx="26" cy="26" r="24" fill="none" stroke="#16a34a" strokeWidth="3" />
+              <path d="M15 27l7 7 15-16" fill="none" stroke="#16a34a" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <h2 className="ai-titulo">¡Listo, <span>recibimos tus datos</span>!</h2>
+            <p className="ai-lead">Vuelve a WhatsApp: te mostraremos un resumen para que lo confirmes antes de agendar tu instalación.</p>
+            {/* window.close() solo funciona si el navegador lo permite (ej. la
+                pestaña/webview en la que WhatsApp abrio este link) -- si no
+                hace nada, el cliente igual puede volver a WhatsApp a mano,
+                asi que es un boton de "mejor esfuerzo", nunca indispensable. */}
+            <button type="button" className="ai-enviar" onClick={() => window.close()}>
+              Volver a WhatsApp
+            </button>
+          </div>
+        </div>
+      </Fondo>
     );
   }
 
-  const errorField = { fontSize: 12, color: "#dc2626", margin: "6px 0 0" };
+  const turnoSel = HORARIOS.find((h) => h.valor === form.horario);
+  const fechaSelTexto = form.fecha
+    ? (() => { const d = new Date(form.fecha + "T00:00:00"); return `${DIAS_SEMANA_ES[d.getDay()]} ${d.getDate()} de ${MESES_CORTO[d.getMonth()]}`; })()
+    : "";
+  const esFechaDeLista = dias.some((d) => d.iso === form.fecha);
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc" }}>
-      <form style={card} onSubmit={enviar}>
-        <h2 style={{ fontSize: 17, color: "#0f172a", margin: "0 0 4px" }}>Agenda tu instalación</h2>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 20px" }}>Llena tus datos aquí, es más rápido que escribirlos por WhatsApp.</p>
+    <Fondo>
+      <div className="ai-wrap">
+        <Logo />
+        <form className="ai-card" onSubmit={enviar} noValidate>
+          <h1 className="ai-titulo">Agenda tu <span>instalación</span></h1>
+          <p className="ai-lead">Llena tus datos aquí, es más rápido que escribirlos por WhatsApp. Te toma menos de 2 minutos. ⚡</p>
 
-        <div style={field}>
-          <label style={label}>DNI</label>
-          <input style={inp} value={form.dni} onChange={(e) => set("dni", e.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" placeholder="12345678" required />
-          {buscandoDni && <p style={{ fontSize: 12, color: "#94a3b8", margin: "6px 0 0" }}>Buscando...</p>}
-          {!buscandoDni && nombreDni && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12, color: "#16a34a", fontWeight: 600 }}>
-              <User size={13} /> {nombreDni}
+          <div className="ai-paso" style={{ marginTop: 4 }}><b>1</b> Tus datos</div>
+          <div className="ai-sec" style={{ animationDelay: ".15s" }}>
+            <label className="ai-label">DNI del titular</label>
+            <input className="ai-inp" value={form.dni} onChange={(e) => set("dni", e.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" placeholder="12345678" />
+            {buscandoDni && <p className="ai-ayuda" style={{ margin: "6px 0 0" }}>Buscando...</p>}
+            {!buscandoDni && nombreDni && <div className="ai-ok"><User size={14} /> {nombreDni}</div>}
+            {!buscandoDni && dniNoEncontrado && <p className="ai-err">No encontramos ese DNI -- revisa que esté bien escrito.</p>}
+            {errores.dni && <p className="ai-err">{errores.dni}</p>}
+          </div>
+          <div className="ai-sec" style={{ animationDelay: ".2s" }}>
+            <label className="ai-label">Celular del titular</label>
+            <input className="ai-inp" value={form.celular_titular} onChange={(e) => set("celular_titular", e.target.value.replace(/\D/g, "").slice(0, 9))} inputMode="numeric" placeholder="987654321" />
+            {errores.celular_titular && <p className="ai-err">{errores.celular_titular}</p>}
+          </div>
+          <div className="ai-sec" style={{ animationDelay: ".25s" }}>
+            <label className="ai-label">Correo <span style={{ color: "#94a3b8", fontWeight: 500 }}>(opcional)</span></label>
+            <input className="ai-inp" type="email" value={form.correo} onChange={(e) => set("correo", e.target.value)} placeholder="tucorreo@ejemplo.com" />
+          </div>
+
+          <div className="ai-paso"><b>2</b> ¿Dónde instalamos?</div>
+          <div className="ai-sec" style={{ animationDelay: ".3s" }}>
+            <label className="ai-label">Dirección exacta</label>
+            <input className="ai-inp" value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Jr./Av., número, urbanización/zona" />
+            {errores.direccion && <p className="ai-err">{errores.direccion}</p>}
+          </div>
+          <div className="ai-sec" style={{ animationDelay: ".35s" }}>
+            <label className="ai-label">Ubicación en el mapa</label>
+            <p className="ai-ayuda">Toca el mapa o arrastra el pin hasta tu casa -- aunque no estés ahí en este momento.</p>
+            {mapaError ? (
+              <p className="ai-err" style={{ margin: "0 0 8px" }}>No se pudo cargar el mapa -- usa el botón de abajo o describe bien la dirección arriba, igual podemos confirmar por WhatsApp.</p>
+            ) : (
+              <div style={{ position: "relative" }}>
+                <div ref={mapRef} className="ai-mapa" />
+                {/* Chico y propio en vez del selector nativo de Google (pedido
+                    explicito del usuario, 2026-10-26) -- el boton nativo de
+                    "ampliar" (fullscreen) ya lo pone Google solo abajo a la
+                    derecha (fullscreenControl:true en el useEffect del mapa). */}
+                <button
+                  type="button"
+                  onClick={() => setVistaSatelital((v) => !v)}
+                  style={{ position: "absolute", top: 8, left: 8, zIndex: 1, padding: "6px 10px", borderRadius: 8, border: "none", background: "#fff", color: "#334155", fontSize: 11.5, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.2)", fontFamily: "inherit" }}
+                >
+                  {vistaSatelital ? "🗺️ Mapa" : "🛰️ Satélite"}
+                </button>
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, flexWrap: "wrap", gap: 8 }}>
+              <button type="button" className="ai-btn-sec" onClick={pedirUbicacion} disabled={buscandoUbicacion}>
+                {buscandoUbicacion ? <Loader2 size={14} className="ai-girar" /> : <MapPin size={14} />} {buscandoUbicacion ? "Obteniendo..." : "Usar mi ubicación actual"}
+              </button>
+              {coberturaEstado === "revisando" && <span className="ai-pulso" style={{ fontSize: 12, color: "#94a3b8" }}>Revisando cobertura...</span>}
+              {coberturaEstado === true && <span className="ai-ok" style={{ marginTop: 0 }}>✅ Zona con cobertura</span>}
+              {coberturaEstado === false && <span style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}>⚠️ Fuera del mapa de cobertura, lo confirmamos igual</span>}
             </div>
-          )}
-          {!buscandoDni && dniNoEncontrado && <p style={errorField}>No encontramos ese DNI -- revisa que esté bien escrito.</p>}
-          {errores.dni && <p style={errorField}>{errores.dni}</p>}
-        </div>
-        <div style={field}>
-          <label style={label}>Celular del titular</label>
-          <input style={inp} value={form.celular_titular} onChange={(e) => set("celular_titular", e.target.value.replace(/\D/g, "").slice(0, 9))} inputMode="numeric" placeholder="987654321" required />
-          {errores.celular_titular && <p style={errorField}>{errores.celular_titular}</p>}
-        </div>
-        <div style={field}>
-          <label style={label}>Dirección exacta</label>
-          <input style={inp} value={form.direccion} onChange={(e) => set("direccion", e.target.value)} placeholder="Jr./Av., número, urbanización/zona" required />
-          {errores.direccion && <p style={errorField}>{errores.direccion}</p>}
-        </div>
+            {errorUbicacion && <p className="ai-err">{errorUbicacion}</p>}
+          </div>
 
-        <div style={field}>
-          <label style={label}>Ubicación GPS</label>
-          <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 8px" }}>Toca el mapa o arrastra el pin para marcar el lugar exacto -- aunque no estés ahí en este momento.</p>
-          {mapaError ? (
-            <p style={{ fontSize: 12, color: "#dc2626", margin: "0 0 8px" }}>No se pudo cargar el mapa -- usa el botón de abajo o describe bien la dirección arriba, igual podemos confirmar por WhatsApp.</p>
-          ) : (
-            <div style={{ position: "relative" }}>
-              <div ref={mapRef} style={{ width: "100%", height: 220, borderRadius: 8, border: "1px solid #d1d5db", background: "#f1f5f9" }} />
-              {/* Chico y propio en vez del selector nativo de Google (pedido
-                  explicito del usuario, 2026-10-26) -- el boton nativo de
-                  "ampliar" (fullscreen) ya lo pone Google solo abajo a la
-                  derecha (fullscreenControl:true en el useEffect del mapa). */}
+          <div className="ai-paso"><b>3</b> Tu plan</div>
+          <div className="ai-sec" style={{ animationDelay: ".4s" }}>
+            <select className="ai-inp" value={form.plan} onChange={(e) => set("plan", e.target.value)}>
+              <option value="">Elige un plan...</option>
+              {planes.map((p) => <option key={p.valor} value={p.valor}>{p.label}</option>)}
+            </select>
+            {errores.plan && <p className="ai-err">{errores.plan}</p>}
+          </div>
+
+          <div className="ai-paso"><b>4</b> ¿Cuándo te instalamos?</div>
+          <div className="ai-sec" style={{ animationDelay: ".45s" }}>
+            <label className="ai-label">Día</label>
+            <div className="ai-dias">
+              {dias.map((d, i) => (
+                <button
+                  key={d.iso}
+                  type="button"
+                  className={`ai-dia${d.etiqueta === "Hoy" ? " hoy" : ""}${form.fecha === d.iso ? " sel" : ""}`}
+                  style={{ animationDelay: `${0.5 + i * 0.05}s` }}
+                  onClick={() => { setOtraFecha(false); elegirFecha(d.iso); }}
+                >
+                  <small>{d.etiqueta}</small>
+                  <strong>{d.num}</strong>
+                  <em>{d.mes}</em>
+                </button>
+              ))}
               <button
                 type="button"
-                onClick={() => setVistaSatelital((v) => !v)}
-                style={{ position: "absolute", top: 8, left: 8, zIndex: 1, padding: "5px 9px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", color: "#334155", fontSize: 11, fontWeight: 600, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }}
+                className={`ai-dia${otraFecha || (form.fecha && !esFechaDeLista) ? " sel" : ""}`}
+                style={{ animationDelay: `${0.5 + dias.length * 0.05}s` }}
+                onClick={() => setOtraFecha(true)}
               >
-                {vistaSatelital ? "🗺️ Mapa" : "🛰️ Satélite"}
+                <small>Otra</small>
+                <strong>📅</strong>
+                <em>fecha</em>
               </button>
             </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, flexWrap: "wrap", gap: 8 }}>
-            <button type="button" onClick={pedirUbicacion} disabled={buscandoUbicacion} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #2563eb", background: "#eff6ff", color: "#2563eb", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-              {buscandoUbicacion ? <Loader2 size={13} /> : <MapPin size={13} />} {buscandoUbicacion ? "Obteniendo..." : "Usar mi ubicación actual"}
-            </button>
-            {coberturaEstado === "revisando" && <span style={{ fontSize: 12, color: "#94a3b8" }}>Revisando cobertura...</span>}
-            {coberturaEstado === true && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>✅ Zona con cobertura</span>}
-            {coberturaEstado === false && <span style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}>⚠️ Fuera del mapa de cobertura, lo confirmamos igual</span>}
+            {(otraFecha || (form.fecha && !esFechaDeLista)) && (
+              <input className="ai-inp" style={{ marginTop: 8 }} type="date" min={hoyISO()} value={form.fecha} onChange={(e) => elegirFecha(e.target.value)} />
+            )}
+            {errores.fecha && <p className="ai-err">{errores.fecha}</p>}
           </div>
-          {errorUbicacion && <p style={errorField}>{errorUbicacion}</p>}
-        </div>
+          <div className="ai-sec" style={{ animationDelay: ".5s" }}>
+            <label className="ai-label">Horario</label>
+            <div className="ai-turnos">
+              {HORARIOS.map((h) => {
+                const disponible = !form.fecha || horarioDisponible(form.fecha, h);
+                return (
+                  <button
+                    key={h.valor}
+                    type="button"
+                    disabled={!disponible}
+                    className={`ai-turno${form.horario === h.valor ? " sel" : ""}`}
+                    onClick={() => { set("horario", h.valor); setErrores((e) => ({ ...e, horario: undefined })); }}
+                  >
+                    <span>{h.icono}</span>
+                    <strong>{h.nombre}</strong>
+                    <em>{disponible ? h.rango : "Ya pasó"}</em>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="ai-ayuda" style={{ margin: "8px 0 0" }}>Instalamos de lunes a sábado, de 8:00 am a 5:30 pm.</p>
+            {errores.horario && <p className="ai-err">{errores.horario}</p>}
+          </div>
 
-        <div style={field}>
-          <label style={label}>Plan</label>
-          <select style={inp} value={form.plan} onChange={(e) => set("plan", e.target.value)} required>
-            <option value="">Elige un plan...</option>
-            {planes.map((p) => <option key={p.valor} value={p.valor}>{p.label}</option>)}
-          </select>
-          {errores.plan && <p style={errorField}>{errores.plan}</p>}
-        </div>
+          {fechaSelTexto && turnoSel && (
+            <div className="ai-ok" style={{ background: "#fff7ed", color: "#c2410c", margin: "4px 0 16px", padding: "10px 12px", fontSize: 13 }}>
+              🗓️ Instalación el <b style={{ textTransform: "capitalize" }}>{fechaSelTexto}</b>, turno {turnoSel.nombre.toLowerCase()}
+            </div>
+          )}
 
-        <div style={field}>
-          <label style={label}>Día de instalación</label>
-          <input style={inp} type="date" min={mananaISO()} value={form.fecha} onChange={(e) => set("fecha", e.target.value)} required />
-          {errores.fecha && <p style={errorField}>{errores.fecha}</p>}
-        </div>
-        <div style={field}>
-          <label style={label}>Horario de preferencia</label>
-          <select style={inp} value={form.horario} onChange={(e) => set("horario", e.target.value)} required>
-            <option value="">Elige un horario...</option>
-            {HORARIOS.map((h) => <option key={h} value={h}>{h}</option>)}
-          </select>
-          <p style={{ fontSize: 11, color: "#94a3b8", margin: "6px 0 0" }}>Instalamos de lunes a sábado, 8:00am a 5:30pm.</p>
-          {errores.horario && <p style={errorField}>{errores.horario}</p>}
-        </div>
+          {Object.keys(errores).some((k) => errores[k]) && (
+            <p className="ai-err" style={{ margin: "0 0 12px", fontSize: 13 }}>Revisa los campos marcados en rojo.</p>
+          )}
+          {errorEnvio && <p className="ai-err" style={{ margin: "0 0 12px", fontSize: 13 }}>{errorEnvio}</p>}
 
-        <div style={field}>
-          <label style={label}>Correo (opcional)</label>
-          <input style={inp} type="email" value={form.correo} onChange={(e) => set("correo", e.target.value)} placeholder="tucorreo@ejemplo.com" />
-        </div>
-
-        {errorEnvio && <p style={{ fontSize: 13, color: "#dc2626", margin: "0 0 12px" }}>{errorEnvio}</p>}
-
-        <button type="submit" disabled={enviando} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: 14, fontWeight: 700, cursor: enviando ? "default" : "pointer", opacity: enviando ? 0.7 : 1 }}>
-          {enviando ? "Enviando..." : "Enviar datos"}
-        </button>
-      </form>
-    </div>
+          <button type="submit" className="ai-enviar" disabled={enviando}>
+            {enviando ? <><Loader2 size={18} className="ai-girar" /> Enviando...</> : "Enviar mis datos 🚀"}
+          </button>
+          <p className="ai-ayuda" style={{ textAlign: "center", margin: "12px 0 0" }}>🔒 Tus datos solo se usan para agendar tu instalación.</p>
+        </form>
+      </div>
+    </Fondo>
   );
 }
