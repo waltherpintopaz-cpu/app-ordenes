@@ -4632,13 +4632,22 @@ const etiquetaNodoTransfer = (nodo) => {
   return (NODO_POR_ROUTER_TRANSFER[raw] || raw).toLowerCase();
 };
 
+// Ordenes de Americanet ya creadas en DIM por este proceso (id AM -> codigo
+// DIM). Si la cancelacion en Americanet falla (red, etc.), el siguiente
+// barrido NO vuelve a crearla en DIM: solo reintenta cancelar.
+const transferDimHechas = new Map();
+const transferDimAvisadas = new Set();
+
 const transferirOrdenADim = async (orden) => {
   const dni = String(orden.dni || "").trim();
-  // 1) Ya existe en DIM? (mismo DNI + tipo, creada desde 1h antes) -> no duplicar.
-  let existente = null;
-  if (dni) {
+  // 1) Ya existe en DIM? (mismo DNI -- o mismo celular si no hay DNI -- y
+  // tipo, creada desde 1h antes) -> no duplicar.
+  let existente = transferDimHechas.has(orden.id) ? { codigo: transferDimHechas.get(orden.id) } : null;
+  const celular = String(orden.celular || "").trim();
+  if (!existente && (dni || celular)) {
     const desde = new Date(new Date(orden.fecha_creacion).getTime() - 3600000).toISOString();
-    const q = `ordenes?select=id,codigo&dni=eq.${encodeURIComponent(dni)}&orden_tipo=eq.${encodeURIComponent(orden.orden_tipo || "")}&fecha_creacion=gte.${encodeURIComponent(desde)}&order=fecha_creacion.asc&limit=1`;
+    const filtro = dni ? `dni=eq.${encodeURIComponent(dni)}` : `celular=eq.${encodeURIComponent(celular)}`;
+    const q = `ordenes?select=id,codigo&${filtro}&orden_tipo=eq.${encodeURIComponent(orden.orden_tipo || "")}&fecha_creacion=gte.${encodeURIComponent(desde)}&order=fecha_creacion.asc&limit=1`;
     existente = (await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, q))?.[0] || null;
   }
   let codigoDim = existente?.codigo || "";
@@ -4669,6 +4678,7 @@ const transferirOrdenADim = async (orden) => {
       payload.codigo = codigoDim;
       try {
         await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "ordenes", { method: "POST", body: [payload], prefer: "return=minimal" });
+        transferDimHechas.set(orden.id, codigoDim);
         break;
       } catch (e) {
         if (e.code === "23505" && intento < 2) continue; // codigo repetido -> pedir otro
@@ -4696,6 +4706,24 @@ const transferirOrdenADim = async (orden) => {
       // No bloquea el traspaso: la orden ya esta en DIM con las credenciales
       // en la descripcion; solo queda avisado en el log para revisarla.
       console.error(`[traspaso-dim] ${orden.codigo}: no se pudo copiar la cuenta IPTV a DIM:`, e.message);
+    }
+  }
+  // 2c) Cliente Mikrowisp: la automatizacion del panel de Americanet crea el
+  // cliente en el Mikrowisp de DIM (correcto), pero la fila de busqueda
+  // rapida mikrowisp_clientes la guarda en la base de Americanet -- sin
+  // copiarla, el bot/sidebar de DIM no encuentra al cliente por telefono.
+  const cedula = dni.replace(/\D/g, "");
+  if (cedula) {
+    try {
+      const filasMkw = await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, `mikrowisp_clientes?select=*&cedula=eq.${encodeURIComponent(cedula)}`);
+      for (const fila of filasMkw || []) {
+        const yaEnDim = (await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, `mikrowisp_clientes?select=id&mikrowisp_id=eq.${encodeURIComponent(fila.mikrowisp_id)}&nodo=eq.${encodeURIComponent(fila.nodo)}&limit=1`))?.[0];
+        if (yaEnDim) continue;
+        const { id: _omitMkw, ...copiaMkw } = fila;
+        await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "mikrowisp_clientes", { method: "POST", body: [copiaMkw], prefer: "return=minimal" });
+      }
+    } catch (e) {
+      console.error(`[traspaso-dim] ${orden.codigo}: no se pudo copiar mikrowisp_clientes a DIM:`, e.message);
     }
   }
   // 3) Sacarla de Americanet: Cancelada con el motivo (condicionado al estado
@@ -4743,7 +4771,7 @@ const usuariosUsadosEnDim = async () => {
     const nodoKey = etiquetaNodoTransfer(r.nodo);
     if (!usuario || !nodosDim.has(nodoKey)) continue;
     const k = usuario.toLowerCase();
-    if (!vistos.has(k)) vistos.set(k, { usuario, nodo: nodoKey.replace(/^nod_/, "Nod_"), dni: String(r.dni || "").replace(/D/g, "") });
+    if (!vistos.has(k)) vistos.set(k, { usuario, nodo: nodoKey.replace(/^nod_/, "Nod_"), dni: String(r.dni || "").replace(/\D/g, "") });
   }
   usuariosDimCache = { at: Date.now(), lista: [...vistos.values()] };
   return usuariosDimCache.lista;
@@ -4758,7 +4786,17 @@ const barrerOrdenesParaDim = async () => {
     const q = `ordenes?select=*&estado=in.(Pendiente,"En Proceso")&fecha_creacion=gte.${encodeURIComponent(TRANSFER_DIM_DESDE)}&fecha_creacion=lte.${encodeURIComponent(hasta)}&order=fecha_creacion.asc&limit=50`;
     const candidatas = (await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, q) || []).filter((o) => nodosDim.has(etiquetaNodoTransfer(o.nodo)));
     for (const orden of candidatas) {
-      await transferirOrdenADim(orden).catch((e) => console.error(`[traspaso-dim] ${orden.codigo} fallo:`, e.message));
+      await transferirOrdenADim(orden).catch((e) => {
+        console.error(`[traspaso-dim] ${orden.codigo} fallo:`, e.message);
+        // Aviso al grupo una sola vez por orden (se reintenta cada minuto
+        // igual), para que no quede una orden DIM atascada en Americanet sin
+        // que nadie se entere.
+        if (!transferDimAvisadas.has(orden.id)) {
+          transferDimAvisadas.add(orden.id);
+          avisarGrupoWA(`⚠️ *Traspaso a DIM fallando*\n\nLa orden ${orden.codigo} (${orden.nodo}, ${orden.nombre || "sin nombre"}) no se pudo pasar al sistema DIM. Se sigue reintentando cada minuto; si no pasa, crearla a mano en DIM.\n\nError: ${String(e.message || e).slice(0, 200)}`)
+            .catch((err) => console.error("[traspaso-dim] no se pudo avisar al grupo:", err.message));
+        }
+      });
     }
   } catch (e) {
     console.error("[traspaso-dim] fallo el barrido:", e.message);
