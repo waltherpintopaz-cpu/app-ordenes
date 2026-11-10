@@ -3919,7 +3919,7 @@ const server = http.createServer(async (req, res) => {
       writeJson(res, 200, {
         ok: true,
         service: "diagnostico-servicio",
-        build: "2026-11-10 traspaso-dim-numero-dim",
+        build: "2026-11-10 traspaso-dim-aviso-cliente",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
         mikrowisp: {
@@ -4637,20 +4637,52 @@ const etiquetaNodoTransfer = (nodo) => {
 // barrido NO vuelve a crearla en DIM: solo reintenta cancelar.
 const transferDimHechas = new Map();
 
-// Aviso al cliente del numero de orden de DIM: al crear la orden en
-// Americanet (panel/sidebar/app) ya se le mando por WhatsApp el numero de
-// Americanet; como en DIM la orden toma otro numero, se le manda el correcto
-// por la misma instancia (whatsapp_config "DIM" de Americanet). Se apaga con
+// Aviso al cliente de su orden con el numero de DIM. El panel web y el
+// sidebar ya NO le mandan el aviso al crear una orden de nodo DIM (tendria
+// el numero de Americanet, que no existe en DIM): se lo manda el traspaso,
+// con el mismo texto del sidebar y el numero de DIM. Va por la conversacion
+// de Chatwoot del cliente (como el sidebar); si no tiene conversacion, por
+// WhatsApp directo con la instancia de whatsapp_config "DIM". Se apaga con
 // TRANSFER_DIM_AVISO_CLIENTE=0.
 const TRANSFER_DIM_AVISO_CLIENTE = String(process.env.TRANSFER_DIM_AVISO_CLIENTE ?? "1").trim() !== "0";
 const avisarClienteCodigoDim = async (orden, codigoDim) => {
   let phone = String(orden.celular || "").split(",")[0].replace(/[^\d]/g, "");
   if (!phone) return;
   if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+  const primerNombre = String(orden.nombre || "").split(",")[0].trim().split(" ")[0];
+  const nombreFmt = primerNombre ? primerNombre.charAt(0).toUpperCase() + primerNombre.slice(1).toLowerCase() : "cliente";
+  const m = String(orden.fecha_actuacion || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const fecha = m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+  const texto = /instal/i.test(orden.tipo_actuacion || "")
+    ? `📋 *NUEVA ORDEN DE SERVICIO*
+
+Hola ${nombreFmt}, se ha generado una orden para la instalación de tu servicio.
+
+*Código:* ${codigoDim}
+*Tipo:* ${orden.tipo_actuacion}
+*Técnico:* ${orden.tecnico || "-"}
+*Fecha:* ${fecha}
+
+Gracias por confiar en nosotros. 💙`
+    : `🔧 *ORDEN DE INCIDENCIA*
+
+Hola ${nombreFmt}, hemos registrado una orden de atención para tu servicio.
+
+*Código:* ${codigoDim}
+*Tipo:* ${orden.tipo_actuacion}
+*Técnico:* ${orden.tecnico || "-"}
+*Fecha:* ${fecha}
+
+Nos comunicaremos contigo a la brevedad. 💙`;
+  try {
+    await handleChatwootMessage({ phone, message: texto, account_id: "1" });
+    console.log(`[traspaso-dim] ${orden.codigo}: cliente avisado (Chatwoot) con numero DIM ${codigoDim}`);
+    return;
+  } catch (e) {
+    console.warn(`[traspaso-dim] ${orden.codigo}: sin conversacion Chatwoot (${e.message}), se intenta WhatsApp directo`);
+  }
   const cfg = (await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, "whatsapp_config?select=*&empresa=eq.DIM&limit=1"))?.[0];
-  if (!cfg?.habilitado || !cfg.base_url || !cfg.api_key || !cfg.instance_name) return;
-  const nombre = String(orden.nombre || "").trim();
-  const texto = `${nombre ? `Estimado/a ${nombre}, ` : ""}le informamos que su orden ahora se atiende con el número *#${codigoDim}* (antes ${orden.codigo}). Use este número para cualquier consulta. — DIM`;
+  if (!cfg?.base_url || !cfg.api_key || !cfg.instance_name) return;
   const res = await fetch(`${String(cfg.base_url).replace(/\/$/, "")}/message/sendText/${encodeURIComponent(cfg.instance_name)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", apikey: cfg.api_key },
@@ -4658,7 +4690,7 @@ const avisarClienteCodigoDim = async (orden, codigoDim) => {
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  console.log(`[traspaso-dim] ${orden.codigo}: cliente avisado del numero DIM ${codigoDim}`);
+  console.log(`[traspaso-dim] ${orden.codigo}: cliente avisado (WhatsApp) con numero DIM ${codigoDim}`);
 };
 
 // Siguiente usuario PPPoE libre del nodo de la orden: mismo formato que el
@@ -4755,7 +4787,7 @@ const transferirOrdenADim = async (orden) => {
         throw e;
       }
     }
-    if (TRANSFER_DIM_AVISO_CLIENTE && codigoDim !== orden.codigo) {
+    if (TRANSFER_DIM_AVISO_CLIENTE) {
       await avisarClienteCodigoDim(orden, codigoDim).catch((e) =>
         console.error(`[traspaso-dim] ${orden.codigo}: no se pudo avisar al cliente el numero DIM:`, e.message)
       );

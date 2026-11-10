@@ -11536,6 +11536,10 @@ export default function App() {
         const numero = String(ordenData.celular || ordenData.telefono || "").trim();
         if (!numero) return;
         const empresa = String(ordenData.empresa || "Americanet").trim();
+        // Orden nueva de nodo DIM: no avisar aqui -- en ~2 min pasa sola al
+        // sistema DIM con numero de DIM y el traspaso (diagno) le manda al
+        // cliente el aviso con ESE numero (este tendria el de Americanet).
+        if (tipo === "nueva_orden" && (empresa === "DIM" || empresaPorNodo(ordenData.nodo) === "DIM")) return;
         // Leer config desde Supabase (fuente de verdad), fallback a localStorage
         let waCfg = {};
         try {

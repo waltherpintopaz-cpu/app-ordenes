@@ -4538,8 +4538,11 @@ export default function SidebarApp() {
           .catch(() => {});
       }
 
-      // WhatsApp al cliente
-      void sendWhatsAppOrden({ ...payload, codigo: codigoFinal });
+      // WhatsApp al cliente. Ordenes de nodos DIM: NO se manda aqui -- en ~2
+      // min pasan solas al sistema DIM con OTRO numero (numeracion de DIM) y
+      // el traspaso (diagno) le manda al cliente este mismo mensaje con el
+      // numero de DIM. Mandarlo aqui le daria un codigo que no existe en DIM.
+      if (empresaOrden !== "DIM") void sendWhatsAppOrden({ ...payload, codigo: codigoFinal });
 
       // Notificación push al técnico asignado
       if (ordenForm.tecnico) {
@@ -4558,7 +4561,7 @@ export default function SidebarApp() {
       }
 
       if (convId) {
-        const texto = `📋 *ORDEN CREADA*\n\nCódigo: *${codigoFinal}*\nTipo: ${ordenForm.tipoActuacion}\nTécnico: ${ordenForm.tecnico}${payload.descripcion ? `\nDetalle: ${payload.descripcion}` : ""}`;
+        const texto = `📋 *ORDEN CREADA*\n\nCódigo: *${codigoFinal}*${empresaOrden === "DIM" ? " (provisional: en ~2 min pasa al sistema DIM con número de DIM y al cliente le llega ese número)" : ""}\nTipo: ${ordenForm.tipoActuacion}\nTécnico: ${ordenForm.tecnico}${payload.descripcion ? `\nDetalle: ${payload.descripcion}` : ""}`;
         await fetch(`${CW_BASE}/api/v1/accounts/${acctId}/conversations/${convId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "api_access_token": CW_TOKEN },
