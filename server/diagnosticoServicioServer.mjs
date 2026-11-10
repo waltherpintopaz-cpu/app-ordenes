@@ -3919,7 +3919,7 @@ const server = http.createServer(async (req, res) => {
       writeJson(res, 200, {
         ok: true,
         service: "diagnostico-servicio",
-        build: "2026-11-10 traspaso-dim-codigo",
+        build: "2026-11-10 traspaso-dim-numero-dim",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
         mikrowisp: {
@@ -4637,6 +4637,30 @@ const etiquetaNodoTransfer = (nodo) => {
 // barrido NO vuelve a crearla en DIM: solo reintenta cancelar.
 const transferDimHechas = new Map();
 
+// Aviso al cliente del numero de orden de DIM: al crear la orden en
+// Americanet (panel/sidebar/app) ya se le mando por WhatsApp el numero de
+// Americanet; como en DIM la orden toma otro numero, se le manda el correcto
+// por la misma instancia (whatsapp_config "DIM" de Americanet). Se apaga con
+// TRANSFER_DIM_AVISO_CLIENTE=0.
+const TRANSFER_DIM_AVISO_CLIENTE = String(process.env.TRANSFER_DIM_AVISO_CLIENTE ?? "1").trim() !== "0";
+const avisarClienteCodigoDim = async (orden, codigoDim) => {
+  let phone = String(orden.celular || "").split(",")[0].replace(/[^\d]/g, "");
+  if (!phone) return;
+  if (/^9\d{8}$/.test(phone)) phone = "51" + phone;
+  const cfg = (await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, "whatsapp_config?select=*&empresa=eq.DIM&limit=1"))?.[0];
+  if (!cfg?.habilitado || !cfg.base_url || !cfg.api_key || !cfg.instance_name) return;
+  const nombre = String(orden.nombre || "").trim();
+  const texto = `${nombre ? `Estimado/a ${nombre}, ` : ""}le informamos que su orden ahora se atiende con el número *#${codigoDim}* (antes ${orden.codigo}). Use este número para cualquier consulta. — DIM`;
+  const res = await fetch(`${String(cfg.base_url).replace(/\/$/, "")}/message/sendText/${encodeURIComponent(cfg.instance_name)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: cfg.api_key },
+    body: JSON.stringify({ number: phone, text: texto }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  console.log(`[traspaso-dim] ${orden.codigo}: cliente avisado del numero DIM ${codigoDim}`);
+};
+
 // Siguiente usuario PPPoE libre del nodo de la orden: mismo formato que el
 // usuario original ("080@dim" -> "110@dim"), max+1 entre lo usado en DIM
 // (usadosDim) y en Americanet (ordenes no liberadas + clientes del nodo).
@@ -4715,16 +4739,11 @@ const transferirOrdenADim = async (orden) => {
         console.error(`[traspaso-dim] ${orden.codigo}: no se pudo verificar usuario PPPoE en DIM:`, e.message);
       }
     }
-    // Primero intenta conservar el MISMO codigo de Americanet: el cliente ya
-    // recibio ese numero por WhatsApp, la nota privada de Chatwoot y el push
-    // al tecnico lo muestran. Solo si ese codigo ya existe en DIM (indice
-    // unico -> 23505) se pide uno nuevo con la numeracion de DIM.
-    for (let intento = 0; intento < 4; intento++) {
-      const codigoAmLibre = intento === 0 && orden.codigo &&
-        !(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, `ordenes?select=id&codigo=eq.${encodeURIComponent(orden.codigo)}&limit=1`))?.[0];
-      codigoDim = codigoAmLibre
-        ? String(orden.codigo)
-        : String(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "rpc/generar_codigo_orden", { method: "POST", body: {} }) || "");
+    // Numero de orden: SIEMPRE la numeracion de DIM (pedido del usuario
+    // 10-nov). Como el cliente ya recibio el numero de Americanet por
+    // WhatsApp al crearse, despues se le avisa el numero nuevo (abajo).
+    for (let intento = 0; intento < 3; intento++) {
+      codigoDim = String(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "rpc/generar_codigo_orden", { method: "POST", body: {} }) || "");
       if (!codigoDim) throw new Error("DIM no devolvio codigo de orden");
       payload.codigo = codigoDim;
       try {
@@ -4732,9 +4751,14 @@ const transferirOrdenADim = async (orden) => {
         transferDimHechas.set(orden.id, codigoDim);
         break;
       } catch (e) {
-        if (e.code === "23505" && intento < 3) continue; // codigo repetido -> pedir otro
+        if (e.code === "23505" && intento < 2) continue; // codigo repetido -> pedir otro
         throw e;
       }
+    }
+    if (TRANSFER_DIM_AVISO_CLIENTE && codigoDim !== orden.codigo) {
+      await avisarClienteCodigoDim(orden, codigoDim).catch((e) =>
+        console.error(`[traspaso-dim] ${orden.codigo}: no se pudo avisar al cliente el numero DIM:`, e.message)
+      );
     }
   }
   // 2b) Cuenta IPTV MaxPlayer: si la orden la creo en Americanet ("Incluir
