@@ -264,6 +264,15 @@ export default function AgendarInstalacionPage() {
   const [dniNoEncontrado, setDniNoEncontrado] = useState(false);
 
   const [ubicacion, setUbicacion] = useState(null); // {lat,lng}
+  // De donde salio el pin: "precargada" (la que el bot ya tenia guardada --
+  // puede ser aproximada, por direccion de texto), "gps" (boton "Usar mi
+  // ubicacion actual") o "mapa" (el cliente toco/arrastro el pin). Solo se
+  // ENVIA la ubicacion si el cliente la marco el mismo (gps/mapa): si solo
+  // quedo la precargada, no se manda nada y el bot conserva la que tenia --
+  // antes se reenviaba la precargada y pisaba una ubicacion de WhatsApp mas
+  // nueva mandada con el formulario ya abierto (reporte 2026-11-10).
+  const [ubicacionFuente, setUbicacionFuente] = useState(null);
+  const [avisoUbicacion, setAvisoUbicacion] = useState("");
   const [buscandoUbicacion, setBuscandoUbicacion] = useState(false);
   const [errorUbicacion, setErrorUbicacion] = useState("");
   const [coberturaEstado, setCoberturaEstado] = useState(null); // null | "revisando" | true | false
@@ -310,6 +319,8 @@ export default function AgendarInstalacionPage() {
         // usuario, 2026-10-26).
         if (res.data.ubicacion?.lat != null && res.data.ubicacion?.lng != null) {
           setUbicacion({ lat: res.data.ubicacion.lat, lng: res.data.ubicacion.lng });
+          setUbicacionFuente("precargada");
+          if (res.data.ubicacion.es_gps === false) setAvisoUbicacion("Ubicación aproximada según tu dirección -- mueve el pin hasta tu casa exacta.");
         }
       })
       .catch(() => setLinkInvalido(true))
@@ -371,7 +382,7 @@ export default function AgendarInstalacionPage() {
       const marker = new maps.Marker({ position: centro, map: mapa, draggable: true, icon: pinClienteIcon(maps, undefined) });
       mapObjRef.current = mapa;
       markerRef.current = marker;
-      const actualizar = (pos) => setUbicacion({ lat: pos.lat(), lng: pos.lng() });
+      const actualizar = (pos) => { setUbicacion({ lat: pos.lat(), lng: pos.lng() }); setUbicacionFuente("mapa"); setAvisoUbicacion(""); };
       marker.addListener("dragend", () => actualizar(marker.getPosition()));
       mapa.addListener("click", (e) => { marker.setPosition(e.latLng); actualizar(e.latLng); });
     }).catch(() => { if (!cancelado) setMapaError(true); });
@@ -438,9 +449,19 @@ export default function AgendarInstalacionPage() {
     if (!navigator.geolocation) { setErrorUbicacion("Tu navegador no permite compartir ubicación -- márcala en el mapa o escríbenos por WhatsApp."); return; }
     setBuscandoUbicacion(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setUbicacion({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setBuscandoUbicacion(false); },
+      (pos) => {
+        setUbicacion({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setUbicacionFuente("gps");
+        setBuscandoUbicacion(false);
+        // Android 12+ deja dar permiso de ubicacion "aproximada" (y el
+        // navegador sin GPS usa wifi/antena): el punto puede caer a cientos
+        // de metros o km de la casa. Se avisa con la precision real para
+        // que el cliente corrija el pin en vez de mandarlo asi.
+        const prec = Math.round(Number(pos.coords.accuracy) || 0);
+        setAvisoUbicacion(prec > 100 ? `Tu celular dio una ubicación aproximada (±${prec >= 1000 ? (prec / 1000).toFixed(1) + " km" : prec + " m"}). Revisa que el pin esté en tu casa y muévelo si no.` : "");
+      },
       () => { setErrorUbicacion("No se pudo obtener tu ubicación -- márcala directo en el mapa de abajo."); setBuscandoUbicacion(false); },
-      { enableHighAccuracy: true, timeout: 15000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   };
 
@@ -484,7 +505,7 @@ export default function AgendarInstalacionPage() {
             token: tok,
             dni: form.dni.trim(), celular_titular: form.celular_titular.trim(), direccion: form.direccion.trim(),
             plan: form.plan, dia_horario: diaHorario, correo: form.correo.trim() || null,
-            lat: ubicacion?.lat ?? null, lng: ubicacion?.lng ?? null,
+            ...(ubicacion && (ubicacionFuente === "gps" || ubicacionFuente === "mapa") ? { lat: ubicacion.lat, lng: ubicacion.lng } : {}),
           },
         }),
       });
@@ -626,6 +647,7 @@ export default function AgendarInstalacionPage() {
               {coberturaEstado === true && <span className="ai-ok" style={{ marginTop: 0 }}>✅ Zona con cobertura</span>}
               {coberturaEstado === false && <span style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}>⚠️ Fuera del mapa de cobertura, lo confirmamos igual</span>}
             </div>
+            {avisoUbicacion && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#b45309", fontWeight: 600 }}>⚠️ {avisoUbicacion}</p>}
             {errorUbicacion && <p className="ai-err">{errorUbicacion}</p>}
           </div>
 
