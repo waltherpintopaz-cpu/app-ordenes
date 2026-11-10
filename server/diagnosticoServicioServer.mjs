@@ -3919,7 +3919,7 @@ const server = http.createServer(async (req, res) => {
       writeJson(res, 200, {
         ok: true,
         service: "diagnostico-servicio",
-        build: "2026-11-09 formulario-marca-dim",
+        build: "2026-11-10 traspaso-dim-codigo",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
         mikrowisp: {
