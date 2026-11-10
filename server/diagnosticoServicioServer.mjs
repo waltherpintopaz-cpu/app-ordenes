@@ -4551,3 +4551,137 @@ async function monitorearInstanciasEvolution() {
 setInterval(() => {
   monitorearInstanciasEvolution().catch((e) => console.error("[monitor-evolution] fallo el chequeo:", e.message));
 }, MONITOR_INSTANCIAS_EVOLUTION_MS);
+
+// ── Traspaso automatico de ordenes de nodos DIM al sistema DIM ──────────────
+// Pedido del usuario (2026-11-10): toda orden creada en Americanet para un
+// nodo de DIM (nodos_config.es_dim: Nod_04/05/06/07) pasa sola al sistema de
+// DIM y sale de Americanet. Antes las gestoras la creaban en Americanet, la
+// volvian a crear a mano en DIM y cancelaban la de Americanet (visto en datos
+// reales 02..09-nov).
+// - Barrido cada minuto (no trigger de BD): cubre panel web, sidebar, app
+//   movil y bot sin tocar ninguno, y no necesita SQL.
+// - Espera TRANSFER_DIM_ESPERA_MIN (2) desde la creacion: la automatizacion
+//   Mikrowisp del panel (Nod_04/05/06) completa mikrowisp_* en la orden
+//   recien despues de insertarla; si se moviera antes, esos datos se perderian.
+// - Solo ordenes Pendiente/En Proceso creadas desde TRANSFER_DIM_DESDE (las
+//   historicas no se tocan).
+// - En DIM se crea con codigo ORD propio de DIM (rpc generar_codigo_orden).
+// - En Americanet NO se borra: queda Cancelada con motivo "Pasada al sistema
+//   DIM como ORD-xxxx" (no se pierden fotos/historial y es reversible).
+// - Idempotente: si en DIM ya hay una orden del mismo DNI y tipo desde la
+//   creacion (ej. alguien la creo a mano, o un corte entre insertar y
+//   cancelar), no se duplica -- solo se cancela la de Americanet.
+// Solo corre donde TRANSFER_DIM_ACTIVO=1 (este archivo tambien corre como
+// diagno de DIM, ahi NO debe activarse).
+const TRANSFER_DIM_ACTIVO = String(process.env.TRANSFER_DIM_ACTIVO || "").trim() === "1";
+const DIM_SUPABASE_URL = String(process.env.DIM_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+const DIM_SUPABASE_KEY = String(process.env.DIM_SUPABASE_KEY || "").trim();
+const TRANSFER_DIM_DESDE = String(process.env.TRANSFER_DIM_DESDE || new Date().toISOString()).trim();
+const TRANSFER_DIM_ESPERA_MIN = Number(process.env.TRANSFER_DIM_ESPERA_MIN || 2);
+const TRANSFER_DIM_CAMPOS_EXCLUIDOS = new Set(["id", "codigo"]);
+const NODO_POR_ROUTER_TRANSFER = { "5": "Nod_04", "6": "Nod_04", "11": "Nod_05" };
+let transferDimCorriendo = false;
+let transferDimNodosCache = { at: 0, set: null };
+
+const sbRest = async (base, key, path, { method = "GET", body, prefer } = {}) => {
+  const res = await fetch(`${base}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json",
+      ...(prefer ? { Prefer: prefer } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(20000),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { json = text; }
+  if (!res.ok) {
+    const err = new Error(`${method} ${path.split("?")[0]} -> HTTP ${res.status}: ${typeof json === "string" ? json : JSON.stringify(json)}`);
+    err.code = json?.code;
+    throw err;
+  }
+  return json;
+};
+
+const nodosDimTransfer = async () => {
+  if (transferDimNodosCache.set && Date.now() - transferDimNodosCache.at < 10 * 60000) return transferDimNodosCache.set;
+  const rows = await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, "nodos_config?select=nodo,es_dim");
+  const set = new Set((rows || []).filter((r) => r.es_dim).map((r) => String(r.nodo).toLowerCase()));
+  if (set.size) transferDimNodosCache = { at: Date.now(), set };
+  return transferDimNodosCache.set || new Set(["nod_04", "nod_05", "nod_06", "nod_07"]);
+};
+
+const etiquetaNodoTransfer = (nodo) => {
+  const raw = String(nodo || "").trim();
+  return (NODO_POR_ROUTER_TRANSFER[raw] || raw).toLowerCase();
+};
+
+const transferirOrdenADim = async (orden) => {
+  const dni = String(orden.dni || "").trim();
+  // 1) Ya existe en DIM? (mismo DNI + tipo, creada desde 1h antes) -> no duplicar.
+  let existente = null;
+  if (dni) {
+    const desde = new Date(new Date(orden.fecha_creacion).getTime() - 3600000).toISOString();
+    const q = `ordenes?select=id,codigo&dni=eq.${encodeURIComponent(dni)}&orden_tipo=eq.${encodeURIComponent(orden.orden_tipo || "")}&fecha_creacion=gte.${encodeURIComponent(desde)}&order=fecha_creacion.asc&limit=1`;
+    existente = (await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, q))?.[0] || null;
+  }
+  let codigoDim = existente?.codigo || "";
+  if (!existente) {
+    // 2) Crear en DIM con codigo ORD de DIM.
+    const payload = {};
+    for (const [k, v] of Object.entries(orden)) if (!TRANSFER_DIM_CAMPOS_EXCLUIDOS.has(k)) payload[k] = v;
+    payload.empresa = "DIM";
+    for (let intento = 0; intento < 3; intento++) {
+      codigoDim = String(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "rpc/generar_codigo_orden", { method: "POST", body: {} }) || "");
+      if (!codigoDim) throw new Error("DIM no devolvio codigo de orden");
+      payload.codigo = codigoDim;
+      try {
+        await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "ordenes", { method: "POST", body: [payload], prefer: "return=minimal" });
+        break;
+      } catch (e) {
+        if (e.code === "23505" && intento < 2) continue; // codigo repetido -> pedir otro
+        throw e;
+      }
+    }
+  }
+  // 3) Sacarla de Americanet: Cancelada con el motivo (condicionado al estado
+  // leido, por si alguien la toco en el medio).
+  const motivo = existente
+    ? `Ya existe en el sistema DIM como ${codigoDim} (traspaso automático)`
+    : `Pasada al sistema DIM como ${codigoDim} (traspaso automático)`;
+  await sbRest(
+    SUPABASE_URL, SUPABASE_ANON_KEY,
+    `ordenes?id=eq.${orden.id}&estado=eq.${encodeURIComponent(orden.estado)}`,
+    { method: "PATCH", body: { estado: "Cancelada", motivo_cancelacion: motivo, cancelado_por: "Sistema (traspaso a DIM)", fecha_cancelacion: new Date().toISOString() }, prefer: "return=minimal" }
+  );
+  console.log(`[traspaso-dim] ${orden.codigo} (${orden.nodo}) -> DIM ${codigoDim}${existente ? " (ya existia, solo se cancelo en AM)" : ""}`);
+};
+
+const barrerOrdenesParaDim = async () => {
+  if (transferDimCorriendo) return;
+  transferDimCorriendo = true;
+  try {
+    const nodosDim = await nodosDimTransfer();
+    const hasta = new Date(Date.now() - TRANSFER_DIM_ESPERA_MIN * 60000).toISOString();
+    const q = `ordenes?select=*&estado=in.(Pendiente,"En Proceso")&fecha_creacion=gte.${encodeURIComponent(TRANSFER_DIM_DESDE)}&fecha_creacion=lte.${encodeURIComponent(hasta)}&order=fecha_creacion.asc&limit=50`;
+    const candidatas = (await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, q) || []).filter((o) => nodosDim.has(etiquetaNodoTransfer(o.nodo)));
+    for (const orden of candidatas) {
+      await transferirOrdenADim(orden).catch((e) => console.error(`[traspaso-dim] ${orden.codigo} fallo:`, e.message));
+    }
+  } catch (e) {
+    console.error("[traspaso-dim] fallo el barrido:", e.message);
+  } finally {
+    transferDimCorriendo = false;
+  }
+};
+
+if (TRANSFER_DIM_ACTIVO) {
+  if (!DIM_SUPABASE_URL || !DIM_SUPABASE_KEY) {
+    console.error("[traspaso-dim] TRANSFER_DIM_ACTIVO=1 pero faltan DIM_SUPABASE_URL/DIM_SUPABASE_KEY -- no se activa.");
+  } else {
+    console.log(`[traspaso-dim] activo: ordenes de nodos DIM creadas desde ${TRANSFER_DIM_DESDE} pasan a DIM (espera ${TRANSFER_DIM_ESPERA_MIN} min).`);
+    setTimeout(() => { void barrerOrdenesParaDim(); }, 15000);
+    setInterval(() => { void barrerOrdenesParaDim(); }, 60000);
+  }
+}
