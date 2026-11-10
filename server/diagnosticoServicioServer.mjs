@@ -4672,8 +4672,16 @@ const transferirOrdenADim = async (orden) => {
         console.error(`[traspaso-dim] ${orden.codigo}: no se pudo verificar usuario PPPoE en DIM:`, e.message);
       }
     }
-    for (let intento = 0; intento < 3; intento++) {
-      codigoDim = String(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "rpc/generar_codigo_orden", { method: "POST", body: {} }) || "");
+    // Primero intenta conservar el MISMO codigo de Americanet: el cliente ya
+    // recibio ese numero por WhatsApp, la nota privada de Chatwoot y el push
+    // al tecnico lo muestran. Solo si ese codigo ya existe en DIM (indice
+    // unico -> 23505) se pide uno nuevo con la numeracion de DIM.
+    for (let intento = 0; intento < 4; intento++) {
+      const codigoAmLibre = intento === 0 && orden.codigo &&
+        !(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, `ordenes?select=id&codigo=eq.${encodeURIComponent(orden.codigo)}&limit=1`))?.[0];
+      codigoDim = codigoAmLibre
+        ? String(orden.codigo)
+        : String(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "rpc/generar_codigo_orden", { method: "POST", body: {} }) || "");
       if (!codigoDim) throw new Error("DIM no devolvio codigo de orden");
       payload.codigo = codigoDim;
       try {
@@ -4681,7 +4689,7 @@ const transferirOrdenADim = async (orden) => {
         transferDimHechas.set(orden.id, codigoDim);
         break;
       } catch (e) {
-        if (e.code === "23505" && intento < 2) continue; // codigo repetido -> pedir otro
+        if (e.code === "23505" && intento < 3) continue; // codigo repetido -> pedir otro
         throw e;
       }
     }
