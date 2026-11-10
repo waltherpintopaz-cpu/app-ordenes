@@ -4636,6 +4636,35 @@ const etiquetaNodoTransfer = (nodo) => {
 // DIM). Si la cancelacion en Americanet falla (red, etc.), el siguiente
 // barrido NO vuelve a crearla en DIM: solo reintenta cancelar.
 const transferDimHechas = new Map();
+
+// Siguiente usuario PPPoE libre del nodo de la orden: mismo formato que el
+// usuario original ("080@dim" -> "110@dim"), max+1 entre lo usado en DIM
+// (usadosDim) y en Americanet (ordenes no liberadas + clientes del nodo).
+const siguienteUsuarioLibreDim = async (orden, usadosDim) => {
+  const m = String(orden.usuario_nodo || "").trim().match(/^(\d+)(.*)$/);
+  if (!m) return null; // formato no numerico: no se adivina
+  const sufijo = m[2].toLowerCase();
+  const ancho = m[1].length;
+  const nodoKey = etiquetaNodoTransfer(orden.nodo);
+  const etiquetas = ["Nod_0" + nodoKey.slice(-1), ...Object.entries(NODO_POR_ROUTER_TRANSFER).filter(([, n]) => n.toLowerCase() === nodoKey).map(([r]) => r)];
+  const enLista = `in.(${etiquetas.map(encodeURIComponent).join(",")})`;
+  const [ordAm, cliAm] = await Promise.all([
+    sbRestTodo(SUPABASE_URL, SUPABASE_ANON_KEY, `ordenes?select=usuario_nodo,usuario_nodo_liberado&nodo=${enLista}&usuario_nodo=not.is.null&order=id.asc`),
+    sbRestTodo(SUPABASE_URL, SUPABASE_ANON_KEY, `clientes?select=usuario_nodo&nodo=${enLista}&usuario_nodo=not.is.null&order=id.asc`),
+  ]);
+  const usados = [
+    ...usadosDim.filter((u) => etiquetaNodoTransfer(u.nodo) === nodoKey).map((u) => u.usuario),
+    ...ordAm.filter((o) => o.usuario_nodo_liberado !== true).map((o) => o.usuario_nodo),
+    ...cliAm.map((c) => c.usuario_nodo),
+  ];
+  let max = 0;
+  for (const u of usados) {
+    const mm = String(u || "").trim().toLowerCase().match(/^(\d+)(.*)$/);
+    if (mm && mm[2] === sufijo) max = Math.max(max, Number(mm[1]));
+  }
+  if (!max) return null;
+  return String(max + 1).padStart(ancho, "0") + m[2];
+};
 const transferDimAvisadas = new Set();
 
 const transferirOrdenADim = async (orden) => {
@@ -4657,16 +4686,30 @@ const transferirOrdenADim = async (orden) => {
     for (const [k, v] of Object.entries(orden)) if (!TRANSFER_DIM_CAMPOS_EXCLUIDOS.has(k)) payload[k] = v;
     payload.empresa = "DIM";
     // Control de choque de usuario PPPoE: si en DIM ese usuario ya lo tiene
-    // OTRO cliente (otro DNI), la orden pasa igual pero con aviso al inicio de
-    // la descripcion para que la gestora de DIM lo corrija antes de instalar.
+    // OTRO cliente (otro DNI), se le asigna solo el siguiente libre del nodo
+    // (max+1 entre lo usado en DIM y en Americanet) y se deja anotado en la
+    // descripcion. Si no se puede calcular, pasa igual con aviso para que la
+    // gestora de DIM lo corrija antes de instalar.
     const usuarioOrden = String(orden.usuario_nodo || "").trim().toLowerCase();
     if (usuarioOrden) {
       try {
-        const usado = (await usuariosUsadosEnDim()).find((u) => u.usuario.toLowerCase() === usuarioOrden);
+        const usadosDim = await usuariosUsadosEnDim();
+        const usado = usadosDim.find((u) => u.usuario.toLowerCase() === usuarioOrden);
         const dniOrden = dni.replace(/\D/g, "");
         if (usado && usado.dni && dniOrden && usado.dni !== dniOrden) {
-          payload.descripcion = `⚠️ REVISAR USUARIO PPPoE: ${orden.usuario_nodo} ya lo usa otro cliente en DIM -- asignar otro antes de instalar.\n\n${orden.descripcion || ""}`.trim();
-          console.warn(`[traspaso-dim] ${orden.codigo}: usuario ${orden.usuario_nodo} repetido en DIM (otro DNI)`);
+          const nuevo = await siguienteUsuarioLibreDim(orden, usadosDim).catch((e) => {
+            console.error(`[traspaso-dim] ${orden.codigo}: no se pudo calcular usuario libre:`, e.message);
+            return null;
+          });
+          if (nuevo) {
+            payload.usuario_nodo = nuevo;
+            payload.descripcion = `🔄 Usuario PPPoE cambiado de ${orden.usuario_nodo} a ${nuevo} al pasar a DIM (${orden.usuario_nodo} ya lo usaba otro cliente).\n\n${orden.descripcion || ""}`.trim();
+            usadosDim.push({ usuario: nuevo, nodo: usado.nodo, dni: dniOrden }); // que el siguiente traspaso del mismo barrido no lo repita
+            console.warn(`[traspaso-dim] ${orden.codigo}: usuario ${orden.usuario_nodo} repetido en DIM -> ${nuevo}`);
+          } else {
+            payload.descripcion = `⚠️ REVISAR USUARIO PPPoE: ${orden.usuario_nodo} ya lo usa otro cliente en DIM -- asignar otro antes de instalar.\n\n${orden.descripcion || ""}`.trim();
+            console.warn(`[traspaso-dim] ${orden.codigo}: usuario ${orden.usuario_nodo} repetido en DIM (otro DNI)`);
+          }
         }
       } catch (e) {
         console.error(`[traspaso-dim] ${orden.codigo}: no se pudo verificar usuario PPPoE en DIM:`, e.message);
