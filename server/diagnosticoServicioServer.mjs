@@ -3898,6 +3898,21 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Usuarios PPPoE ya usados en el sistema DIM (nodos de DIM) -- el panel
+    // web y el sidebar de Americanet los suman a sus "usados" al sugerir el
+    // siguiente usuario, para no repartir uno que DIM ya asigno (Americanet
+    // iba atrasado en todos los nodos DIM, 2026-11-10). Ver traspaso-dim.
+    if (req.method === "GET" && req.url.split("?")[0] === "/api/dim/usuarios-usados") {
+      try {
+        // Sin DNI: el endpoint es publico (solo usuario + nodo).
+        const usuarios = (await usuariosUsadosEnDim()).map(({ usuario, nodo }) => ({ usuario, nodo }));
+        writeJson(res, 200, { ok: true, usuarios });
+      } catch (e) {
+        writeJson(res, 200, { ok: false, error: e.message || String(e), usuarios: [] });
+      }
+      return;
+    }
+
     if (req.method === "GET" && req.url === "/api/diagnostico-servicio/health") {
       const supabaseRouters = await loadRoutersConfigFromSupabase();
       const currentRouters = supabaseRouters || buildEnvRouters();
@@ -4632,6 +4647,22 @@ const transferirOrdenADim = async (orden) => {
     const payload = {};
     for (const [k, v] of Object.entries(orden)) if (!TRANSFER_DIM_CAMPOS_EXCLUIDOS.has(k)) payload[k] = v;
     payload.empresa = "DIM";
+    // Control de choque de usuario PPPoE: si en DIM ese usuario ya lo tiene
+    // OTRO cliente (otro DNI), la orden pasa igual pero con aviso al inicio de
+    // la descripcion para que la gestora de DIM lo corrija antes de instalar.
+    const usuarioOrden = String(orden.usuario_nodo || "").trim().toLowerCase();
+    if (usuarioOrden) {
+      try {
+        const usado = (await usuariosUsadosEnDim()).find((u) => u.usuario.toLowerCase() === usuarioOrden);
+        const dniOrden = dni.replace(/\D/g, "");
+        if (usado && usado.dni && dniOrden && usado.dni !== dniOrden) {
+          payload.descripcion = `⚠️ REVISAR USUARIO PPPoE: ${orden.usuario_nodo} ya lo usa otro cliente en DIM -- asignar otro antes de instalar.\n\n${orden.descripcion || ""}`.trim();
+          console.warn(`[traspaso-dim] ${orden.codigo}: usuario ${orden.usuario_nodo} repetido en DIM (otro DNI)`);
+        }
+      } catch (e) {
+        console.error(`[traspaso-dim] ${orden.codigo}: no se pudo verificar usuario PPPoE en DIM:`, e.message);
+      }
+    }
     for (let intento = 0; intento < 3; intento++) {
       codigoDim = String(await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "rpc/generar_codigo_orden", { method: "POST", body: {} }) || "");
       if (!codigoDim) throw new Error("DIM no devolvio codigo de orden");
@@ -4678,6 +4709,44 @@ const transferirOrdenADim = async (orden) => {
     { method: "PATCH", body: { estado: "Cancelada", motivo_cancelacion: motivo, cancelado_por: "Sistema (traspaso a DIM)", fecha_cancelacion: new Date().toISOString() }, prefer: "return=minimal" }
   );
   console.log(`[traspaso-dim] ${orden.codigo} (${orden.nodo}) -> DIM ${codigoDim}${existente ? " (ya existia, solo se cancelo en AM)" : ""}`);
+};
+
+// Lista de usuarios PPPoE usados en DIM (ordenes no liberadas + clientes) de
+// los nodos DIM, con cache de 60s. La usan /api/dim/usuarios-usados y el
+// control de choque del traspaso.
+let usuariosDimCache = { at: 0, lista: null };
+const sbRestTodo = async (base, key, path) => {
+  let out = [];
+  for (let off = 0; off < 50000; off += 1000) {
+    const res = await fetch(`${base}/rest/v1/${path}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Range: `${off}-${off + 999}` },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) throw new Error(`GET ${path.split("?")[0]} -> HTTP ${res.status}`);
+    const rows = await res.json();
+    out = out.concat(rows);
+    if (rows.length < 1000) break;
+  }
+  return out;
+};
+const usuariosUsadosEnDim = async () => {
+  if (!DIM_SUPABASE_URL || !DIM_SUPABASE_KEY) throw new Error("DIM_SUPABASE_URL/DIM_SUPABASE_KEY no configurados");
+  if (usuariosDimCache.lista && Date.now() - usuariosDimCache.at < 60000) return usuariosDimCache.lista;
+  const nodosDim = await nodosDimTransfer();
+  const [ordenes, clientes] = await Promise.all([
+    sbRestTodo(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "ordenes?select=usuario_nodo,nodo,dni,usuario_nodo_liberado&usuario_nodo=not.is.null&order=id.asc"),
+    sbRestTodo(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "clientes?select=usuario_nodo,nodo,dni&usuario_nodo=not.is.null&order=id.asc"),
+  ]);
+  const vistos = new Map();
+  for (const r of [...ordenes.filter((o) => o.usuario_nodo_liberado !== true), ...clientes]) {
+    const usuario = String(r.usuario_nodo || "").trim();
+    const nodoKey = etiquetaNodoTransfer(r.nodo);
+    if (!usuario || !nodosDim.has(nodoKey)) continue;
+    const k = usuario.toLowerCase();
+    if (!vistos.has(k)) vistos.set(k, { usuario, nodo: nodoKey.replace(/^nod_/, "Nod_"), dni: String(r.dni || "").replace(/D/g, "") });
+  }
+  usuariosDimCache = { at: Date.now(), lista: [...vistos.values()] };
+  return usuariosDimCache.lista;
 };
 
 const barrerOrdenesParaDim = async () => {

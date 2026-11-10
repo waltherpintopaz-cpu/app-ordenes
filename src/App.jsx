@@ -2953,6 +2953,21 @@ export default function App() {
   }, []);
 
   const [ordenes, setOrdenes] = useState(() => readLocalJson("ordenes", []));
+  // Usuarios PPPoE ya usados en el sistema DIM (nodos de DIM) -- Americanet
+  // iba atrasado en todos los nodos DIM y sugeria usuarios que DIM ya habia
+  // asignado (2026-11-10). Se suman a "usados" al sugerir el siguiente.
+  const [usuariosUsadosDim, setUsuariosUsadosDim] = useState([]);
+  useEffect(() => {
+    let cancelado = false;
+    const base = import.meta.env.DEV ? "" : "https://amnet-diagno.0lthka.easypanel.host";
+    const cargar = () => fetch(`${base}/api/dim/usuarios-usados`)
+      .then((r) => r.json())
+      .then((j) => { if (!cancelado && j?.ok && Array.isArray(j.usuarios)) setUsuariosUsadosDim(j.usuarios); })
+      .catch(() => {});
+    cargar();
+    const t = setInterval(cargar, 120000);
+    return () => { cancelado = true; clearInterval(t); };
+  }, []);
   const [usuariosNodoBloqueados, setUsuariosNodoBloqueados] = useState(() =>
     readLocalJson("usuariosNodoBloqueados", [])
   );
@@ -4098,7 +4113,8 @@ export default function App() {
       })
       .map((o) => ({ usuario: String(o?.usuarioNodo || "").trim(), nodo: o?.nodo || "" }));
     const fromClientes = (Array.isArray(clientes) ? clientes : []).map((c) => ({ usuario: String(c?.usuarioNodo || "").trim(), nodo: c?.nodo || "" }));
-    const combinadas = [...fromOrdenes, ...fromClientes].filter((x) => x.usuario);
+    const fromDim = (Array.isArray(usuariosUsadosDim) ? usuariosUsadosDim : []).map((u) => ({ usuario: String(u?.usuario || "").trim(), nodo: u?.nodo || "" }));
+    const combinadas = [...fromOrdenes, ...fromClientes, ...fromDim].filter((x) => x.usuario);
     const vistos = new Set();
     return combinadas.filter((x) => {
       const key = `${x.usuario.toLowerCase()}|${normalizeNodoKey(x.nodo)}`;
@@ -4106,7 +4122,7 @@ export default function App() {
       vistos.add(key);
       return true;
     });
-  }, [ordenes, clientes]);
+  }, [ordenes, clientes, usuariosUsadosDim]);
 
   // Usuarios bloqueados a mano por el admin: aplican para cualquier nodo,
   // sin importar si tienen nodo asignado en clientes/ordenes o no.

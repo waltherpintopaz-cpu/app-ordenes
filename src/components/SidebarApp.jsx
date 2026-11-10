@@ -4696,7 +4696,19 @@ export default function SidebarApp() {
       // También de clientes
       const { data: clts } = await supabase.from("clientes").select("usuario_nodo").eq("nodo",nodo);
       const usadosClientes = (clts||[]).map(c=>c.usuario_nodo).filter(Boolean);
-      const todosUsados = [...new Set([...usados,...usadosClientes])];
+      // Usuarios ya usados en el sistema DIM (nodos de DIM) -- Americanet va
+      // atrasado y sugeria usuarios que DIM ya asigno; ademas aca no se
+      // cuentan las ordenes canceladas, y las pasadas a DIM quedan canceladas
+      // en Americanet (2026-11-10).
+      let usadosDim = [];
+      if (empresaPorNodo(nodo) === "DIM") {
+        try {
+          const r = await fetch(`${DIAGNO_BASE}/api/dim/usuarios-usados`);
+          const j = await r.json();
+          if (j?.ok && Array.isArray(j.usuarios)) usadosDim = j.usuarios.filter(u => normalizeNodoKey(u.nodo) === normalizeNodoKey(nodo)).map(u => u.usuario);
+        } catch (_) { /* sin DIM: se sugiere solo con datos de Americanet, como antes */ }
+      }
+      const todosUsados = [...new Set([...usados,...usadosClientes,...usadosDim])];
       const sugeridos = listarUsuariosParaNodo(nodo, todosUsados, 10, NODO_USUARIO_RULES);
       setUsuariosNodo(sugeridos);
       // Nod_07 no usa clave fija — su contraseña es el DNI del cliente.
