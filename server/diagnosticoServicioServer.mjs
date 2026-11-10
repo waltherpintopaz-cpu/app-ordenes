@@ -4645,6 +4645,28 @@ const transferirOrdenADim = async (orden) => {
       }
     }
   }
+  // 2b) Cuenta IPTV MaxPlayer: si la orden la creo en Americanet ("Incluir
+  // IPTV" al crear la orden), el registro quedo en iptv_clientes de
+  // Americanet -- sin copiarlo, el panel de DIM no la ve (Cuentas MaxPlayer)
+  // y al liquidar en DIM no se le asigna al cliente. Se copia por DNI (no se
+  // borra de Americanet: la cuenta real sigue existiendo igual en MaxPlayer).
+  if (dni && String(orden.descripcion || "").includes("Cuenta IPTV MaxPlayer")) {
+    try {
+      const filaIptv = (await sbRest(SUPABASE_URL, SUPABASE_ANON_KEY, `iptv_clientes?select=*&dni=eq.${encodeURIComponent(dni.replace(/\D/g, ""))}&limit=1`))?.[0];
+      if (filaIptv) {
+        const yaEnDim = (await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, `iptv_clientes?select=id&dni=eq.${encodeURIComponent(filaIptv.dni)}&limit=1`))?.[0];
+        if (!yaEnDim) {
+          const { id: _omit, ...copia } = filaIptv;
+          await sbRest(DIM_SUPABASE_URL, DIM_SUPABASE_KEY, "iptv_clientes", { method: "POST", body: [copia], prefer: "return=minimal" });
+          console.log(`[traspaso-dim] ${orden.codigo}: cuenta IPTV ${filaIptv.iptv_usuario} copiada a DIM`);
+        }
+      }
+    } catch (e) {
+      // No bloquea el traspaso: la orden ya esta en DIM con las credenciales
+      // en la descripcion; solo queda avisado en el log para revisarla.
+      console.error(`[traspaso-dim] ${orden.codigo}: no se pudo copiar la cuenta IPTV a DIM:`, e.message);
+    }
+  }
   // 3) Sacarla de Americanet: Cancelada con el motivo (condicionado al estado
   // leido, por si alguien la toco en el medio).
   const motivo = existente
