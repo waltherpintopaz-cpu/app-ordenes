@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { getUltimoVisto } from "../services/chatOrdenesUnread";
+import { getUltimoVisto, sincronizarVistosOrdenes, guardarLecturaOrdenRemota } from "../services/chatOrdenesUnread";
 
 // Mapa { ordenId (string) -> cantidad de mensajes sin ver } para poder
 // mostrar un badge directo en el icono de chat de cada tarjeta de orden,
@@ -14,6 +14,7 @@ export default function useChatsOrdenesNoLeidos(ordenes, autor) {
   const recalcular = useCallback(async () => {
     const lista = ordenesRef.current || [];
     if (!lista.length) { setMapa(new Map()); return; }
+    await sincronizarVistosOrdenes(autor);
     const idsSet = new Set(lista.map((o) => String(o.id)));
     // Sin .in(orden_id, ids) con todos los ids -- con muchas ordenes esa
     // consulta puede fallar en silencio (url muy larga). Se trae lo
@@ -56,8 +57,16 @@ export default function useChatsOrdenesNoLeidos(ordenes, autor) {
         if (esMia) void recalcular();
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [recalcular]);
+    // Leido en otro dispositivo (app movil) -> se apaga el globo de la tarjeta.
+    const canalLect = autor ? supabase
+      .channel(`chat-ordenes-lecturas-cards-${autor}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_ordenes_lecturas", filter: `usuario=eq.${autor}` }, (payload) => {
+        guardarLecturaOrdenRemota(payload.new);
+        void recalcular();
+      })
+      .subscribe() : null;
+    return () => { supabase.removeChannel(channel); if (canalLect) supabase.removeChannel(canalLect); };
+  }, [recalcular, autor]);
 
   return mapa;
 }

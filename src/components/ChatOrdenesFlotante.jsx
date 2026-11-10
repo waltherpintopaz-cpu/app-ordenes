@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { getUltimoVisto } from "../services/chatOrdenesUnread";
-import { getUltimoVistoTecnico } from "../services/chatTecnicosUnread";
+import { getUltimoVisto, sincronizarVistosOrdenes, guardarLecturaOrdenRemota } from "../services/chatOrdenesUnread";
+import { getUltimoVistoTecnico, sincronizarVistosTecnicos, guardarLecturaTecnicoRemota } from "../services/chatTecnicosUnread";
 
 // Boton flotante global (no depende de estar viendo una orden puntual):
 // avisa en cuales ordenes hay mensajes de chat que este usuario todavia no
@@ -66,6 +66,8 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
     if (!listaOrdenes.length && !listaTecnicos.length) { setChats([]); return; }
     setCargando(true);
     try {
+      // Lo leido en otro dispositivo (app movil) tambien cuenta como leido aca.
+      await Promise.all([sincronizarVistosOrdenes(autor), sincronizarVistosTecnicos(autor)]);
       const resultado = [];
 
       if (listaOrdenes.length) {
@@ -176,7 +178,19 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
         void recalcular();
       })
       .subscribe();
-    return () => { supabase.removeChannel(channelOrdenes); supabase.removeChannel(channelTecnicos); };
+    // Este mismo usuario leyo un chat en otro dispositivo -> se apaga el globo aca.
+    const channelLecturas = autor ? supabase
+      .channel(`chat-lecturas-global-${autor}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_ordenes_lecturas", filter: `usuario=eq.${autor}` }, (payload) => {
+        guardarLecturaOrdenRemota(payload.new);
+        void recalcular();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_tecnicos_lecturas", filter: `usuario=eq.${autor}` }, (payload) => {
+        guardarLecturaTecnicoRemota(payload.new);
+        void recalcular();
+      })
+      .subscribe() : null;
+    return () => { supabase.removeChannel(channelOrdenes); supabase.removeChannel(channelTecnicos); if (channelLecturas) supabase.removeChannel(channelLecturas); };
   }, [autor, recalcular]);
 
   const totalNoLeidos = chats.reduce((s, it) => s + it.count, 0);

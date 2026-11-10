@@ -51,13 +51,13 @@ export default function ChatTecnico({ tecnicoNombre, autor, autorRol }) {
         .eq("tecnico_nombre", tecnicoNombre)
         .order("created_at", { ascending: true })
         .limit(200);
-      if (!cancelado) { setMensajes(data || []); setCargando(false); marcarChatTecnicoVisto(tecnicoNombre); }
+      if (!cancelado) { setMensajes(data || []); setCargando(false); marcarChatTecnicoVisto(tecnicoNombre, autor); }
     })();
     const channel = supabase
       .channel(`chat-tecnico-${tecnicoNombre}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_tecnicos_mensajes", filter: `tecnico_nombre=eq.${tecnicoNombre}` }, (payload) => {
         setMensajes((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]);
-        marcarChatTecnicoVisto(tecnicoNombre);
+        marcarChatTecnicoVisto(tecnicoNombre, autor);
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "chat_tecnicos_mensajes", filter: `tecnico_nombre=eq.${tecnicoNombre}` }, (payload) => {
         setMensajes((prev) => prev.filter((m) => m.id !== payload.old.id));
