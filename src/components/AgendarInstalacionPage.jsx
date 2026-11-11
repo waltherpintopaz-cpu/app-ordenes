@@ -273,6 +273,7 @@ export default function AgendarInstalacionPage() {
   // nueva mandada con el formulario ya abierto (reporte 2026-11-10).
   const [ubicacionFuente, setUbicacionFuente] = useState(null);
   const [avisoUbicacion, setAvisoUbicacion] = useState("");
+  const [precargaAproximada, setPrecargaAproximada] = useState(false);
   const [buscandoUbicacion, setBuscandoUbicacion] = useState(false);
   const [errorUbicacion, setErrorUbicacion] = useState("");
   const [coberturaEstado, setCoberturaEstado] = useState(null); // null | "revisando" | true | false
@@ -320,6 +321,7 @@ export default function AgendarInstalacionPage() {
         if (res.data.ubicacion?.lat != null && res.data.ubicacion?.lng != null) {
           setUbicacion({ lat: res.data.ubicacion.lat, lng: res.data.ubicacion.lng });
           setUbicacionFuente("precargada");
+          if (res.data.ubicacion.es_gps === false) setPrecargaAproximada(true);
           if (res.data.ubicacion.es_gps === false) setAvisoUbicacion("Ubicación aproximada según tu dirección -- mueve el pin hasta tu casa exacta.");
         }
       })
@@ -382,7 +384,7 @@ export default function AgendarInstalacionPage() {
       const marker = new maps.Marker({ position: centro, map: mapa, draggable: true, icon: pinClienteIcon(maps, undefined) });
       mapObjRef.current = mapa;
       markerRef.current = marker;
-      const actualizar = (pos) => { setUbicacion({ lat: pos.lat(), lng: pos.lng() }); setUbicacionFuente("mapa"); setAvisoUbicacion(""); };
+      const actualizar = (pos) => { setUbicacion({ lat: pos.lat(), lng: pos.lng() }); setUbicacionFuente("mapa"); setAvisoUbicacion(""); setErrores((er) => ({ ...er, ubicacion: undefined })); };
       marker.addListener("dragend", () => actualizar(marker.getPosition()));
       mapa.addListener("click", (e) => { marker.setPosition(e.latLng); actualizar(e.latLng); });
     }).catch(() => { if (!cancelado) setMapaError(true); });
@@ -452,6 +454,7 @@ export default function AgendarInstalacionPage() {
       (pos) => {
         setUbicacion({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setUbicacionFuente("gps");
+        setErrores((er) => ({ ...er, ubicacion: undefined }));
         setBuscandoUbicacion(false);
         // Android 12+ deja dar permiso de ubicacion "aproximada" (y el
         // navegador sin GPS usa wifi/antena): el punto puede caer a cientos
@@ -476,6 +479,12 @@ export default function AgendarInstalacionPage() {
     if (!/^\d{8}$/.test(form.dni.trim())) errs.dni = "El DNI debe tener 8 dígitos.";
     if (!/^\d{9}$/.test(form.celular_titular.replace(/\D/g, ""))) errs.celular_titular = "El celular debe tener 9 dígitos.";
     if (!form.direccion.trim()) errs.direccion = "Falta la dirección.";
+    else if (form.direccion.trim().length < 8 || !/[a-záéíóúñ]/i.test(form.direccion)) errs.direccion = "Escribe la dirección completa (calle/urbanización, número o Mz/Lote).";
+    // Ubicacion obligatoria (pedido 2026-11-10: "no puede enviar si falta
+    // algo, excepto el correo"). Vale la precargada solo si era GPS real;
+    // si era aproximada (por direccion), el cliente tiene que marcarla.
+    if (!ubicacion && !mapaError) errs.ubicacion = "Marca tu casa en el mapa (toca el mapa o usa \"Usar mi ubicación actual\").";
+    else if (ubicacionFuente === "precargada" && precargaAproximada) errs.ubicacion = "Mueve el pin hasta tu casa exacta -- la ubicación actual es aproximada.";
     if (!form.plan) errs.plan = "Elige un plan.";
     if (!form.fecha) errs.fecha = "Elige un día.";
     else if (form.fecha < hoyISO()) errs.fecha = "Esa fecha ya pasó -- elige otro día.";
@@ -489,7 +498,13 @@ export default function AgendarInstalacionPage() {
   const enviar = async (e) => {
     e.preventDefault();
     const errs = validar();
-    if (Object.keys(errs).length) { setErrores(errs); return; }
+    if (Object.keys(errs).length) {
+      setErrores(errs);
+      // Lleva al primer campo con error (en celular el aviso de abajo no
+      // dice cual es si el campo quedo fuera de pantalla).
+      setTimeout(() => document.querySelector(".ai-err")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+      return;
+    }
     setErrores({});
     setErrorEnvio("");
     setEnviando(true);
@@ -647,6 +662,7 @@ export default function AgendarInstalacionPage() {
               {coberturaEstado === true && <span className="ai-ok" style={{ marginTop: 0 }}>✅ Zona con cobertura</span>}
               {coberturaEstado === false && <span style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}>⚠️ Fuera del mapa de cobertura, lo confirmamos igual</span>}
             </div>
+            {errores.ubicacion && <p className="ai-err">{errores.ubicacion}</p>}
             {avisoUbicacion && <p style={{ margin: "8px 0 0", fontSize: 12, color: "#b45309", fontWeight: 600 }}>⚠️ {avisoUbicacion}</p>}
             {errorUbicacion && <p className="ai-err">{errorUbicacion}</p>}
           </div>
