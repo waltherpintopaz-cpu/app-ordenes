@@ -3842,6 +3842,19 @@ export default function App() {
   const [mostrarMisTareas, setMostrarMisTareas] = useState(false);
   const [misTareasLista, setMisTareasLista] = useState([]);
   const [misTareasCargando, setMisTareasCargando] = useState(false);
+  // Buscador del panel "Mis tareas": filtra por cliente, DNI, descripcion,
+  // quien la asigno o numero de conversacion (sin tildes ni mayusculas).
+  const [misTareasBusqueda, setMisTareasBusqueda] = useState("");
+  const misTareasFiltradas = useMemo(() => {
+    const norm = (v) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const terminos = norm(misTareasBusqueda).split(/\s+/).filter(Boolean);
+    if (!terminos.length) return misTareasLista;
+    return misTareasLista.filter((t) => {
+      const fecha = t.created_at ? new Date(t.created_at).toLocaleDateString("es-PE", { day: "2-digit", month: "short" }) : "";
+      const texto = norm([t.cliente_nombre, t.dni, t.descripcion, t.asignado_por, t.conv_id, t.prioridad === "alta" ? "urgente" : "", fecha].join(" "));
+      return terminos.every((w) => texto.includes(w));
+    });
+  }, [misTareasLista, misTareasBusqueda]);
   const consultarMisTareasRef = useRef(null);
   // Para reasignar una tarea a otro usuario desde "Mis tareas" -- mismo
   // filtro de roles que usa SidebarApp.jsx al crearlas (solo Gestoras y
@@ -18414,7 +18427,7 @@ export default function App() {
                           Mis tareas pendientes
                         </div>
                         <div style={{ fontSize: 10.5, color: theme === "dark" ? "#94a3b8" : "#7c7fa0" }}>
-                          {misTareasLista.length} {misTareasLista.length === 1 ? "tarea asignada a ti" : "tareas asignadas a ti"}
+                          {misTareasBusqueda.trim() ? `${misTareasFiltradas.length} de ` : ""}{misTareasLista.length} {misTareasLista.length === 1 ? "tarea asignada a ti" : "tareas asignadas a ti"}
                         </div>
                       </div>
                       <button type="button" onClick={() => setMostrarMisTareas(false)} title="Cerrar"
@@ -18422,6 +18435,30 @@ export default function App() {
                         ✕
                       </button>
                     </div>
+                    {misTareasLista.length > 0 && (
+                      <div style={{ padding: "10px 12px 0", position: "relative" }}>
+                        <span style={{ position: "absolute", left: 22, top: "50%", transform: "translateY(calc(-50% + 5px))", fontSize: 12, color: "#94a3b8", pointerEvents: "none" }}>🔍</span>
+                        <input
+                          type="text"
+                          value={misTareasBusqueda}
+                          onChange={(e) => setMisTareasBusqueda(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape" && misTareasBusqueda) { e.stopPropagation(); setMisTareasBusqueda(""); } }}
+                          placeholder="Buscar cliente, DNI, tarea, quién asignó…"
+                          autoFocus
+                          style={{
+                            width: "100%", boxSizing: "border-box", padding: "8px 30px 8px 30px", fontSize: 12.5, borderRadius: 9,
+                            border: `1px solid ${theme === "dark" ? "#334155" : "#e2e8f0"}`,
+                            background: theme === "dark" ? "#0f172a" : "#f8fafc", color: theme === "dark" ? "#f1f5f9" : "#0f172a", outline: "none",
+                          }}
+                        />
+                        {misTareasBusqueda && (
+                          <button type="button" onClick={() => setMisTareasBusqueda("")} title="Limpiar búsqueda"
+                            style={{ position: "absolute", right: 20, top: "50%", transform: "translateY(calc(-50% + 5px))", background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#94a3b8", padding: 2, lineHeight: 1 }}>
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-scroll" style={{ padding: "10px 12px", maxHeight: "62vh", overflowY: "auto" }}>
                     {misTareasCargando ? (
                       <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "22px 0" }}>Cargando…</div>
@@ -18430,9 +18467,14 @@ export default function App() {
                         <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
                         <div style={{ fontSize: 12.5, color: "#94a3b8" }}>No tienes tareas pendientes.</div>
                       </div>
+                    ) : misTareasFiltradas.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "22px 0" }}>
+                        <div style={{ fontSize: 22, marginBottom: 6 }}>🔍</div>
+                        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Ninguna tarea coincide con "{misTareasBusqueda}".</div>
+                      </div>
                     ) : (
                       <div style={{ display: "grid", gap: 7 }}>
-                        {misTareasLista.map((t, idx) => {
+                        {misTareasFiltradas.map((t, idx) => {
                           const urgente = t.prioridad === "alta";
                           const nombreMostrado = t.cliente_nombre || t.dni || "Cliente";
                           const iniciales = nombreMostrado.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join("").toUpperCase() || "?";
