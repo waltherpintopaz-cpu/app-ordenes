@@ -1267,6 +1267,11 @@ function SalidaInternetCore({ ip, nodo, agente, clienteNombre, notify, T, S }) {
   );
 }
 
+// YYYY-MM-DD en hora local (no UTC).
+function fechaLocalISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
 export default function SidebarApp() {
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("sb_theme") || "light"; } catch { return "light"; } });
   const isDark = theme === "dark";
@@ -8015,14 +8020,18 @@ export default function SidebarApp() {
             <div style={{ marginBottom:10 }}>
               <label style={S.label}>Fecha de vencimiento</label>
               <input style={S.input} type="date" value={factForm.vencimiento}
-                min={new Date().toISOString().split("T")[0]}
+                // Desde el dia 1 del mes en curso (antes: solo desde hoy). La API
+                // de Mikrowisp (CreateInvoice) acepta cualquier vencimiento.
+                // Fecha LOCAL: toISOString() es UTC y despues de las 7pm en
+                // Lima ya daba el dia siguiente.
+                min={fechaLocalISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}
                 onChange={e => setFactForm(p => ({...p, vencimiento:e.target.value}))} />
             </div>
             <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:14 }}>
               {[
-                ["Fin de mes", (() => { const d = new Date(); d.setMonth(d.getMonth()+1,0); return d.toISOString().split("T")[0]; })()],
-                ["+30 dias",   (() => { const d = new Date(); d.setDate(d.getDate()+30); return d.toISOString().split("T")[0]; })()],
-                ["+15 dias",   (() => { const d = new Date(); d.setDate(d.getDate()+15); return d.toISOString().split("T")[0]; })()],
+                ["Fin de mes", (() => { const d = new Date(); d.setMonth(d.getMonth()+1,0); return fechaLocalISO(d); })()],
+                ["+30 dias",   (() => { const d = new Date(); d.setDate(d.getDate()+30); return fechaLocalISO(d); })()],
+                ["+15 dias",   (() => { const d = new Date(); d.setDate(d.getDate()+15); return fechaLocalISO(d); })()],
               ].map(([lbl, val]) => (
                 <button key={lbl} onClick={() => setFactForm(p => ({...p, vencimiento:val}))}
                   style={{ background:factForm.vencimiento===val?T.blue:T.bg,
