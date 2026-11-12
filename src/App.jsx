@@ -6,7 +6,6 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
-import ReglasTecnicosPanel from "./components/ReglasTecnicosPanel";
 import ChatTecnico from "./components/ChatTecnico";
 import OrdenChat from "./components/OrdenChat";
 import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
@@ -23877,20 +23876,9 @@ export default function App() {
                       App móvil
                     </button>
                   ) : null}
-                  {esAdminSesion ? (
-                    <button
-                      type="button"
-                      onClick={() => setUsuariosPanelTab("reglas")}
-                      style={usuariosPanelTab === "reglas" ? primaryButton : secondaryButton}
-                    >
-                      Reglas técnicos
-                    </button>
-                  ) : null}
                 </div>
               </div>
             </div>
-
-            {esAdminSesion && usuariosPanelTab === "reglas" ? <ReglasTecnicosPanel theme={theme} /> : null}
 
             {usuariosPanelTab === "personal" ? (
               (() => {
