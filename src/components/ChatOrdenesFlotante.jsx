@@ -315,7 +315,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
                   <div style={{ fontSize: 10.5, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
                     Iniciar chat con técnico
                   </div>
-                  <div style={{ display: "flex", flexWrap: "nowrap", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
+                  <div style={{ display: "flex", flexWrap: "nowrap", gap: 10, overflowX: "auto", paddingBottom: 2, scrollbarWidth: "thin" }}>
                     {directorioFiltrado.map((tec) => {
                       const iniciales = String(tec.nombre || "")
                         .trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
@@ -351,7 +351,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
                 </div>
               )}
             </div>
-            <div style={{ padding: "0 12px 10px", overflowY: "auto", flex: 1, minHeight: 0 }}>
+            <div style={{ padding: "0 12px 10px", overflowY: "auto", overflowX: "hidden", flex: 1, minHeight: 0 }}>
             {cargando && chats.length === 0 ? (
               <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", padding: "10px 0" }}>Cargando…</div>
             ) : chatsFiltrados.length === 0 ? (
@@ -359,7 +359,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
                 {terminos.length ? `Sin resultados para "${busqueda.trim()}".` : soloNoLeidos ? "No tienes chats sin leer 👍" : "Todavía no hay chats."}
               </div>
             ) : (
-              <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 6 }}>
                 {chatsFiltrados.map((item) => {
                   const esMio = String(item.ultimo.autor || "").trim().toLowerCase() === String(autor || "").trim().toLowerCase();
                   return (
@@ -377,12 +377,14 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
                       style={{
                         textAlign: "left", background: item.count > 0 ? "#f5f3ff" : "#f8fafc", border: `1px solid ${item.count > 0 ? "#ddd6fe" : "#e2e8f0"}`, borderRadius: 8,
                         padding: "8px 10px", cursor: "pointer", font: "inherit",
+                        width: "100%", minWidth: 0, overflow: "hidden",
                       }}
+                      title={item.titulo}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 12.5, fontWeight: item.count > 0 ? 800 : 700, color: "#0f172a" }}>{item.titulo}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: item.count > 0 ? 800 : 700, color: "#0f172a", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.titulo}</span>
                         {item.count > 0 && (
-                          <span style={{ background: "#7c3aed", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{item.count}</span>
+                          <span style={{ flexShrink: 0, background: "#7c3aed", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{item.count}</span>
                         )}
                       </div>
                       <div style={{ fontSize: 11.5, color: "#475569", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
