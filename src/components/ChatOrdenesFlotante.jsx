@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, ExternalLink } from "lucide-react";
+import { abrirVentanaChats } from "./ChatsPage";
 import { supabase } from "../supabaseClient";
 import { getUltimoVisto, sincronizarVistosOrdenes, guardarLecturaOrdenRemota } from "../services/chatOrdenesUnread";
 import { getUltimoVistoTecnico, sincronizarVistosTecnicos, guardarLecturaTecnicoRemota } from "../services/chatTecnicosUnread";
@@ -274,8 +275,12 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
             boxShadow: "0 12px 32px rgba(0,0,0,0.25)", overflow: "hidden",
           }}>
             <div style={{ padding: "10px 12px 0", flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>
-                Chats recientes
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Chats recientes</div>
+                <button type="button" onClick={() => { cerrarBandeja(); abrirVentanaChats(); }} title="Abrir todos los chats en una ventana aparte (como WhatsApp Web)"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "1px solid #ddd6fe", background: "#f5f3ff", color: "#7c3aed", borderRadius: 7, padding: "3px 8px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>
+                  <ExternalLink size={12} /> Abrir en ventana
+                </button>
               </div>
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "#f1f5f9", borderRadius: 8, padding: "0 8px", height: 32 }}>

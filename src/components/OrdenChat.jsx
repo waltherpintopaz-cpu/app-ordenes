@@ -4,10 +4,11 @@ import "leaflet/dist/leaflet.css";
 import {
   MessagesSquare, Phone, Navigation, Camera, MapPin, Send, Check, CheckCheck, Clock, CircleAlert,
   ArrowDown, Copy, Trash2, X, ChevronLeft, ChevronRight, LocateFixed, Map as MapIcon, EllipsisVertical, ExternalLink,
-  Reply, Pencil,
+  Reply, Pencil, Search, Images, Smile, Download, ChevronUp, ChevronDown, ZoomIn,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
-import { marcarChatOrdenVisto } from "../services/chatOrdenesUnread";
+import { marcarChatOrdenVisto, getUltimoVisto } from "../services/chatOrdenesUnread";
+import { marcarChatTecnicoVisto, getUltimoVistoTecnico } from "../services/chatTecnicosUnread";
 import { notificarMensajeChat } from "../services/chatPush";
 
 const AVATAR_COLORS = ["#7c3aed", "#0ea5e9", "#16a34a", "#ea580c", "#db2777", "#0891b2"];
@@ -72,9 +73,35 @@ function TextoConEnlaces({ texto, colorEnlace }) {
     : <span key={i}>{p.t}</span>));
 }
 const REACCIONES = ["👍", "✅", "❤️", "😂", "😮", "🙏"];
+const EMOJIS = ["👍", "👌", "✅", "🙏", "👏", "💪", "🙌", "😊", "😂", "😅", "😉", "😎", "🤔", "😮", "😢", "😡", "❤️", "🔥", "⚠️", "❌",
+  "⏰", "🕐", "📍", "📷", "📞", "🛵", "🚗", "🏠", "🔧", "🛠️", "📶", "📡", "🔌", "💡", "📦", "🧾", "💵", "✍️", "👀", "🎉"];
+// Fotos seguidas (4 o mas, sin texto ni cita, mismo autor, < 5 min) van en
+// un mosaico 2x2 como WhatsApp (igual que la app).
+function agruparFotos(items) {
+  const grupos = new Map();
+  const ocultos = new Set();
+  const esFotoSola = (m) => m && m.foto_url && !m.texto && m.responde_a == null && !m.pend && !m.urgente;
+  let i = 0;
+  while (i < items.length) {
+    if (!esFotoSola(items[i])) { i += 1; continue; }
+    let j = i + 1;
+    while (j < items.length && esFotoSola(items[j]) && norm(items[j].autor) === norm(items[i].autor)
+      && new Date(items[j].created_at) - new Date(items[j - 1].created_at) < 5 * 60 * 1000) j += 1;
+    if (j - i >= 4) {
+      const lista = items.slice(i, j);
+      grupos.set(String(items[i].id), lista);
+      lista.slice(1).forEach((x) => ocultos.add(String(x.id)));
+    }
+    i = j;
+  }
+  return { grupos, ocultos };
+}
 
 const RAPIDAS_TECNICO = ["Ya llegué 👍", "El cliente no está", "Falta material", "¿Me pasan la ubicación exacta?", "Terminé, voy a liquidar"];
 const RAPIDAS_OFICINA = ["¿Cómo vas?", "El cliente confirmó", "Llama al cliente, por favor", "Te paso la ubicación", "Ok, gracias 👍"];
+// Chat directo tecnico <-> oficina (no atado a una orden).
+const RAPIDAS_HILO_TECNICO = ["Voy en camino 🛵", "Falta material", "Necesito ayuda", "Ok, entendido 👍", "Terminé por hoy"];
+const RAPIDAS_HILO_OFICINA = ["¿Dónde estás?", "Llama a la oficina, por favor", "Pasa por almacén", "Te asigné una orden nueva", "Ok, gracias 👍"];
 
 // Vista previa de mapa con teselas de OpenStreetMap (3x3 a zoom 17 de 128px)
 // en vez de montar un Leaflet por cada mensaje.
@@ -104,7 +131,15 @@ function MiniMapa({ lat, lng, ancho, alto }) {
 // movil. Mensajes propios al instante (pendiente -> enviado -> visto), con
 // "Reintentar" si fallan. El "visto" usa chat_ordenes_lecturas; si la tabla
 // no existe solo se ve un check.
-export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor, autorRol, orden }) {
+// Con "hiloTecnico" (nombre del tecnico) el mismo componente sirve para el
+// chat directo tecnico <-> oficina (tabla chat_tecnicos_mensajes), igual que
+// en la app. Con "llenar" ocupa todo el alto de su contenedor (pagina Chats).
+export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor, autorRol, orden, hiloTecnico, llenar = false }) {
+  const esHilo = !!hiloTecnico;
+  const TABLA = esHilo ? "chat_tecnicos_mensajes" : "chat_ordenes_mensajes";
+  const COL = esHilo ? "tecnico_nombre" : "orden_id";
+  const claveId = esHilo ? hiloTecnico : ordenId;
+  const nombreChat = esHilo ? "Chat con oficina" : "Chat de la orden";
   const [mensajes, setMensajes] = useState([]);
   const [pendientes, setPendientes] = useState([]);
   const [lecturas, setLecturas] = useState([]);
@@ -122,6 +157,22 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const [editando, setEditando] = useState(null);
   const [resaltado, setResaltado] = useState(null);
   const sinRespondeARef = useRef(false);
+  const [escribiendo, setEscribiendo] = useState(null); // { autor, hasta }
+  const canalTypingRef = useRef(null);
+  const ultimoTypingRef = useRef(0);
+  const [prevArchivos, setPrevArchivos] = useState([]); // fotos antes de mandar
+  const [prevIdx, setPrevIdx] = useState(0);
+  const [leyenda, setLeyenda] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [busqIdx, setBusqIdx] = useState(0);
+  const [galeria, setGaleria] = useState(false);
+  const [emojiAbierto, setEmojiAbierto] = useState(false);
+  const [zoomVisor, setZoomVisor] = useState(null); // { x, y } en % o null
+  // "N mensajes no leidos": lo que ya habia visto al abrir el chat.
+  const [vistoAlAbrir, setVistoAlAbrir] = useState(null);
+  const divisorRef = useRef(null);
+  const primeraCargaRef = useRef(true);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -133,7 +184,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const pinRef = useRef(UBICACION_DEFAULT);
 
   const esTecnico = sinTildes(autorRol) === "tecnico";
-  const rapidas = esTecnico ? RAPIDAS_TECNICO : RAPIDAS_OFICINA;
+  const rapidas = esHilo ? (esTecnico ? RAPIDAS_HILO_TECNICO : RAPIDAS_HILO_OFICINA) : (esTecnico ? RAPIDAS_TECNICO : RAPIDAS_OFICINA);
 
   // Boton 🚨 Urgente (igual que la app): solo si las alertas estan activas
   // (alertas_whatsapp_config). Oficina -> WhatsApp + alarma al tecnico;
@@ -145,6 +196,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   }, []);
 
   const registrarLectura = () => {
+    if (esHilo) { marcarChatTecnicoVisto(hiloTecnico, autorRef.current); return; }
     marcarChatOrdenVisto(ordenId);
     if (!autorRef.current || !ordenId) return;
     supabase
@@ -154,40 +206,44 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   };
 
   useEffect(() => {
-    if (!ordenId) { setCargando(false); return undefined; }
+    if (!claveId) { setCargando(false); return undefined; }
     let cancelado = false;
     cercaRef.current = true;
     setNuevos(0);
     setPendientes([]);
+    primeraCargaRef.current = true;
+    setVistoAlAbrir((esHilo ? getUltimoVistoTecnico(hiloTecnico) : getUltimoVisto(ordenId)) || null);
     (async () => {
       const { data } = await supabase
-        .from("chat_ordenes_mensajes")
+        .from(TABLA)
         .select("*")
-        .eq("orden_id", ordenId)
+        .eq(COL, claveId)
         .order("created_at", { ascending: true })
         .limit(200);
       if (!cancelado) { setMensajes(data || []); setCargando(false); registrarLectura(); }
+      if (esHilo) return;
       const lect = await supabase.from("chat_ordenes_lecturas").select("usuario,visto_at").eq("orden_id", ordenId);
       if (!cancelado && !lect.error) setLecturas(lect.data || []);
     })();
     const channel = supabase
-      .channel(`chat-orden-${ordenId}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_ordenes_mensajes", filter: `orden_id=eq.${ordenId}` }, (payload) => {
+      .channel(`chat-${COL}-${claveId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: TABLA, filter: `${COL}=eq.${claveId}` }, (payload) => {
         setMensajes((prev) => prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]);
+        setEscribiendo((e) => (e && norm(e.autor) === norm(payload.new.autor) ? null : e));
         if (norm(payload.new.autor) !== norm(autorRef.current) && !cercaRef.current) setNuevos((n) => n + 1);
         registrarLectura();
       })
       // Editados y reacciones.
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_ordenes_mensajes", filter: `orden_id=eq.${ordenId}` }, (payload) => {
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: TABLA, filter: `${COL}=eq.${claveId}` }, (payload) => {
         const nuevo = payload.new;
         if (nuevo?.id) setMensajes((prev) => prev.map((m) => (m.id === nuevo.id ? { ...m, ...nuevo } : m)));
       })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "chat_ordenes_mensajes", filter: `orden_id=eq.${ordenId}` }, (payload) => {
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: TABLA, filter: `${COL}=eq.${claveId}` }, (payload) => {
         setMensajes((prev) => prev.filter((m) => m.id !== payload.old.id));
       })
       .subscribe();
     // Canal aparte: si la tabla de lecturas no existe no debe tumbar el chat.
-    const canalLect = supabase
+    const canalLect = esHilo ? null : supabase
       .channel(`chat-orden-lect-${ordenId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "chat_ordenes_lecturas", filter: `orden_id=eq.${ordenId}` }, (payload) => {
         const l = payload.new;
@@ -195,8 +251,8 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         setLecturas((prev) => [...prev.filter((x) => norm(x.usuario) !== norm(l.usuario)), { usuario: l.usuario, visto_at: l.visto_at }]);
       })
       .subscribe();
-    return () => { cancelado = true; supabase.removeChannel(channel); supabase.removeChannel(canalLect); };
-  }, [ordenId]);
+    return () => { cancelado = true; supabase.removeChannel(channel); if (canalLect) supabase.removeChannel(canalLect); };
+  }, [claveId, TABLA, COL]);
 
   const items = useMemo(() => [
     ...mensajes,
@@ -204,10 +260,65 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   ], [mensajes, pendientes, autor, autorRol]);
   const porId = useMemo(() => { const m = new Map(); mensajes.forEach((x) => m.set(String(x.id), x)); return m; }, [mensajes]);
 
+  // Al abrir: si hay no leidos, se queda en el divisor "N mensajes no
+  // leidos" (como WhatsApp); si no, al final.
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (el && cercaRef.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (primeraCargaRef.current && !cargando && items.length) {
+      primeraCargaRef.current = false;
+      const d = divisorRef.current;
+      if (d) { el.scrollTop = Math.max(0, d.offsetTop - 60); cercaRef.current = false; return; }
+    }
+    if (cercaRef.current) el.scrollTop = el.scrollHeight;
   }, [items, cargando]);
+
+  // Primer mensaje ajeno que no habia visto al abrir el chat.
+  const idPrimerNoLeido = useMemo(() => {
+    const t = vistoAlAbrir ? new Date(vistoAlAbrir).getTime() : 0;
+    const m = mensajes.find((x) => norm(x.autor) !== norm(autor) && new Date(x.created_at).getTime() > t);
+    return m ? String(m.id) : null;
+  }, [vistoAlAbrir, mensajes.length > 0, autor]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cantNoLeidosAlAbrir = useMemo(() => {
+    const t = vistoAlAbrir ? new Date(vistoAlAbrir).getTime() : 0;
+    return mensajes.filter((x) => norm(x.autor) !== norm(autor) && new Date(x.created_at).getTime() > t).length;
+  }, [idPrimerNoLeido]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { grupos: gruposFotos, ocultos: fotosOcultas } = useMemo(() => agruparFotos(items), [items]);
+
+  // "Fulano está escribiendo…": aviso efimero por Realtime broadcast, mismo
+  // canal que la app movil (se entienden entre si).
+  useEffect(() => {
+    if (!claveId) return undefined;
+    const ch = supabase
+      .channel(`typing-${COL}-${claveId}`, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        const quien = String(payload?.autor || "").trim();
+        if (!quien || norm(quien) === norm(autorRef.current)) return;
+        setEscribiendo({ autor: quien, hasta: Date.now() + 4000 });
+      })
+      .subscribe();
+    canalTypingRef.current = ch;
+    return () => { canalTypingRef.current = null; supabase.removeChannel(ch); };
+  }, [claveId, COL]);
+  useEffect(() => {
+    if (!escribiendo) return undefined;
+    const t = setTimeout(() => setEscribiendo((e) => (e && e.hasta <= Date.now() ? null : e)), Math.max(200, escribiendo.hasta - Date.now()));
+    return () => clearTimeout(t);
+  }, [escribiendo]);
+  const avisarEscribiendo = () => {
+    const ahora = Date.now();
+    if (ahora - ultimoTypingRef.current < 2500 || !canalTypingRef.current) return;
+    ultimoTypingRef.current = ahora;
+    void canalTypingRef.current.send({ type: "broadcast", event: "typing", payload: { autor: autorRef.current } });
+  };
+
+  // Buscar dentro del chat (de lo mas nuevo a lo mas viejo).
+  const coincidencias = useMemo(() => {
+    const q = sinTildes(busqueda);
+    if (q.length < 2) return [];
+    return mensajes.filter((m) => sinTildes(m.texto).includes(q) || sinTildes(m.autor).includes(q)).map((m) => String(m.id)).reverse();
+  }, [busqueda, mensajes]);
+  useEffect(() => { setBusqIdx(0); }, [busqueda]);
 
   // Textarea que crece hasta 4 lineas.
   useLayoutEffect(() => {
@@ -217,6 +328,12 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     ta.style.height = `${Math.min(ta.scrollHeight, 96)}px`;
   }, [texto]);
 
+  useEffect(() => { setZoomVisor(null); }, [visor]);
+  // Buscar: salta a la coincidencia elegida.
+  useEffect(() => {
+    if (!buscando || !coincidencias.length) return;
+    irAMensaje(coincidencias[Math.min(busqIdx, coincidencias.length - 1)]);
+  }, [buscando, coincidencias, busqIdx]); // eslint-disable-line react-hooks/exhaustive-deps
   // Visor: flechas del teclado y Escape.
   useEffect(() => {
     if (visor < 0) return undefined;
@@ -248,7 +365,8 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const subirArchivo = async (file) => {
     const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const ext = (String(file.name || "").split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-    const path = `chat_ordenes/${ordenId}/${ymd}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const carpeta = esHilo ? `chat_tecnicos/${encodeURIComponent(hiloTecnico)}` : `chat_ordenes/${ordenId}`;
+    const path = `${carpeta}/${ymd}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error } = await supabase.storage.from("liquidaciones").upload(path, file, { contentType: file.type || "image/jpeg", upsert: false });
     if (error) throw error;
     const { data } = supabase.storage.from("liquidaciones").getPublicUrl(path);
@@ -262,19 +380,19 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     let fotoUrl = p.fotoUrl || "";
     try {
       if (p.archivo && !fotoUrl) fotoUrl = await subirArchivo(p.archivo);
-      const fila = { orden_id: ordenId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}) };
+      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}) };
       const conCita = p.respondeA && !sinRespondeARef.current;
-      let { data, error } = await supabase.from("chat_ordenes_mensajes").insert([conCita ? { ...fila, responde_a: p.respondeA } : fila]).select("*").single();
+      let { data, error } = await supabase.from(TABLA).insert([conCita ? { ...fila, responde_a: p.respondeA } : fila]).select("*").single();
       // Base sin la columna responde_a (SQL aun no corrido): se manda sin cita.
       if (error && conCita && /responde_a/i.test(String(error.message || ""))) {
         sinRespondeARef.current = true;
-        ({ data, error } = await supabase.from("chat_ordenes_mensajes").insert([fila]).select("*").single());
+        ({ data, error } = await supabase.from(TABLA).insert([fila]).select("*").single());
       }
       if (error || !data) throw error || new Error("Sin respuesta");
       setPendientes((prev) => prev.filter((x) => x.tempId !== p.tempId));
       setMensajes((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
       void notificarMensajeChat(supabase, {
-        ordenId, ordenCodigo: ordenCodigo || orden?.codigo, tecnicoOrden: tecnicoAsignado || orden?.tecnico,
+        hiloTecnico, ordenId, ordenCodigo: ordenCodigo || orden?.codigo, tecnicoOrden: tecnicoAsignado || orden?.tecnico,
         autor, autorRol, texto: data.texto, fotoUrl: data.foto_url, urgente: !!data.urgente,
       });
     } catch {
@@ -315,13 +433,35 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     encolar({ texto: t, urgente: true });
   };
   const encolarArchivos = (files) => {
-    Array.from(files || []).filter((f) => String(f.type || "").startsWith("image/")).forEach((f, i) => encolar({ archivo: f, sinCita: i > 0 }));
+    const nuevas = Array.from(files || []).filter((f) => String(f.type || "").startsWith("image/"))
+      .map((f) => ({ file: f, url: URL.createObjectURL(f), key: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}` }));
+    if (!nuevas.length) return;
+    // Vista previa con comentario antes de mandar (como WhatsApp Web).
+    setPrevArchivos((prev) => { const t = [...prev, ...nuevas].slice(0, 10); setPrevIdx(Math.min(prev.length, t.length - 1)); return t; });
+  };
+
+  const mandarPrevia = () => {
+    const lista = prevArchivos;
+    const t = leyenda.trim();
+    setPrevArchivos([]);
+    setLeyenda("");
+    setPrevIdx(0);
+    lista.forEach((p, i) => encolar({ archivo: p.file, texto: i === 0 ? t : "", sinCita: i > 0 }));
+  };
+  const cancelarPrevia = () => { prevArchivos.forEach((p) => { try { URL.revokeObjectURL(p.url); } catch { /* nada */ } }); setPrevArchivos([]); setLeyenda(""); setPrevIdx(0); };
+  const insertarEmoji = (emo) => {
+    const ta = textareaRef.current;
+    const ini = ta ? ta.selectionStart : texto.length;
+    const fin = ta ? ta.selectionEnd : texto.length;
+    const nuevo = texto.slice(0, ini) + emo + texto.slice(fin);
+    setTexto(nuevo);
+    setTimeout(() => { if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ini + emo.length; } }, 0);
   };
 
   const borrarMensaje = async (id) => {
     setMenuMsgId(null);
     if (!window.confirm("¿Eliminar este mensaje para todos?")) return;
-    const { error } = await supabase.from("chat_ordenes_mensajes").delete().eq("id", id);
+    const { error } = await supabase.from(TABLA).delete().eq("id", id);
     if (!error) setMensajes((prev) => prev.filter((m) => m.id !== id));
   };
   const copiar = async (valor, etiqueta) => {
@@ -356,7 +496,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     Object.entries(antes).forEach(([k, v]) => { const r = (v || []).filter((u) => u !== yo); if (r.length) optimista[k] = r; });
     if (tenia !== emoji) optimista[emoji] = [...(optimista[emoji] || []), yo];
     setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, reacciones: optimista } : x)));
-    const { data, error } = await supabase.rpc("chat_reaccionar", { p_tabla: "chat_ordenes_mensajes", p_id: m.id, p_emoji: emoji, p_usuario: yo });
+    const { data, error } = await supabase.rpc("chat_reaccionar", { p_tabla: TABLA, p_id: m.id, p_emoji: emoji, p_usuario: yo });
     if (error) {
       setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, reacciones: antes } : x)));
       setCopiado("No se pudo reaccionar"); setTimeout(() => setCopiado(""), 1800);
@@ -383,7 +523,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     if (t === String(m.texto || "").trim()) return;
     const anterior = { texto: m.texto, editado_at: m.editado_at };
     setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, texto: t, editado_at: new Date().toISOString() } : x)));
-    const { data, error } = await supabase.rpc("chat_editar", { p_tabla: "chat_ordenes_mensajes", p_id: m.id, p_texto: t, p_autor: autorRef.current });
+    const { data, error } = await supabase.rpc("chat_editar", { p_tabla: TABLA, p_id: m.id, p_texto: t, p_autor: autorRef.current });
     if (error || data === false) {
       setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...anterior } : x)));
       setCopiado(error ? "No se pudo editar" : "Ya pasaron 5 minutos: no se puede editar"); setTimeout(() => setCopiado(""), 2200);
@@ -433,9 +573,11 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   })();
   const destinoCliente = String(orden?.ubicacion || "").trim() || String(orden?.direccion || "").trim();
 
-  if (!ordenId) return null;
+  if (!claveId) return null;
 
   const renderMensaje = (m, i) => {
+    if (fotosOcultas.has(String(m.id))) return null; // va dentro del mosaico del primero
+    const grupo = gruposFotos.get(String(m.id));
     const esMio = norm(m.autor) === norm(autor);
     const prev = items[i - 1];
     const mismoAutorQuePrev = prev && norm(prev.autor) === norm(m.autor);
@@ -476,6 +618,13 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </span>
           </div>
         )}
+        {idPrimerNoLeido === String(m.id) && cantNoLeidosAlAbrir > 0 && (
+          <div ref={divisorRef} style={{ textAlign: "center", margin: "10px -10px 6px", background: "rgba(124,58,237,0.08)", padding: "4px 0" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#6d28d9", background: "#fff", borderRadius: 999, padding: "2px 12px", boxShadow: "0 1px 2px rgba(15,23,42,0.08)" }}>
+              {cantNoLeidosAlAbrir} mensaje{cantNoLeidosAlAbrir === 1 ? "" : "s"} no leído{cantNoLeidosAlAbrir === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
         <div className="oc-row oc-in" style={{ display: "flex", alignItems: "flex-end", gap: 6, justifyContent: esMio ? "flex-end" : "flex-start", marginTop: inicioDeGrupo ? 8 : 2, position: "relative" }}>
           {!esMio && (
             <div style={{
@@ -486,10 +635,15 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </div>
           )}
           {esMio && !pend && (
-            <button type="button" className="oc-mas" onClick={() => setMenuMsgId(menuAbierto ? null : m.id)} title="Opciones"
-              style={{ ...btnIcono, opacity: menuAbierto ? 1 : undefined }}>
-              <EllipsisVertical size={15} color="#94a3b8" />
-            </button>
+            <>
+              <button type="button" className="oc-mas" onClick={() => setMenuMsgId(menuAbierto ? null : m.id)} title="Opciones (reaccionar, editar, borrar…)"
+                style={{ ...btnIcono, opacity: menuAbierto ? 1 : undefined }}>
+                <EllipsisVertical size={15} color="#94a3b8" />
+              </button>
+              <button type="button" className="oc-mas" onClick={() => responderA(m)} title="Responder (o doble clic en el mensaje)" style={btnIcono}>
+                <Reply size={15} color="#94a3b8" />
+              </button>
+            </>
           )}
           <div style={{
             position: "relative", maxWidth: "78%", color: esMio ? "#fff" : "#0f172a",
@@ -533,7 +687,22 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                 </div>
               </a>
             ) : null}
-            {m.foto_url && (
+            {grupo ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, width: 230 }}>
+                {grupo.slice(0, 4).map((g, gi) => (
+                  <div key={g.id} style={{ position: "relative", height: 113 }}>
+                    <img src={g.foto_url} alt="Foto" onClick={() => { const k = fotos.findIndex((f) => f.id === g.id); if (k >= 0) setVisor(k); }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8, display: "block", cursor: "zoom-in", background: "#cbd5e1" }} />
+                    {gi === 3 && grupo.length > 4 && (
+                      <div onClick={() => { const k = fotos.findIndex((f) => f.id === g.id); if (k >= 0) setVisor(k); }}
+                        style={{ position: "absolute", inset: 0, borderRadius: 8, background: "rgba(15,23,42,0.55)", color: "#fff", fontSize: 22, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", cursor: "zoom-in" }}>
+                        +{grupo.length - 4}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : m.foto_url && (
               <div style={{ position: "relative", marginBottom: m.texto ? 5 : 0 }}>
                 <img src={m.foto_url} alt="Foto" onClick={() => { if (pend) return; const k = fotos.findIndex((f) => f.id === m.id); if (k >= 0) setVisor(k); }}
                   style={{ width: 230, height: 184, objectFit: "cover", borderRadius: 12, display: "block", cursor: pend ? "default" : "zoom-in", background: "#cbd5e1" }} />
@@ -552,11 +721,16 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             )}
             {pie}
           </div>
-          {!esMio && (
-            <button type="button" className="oc-mas" onClick={() => setMenuMsgId(menuAbierto ? null : m.id)} title="Opciones"
-              style={{ ...btnIcono, opacity: menuAbierto ? 1 : undefined }}>
-              <EllipsisVertical size={15} color="#94a3b8" />
-            </button>
+          {!esMio && !pend && (
+            <>
+              <button type="button" className="oc-mas" onClick={() => responderA(m)} title="Responder (o doble clic en el mensaje)" style={btnIcono}>
+                <Reply size={15} color="#94a3b8" />
+              </button>
+              <button type="button" className="oc-mas" onClick={() => setMenuMsgId(menuAbierto ? null : m.id)} title="Opciones (reaccionar, copiar…)"
+                style={{ ...btnIcono, opacity: menuAbierto ? 1 : undefined }}>
+                <EllipsisVertical size={15} color="#94a3b8" />
+              </button>
+            </>
           )}
           {menuAbierto && (
             <>
@@ -623,15 +797,17 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
 
   return (
     <div
-      style={{ border: `1px solid ${arrastrando ? "#3b82f6" : "#e2e8f0"}`, borderRadius: 14, background: "#f1f5f9", marginTop: 16, overflow: "hidden", position: "relative" }}
+      style={{ border: `1px solid ${arrastrando ? "#3b82f6" : "#e2e8f0"}`, borderRadius: llenar ? 0 : 14, background: "#f1f5f9", marginTop: llenar ? 0 : 16, overflow: "hidden", position: "relative", ...(llenar ? { height: "100%", display: "flex", flexDirection: "column", border: "none" } : {}) }}
       onDragOver={(e) => { if (Array.from(e.dataTransfer?.types || []).includes("Files")) { e.preventDefault(); setArrastrando(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setArrastrando(false); }}
       onDrop={(e) => { e.preventDefault(); setArrastrando(false); encolarArchivos(e.dataTransfer?.files); }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
         <MessagesSquare size={14} color="#64748b" />
-        <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Chat de la orden</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>{esHilo ? hiloTecnico : nombreChat}</span>
         <span style={{ flex: 1 }} />
+        <button type="button" className="oc-ic" onClick={() => { setBuscando((b) => !b); setBusqueda(""); }} title="Buscar en el chat" style={{ ...icBtn, width: 28, height: 28 }}><Search size={15} color="#475569" /></button>
+        <button type="button" className="oc-ic" onClick={() => setGaleria(true)} title={`Fotos del chat (${fotos.length})`} style={{ ...icBtn, width: 28, height: 28 }}><Images size={15} color="#475569" /></button>
         {telCliente && (
           <a href={`tel:${telCliente}`} title={`Llamar al cliente (${telCliente})`} style={{ ...accionCab, color: "#16a34a" }}>
             <Phone size={13} /> Llamar
@@ -644,10 +820,28 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         )}
       </div>
 
+      {buscando && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
+          <Search size={14} color="#94a3b8" />
+          <input autoFocus value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar en el chat…"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); setBusqIdx((x) => (coincidencias.length ? (x + 1) % coincidencias.length : 0)); }
+              if (e.key === "Escape") { setBuscando(false); setBusqueda(""); }
+            }}
+            style={{ flex: 1, border: "none", outline: "none", fontSize: 13, padding: "5px 2px", fontFamily: "inherit" }} />
+          <span style={{ fontSize: 11.5, color: "#64748b", fontWeight: 700, minWidth: 34, textAlign: "right" }}>
+            {busqueda.trim().length < 2 ? "" : coincidencias.length ? `${Math.min(busqIdx, coincidencias.length - 1) + 1}/${coincidencias.length}` : "0"}
+          </span>
+          <button type="button" className="oc-ic" disabled={busqIdx >= coincidencias.length - 1} onClick={() => setBusqIdx((x) => x + 1)} title="Más antiguo" style={{ ...icBtn, width: 26, height: 26 }}><ChevronUp size={16} color="#475569" /></button>
+          <button type="button" className="oc-ic" disabled={busqIdx <= 0} onClick={() => setBusqIdx((x) => Math.max(0, x - 1))} title="Más reciente" style={{ ...icBtn, width: 26, height: 26 }}><ChevronDown size={16} color="#475569" /></button>
+          <button type="button" className="oc-ic" onClick={() => { setBuscando(false); setBusqueda(""); }} title="Cerrar" style={{ ...icBtn, width: 26, height: 26 }}><X size={15} color="#475569" /></button>
+        </div>
+      )}
+
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "18px 0", fontSize: 12, color: "#94a3b8" }}>Cargando…</div>
+        <div style={{ textAlign: "center", padding: "18px 0", fontSize: 12, color: "#94a3b8", ...(llenar ? { flex: 1 } : {}) }}>Cargando…</div>
       ) : items.length === 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 14px", textAlign: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "18px 14px", textAlign: "center", ...(llenar ? { flex: 1, justifyContent: "center" } : {}) }}>
           <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#dbeafe", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
             <MessagesSquare size={24} color="#2563eb" />
           </div>
@@ -656,7 +850,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           {chipsRapidas(true)}
         </div>
       ) : (
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", ...(llenar ? { flex: 1, minHeight: 0 } : {}) }}>
           <div
             ref={scrollRef}
             onScroll={(e) => {
@@ -665,7 +859,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
               cercaRef.current = cerca;
               if (cerca && nuevos) setNuevos(0);
             }}
-            style={{ maxHeight: 340, overflowY: "auto", padding: "8px 10px" }}
+            style={{ ...(llenar ? { height: "100%" } : { maxHeight: 340 }), overflowY: "auto", padding: "8px 10px" }}
           >
             {items.map(renderMensaje)}
           </div>
@@ -682,6 +876,11 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         <div style={{ padding: "6px 10px", borderTop: "1px solid #e2e8f0" }}>{chipsRapidas(false)}</div>
       )}
 
+      {!!escribiendo && (
+        <div style={{ padding: "3px 14px", fontSize: 11.5, color: "#16a34a", fontWeight: 700, fontStyle: "italic", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+          ✍️ {escribiendo.autor} está escribiendo…
+        </div>
+      )}
       {(editando || respondiendo) && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px 2px", background: "#fff", borderTop: "1px solid #e2e8f0" }}>
           <div style={{ flex: 1, minWidth: 0, borderLeft: `3.5px solid ${editando ? "#f59e0b" : colorParaAutor(respondiendo.autor)}`, borderRadius: 8, background: "#f1f5f9", padding: "5px 8px" }}>
@@ -734,10 +933,26 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </>
           )}
         </div>
+        <div style={{ position: "relative" }}>
+          <button type="button" className="oc-ic" onClick={() => setEmojiAbierto((v) => !v)} title="Emojis" style={icBtn}>
+            <Smile size={19} color="#475569" />
+          </button>
+          {emojiAbierto && (
+            <>
+              <div onClick={() => setEmojiAbierto(false)} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
+              <div style={{ ...menuCaja, bottom: "100%", left: 0, marginBottom: 6, minWidth: 0, width: 268, padding: 6, display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2 }}>
+                {EMOJIS.map((emo) => (
+                  <button key={emo} type="button" className="oc-reac" onClick={() => insertarEmoji(emo)}
+                    style={{ fontSize: 19, background: "none", border: "none", borderRadius: 6, cursor: "pointer", padding: "3px 0" }}>{emo}</button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <textarea
           ref={textareaRef}
           value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          onChange={(e) => { setTexto(e.target.value); if (e.target.value.trim()) avisarEscribiendo(); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarTexto(); }
             if (e.key === "Escape") { if (editando) cancelarEdicion(); else setRespondiendo(null); }
@@ -789,12 +1004,28 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </div>
             <span style={{ fontSize: 13.5, fontWeight: 700 }}>Foto {visor + 1} de {fotos.length}</span>
             <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => { const f = fotoVisor; setVisor(-1); responderA(f); }} title="Responder a esta foto" style={{ ...visorBtn, width: "auto", padding: "0 12px", borderRadius: 999, gap: 6, fontSize: 13, fontWeight: 700 }}><Reply size={16} /> Responder</button>
+              <button type="button" onClick={() => setZoomVisor((z) => (z ? null : { x: 50, y: 50 }))} title="Acercar / alejar (o clic en la foto)" style={visorBtn}><ZoomIn size={18} /></button>
+              <a href={fotoVisor.foto_url} download target="_blank" rel="noreferrer" title="Descargar" style={visorBtn}><Download size={18} /></a>
               <a href={fotoVisor.foto_url} target="_blank" rel="noreferrer" title="Abrir original" style={visorBtn}><ExternalLink size={18} /></a>
               <button type="button" onClick={() => setVisor(-1)} title="Cerrar (Esc)" style={visorBtn}><X size={20} /></button>
             </div>
           </div>
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", minHeight: 0 }}>
-            <img src={fotoVisor.foto_url} alt="Foto" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "88vw", maxHeight: "100%", borderRadius: 8, objectFit: "contain" }} />
+            <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: "88vw", maxHeight: "100%", overflow: "hidden", borderRadius: 8, display: "flex" }}>
+              <img src={fotoVisor.foto_url} alt="Foto"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setZoomVisor((z) => (z ? null : { x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 }));
+                }}
+                onMouseMove={(e) => {
+                  if (!zoomVisor) return;
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setZoomVisor({ x: ((e.clientX - r.left) / r.width) * 100, y: ((e.clientY - r.top) / r.height) * 100 });
+                }}
+                style={{ maxWidth: "88vw", maxHeight: "calc(100vh - 160px)", objectFit: "contain", cursor: zoomVisor ? "zoom-out" : "zoom-in",
+                  transform: zoomVisor ? "scale(2.5)" : "none", transformOrigin: zoomVisor ? `${zoomVisor.x}% ${zoomVisor.y}%` : "center", transition: "transform .15s" }} />
+            </div>
             {visor > 0 && (
               <button type="button" onClick={(e) => { e.stopPropagation(); setVisor(visor - 1); }} title="Anterior (←)" style={{ ...visorBtn, position: "absolute", left: 18, width: 46, height: 46 }}><ChevronLeft size={26} /></button>
             )}
@@ -802,7 +1033,64 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
               <button type="button" onClick={(e) => { e.stopPropagation(); setVisor(visor + 1); }} title="Siguiente (→)" style={{ ...visorBtn, position: "absolute", right: 18, width: 46, height: 46 }}><ChevronRight size={26} /></button>
             )}
           </div>
-          <div style={{ height: 24 }} />
+          {fotoVisor.texto ? (
+            <div onClick={(e) => e.stopPropagation()} style={{ textAlign: "center", color: "#fff", fontSize: 14, padding: "10px 20px 18px", whiteSpace: "pre-wrap" }}>{fotoVisor.texto}</div>
+          ) : <div style={{ height: 24 }} />}
+        </div>
+      )}
+
+      {/* ── Vista previa de fotos antes de mandar (con comentario) ── */}
+      {prevArchivos.length > 0 && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.92)", zIndex: 99999, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "14px 18px", color: "#fff", gap: 10 }}>
+            <button type="button" onClick={cancelarPrevia} title="Cancelar (Esc)" style={visorBtn}><X size={20} /></button>
+            <span style={{ flex: 1, fontSize: 15, fontWeight: 700 }}>{prevArchivos.length === 1 ? "Mandar foto" : `Mandar ${prevArchivos.length} fotos`}</span>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" }}>
+            <img src={prevArchivos[Math.min(prevIdx, prevArchivos.length - 1)]?.url} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 8 }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "12px 0", flexWrap: "wrap" }}>
+            {prevArchivos.map((p, i) => (
+              <div key={p.key} style={{ position: "relative" }}>
+                <img src={p.url} alt="" onClick={() => setPrevIdx(i)} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, cursor: "pointer", border: i === prevIdx ? "2.5px solid #60a5fa" : "2.5px solid transparent" }} />
+                {prevArchivos.length > 1 && (
+                  <button type="button" onClick={() => { setPrevArchivos((l) => l.filter((x) => x.key !== p.key)); setPrevIdx(0); }} title="Quitar"
+                    style={{ position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%", border: "none", background: "#ef4444", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}><X size={12} /></button>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={() => fileInputRef.current?.click()} title="Agregar más" style={{ width: 56, height: 56, borderRadius: 8, border: "2px dashed #64748b", background: "transparent", color: "#cbd5e1", fontSize: 24, cursor: "pointer" }}>+</button>
+          </div>
+          {respondiendo && <div style={{ textAlign: "center", color: "#bfdbfe", fontSize: 12, paddingBottom: 6 }}>↩ Respondiendo a {respondiendo.autor}: {resumenMensaje(respondiendo)}</div>}
+          <div style={{ display: "flex", gap: 8, padding: "0 18px 18px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+            <input autoFocus value={leyenda} onChange={(e) => setLeyenda(e.target.value)} placeholder="Añade un comentario…"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); mandarPrevia(); } if (e.key === "Escape") cancelarPrevia(); }}
+              style={{ flex: 1, padding: "11px 16px", borderRadius: 999, border: "none", outline: "none", fontSize: 14, background: "#1e293b", color: "#fff", fontFamily: "inherit" }} />
+            <button type="button" onClick={mandarPrevia} title="Enviar (Enter)" style={{ width: 46, height: 46, borderRadius: "50%", border: "none", background: "#2563eb", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Send size={18} /></button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Galeria: todas las fotos del chat ── */}
+      {galeria && (
+        <div onClick={() => setGaleria(false)} style={{ position: "fixed", inset: 0, background: "rgba(10,10,26,0.55)", zIndex: 99998, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, width: "min(760px, 100%)", maxHeight: "86vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #e2e8f0" }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#0f172a" }}>Fotos del chat ({fotos.length})</span>
+              <button type="button" onClick={() => setGaleria(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", display: "flex" }}><X size={18} /></button>
+            </div>
+            {fotos.length === 0 ? (
+              <div style={{ padding: 30, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Aún no hay fotos en este chat</div>
+            ) : (
+              <div style={{ overflowY: "auto", padding: 8, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 6 }}>
+                {[...fotos].reverse().map((f) => (
+                  <img key={f.id} src={f.foto_url} alt="" title={`${f.autor} · ${formatearFechaDivisor(f.created_at)} ${horaDe(f.created_at)}`}
+                    onClick={() => { setGaleria(false); setVisor(fotos.findIndex((x) => x.id === f.id)); }}
+                    style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "zoom-in", background: "#e2e8f0" }} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

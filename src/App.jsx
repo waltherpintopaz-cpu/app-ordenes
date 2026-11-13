@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import ChatTecnico from "./components/ChatTecnico";
 import OrdenChat from "./components/OrdenChat";
+import ChatsPage from "./components/ChatsPage";
 import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
 import ClienteChatHistorial from "./components/ClienteChatHistorial";
 import VpnAccesosPanel from "./components/VpnAccesosPanel";
@@ -18017,6 +18018,20 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // Ventana dedicada de chats (ruta /chats, estilo WhatsApp Web) -- misma
+  // sesion y mismos permisos que el globo de chats del panel.
+  if (window.location.pathname === "/chats") {
+    return (
+      <ChatsPage
+        ordenes={ordenes}
+        tecnicos={rolSesion === "Tecnico" ? (usuarioSesion?.nombre ? [usuarioSesion.nombre] : []) : tecnicosActivos.map((t) => t.nombre)}
+        tecnicosDirectorio={rolSesion === "Tecnico" ? null : tecnicosActivos}
+        autor={usuarioSesion.nombre}
+        autorRol={rolSesion}
+      />
     );
   }
 
