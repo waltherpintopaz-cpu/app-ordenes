@@ -15,6 +15,9 @@ export default function SenalLiquidacionOrden({ o }) {
   const [leyendo, setLeyendo] = useState(false);
   const [errorVivo, setErrorVivo] = useState("");
   const [fotoGrande, setFotoGrande] = useState("");
+  // "hace X min" se refresca solo; si la lectura tiene mas de 10 min, se vuelve a leer.
+  const [, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 30000); return () => clearInterval(t); }, []);
 
   const leerVivo = async (sn, nodo) => {
     if (!sn) return;
@@ -37,6 +40,12 @@ export default function SenalLiquidacionOrden({ o }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [o.id, o.codigo, o.estado]);
 
+  const viejo = vivo?.at && Date.now() - new Date(vivo.at).getTime() > 10 * 60000;
+  useEffect(() => {
+    if (viejo && datos?.sn && !leyendo) void leerVivo(datos.sn, o.nodo || datos.cli?.nodo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viejo]);
+
   if (!datos) return null;
   const { liq, cli, sn, fotos } = datos;
   const qVivo = calidadSenal(vivo?.rx);
@@ -44,7 +53,7 @@ export default function SenalLiquidacionOrden({ o }) {
   const qLiq = calidadSenal(liq?.parametro);
   if (!sn && !qLiq && !liq && !qGuardada) return null;
 
-  const caja = { marginTop: 12, borderRadius: 10, border: "1px solid #e2e8f0", padding: 10 };
+  const caja = { marginTop: 10, borderRadius: 12, border: "1px solid #e2e8f0", padding: "8px 10px 10px", background: "#fff", boxShadow: "0 1px 2px rgba(15,23,42,0.04)" };
   const sub = { fontSize: 11, color: "#64748b", fontWeight: 700, margin: "6px 0 4px" };
   const pildora = (q, extra) => (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 999, background: q.bg, border: `1px solid ${q.b}`, color: q.c, fontWeight: 800, fontSize: 13 }}>

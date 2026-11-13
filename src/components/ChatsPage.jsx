@@ -347,6 +347,38 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
   const mostrarPanel = sel?.tipo === "orden" && verPanel && cabePanel && !!sel.ordenInfo;
   const atSel = sel ? atiende(sel.key) : null;
   const estSel = sel?.tipo === "orden" ? estadoOrden(sel.ordenInfo, ahora) : null;
+  const tecnicoSel = sel?.tipo === "tecnico" ? sel.tecnicoNombre : sel?.ordenInfo?.tecnico || "";
+  const [ubicTec, setUbicTec] = useState(null);
+  useEffect(() => {
+    setUbicTec(null);
+    if (!tecnicoSel) return undefined;
+    let vivo = true;
+    const leer = () => supabase.from("tecnico_ubicacion_actual").select("updated_at,battery_pct").eq("tecnico_nombre", tecnicoSel).order("updated_at", { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => { if (vivo) setUbicTec(data || null); }, () => {});
+    leer();
+    const t = setInterval(leer, 60000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [tecnicoSel]);
+  const enLineaTxt = (() => {
+    if (!ubicTec?.updated_at) return null;
+    const min = Math.round((ahora - new Date(ubicTec.updated_at).getTime()) / 60000);
+    if (!Number.isFinite(min)) return null;
+    if (min <= 5) return { t: "En línea", c: "#16a34a" };
+    if (min < 60) return { t: `Visto hace ${min} min`, c: "#64748b" };
+    if (min < 1440) return { t: `Visto hace ${Math.round(min / 60)} h`, c: "#94a3b8" };
+    return { t: `Visto hace ${Math.round(min / 1440)} d`, c: "#94a3b8" };
+  })();
+  const franjaEstado = (() => {
+    const o = sel?.tipo === "orden" ? sel.ordenInfo : null;
+    if (!o || !estSel) return null;
+    const e = String(o.estado || "");
+    if (/cancel/i.test(e)) return { ic: "✖", t: "Orden cancelada. El chat queda solo como historial.", bg: "#f1f5f9", c: "#475569", b: "#e2e8f0" };
+    if (/liquidad|finaliz|cerrad/i.test(e)) return { ic: "✅", t: "Orden liquidada. Lo que escribas queda como seguimiento.", bg: "#f0fdf4", c: "#166534", b: "#bbf7d0" };
+    if (o.porCoordinarDesde) return { ic: "⏸", t: `Por coordinar: el cliente avisará la fecha (hace ${diasPorCoordinar(o.porCoordinarDesde)} día${diasPorCoordinar(o.porCoordinarDesde) === 1 ? "" : "s"}).`, bg: "#faf5ff", c: "#6b21a8", b: "#e9d5ff", accion: "Poner fecha" };
+    if (/Vencida/.test(estSel.t)) return { ic: "⏰", t: `Visita vencida (${(cuandoVisita(o) || "").replace("🕐 ", "")}). Confirma con el técnico o reprográmala.`, bg: "#fef2f2", c: "#991b1b", b: "#fecaca", accion: "Reprogramar" };
+    if (/proceso/i.test(e)) return { ic: "🔧", t: o.atendidaSinLiquidarEn ? "Atendida: falta que el técnico liquide." : "En proceso: el técnico ya está trabajando en esta orden.", bg: "#eff6ff", c: "#1e40af", b: "#bfdbfe" };
+    return null;
+  })();
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#f1f5f9", fontFamily: '"Inter", "Segoe UI", sans-serif', overflow: "hidden" }}>
@@ -519,7 +551,13 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                     {estSel && <span style={{ ...chip, background: estSel.bg, color: estSel.c, flexShrink: 0 }}>{estSel.t}</span>}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {sel.tipo === "tecnico" ? "Chat con oficina" : [sel.ordenInfo?.tecnico && `Técnico: ${sel.ordenInfo.tecnico}`, cuandoVisita(sel.ordenInfo), sel.ordenInfo?.direccion].filter(Boolean).join(" · ")}
+                    {enLineaTxt && (
+                      <span title={tecnicoSel ? `Según el GPS de la app de ${tecnicoSel}` : undefined} style={{ color: enLineaTxt.c, fontWeight: 700, marginRight: 6 }}>
+                        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: enLineaTxt.c, marginRight: 4, verticalAlign: "middle" }} />
+                        {enLineaTxt.t}{sel.tipo !== "tecnico" ? " ·" : ""}
+                      </span>
+                    )}
+                    {sel.tipo === "tecnico" ? (enLineaTxt ? "" : "Chat con oficina") : [sel.ordenInfo?.tecnico && `Técnico: ${sel.ordenInfo.tecnico}`, cuandoVisita(sel.ordenInfo), sel.ordenInfo?.direccion].filter(Boolean).join(" · ")}
                   </div>
                 </div>
                 {/* "Lo atiendo yo" */}
@@ -548,6 +586,18 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                 )}
                 <button type="button" className="cp-btn" onClick={() => setSeleccion(null)} style={iconBtn} title="Cerrar chat (Esc)"><X size={18} color="#475569" /></button>
               </div>
+              {franjaEstado && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", background: franjaEstado.bg, borderBottom: `1px solid ${franjaEstado.b}`, color: franjaEstado.c, fontSize: 12.5, fontWeight: 600, flexShrink: 0 }}>
+                  <span style={{ fontSize: 14 }}>{franjaEstado.ic}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>{franjaEstado.t}</span>
+                  {franjaEstado.accion && norm(autorRol) !== "tecnico" && (
+                    <button type="button" onClick={() => setReprog(sel.ordenInfo)}
+                      style={{ border: `1px solid ${franjaEstado.c}`, background: "#fff", color: franjaEstado.c, borderRadius: 999, padding: "3px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                      📅 {franjaEstado.accion}
+                    </button>
+                  )}
+                </div>
+              )}
               <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {sel.tipo === "tecnico" ? (
@@ -597,6 +647,9 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
 }
 
 // ── Panel derecho: datos de la orden + acciones ──────────────────────────
+const tarjeta = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: "8px 10px 10px", marginTop: 10, boxShadow: "0 1px 2px rgba(15,23,42,0.04)" };
+const tarjetaTit = { fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: 0.3, textTransform: "uppercase", marginBottom: 4 };
+
 function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar, onCambiarTecnico }) {
   const [verTodo, setVerTodo] = useState(false);
   const [cambiando, setCambiando] = useState(false);
@@ -622,7 +675,7 @@ function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar,
   ));
   const wifi = String(o.wifiNombre || "").trim();
   return (
-    <div className="cp-scroll" style={{ width: 300, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e2e8f0", overflowY: "auto", padding: 14 }}>
+    <div className="cp-scroll" style={{ width: 310, flexShrink: 0, boxSizing: "border-box", background: "#f8fafc", borderLeft: "1px solid #e2e8f0", overflowY: "auto", overflowX: "hidden", padding: 12 }}>
       <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", letterSpacing: 0.4, marginBottom: 6 }}>DATOS DE LA ORDEN</div>
       <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>{o.nombre || "Cliente"}</div>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap", margin: "6px 0 10px" }}>
@@ -655,17 +708,23 @@ function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar,
         </div>
       )}
 
-      {fila("Técnico", o.tecnico || "Sin técnico")}
-      {fila("Visita", o.porCoordinarDesde ? "⏸ Por coordinar (el cliente avisará)" : [String(o.fechaActuacion || "").slice(0, 10), String(o.hora || "").slice(0, 5)].filter(Boolean).join(" · "))}
-      {fila("Tipo", o.tipoActuacion || o.orden)}
-      {fila("Celular", o.celular, "cel", true)}
-      {fila("Contacto", o.contacto, "contacto", true)}
-      {fila("Dirección", o.direccion, "dir", true)}
-      {fila("Nodo", o.nodo)}
-      {fila("Plan", o.velocidad)}
-      {mapa && (
-        <a href={mapa} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}>📍 Ver en el mapa</a>
-      )}
+      <div style={tarjeta}>
+        <div style={tarjetaTit}>📅 Visita</div>
+        {fila("Técnico", o.tecnico || "Sin técnico")}
+        {fila("Cuándo", o.porCoordinarDesde ? "⏸ Por coordinar (el cliente avisará)" : [String(o.fechaActuacion || "").slice(0, 10), String(o.hora || "").slice(0, 5)].filter(Boolean).join(" · "))}
+        {fila("Tipo", o.tipoActuacion || o.orden)}
+        {fila("Nodo", o.nodo)}
+        {fila("Plan", o.velocidad)}
+      </div>
+      <div style={tarjeta}>
+        <div style={tarjetaTit}>👤 Cliente</div>
+        {fila("Celular", o.celular, "cel", true)}
+        {fila("Contacto", o.contacto, "contacto", true)}
+        {fila("Dirección", o.direccion, "dir", true)}
+        {mapa && (
+          <a href={mapa} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 8, fontSize: 12, fontWeight: 700, color: "#2563eb", textDecoration: "none", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "4px 10px" }}>📍 Ver en el mapa</a>
+        )}
+      </div>
 
       {esInstalacion(o.tipoActuacion || o.orden) && (
         <div style={{ marginTop: 12, borderRadius: 10, border: `1px solid ${wifi ? "#bbf7d0" : "#fde68a"}`, background: wifi ? "#f0fdf4" : "#fffbeb", padding: 10 }}>
