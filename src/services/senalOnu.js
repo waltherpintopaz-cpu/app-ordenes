@@ -73,8 +73,12 @@ export async function consultarSenalEnVivo(supabase, { sn, nodo, apis }) {
     if (!base) continue;
     try {
       const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
-      const res = await fetch(`${base}/signal?sn=${encodeURIComponent(snUp)}`, ctrl ? { signal: ctrl.signal, cache: "no-store" } : undefined);
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 90000) : null;
+      // VSOL: con el nodo busca solo en las OLT de ese nodo y, si SNMP no lo
+      // ubica, tambien por SSH (ssh=1). Huawei ignora estos parametros.
+      const qs = new URLSearchParams({ sn: snUp });
+      if (t === "vsol" && nodo) { qs.set("nodo", String(nodo)); qs.set("ssh", "1"); }
+      const res = await fetch(`${base}/signal?${qs}`, ctrl ? { signal: ctrl.signal, cache: "no-store" } : undefined);
       if (timer) clearTimeout(timer);
       const json = await res.json().catch(() => ({}));
       if (!json.ok || json.rxPower == null) { ultimoError = json.error || `Error HTTP ${res.status}`; continue; }

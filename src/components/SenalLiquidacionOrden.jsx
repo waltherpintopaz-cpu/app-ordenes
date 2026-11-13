@@ -74,7 +74,7 @@ export default function SenalLiquidacionOrden({ o }) {
             )}
           </div>
           {qVivo && (<><div style={sub}>Ahora ({haceTexto(vivo.at)})</div>{pildora(qVivo)}{vivo.tx != null && <span style={{ marginLeft: 8, fontSize: 11.5, color: "#64748b", fontWeight: 600 }}>TX {Number(vivo.tx).toFixed(2)}</span>}</>)}
-          {!qVivo && leyendo && <div style={{ ...sub, fontWeight: 600 }}>Consultando la OLT…</div>}
+          {!qVivo && leyendo && <div style={{ ...sub, fontWeight: 600 }}>Buscando el SN en la OLT… (puede tardar hasta 1 min)</div>}
           {!qVivo && !leyendo && errorVivo && <div style={{ fontSize: 11.5, color: "#b45309", fontWeight: 600, marginTop: 6 }}>⚠️ {errorVivo}</div>}
           {qGuardada && !leyendo && (<><div style={sub}>Última guardada {cli?.signal_updated_at ? `(${haceTexto(cli.signal_updated_at)})` : ""}</div>{pildora(qGuardada)}</>)}
           {qLiq && (<><div style={sub}>Medida por el técnico al liquidar</div>{pildora(qLiq)}</>)}
