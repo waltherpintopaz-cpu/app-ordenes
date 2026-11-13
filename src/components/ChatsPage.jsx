@@ -6,6 +6,7 @@ import useChatsRecientes from "../hooks/useChatsRecientes";
 import { MIN_ESPERA_CLIENTE, minutosEsperando } from "../services/chatCliente";
 import { supabase } from "../supabaseClient";
 import { esInstalacion } from "../services/mensajesCliente";
+import SenalLiquidacionOrden from "./SenalLiquidacionOrden";
 
 // Pagina "Chats" (ruta /chats), estilo WhatsApp Web: lista de chats a la
 // izquierda, conversacion al centro y datos de la orden a la derecha. Pensada
@@ -678,6 +679,8 @@ function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar,
           )}
         </div>
       )}
+
+      <SenalLiquidacionOrden o={o} />
 
       <button type="button" onClick={() => setVerTodo((v) => !v)} style={{ marginTop: 12, border: "none", background: "none", color: "#475569", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>
         {verTodo ? "▲ Ver menos" : "▼ Ver orden completa"}
