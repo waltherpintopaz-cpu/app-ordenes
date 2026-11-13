@@ -8200,7 +8200,7 @@ export default function App() {
     let sugeridoParaIp = "";
     setOrden((prev) => {
       const passwordSugerido = sugerirPasswordPorNodo(nextNodo, prev.dni);
-      const empresaAuto = prev.empresa || empresaPorNodo(nextNodo);
+      const empresaAuto = ordenEditandoId ? (prev.empresa || empresaPorNodo(nextNodo)) : "Americanet";
       const vlanAuto = VLAN_POR_NODO_WEB[nextNodo] || "";
       if (String(prev.generarUsuario || "").toUpperCase() !== "SI") {
         return { ...prev, nodo: nextNodo, empresa: empresaAuto, vlan: vlanAuto, passwordUsuario: passwordSugerido || prev.passwordUsuario };
@@ -11901,6 +11901,7 @@ export default function App() {
     const ordenLocal = {
       ...current,
       ...orden,
+      empresa: !ordenEditandoId && orden.empresa === "DIM" ? "Americanet" : orden.empresa,
       descripcion: descripcionFinal,
       codigoAbonado: codigoAbonadoOrden,
       id: ordenEditandoId || Date.now(),
@@ -19141,10 +19142,11 @@ export default function App() {
                 <div style={formGridStyle}>
                   <div>
                     <label style={labelStyle}>Empresa <span style={{ color: "#dc2626" }}>*</span></label>
-                    <select style={{ ...inputStyle, borderColor: !orden.empresa ? "#fca5a5" : undefined, background: !orden.empresa ? "#fff5f5" : undefined }} value={orden.empresa} onChange={(e) => handleChange("empresa", e.target.value)}>
+                    <select style={{ ...inputStyle, borderColor: !orden.empresa ? "#fca5a5" : undefined, background: !orden.empresa ? "#fff5f5" : undefined }} value={!ordenEditandoId && orden.empresa === "DIM" ? "Americanet" : orden.empresa} onChange={(e) => handleChange("empresa", e.target.value)}>
                       <option value="">Selecciona empresa</option>
                       <option>Americanet</option>
-                      <option>DIM</option>
+                      {/* Orden nueva: sin DIM (13-nov). Las de nodos DIM se pasan solas al sistema DIM por el nodo. */}
+                      {ordenEditandoId && orden.empresa === "DIM" && <option>DIM</option>}
                     </select>
                   </div>
 
