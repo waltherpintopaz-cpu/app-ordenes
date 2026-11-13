@@ -324,9 +324,27 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
     return () => window.removeEventListener("keydown", onKey);
   }, [lista]);
 
+  // Si el navegador ya las tiene BLOQUEADAS, Chrome no vuelve a preguntar:
+  // en vez de no hacer nada, se muestran los pasos para desbloquearlas. (13-nov)
+  const [ayudaNotif, setAyudaNotif] = useState(false);
   const pedirPermiso = async () => {
-    try { if ("Notification" in window) setPermisoNotif(await Notification.requestPermission()); } catch { /* nada */ }
+    try {
+      if (!("Notification" in window)) { setAyudaNotif(true); return; }
+      if (Notification.permission === "denied") { setAyudaNotif(true); return; }
+      const r = await Notification.requestPermission();
+      setPermisoNotif(r);
+      if (r === "granted") {
+        try { new Notification("✅ Avisos activados", { body: "Te avisaremos de los mensajes nuevos de los chats." }); } catch { /* nada */ }
+      } else setAyudaNotif(true);
+    } catch { setAyudaNotif(true); }
   };
+  // Al volver a la ventana (despues de cambiarlo en la configuracion) se relee el permiso.
+  useEffect(() => {
+    const releer = () => { if ("Notification" in window) setPermisoNotif(Notification.permission); };
+    window.addEventListener("focus", releer);
+    document.addEventListener("visibilitychange", releer);
+    return () => { window.removeEventListener("focus", releer); document.removeEventListener("visibilitychange", releer); };
+  }, []);
   const abrir = (key) => { setSeleccion(key); setNuevoChat(false); };
 
   // Cambiar tecnico desde el panel de la orden: queda aviso en el chat.
@@ -411,8 +429,27 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
             </div>
             {permisoNotif !== "granted" && (
               <button type="button" onClick={pedirPermiso} style={{ width: "100%", marginBottom: 10, padding: "7px 10px", borderRadius: 8, border: "1px solid #fde68a", background: "#fffbeb", color: "#92400e", fontSize: 12, fontWeight: 700, cursor: "pointer", textAlign: "left" }}>
-                🔔 Activa los avisos para enterarte de mensajes nuevos aunque estés en otra ventana
+                {permisoNotif === "denied"
+                  ? "🔕 Los avisos están BLOQUEADOS en este navegador. Toca aquí para ver cómo activarlos."
+                  : "🔔 Activa los avisos para enterarte de mensajes nuevos aunque estés en otra ventana"}
               </button>
+            )}
+            {ayudaNotif && (
+              <div onClick={() => setAyudaNotif(false)} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(15,23,42,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+                <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, maxWidth: 420, width: "100%", padding: 20, boxShadow: "0 20px 50px rgba(15,23,42,0.3)", fontSize: 13.5, color: "#334155", lineHeight: 1.5 }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>🔕 Avisos bloqueados</div>
+                  <div style={{ marginBottom: 10 }}>El navegador tiene bloqueados los avisos de esta página y ya no vuelve a preguntar. Actívalos así:</div>
+                  <ol style={{ margin: "0 0 10px 18px", padding: 0 }}>
+                    <li>Toca el <b>ícono a la izquierda de la dirección</b> (🔒 o ⚙). Si es la ventana de la app, usa los <b>3 puntitos ⋮</b> → <b>Información de la app</b> / <b>Configuración del sitio</b>.</li>
+                    <li>En <b>Notificaciones</b> elige <b>Permitir</b>.</li>
+                    <li>Recarga la página (<b>Ctrl + F5</b>).</li>
+                  </ol>
+                  <div style={{ fontSize: 12.5, color: "#64748b", background: "#f8fafc", borderRadius: 10, padding: "8px 10px", marginBottom: 12 }}>
+                    Si igual no salen: en Windows ve a <b>Configuración → Sistema → Notificaciones</b>, activa <b>Google Chrome</b> y apaga <b>No molestar</b>.
+                  </div>
+                  <button type="button" onClick={() => setAyudaNotif(false)} style={{ width: "100%", padding: "10px 0", borderRadius: 10, border: "none", background: "#7c3aed", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Entendido</button>
+                </div>
+              </div>
             )}
             <div style={{ display: "flex", gap: 6 }}>
               <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "#f1f5f9", borderRadius: 9, padding: "0 10px", height: 36 }}>
