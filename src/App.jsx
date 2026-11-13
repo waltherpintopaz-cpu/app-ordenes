@@ -9,6 +9,7 @@ import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import ChatTecnico from "./components/ChatTecnico";
 import OrdenChat from "./components/OrdenChat";
 import ChatsPage from "./components/ChatsPage";
+import ReprogramarOrdenModal, { diasPorCoordinar } from "./components/ReprogramarOrdenModal";
 import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
 import ClienteChatHistorial from "./components/ClienteChatHistorial";
 import VpnAccesosPanel from "./components/VpnAccesosPanel";
@@ -1154,6 +1155,9 @@ function deserializeOrderFromSupabase(row = {}) {
     // Marca informativa desde la app movil: tecnico ya hizo el trabajo pero
     // aun no liquida (no reemplaza el flujo de liquidacion obligatorio).
     atendidaSinLiquidarEn: row.atendida_sin_liquidar_en || null,
+    // Reprogramar: "Por coordinar" = sin fecha, el cliente se comunicara.
+    porCoordinarDesde: row.por_coordinar_desde || null,
+    reprogramaciones: Number(row.reprogramaciones) || 0,
     // Automatizacion Mikrowisp Nod_04 (piloto) — se necesitan al editar para
     // que los selectores de Plan/Facturacion no aparezcan vacios.
     mikrowispIdPerfil: row.mikrowisp_id_perfil ?? null,
@@ -3354,6 +3358,7 @@ export default function App() {
   // Menu "..." (Editar/Cancelar/Eliminar) por orden en Pendientes -- guarda
   // el id de la orden cuyo menu esta abierto, null si ninguno.
   const [accionesMenuAbiertoId, setAccionesMenuAbiertoId] = useState(null);
+  const [reprogOrdenWeb, setReprogOrdenWeb] = useState(null);
   // Densidad de las tarjetas de Pendientes (comoda por defecto para el
   // gestor, que suele necesitar leer mas datos por orden que un tecnico).
   const [pendDensidadWeb, setPendDensidadWeb] = useState("comoda");
@@ -14876,6 +14881,12 @@ export default function App() {
       lista = lista.filter((o) => o.tecnico === filtroTecnico);
     }
 
+    // "Por coordinar" tiene su propia pestaña y no se mezcla con el resto.
+    if (filtroTipoOrden === "POR_COORDINAR") {
+      lista = lista.filter((o) => !!o.porCoordinarDesde);
+    } else {
+      lista = lista.filter((o) => !o.porCoordinarDesde);
+    }
     if (filtroTipoOrden === "PENDIENTE") {
       lista = lista.filter((o) => String(o.estado || "").toLowerCase() === "pendiente");
     } else if (filtroTipoOrden === "PROCESO") {
@@ -20038,7 +20049,7 @@ export default function App() {
           // sin liquidar" siempre al fondo -- el tecnico ya no tiene que ir
           // ahi, solo le falta el papeleo, no deberian competir por
           // prioridad con lo que si necesita atencion ahora.
-          const ordenesDiaSeleccionado = (calendarioFecha
+          const ordenesDiaSeleccionado = (calendarioFecha && filtroTipoOrden !== "POR_COORDINAR"
             ? ordenesPendientesFiltradas.filter((o) => String(o.fechaActuacion || "").slice(0, 10) === calendarioFecha)
             : ordenesPendientesFiltradas
           ).slice().sort((a, b) => {
@@ -20198,10 +20209,13 @@ export default function App() {
                 activa) y SI respeta la fecha elegida en el calendario, para
                 que estos numeros cuadren con la lista de abajo. */}
             {(() => {
-              const base = calendarioFecha
+              const porCoordinarTodas = ordenesPendientesFiltradasSinTipo.filter((o) => !!o.porCoordinarDesde);
+              const porCoordinarVencidas = porCoordinarTodas.filter((o) => diasPorCoordinar(o.porCoordinarDesde) >= 3).length;
+              const base = (calendarioFecha
                 ? ordenesPendientesFiltradasSinTipo.filter((o) => String(o.fechaActuacion || "").slice(0, 10) === calendarioFecha)
-                : ordenesPendientesFiltradasSinTipo;
+                : ordenesPendientesFiltradasSinTipo).filter((o) => !o.porCoordinarDesde);
               const counts = {
+                POR_COORDINAR: porCoordinarTodas.length,
                 TODOS:         base.length,
                 PENDIENTE:     base.filter(o => String(o.estado||"").toLowerCase() === "pendiente").length,
                 PROCESO:       base.filter(o => String(o.estado||"").toLowerCase().includes("proceso")).length,
@@ -20216,6 +20230,7 @@ export default function App() {
                 { key: "INCIDENCIA",     label: "Incidencias",    color: "#374151", bg: "#f3f4f6", activeBg: "#dc2626", activeColor: "#fff" },
                 { key: "ORDEN_SERVICIO", label: "Orden Servicio", color: "#374151", bg: "#f3f4f6", activeBg: "#1d4ed8", activeColor: "#fff" },
                 { key: "RECUPERACION",   label: "Recuperación",   color: "#374151", bg: "#f3f4f6", activeBg: "#16a34a", activeColor: "#fff" },
+                { key: "POR_COORDINAR",  label: porCoordinarVencidas > 0 ? `⏸ Por coordinar · 🔴 ${porCoordinarVencidas}` : "⏸ Por coordinar", color: porCoordinarVencidas > 0 ? "#b91c1c" : "#6b21a8", bg: porCoordinarVencidas > 0 ? "#fef2f2" : "#faf5ff", activeBg: "#7c3aed", activeColor: "#fff" },
               ];
               return (
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px", justifyContent: "space-between", alignItems: "center" }}>
@@ -20511,6 +20526,20 @@ export default function App() {
                           )}
                           {esPasada && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: PC.vencidaBg, color: PC.vencida, border: `1px solid ${PC.vencidaBorder}` }}>Vencida</span>}
                           {bloqueadoPorNodo && <span style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#f1f5f9", color: "#6b7280", border: "1px solid #d1d5db" }}>🔒 Sin acceso</span>}
+                          {!!item.porCoordinarDesde && (() => {
+                            const dias = diasPorCoordinar(item.porCoordinarDesde);
+                            const rojo = dias >= 3;
+                            return (
+                              <span title="Sin fecha: el cliente se comunicará" style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: rojo ? "#fef2f2" : "#faf5ff", color: rojo ? "#b91c1c" : "#6b21a8", border: `1px solid ${rojo ? "#fca5a5" : "#d8b4fe"}` }}>
+                                ⏸ Por coordinar · {dias === 0 ? "hoy" : `hace ${dias} día${dias === 1 ? "" : "s"}`}{rojo ? " · llamar" : ""}
+                              </span>
+                            );
+                          })()}
+                          {Number(item.reprogramaciones) > 0 && (
+                            <span title="Veces que se reprogramó" style={{ padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, background: "#faf5ff", color: "#7c3aed", border: "1px solid #e9d5ff" }}>
+                              🔁 Reprog.{Number(item.reprogramaciones) > 1 ? ` ×${item.reprogramaciones}` : ""}
+                            </span>
+                          )}
                         </div>
                         {/* Acciones principales -- clic en la tarjeta ya abre "Ver", asi que
                             aca solo quedan las acciones que no son "revisar el detalle".
@@ -20518,6 +20547,7 @@ export default function App() {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                           {/* Liquidar es tarea del tecnico, no del gestor -- se quita de esta
                               vista para gestores/admin y se deja Editar como accion visible. */}
+                          {!bloqueadoPorNodo && <button onClick={() => setReprogOrdenWeb(item)} style={{ padding: "5px 12px", background: "#faf5ff", border: "1px solid #d8b4fe", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#6b21a8", cursor: "pointer" }}>{item.porCoordinarDesde ? "📅 Poner fecha" : "📅 Reprogramar"}</button>}
                           {!bloqueadoPorNodo && <button onClick={() => editarOrden(item)} style={{ padding: "5px 12px", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#854d0e", cursor: "pointer" }}>Editar</button>}
                           {item?.snOnu && (nodoUsaHuawei(item?.nodo) || nodoUsaOltSsh(item?.nodo)) && (
                             <button onClick={() => void consultarSenalOrdenWeb(item)} disabled={!!pendSenalLoading[item.id]} title="Actualizar señal" style={{ padding: "5px 11px", background: pendSenalData[item.id] ? "#eff6ff" : "#f8fafc", border: `1px solid ${pendSenalData[item.id] ? "#93c5fd" : "#e2e8f0"}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: pendSenalData[item.id] ? "#1d4ed8" : "#374151", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
@@ -31303,8 +31333,13 @@ export default function App() {
                 </div>
               )}
               <OrdenChat ordenId={ordenDetalle.id} ordenCodigo={ordenDetalle.codigo} tecnicoAsignado={ordenDetalle.tecnico} autor={usuarioSesion?.nombre} autorRol={rolSesion} orden={ordenDetalle} />
-              <div style={{ marginTop: "20px" }}>
+              <div style={{ marginTop: "20px", display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <button onClick={() => { setOrdenDetalle(null); setFotosOrdenDetalle([]); }} style={secondaryButton}>Cerrar</button>
+                {esEstadoOperativoOrden(ordenDetalle?.estado) && (
+                  <button onClick={() => setReprogOrdenWeb(ordenDetalle)} style={{ ...secondaryButton, background: "#faf5ff", borderColor: "#d8b4fe", color: "#6b21a8", fontWeight: 700 }}>
+                    {ordenDetalle?.porCoordinarDesde ? "📅 Poner fecha" : "📅 Reprogramar"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -31312,6 +31347,20 @@ export default function App() {
 
         {/* ── Boton flotante global: avisa en que ordenes hay mensajes de
             chat sin ver, sin tener que recorrerlas una por una. ── */}
+        {reprogOrdenWeb && (
+          <ReprogramarOrdenModal
+            orden={reprogOrdenWeb}
+            autor={usuarioSesion?.nombre || ""}
+            autorRol={rolSesion || ""}
+            onClose={() => setReprogOrdenWeb(null)}
+            onListo={(orden, cambios, aviso) => {
+              setOrdenes((prev) => (prev || []).map((x) => (String(x.id) === String(orden.id) ? { ...x, ...cambios } : x)));
+              setOrdenDetalle((prev) => (prev && String(prev.id) === String(orden.id) ? { ...prev, ...cambios } : prev));
+              mostrarNotifToast(`Orden ${orden.codigo || ""} ${cambios.porCoordinarDesde ? "quedó por coordinar" : "reprogramada"}. ${aviso || ""}`.trim(), !/No se pudo/.test(aviso || ""));
+            }}
+          />
+        )}
+
         {!!usuarioSesion?.nombre && (
           <ChatOrdenesFlotante
             ordenes={ordenes}

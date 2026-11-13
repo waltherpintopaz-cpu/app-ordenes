@@ -12,6 +12,8 @@ const VARIABLES = [
   { key: "{fecha}", desc: "Fecha de actuación" },
   { key: "{direccion}", desc: "Dirección" },
   { key: "{resultado}", desc: "Resultado de la liquidación (Reprogramada, No se encontró, etc.)" },
+  { key: "{hora}", desc: "Hora nueva (al reprogramar)" },
+  { key: "{motivo}", desc: "Motivo de la reprogramación" },
 ];
 
 const TIPOS = [
@@ -20,6 +22,9 @@ const TIPOS = [
   { key: "template_recuperacion", label: "Recuperación", color: "#7c3aed", bg: "#f5f3ff", dot: "#c4b5fd" },
   { key: "template_liquidacion", label: "Al liquidar", color: "#059669", bg: "#f0fdf4", dot: "#86efac" },
   { key: "template_sin_completar", label: "Sin completar", color: "#dc2626", bg: "#fef2f2", dot: "#fca5a5" },
+  // Se envian desde el boton "Reprogramar" (app del tecnico y panel).
+  { key: "template_reprogramada", label: "Reprogramada", color: "#7c3aed", bg: "#faf5ff", dot: "#d8b4fe" },
+  { key: "template_por_coordinar", label: "Por coordinar (sin fecha)", color: "#6b21a8", bg: "#faf5ff", dot: "#e9d5ff" },
   { key: "template_llegada", label: "Llegada del técnico", color: "#0891b2", bg: "#ecfeff", dot: "#67e8f9" },
   { key: "template_llegada_interno", label: "Llegada — aviso interno", color: "#475569", bg: "#f1f5f9", dot: "#94a3b8" },
   // Estos 2 no se disparan solos al crear/liquidar una orden -- se mandan a
@@ -41,6 +46,8 @@ const defaultConfig = (emp) => ({
   template_recuperacion: "Estimado/a {nombre}, se generó la orden de recuperación #{codigo}. Coordinaremos con usted. — {empresa}",
   template_liquidacion: "Estimado/a {nombre}, su orden #{codigo} fue completada. ¡Gracias por preferir {empresa}!",
   template_sin_completar: "Estimado/a {nombre}, su orden #{codigo} no pudo completarse en esta visita. Motivo: {resultado}. Nos comunicaremos para reagendar. — {empresa}",
+  template_reprogramada: "Hola {nombre}, tu visita de {empresa} (orden #{codigo}) quedó reprogramada para el {fecha} a las {hora}. Si necesitas cambiarla, escríbenos a este número. — {empresa}",
+  template_por_coordinar: "Hola {nombre}, tu visita de {empresa} (orden #{codigo}) quedó en pausa como nos indicaste. Cuando tengas una fecha, escríbenos a este número y te la agendamos. — {empresa}",
   template_llegada: "Hola {nombre}, su técnico {tecnico} de {empresa} ya llegó para su visita (orden #{codigo}). 🚐",
   template_llegada_interno: "📍 Llegada confirmada — Técnico {tecnico} en orden #{codigo} ({nombre}, {direccion}).",
   template_suspendido: "Hola {nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙 — {empresa}",
@@ -72,7 +79,9 @@ function previewMsg(tpl, empresa) {
     .replace(/{tecnico}/g, "Carlos López")
     .replace(/{fecha}/g, new Date().toLocaleDateString("es-PE"))
     .replace(/{direccion}/g, "Av. Principal 123")
-    .replace(/{resultado}/g, "Reprogramada");
+    .replace(/{resultado}/g, "Reprogramada")
+    .replace(/{hora}/g, "10:00")
+    .replace(/{motivo}/g, "Cliente pidió");
 }
 
 export default function WhatsAppConfigPanel() {
