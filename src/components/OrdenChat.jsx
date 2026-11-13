@@ -462,7 +462,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     let fotoUrl = p.fotoUrl || "";
     try {
       if (p.archivo && !fotoUrl) fotoUrl = await subirArchivo(p.archivo);
-      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}), ...(p.paraCliente ? { para_cliente: true } : {}), ...(mencionesDe(p.texto).length ? { menciones: mencionesDe(p.texto) } : {}) };
+      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true, urgente_whatsapp: p.urgenteWa !== false } : {}), ...(p.paraCliente ? { para_cliente: true } : {}), ...(mencionesDe(p.texto).length ? { menciones: mencionesDe(p.texto) } : {}) };
       const conCita = p.respondeA && !sinRespondeARef.current;
       let { data, error } = await supabase.from(TABLA).insert([conCita ? { ...fila, responde_a: p.respondeA } : fila]).select("*").single();
       // Base sin la columna responde_a (SQL aun no corrido): se manda sin cita.
@@ -482,12 +482,12 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       actualizarPend(p.tempId, { estado: "error", fotoUrl });
     }
   };
-  const encolar = ({ texto: t = "", archivo = null, urgente = false, sinCita = false, paraCliente = alCliente && puedeCliente }) => {
+  const encolar = ({ texto: t = "", archivo = null, urgente = false, urgenteWa = true, sinCita = false, paraCliente = alCliente && puedeCliente }) => {
     const respondeA = !sinCita && respondiendo?.id && !String(respondiendo.id).startsWith("t") ? respondiendo.id : null;
     if (!sinCita) setRespondiendo(null);
     const p = {
       tempId: `t${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente, respondeA, paraCliente: !!paraCliente,
+      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente, urgenteWa, respondeA, paraCliente: !!paraCliente,
       estado: "enviando", created_at: new Date().toISOString(),
     };
     cercaRef.current = true;
@@ -506,14 +506,15 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const ultimoUrgenteMio = [...items].reverse().find((m) => m.urgente && norm(m.autor) === norm(autor) && m.pend?.estado !== "error");
   const minDesdeUrgente = ultimoUrgenteMio ? (Date.now() - new Date(ultimoUrgenteMio.created_at).getTime()) / 60000 : Infinity;
   const urgenteBloqueado = minDesdeUrgente < 10;
-  const enviarUrgente = () => {
+  // Dos tipos de urgente: solo alarma en la app, o alarma + WhatsApp.
+  const [menuUrgente, setMenuUrgente] = useState(false);
+  const enviarUrgente = (conWhatsapp) => {
+    setMenuUrgente(false);
     const t = texto.trim();
     if (!t) return alert("🚨 Urgente: primero escribe qué pasa y luego aprieta 🚨.");
     if (urgenteBloqueado) return alert(`Ya mandaste un urgente en este chat hace ${Math.max(1, Math.floor(minDesdeUrgente))} min. Podrás mandar otro en ${Math.ceil(10 - minDesdeUrgente)} min; mientras tanto envíalo como mensaje normal.`);
-    const a = esTecnico ? "a la oficina por WhatsApp" : "al técnico por WhatsApp y con alarma en su app";
-    if (!window.confirm(`¿Mandar como URGENTE? 🚨\n\n"${t}"\n\nLlega al instante ${a}. Úsalo solo si necesitas respuesta ya.`)) return;
     setTexto("");
-    encolar({ texto: t, urgente: true });
+    encolar({ texto: t, urgente: true, urgenteWa: !!conWhatsapp });
   };
   const encolarArchivos = (files) => {
     const nuevas = Array.from(files || []).filter((f) => String(f.type || "").startsWith("image/"))
@@ -1173,8 +1174,20 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           rows={1}
           style={{ flex: 1, padding: "9px 14px", border: "none", background: "#f1f5f9", borderRadius: 20, fontSize: 13.5, fontFamily: "inherit", resize: "none", outline: "none", lineHeight: "18px", minHeight: 36, maxHeight: 96, boxSizing: "border-box" }}
         />
-        {alertasActivas && (
-          <button type="button" onClick={enviarUrgente}
+        {menuUrgente && (
+          <>
+            <div onClick={() => setMenuUrgente(false)} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
+            <div style={{ ...menuCaja, bottom: "100%", right: 46, marginBottom: 6, minWidth: 260 }}>
+              <div style={{ padding: "8px 12px", fontSize: 11.5, color: "#64748b", fontWeight: 700, borderBottom: "1px solid #f1f5f9" }}>¿Mandar como URGENTE? 🚨</div>
+              <button type="button" style={menuItem} onClick={() => enviarUrgente(false)}>🔔 <span><b>Urgente: alarma</b><br /><span style={{ fontSize: 11, color: "#64748b" }}>{esTecnico ? "Alarma en la app de la oficina" : "Alarma en la app del técnico"}</span></span></button>
+              {alertasActivas && (
+                <button type="button" style={menuItem} onClick={() => enviarUrgente(true)}>📲 <span><b>Urgente: alarma + WhatsApp</b><br /><span style={{ fontSize: 11, color: "#64748b" }}>{esTecnico ? "Alarma + WhatsApp a la oficina" : "Alarma + WhatsApp al técnico"}</span></span></button>
+              )}
+            </div>
+          </>
+        )}
+        {(
+          <button type="button" onClick={() => { if (!texto.trim()) { alert("🚨 Urgente: primero escribe qué pasa y luego aprieta 🚨."); return; } setMenuUrgente((v) => !v); }}
             title={esTecnico ? "Mandar URGENTE (WhatsApp a la oficina)" : "Mandar URGENTE (WhatsApp + alarma al técnico)"}
             style={{ ...icBtn, background: texto.trim() && !urgenteBloqueado ? "#fee2e2" : "#f1f5f9", border: `1px solid ${texto.trim() && !urgenteBloqueado ? "#fca5a5" : "#e2e8f0"}`, fontSize: 16, opacity: texto.trim() && !urgenteBloqueado ? 1 : 0.5, cursor: "pointer" }}>
             🚨
