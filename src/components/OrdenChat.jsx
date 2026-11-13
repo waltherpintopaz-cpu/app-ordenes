@@ -217,6 +217,10 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const tel9Cliente = !esHilo ? String(orden?.celular || "").replace(/\D/g, "").slice(-9) : "";
   const puedeCliente = tel9Cliente.length === 9;
   const [alCliente, setAlCliente] = useState(false);
+  // Canal (que Chatwoot) por el que el cliente escribio la ultima vez: la
+  // respuesta sale por ahi mismo (mismo numero de WhatsApp).
+  const canalClienteRef = useRef(null);
+  canalClienteRef.current = (() => { for (let i = mensajes.length - 1; i >= 0; i--) { if (mensajes[i]?.canal) return mensajes[i].canal; } return null; })();
   const nombreClienteCorto = String(orden?.nombre || "").trim().split(/\s+/).slice(0, 2).join(" ") || "Cliente";
   // Respuestas rapidas propias de la oficina (tabla chat_respuestas_rapidas),
   // antes de las de siempre. contexto: oficina | tecnico | cliente.
@@ -448,7 +452,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       if (error || !data) throw error || new Error("Sin respuesta");
       setPendientes((prev) => prev.filter((x) => x.tempId !== p.tempId));
       setMensajes((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
-      if (data.para_cliente) void enviarAlClienteViaBot(data.id);
+      if (data.para_cliente) void enviarAlClienteViaBot(data.id, canalClienteRef.current);
       void notificarMensajeChat(supabase, {
         hiloTecnico, ordenId, ordenCodigo: ordenCodigo || orden?.codigo, tecnicoOrden: tecnicoAsignado || orden?.tecnico,
         autor, autorRol, texto: data.texto, fotoUrl: data.foto_url, urgente: !!data.urgente,
@@ -672,7 +676,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         }}>
         {(!!m.para_cliente || !!pend?.paraCliente) && (
           <span
-            onClick={m.envio_cliente_error && !pend ? (e) => { e.stopPropagation(); void enviarAlClienteViaBot(m.id); } : undefined}
+            onClick={m.envio_cliente_error && !pend ? (e) => { e.stopPropagation(); void enviarAlClienteViaBot(m.id, canalClienteRef.current); } : undefined}
             title={m.envio_cliente_error ? `No llegó al cliente: ${m.envio_cliente_error}. Clic para reintentar.` : "También enviado al cliente por WhatsApp"}
             style={{ fontWeight: 700, cursor: m.envio_cliente_error ? "pointer" : "default", color: m.envio_cliente_error ? (esMio ? "#fecaca" : "#dc2626") : undefined }}>
             {m.enviado_cliente_en ? "📲 al cliente ·" : m.envio_cliente_error ? "⚠️ no llegó al cliente (reintentar) ·" : "📲 enviando al cliente… ·"}
