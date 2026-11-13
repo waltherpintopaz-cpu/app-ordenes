@@ -5,6 +5,7 @@ import ReprogramarOrdenModal, { diasPorCoordinar } from "./ReprogramarOrdenModal
 import useChatsRecientes from "../hooks/useChatsRecientes";
 import { MIN_ESPERA_CLIENTE, minutosEsperando } from "../services/chatCliente";
 import { supabase } from "../supabaseClient";
+import { esInstalacion } from "../services/mensajesCliente";
 
 // Pagina "Chats" (ruta /chats), estilo WhatsApp Web: lista de chats a la
 // izquierda, conversacion al centro y datos de la orden a la derecha. Pensada
@@ -665,7 +666,7 @@ function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar,
         <a href={mapa} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}>📍 Ver en el mapa</a>
       )}
 
-      {/instal/i.test(String(o.tipoActuacion || o.orden || "")) && (
+      {esInstalacion(o.tipoActuacion || o.orden) && (
         <div style={{ marginTop: 12, borderRadius: 10, border: `1px solid ${wifi ? "#bbf7d0" : "#fde68a"}`, background: wifi ? "#f0fdf4" : "#fffbeb", padding: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: wifi ? "#166534" : "#92400e", marginBottom: 4 }}>{wifi ? "📡 WiFi del cliente" : "⚠️ El cliente aún no eligió su WiFi"}</div>
           {wifi && (

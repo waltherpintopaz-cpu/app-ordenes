@@ -8,7 +8,12 @@ export const TPL_BIENVENIDA = "¡Listo {nombre}! 🎉 Tu internet de {empresa} y
 export const LINEA_LINK_WIFI = "📶 Elige el nombre y la clave de tu WiFi aquí: {link_wifi}";
 export const LINEA_RECORDATORIO_WIFI = "⚠️ Aún no elegiste el nombre y la clave de tu WiFi: {link_wifi}";
 
-export const esInstalacion = (tipo) => /instal/i.test(String(tipo || "")) && !/recojo|recup/i.test(String(tipo || ""));
+// Instalacion con internet (pide WiFi): "Instalacion Internet" e "Instalacion Internet y Cable";
+// "Instalacion TV" (solo cable) no.
+export const esInstalacion = (tipo) => {
+  const t = String(tipo || "");
+  return /instal/i.test(t) && !/recojo|recup/i.test(t) && (/internet/i.test(t) || !/tv|cable/i.test(t));
+};
 
 export function linkWifi(cfg, token) {
   if (!token) return "";
