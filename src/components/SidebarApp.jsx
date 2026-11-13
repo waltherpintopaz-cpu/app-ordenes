@@ -8280,9 +8280,9 @@ export default function SidebarApp() {
                           "Instalacion Internet": "SI", "Instalacion Internet y Cable": "SI", "Instalacion TV": "SI",
                           "Incidencia Internet": "NO", "Mantenimiento": "NO", "Visita Tecnica": "NO", "Traslado": "NO", "Recojo de equipo": "NO",
                         };
-                        const cobrar = cobrarMap[ta] ?? p.solicitarPago;
+                        const cobrar = cobrarMap[ta];
                         setOrdenForm(p => {
-                          const next = {...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo, solicitarPago: cobrar, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar };
+                          const next = {...p, tipoActuacion: ta, ordenTipo: ordenMap[ta] || p.ordenTipo, solicitarPago: cobrar ?? p.solicitarPago, montoCobrar: cobrar==="NO" ? "" : p.montoCobrar };
                           // Traslado: precargar los datos actuales del cliente para que el
                           // agente solo tenga que cambiar lo que realmente cambia (ej. solo
                           // la dirección si el nodo y el usuario se mantienen igual).

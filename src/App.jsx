@@ -2638,7 +2638,7 @@ function QRScanner({ onDetected, onClose }) {
             detener();
           }
 
-          if (err && !(err instanceof NotFoundException)) {
+          if (err && err?.name !== "NotFoundException") {
             console.error(err);
           }
         }
