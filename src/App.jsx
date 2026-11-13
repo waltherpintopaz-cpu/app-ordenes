@@ -11564,7 +11564,10 @@ export default function App() {
         // Orden nueva de nodo DIM: no avisar aqui -- en ~2 min pasa sola al
         // sistema DIM con numero de DIM y el traspaso (diagno) le manda al
         // cliente el aviso con ESE numero (este tendria el de Americanet).
-        if (tipo === "nueva_orden" && (empresa === "DIM" || empresaPorNodo(ordenData.nodo) === "DIM")) return;
+        // Solo se salta si el NODO es DIM (eso es lo que mira el traspaso). Una
+        // orden marcada DIM en nodo de Americanet (ej. Nod_03) NO pasa a DIM y
+        // antes se quedaba sin mensaje (13-nov, ORD-9633).
+        if (tipo === "nueva_orden" && empresaPorNodo(ordenData.nodo) === "DIM") return;
         // Leer config desde Supabase (fuente de verdad), fallback a localStorage
         let waCfg = {};
         try {
@@ -11634,7 +11637,8 @@ export default function App() {
         }
         const velocidadPlan = String(ordenData.velocidad || "").trim();
         const message = tpl
-          .replace(/{link_wifi}/g, linkWifi(waCfg, filaWifi?.wifi_token))
+          // La orden vive en esta base (Americanet): el link siempre a este panel.
+          .replace(/{link_wifi}/g, linkWifi(empresa === "DIM" ? {} : waCfg, filaWifi?.wifi_token))
           .replace(/{wifi}/g, bloqueWifi({ wifiNombre: filaWifi?.wifi_nombre, wifiClave: filaWifi?.wifi_clave, wifiSolo24: filaWifi?.wifi_solo_24 }))
           .replace(/{plan}/g, velocidadPlan ? `🚀 Plan: ${velocidadPlan}\n` : "")
           .replace(/{nombre}/g, ordenData.nombre || "")
