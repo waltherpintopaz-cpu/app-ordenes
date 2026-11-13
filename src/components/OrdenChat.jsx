@@ -104,6 +104,14 @@ const RAPIDAS_TECNICO = ["Ya llegué 👍", "El cliente no está", "Falta materi
 const RAPIDAS_OFICINA = ["¿Cómo vas?", "El cliente confirmó", "Llama al cliente, por favor", "Te paso la ubicación", "Ok, gracias 👍"];
 // Chat directo tecnico <-> oficina (no atado a una orden).
 const RAPIDAS_HILO_TECNICO = ["Voy en camino 🛵", "Falta material", "Necesito ayuda", "Ok, entendido 👍", "Terminé por hoy"];
+// Avisos automaticos (liberada, reasignada, reprogramada, WiFi elegido...):
+// se muestran como aviso gris centrado, no como burbuja de una persona.
+const RE_AVISO_SISTEMA = /^(orden (liberada|reasignada|cancelada|reabierta|reactivada)|reprogramada para|cambio de hora|orden por coordinar|el cliente eligi[oó] su wifi)/i;
+export function esAvisoSistema(m) {
+  if (!m || m.foto_url || m.pend) return false;
+  const primera = String(m.texto || "").split("\n")[0].replace(/^[^A-Za-zÁÉÍÓÚáéíóúÑñ]+/, "").trim();
+  return RE_AVISO_SISTEMA.test(primera);
+}
 const RAPIDAS_HILO_OFICINA = ["¿Dónde estás?", "Llama a la oficina, por favor", "Pasa por almacén", "Te asigné una orden nueva", "Ok, gracias 👍"];
 
 // Vista previa de mapa con teselas de OpenStreetMap (3x3 a zoom 17 de 128px)
@@ -194,7 +202,30 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const puedeCliente = tel9Cliente.length === 9;
   const [alCliente, setAlCliente] = useState(false);
   const nombreClienteCorto = String(orden?.nombre || "").trim().split(/\s+/).slice(0, 2).join(" ") || "Cliente";
-  const rapidas = alCliente && puedeCliente ? (esTecnico ? RAPIDAS_CLIENTE_TECNICO : RAPIDAS_CLIENTE_OFICINA) : rapidasInternas;
+  // Respuestas rapidas propias de la oficina (tabla chat_respuestas_rapidas),
+  // antes de las de siempre. contexto: oficina | tecnico | cliente.
+  const contextoRapidas = alCliente && puedeCliente ? "cliente" : esTecnico ? "tecnico" : "oficina";
+  const [rapidasPropias, setRapidasPropias] = useState([]);
+  const [editRapidas, setEditRapidas] = useState(false);
+  const [nuevaRapida, setNuevaRapida] = useState("");
+  const cargarRapidas = () => supabase.from("chat_respuestas_rapidas").select("id,texto,contexto").order("id")
+    .then(({ data, error }) => { if (!error) setRapidasPropias(data || []); }, () => {});
+  useEffect(() => { cargarRapidas(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const propiasCtx = rapidasPropias.filter((r) => r.contexto === contextoRapidas);
+  const rapidasBase = alCliente && puedeCliente ? (esTecnico ? RAPIDAS_CLIENTE_TECNICO : RAPIDAS_CLIENTE_OFICINA) : rapidasInternas;
+  const rapidas = [...propiasCtx.map((r) => r.texto), ...rapidasBase.filter((t) => !propiasCtx.some((r) => r.texto === t))];
+  const agregarRapida = async () => {
+    const t = nuevaRapida.trim();
+    if (!t) return;
+    const { error } = await supabase.from("chat_respuestas_rapidas").insert([{ texto: t, contexto: contextoRapidas, creado_por: autor || null }]);
+    if (error) { alert("No se pudo guardar: " + error.message); return; }
+    setNuevaRapida("");
+    cargarRapidas();
+  };
+  const borrarRapida = async (id) => {
+    await supabase.from("chat_respuestas_rapidas").delete().eq("id", id);
+    cargarRapidas();
+  };
 
   // Boton 🚨 Urgente (igual que la app): solo si las alertas estan activas
   // (alertas_whatsapp_config). Oficina -> WhatsApp + alarma al tecnico;
@@ -628,6 +659,27 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     );
     const citado = m.responde_a != null ? porId.get(String(m.responde_a)) : null;
     const reacs = Object.entries(m.reacciones || {});
+    if (esAvisoSistema(m)) {
+      const [linea1, ...resto] = String(m.texto || "").split("\n");
+      return (
+        <div key={m.id} data-msg={m.id}>
+          {mostrarDivisorFecha && (
+            <div style={{ textAlign: "center", margin: "8px 0 6px" }}>
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", background: "#e2e8f0", borderRadius: 999, padding: "2px 10px" }}>
+                {formatearFechaDivisor(m.created_at)}
+              </span>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
+            <div style={{ maxWidth: "85%", background: "#fef9c3", border: "1px solid #fde68a", color: "#713f12", borderRadius: 10, padding: "6px 12px", fontSize: 12, textAlign: "center", boxShadow: "0 1px 2px rgba(15,23,42,0.05)" }}>
+              <div style={{ fontWeight: 800 }}>{linea1}</div>
+              {resto.filter((x) => x.trim()).map((x, k) => <div key={k} style={{ marginTop: 1 }}>{x}</div>)}
+              <div style={{ fontSize: 10, color: "#a16207", marginTop: 3 }}>{m.autor_rol === "Cliente" ? "Cliente" : m.autor} · {horaDe(m.created_at)}</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div key={m.id} data-msg={m.id} style={{ borderRadius: 12, transition: "background .3s", background: resaltado === String(m.id) ? "rgba(37,99,235,0.14)" : "transparent" }}
         onDoubleClick={() => responderA(m)}>
@@ -806,6 +858,33 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const fotoVisor = visor >= 0 ? fotos[visor] : null;
   const chipsRapidas = (wrap) => (
     <div style={{ display: "flex", gap: 6, flexWrap: wrap ? "wrap" : "nowrap", justifyContent: wrap ? "center" : "flex-start", overflowX: wrap ? "visible" : "auto" }} className="oc-noscroll">
+      {!esTecnico && (
+        <button type="button" className="oc-chip" onClick={() => setEditRapidas(true)} title="Editar respuestas rápidas"
+          style={{ flexShrink: 0, background: "#fff", border: "1px dashed #94a3b8", color: "#475569", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✏️</button>
+      )}
+      {editRapidas && (
+        <div onClick={() => setEditRapidas(false)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 10060, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 440, padding: 16, maxHeight: "80vh", overflowY: "auto", textAlign: "left" }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Respuestas rápidas</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+              {contextoRapidas === "cliente" ? "Para escribirle al CLIENTE" : contextoRapidas === "tecnico" ? "Para los técnicos" : "Para la oficina"} · se ven primero en todos los chats
+            </div>
+            {propiasCtx.length === 0 && <div style={{ fontSize: 12.5, color: "#94a3b8", marginBottom: 8 }}>Todavía no agregaste ninguna.</div>}
+            {propiasCtx.map((r) => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
+                <span style={{ flex: 1, fontSize: 13, color: "#0f172a" }}>{r.texto}</span>
+                <button type="button" onClick={() => void borrarRapida(r.id)} style={{ border: "none", background: "#fef2f2", color: "#dc2626", borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Quitar</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+              <input value={nuevaRapida} onChange={(e) => setNuevaRapida(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void agregarRapida(); }}
+                placeholder="Ej: Pasa por almacén por el router" style={{ flex: 1, padding: "8px 10px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13, fontFamily: "inherit" }} />
+              <button type="button" onClick={() => void agregarRapida()} style={{ border: "none", background: "#2563eb", color: "#fff", borderRadius: 8, padding: "0 14px", fontWeight: 800, cursor: "pointer" }}>Agregar</button>
+            </div>
+            <button type="button" onClick={() => setEditRapidas(false)} style={{ marginTop: 12, width: "100%", padding: 9, border: "1px solid #e2e8f0", background: "#f8fafc", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}>Listo</button>
+          </div>
+        </div>
+      )}
       {rapidas.map((r) => (
         <button key={r} type="button" className="oc-chip" onClick={() => encolar({ texto: r })}
           style={{ flexShrink: 0, background: "#fff", border: "1px solid #bfdbfe", color: "#1d4ed8", borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>

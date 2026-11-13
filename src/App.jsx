@@ -1159,6 +1159,10 @@ function deserializeOrderFromSupabase(row = {}) {
     // Reprogramar: "Por coordinar" = sin fecha, el cliente se comunicara.
     porCoordinarDesde: row.por_coordinar_desde || null,
     reprogramaciones: Number(row.reprogramaciones) || 0,
+    // WiFi que eligio el cliente por el link /wifi/<token>.
+    wifiNombre: String(row.wifi_nombre || "").trim(),
+    wifiClave: String(row.wifi_clave || "").trim(),
+    wifiSolo24: !!row.wifi_solo_24,
     // Automatizacion Mikrowisp Nod_04 (piloto) — se necesitan al editar para
     // que los selectores de Plan/Facturacion no aparezcan vacios.
     mikrowispIdPerfil: row.mikrowisp_id_perfil ?? null,
@@ -18063,6 +18067,7 @@ export default function App() {
         tecnicosDirectorio={rolSesion === "Tecnico" ? null : tecnicosActivos}
         autor={usuarioSesion.nombre}
         autorRol={rolSesion}
+        onOrdenCambiada={(id, cambios) => setOrdenes((prev) => (prev || []).map((x) => (String(x.id) === String(id) ? { ...x, ...cambios } : x)))}
       />
     );
   }

@@ -1,25 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MessagesSquare, Search, X, ArrowLeft, Plus, ExternalLink, LayoutDashboard, Bell, BellOff } from "lucide-react";
+import { MessagesSquare, Search, X, ArrowLeft, Plus, ExternalLink, LayoutDashboard, Bell, BellOff, PanelRightOpen, PanelRightClose } from "lucide-react";
 import OrdenChat from "./OrdenChat";
+import ReprogramarOrdenModal, { diasPorCoordinar } from "./ReprogramarOrdenModal";
 import useChatsRecientes from "../hooks/useChatsRecientes";
 import { MIN_ESPERA_CLIENTE, minutosEsperando } from "../services/chatCliente";
+import { supabase } from "../supabaseClient";
 
 // Pagina "Chats" (ruta /chats), estilo WhatsApp Web: lista de chats a la
-// izquierda, conversacion a la derecha. Pensada para tenerla abierta en una
-// ventana aparte (boton "Abrir en ventana" del globo de chats). Usa la misma
-// sesion y los mismos permisos del panel (ordenes/tecnicos que ve el usuario).
-// Pedido 2026-11-12.
+// izquierda, conversacion al centro y datos de la orden a la derecha. Pensada
+// para tenerla abierta en una ventana aparte. Usa la misma sesion y permisos
+// del panel. Pedido 2026-11-12; pestañas, estado, "Lo atiendo yo" y panel de
+// la orden 2026-11-13.
 
 const norm = (v) => String(v || "").trim().toLowerCase();
 const plano = (v) => norm(v).normalize("NFD").replace(/[̀-ͯ]/g, "");
-const AVATAR_COLORS = ["#7c3aed", "#0ea5e9", "#16a34a", "#ea580c", "#db2777", "#0891b2"];
+const AVATAR_COLORS = ["#7c3aed", "#0ea5e9", "#16a34a", "#ea580c", "#db2777", "#0891b2", "#4f46e5", "#ca8a04"];
 function colorPara(nombre) {
   const s = String(nombre || "");
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
-const iniciales = (t) => String(t || "").trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
+// "RODRIGUEZ HUAYCHO, BERTHA LUZ" o "Bertha Luz Rodriguez" -> 2 letras.
+const iniciales = (t) => {
+  let s = String(t || "").trim();
+  if (s.includes(",")) s = s.split(",").reverse().join(" ");
+  return s.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
+};
 function horaCorta(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -54,8 +61,6 @@ function beep() {
     });
   } catch { /* sin audio */ }
 }
-// Chat abierto en la URL (?chat=orden:123 / ?chat=tecnico:Nombre): al
-// recargar la ventana vuelve al mismo chat.
 function leerChatUrl() {
   try { return new URLSearchParams(window.location.search).get("chat") || null; } catch { return null; }
 }
@@ -66,39 +71,120 @@ function escribirChatUrl(key) {
     window.history.replaceState(null, "", u.toString());
   } catch { /* sin history */ }
 }
+const leerLS = (k, def) => { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch { return def; } };
+const guardarLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* nada */ } };
+
+const hoyYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const esCerrada = (o) => /liquidad|cancel|finaliz|cerrad/i.test(String(o?.estado || ""));
+// Estado de la orden para la lista/cabecera: color + texto corto.
+function estadoOrden(o, ahora) {
+  if (!o) return null;
+  const e = String(o.estado || "");
+  if (/cancel/i.test(e)) return { t: "✖ Cancelada", c: "#64748b", bg: "#f1f5f9" };
+  if (/liquidad|finaliz|cerrad/i.test(e)) return { t: "✅ Liquidada", c: "#15803d", bg: "#dcfce7" };
+  if (o.porCoordinarDesde) {
+    const d = diasPorCoordinar(o.porCoordinarDesde);
+    return d >= 3 ? { t: `⏸ Por coordinar · ${d}d`, c: "#fff", bg: "#dc2626" } : { t: "⏸ Por coordinar", c: "#6b21a8", bg: "#f3e8ff" };
+  }
+  const f = String(o.fechaActuacion || "").slice(0, 10);
+  const h = String(o.hora || "").slice(0, 5);
+  if (f) {
+    const t = new Date(`${f}T${h || "23:59"}:00`).getTime();
+    if (Number.isFinite(t) && t < ahora && !(/proceso/i.test(e) && o.atendidaSinLiquidarEn)) return { t: "🔴 Vencida", c: "#fff", bg: "#dc2626" };
+  }
+  if (/proceso/i.test(e)) return { t: o.atendidaSinLiquidarEn ? "✅ Atendida" : "🔵 En proceso", c: "#1d4ed8", bg: "#dbeafe" };
+  return { t: "🟠 Pendiente", c: "#c2410c", bg: "#ffedd5" };
+}
+function cuandoVisita(o) {
+  const f = String(o?.fechaActuacion || "").slice(0, 10);
+  const h = String(o?.hora || "").slice(0, 5);
+  if (!f) return h ? `🕐 ${h}` : "";
+  const hoy = hoyYmd();
+  const man = new Date(); man.setDate(man.getDate() + 1);
+  const manYmd = `${man.getFullYear()}-${String(man.getMonth() + 1).padStart(2, "0")}-${String(man.getDate()).padStart(2, "0")}`;
+  const dia = f === hoy ? "hoy" : f === manYmd ? "mañana" : `${f.slice(8, 10)}/${f.slice(5, 7)}`;
+  return `🕐 ${dia}${h ? ` ${h}` : ""}`;
+}
 
 export function abrirVentanaChats(chatKey) {
   const url = `/chats${chatKey ? `?chat=${encodeURIComponent(chatKey)}` : ""}`;
-  const w = window.open(url, "ventana_chats", "width=1150,height=780");
+  const w = window.open(url, "ventana_chats", "width=1350,height=800");
   if (w) w.focus();
   else window.location.href = url; // ventanas emergentes bloqueadas
 }
 
-export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor, autorRol, empresa }) {
+const HORAS_ATENCION = 4;
+const FILTROS = [
+  { k: "todos", l: "Todos" },
+  { k: "noleidos", l: "No leídos" },
+  { k: "esperando", l: "⏰ Esperando" },
+  { k: "hoy", l: "Hoy" },
+  { k: "tecnicos", l: "👷 Técnicos" },
+  { k: "archivados", l: "Archivados" },
+];
+
+export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor, autorRol, empresa, onOrdenCambiada }) {
   const [busqueda, setBusqueda] = useState("");
-  const [soloNoLeidos, setSoloNoLeidos] = useState(false);
-  // Cliente esperando respuesta >10 min: se resalta en rojo y avisa 1 vez.
+  const [filtro, setFiltro] = useState("todos");
+  const [filtroTecnico, setFiltroTecnico] = useState("");
   const [ahora, setAhora] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 30000); return () => clearInterval(t); }, []);
-  const [soloEsperando, setSoloEsperando] = useState(false);
   const avisadosEsperaRef = useRef(new Set());
   const [nuevoChat, setNuevoChat] = useState(false);
   const [seleccion, setSeleccion] = useState(leerChatUrl);
   const [ancho, setAncho] = useState(() => window.innerWidth);
   const [permisoNotif, setPermisoNotif] = useState(() => ("Notification" in window ? Notification.permission : "denied"));
+  const [verPanel, setVerPanel] = useState(() => leerLS("chats_ver_panel_orden", true));
+  const [reprog, setReprog] = useState(null);
   const buscadorRef = useRef(null);
   const seleccionRef = useRef(seleccion);
   seleccionRef.current = seleccion;
   const angosto = ancho < 820;
+  const cabePanel = ancho >= 1180;
 
   useEffect(() => {
     const r = () => setAncho(window.innerWidth);
     window.addEventListener("resize", r);
     return () => window.removeEventListener("resize", r);
   }, []);
+  useEffect(() => { guardarLS("chats_ver_panel_orden", verPanel); }, [verPanel]);
 
-  // Aviso de escritorio + sonido cuando llega un mensaje y no lo estas
-  // mirando (otra ventana/pestana, o con otro chat abierto). Clic = abre ese chat.
+  // ── "Lo atiendo yo": quien esta atendiendo cada chat (tabla chat_atencion) ──
+  const [atencion, setAtencion] = useState({});
+  const cargarAtencion = useCallback(() => {
+    supabase.from("chat_atencion").select("clave,usuario,desde").then(({ data, error }) => {
+      if (error) return;
+      const m = {};
+      for (const r of data || []) m[r.clave] = r;
+      setAtencion(m);
+    }, () => {});
+  }, []);
+  useEffect(() => {
+    cargarAtencion();
+    const ch = supabase.channel("chats-atencion")
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_atencion" }, () => cargarAtencion())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [cargarAtencion]);
+  const atiende = (key) => {
+    const a = atencion[key];
+    if (!a) return null;
+    return ahora - new Date(a.desde).getTime() < HORAS_ATENCION * 3600000 ? a : null;
+  };
+  const tomarChat = async (key) => {
+    const fila = { clave: key, usuario: autor, desde: new Date().toISOString() };
+    setAtencion((p) => ({ ...p, [key]: fila }));
+    await supabase.from("chat_atencion").upsert([fila], { onConflict: "clave" });
+  };
+  const soltarChat = async (key) => {
+    setAtencion((p) => { const n = { ...p }; delete n[key]; return n; });
+    await supabase.from("chat_atencion").delete().eq("clave", key);
+  };
+
+  // Aviso de escritorio + sonido cuando llega un mensaje y no lo estas mirando.
   const onNuevo = useCallback((msg, info) => {
     const mirando = !document.hidden && document.hasFocus() && seleccionRef.current === info.key;
     if (mirando) return;
@@ -123,9 +209,11 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
   useEffect(() => { escribirChatUrl(seleccion); }, [seleccion]);
   useEffect(() => { recalcular(); }, [seleccion, recalcular]);
 
-  const total = chats.reduce((s, c) => s + c.count, 0);
   const esperaMin = (c) => (c.esperandoDesde ? minutosEsperando(c.esperandoDesde, ahora) : -1);
-  const esperandoLista = chats.filter((c) => esperaMin(c) >= MIN_ESPERA_CLIENTE);
+  const archivado = (c) => c.tipo === "orden" && esCerrada(c.ordenInfo) && ahora - new Date(c.ultimo?.created_at || 0).getTime() > 24 * 3600000;
+  const activos = chats.filter((c) => !archivado(c));
+  const total = activos.reduce((s, c) => s + c.count, 0);
+  const esperandoLista = activos.filter((c) => esperaMin(c) >= MIN_ESPERA_CLIENTE);
   useEffect(() => {
     for (const c of esperandoLista) {
       const clave = `${c.key}|${c.esperandoDesde}`;
@@ -147,34 +235,55 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
     document.title = `${total > 0 ? `(${total}) ` : ""}Chats${empresa ? ` · ${empresa}` : ""}`;
   }, [total, empresa]);
 
+  const hoy = hoyYmd();
+  const pasaFiltro = (c, f) => {
+    if (f === "archivados") return archivado(c);
+    if (archivado(c)) return false;
+    if (f === "noleidos") return c.count > 0;
+    if (f === "esperando") return esperaMin(c) >= MIN_ESPERA_CLIENTE;
+    if (f === "hoy") return c.tipo === "orden" && String(c.ordenInfo?.fechaActuacion || "").slice(0, 10) === hoy;
+    if (f === "tecnicos") return c.tipo === "tecnico";
+    return true;
+  };
+  const conteo = Object.fromEntries(FILTROS.map((f) => [f.k, chats.filter((c) => pasaFiltro(c, f.k)).length]));
+  const nombresTecnicos = useMemo(() => {
+    const set = new Set();
+    chats.forEach((c) => { const t = c.tipo === "tecnico" ? c.tecnicoNombre : c.ordenInfo?.tecnico; if (t) set.add(String(t)); });
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [chats]);
+
   const terminos = plano(busqueda).split(/\s+/).filter(Boolean);
   const coincide = (...c) => !terminos.length || terminos.every((w) => plano(c.filter(Boolean).join(" ")).includes(w));
-  const lista = useMemo(() => chats.filter((c) => (!soloNoLeidos || c.count > 0) && (!soloEsperando || esperaMin(c) >= MIN_ESPERA_CLIENTE)
-    && coincide(c.titulo, c.sub, c.tecnicoNombre, c.ordenInfo?.codigo, c.ordenInfo?.nombre, c.ordenInfo?.tecnico,
+  const lista = useMemo(() => chats
+    .filter((c) => pasaFiltro(c, filtro))
+    .filter((c) => !filtroTecnico || String(c.tipo === "tecnico" ? c.tecnicoNombre : c.ordenInfo?.tecnico) === filtroTecnico)
+    .filter((c) => coincide(c.titulo, c.sub, c.tecnicoNombre, c.ordenInfo?.codigo, c.ordenInfo?.nombre, c.ordenInfo?.tecnico,
       c.ordenInfo?.direccion, c.ordenInfo?.celular, c.ultimo?.texto, c.ultimo?.autor))
-    .sort((a, b) => (esperaMin(b) >= MIN_ESPERA_CLIENTE) - (esperaMin(a) >= MIN_ESPERA_CLIENTE)), [chats, soloNoLeidos, soloEsperando, busqueda, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
+    .sort((a, b) => (esperaMin(b) >= MIN_ESPERA_CLIENTE) - (esperaMin(a) >= MIN_ESPERA_CLIENTE)),
+  [chats, filtro, filtroTecnico, busqueda, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
   const directorio = (Array.isArray(tecnicosDirectorio) ? tecnicosDirectorio : []).filter((t) => coincide(t.nombre));
 
   // Chat seleccionado: puede no estar en la lista (sin mensajes aun o
-  // abierto desde la URL), se arma igual.
+  // abierto desde la URL), se arma igual. La orden se toma siempre de
+  // "ordenes" (la version mas nueva, ej. recien reprogramada).
   const sel = useMemo(() => {
     if (!seleccion) return null;
-    const enLista = chats.find((c) => c.key === seleccion);
-    if (enLista) return enLista;
     const [tipo, ...resto] = seleccion.split(":");
     const valor = resto.join(":");
-    if (tipo === "tecnico" && valor) return { tipo, key: seleccion, tecnicoNombre: valor, titulo: valor, sub: "Chat con oficina" };
+    const enLista = chats.find((c) => c.key === seleccion);
     if (tipo === "orden" && valor) {
-      const o = (ordenes || []).find((x) => String(x.id) === String(valor));
-      if (o) return { tipo, key: seleccion, ordenId: o.id, ordenInfo: o, titulo: `${o.codigo || "Orden"} · ${o.nombre || "Cliente"}`, sub: o.tecnico ? `Técnico: ${o.tecnico}` : "" };
+      const o = (ordenes || []).find((x) => String(x.id) === String(valor)) || enLista?.ordenInfo;
+      if (o) return { ...(enLista || {}), tipo, key: seleccion, ordenId: o.id, ordenInfo: o, titulo: `${o.codigo || "Orden"} · ${o.nombre || "Cliente"}`, sub: o.tecnico ? `Técnico: ${o.tecnico}` : "" };
     }
+    if (enLista) return enLista;
+    if (tipo === "tecnico" && valor) return { tipo, key: seleccion, tecnicoNombre: valor, titulo: valor, sub: "Chat con oficina" };
     return null;
   }, [seleccion, chats, ordenes]);
 
   // Atajos: Ctrl+K o "/" = buscar; Esc = cerrar chat; Alt+↑/↓ = chat anterior/siguiente.
   useEffect(() => {
     const onKey = (e) => {
-      const enCampo = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || "");
+      const enCampo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
       if ((e.ctrlKey && e.key.toLowerCase() === "k") || (e.key === "/" && !enCampo)) {
         e.preventDefault();
         buscadorRef.current?.focus();
@@ -198,8 +307,24 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
   };
   const abrir = (key) => { setSeleccion(key); setNuevoChat(false); };
 
+  // Cambiar tecnico desde el panel de la orden: queda aviso en el chat.
+  const cambiarTecnico = async (o, nuevo) => {
+    if (!o?.id || !nuevo || nuevo === o.tecnico) return false;
+    const { error } = await supabase.from("ordenes").update({ tecnico: nuevo }).eq("id", Number(o.id));
+    if (error) { alert(`No se pudo cambiar el técnico: ${error.message}`); return false; }
+    await supabase.from("chat_ordenes_mensajes").insert([{
+      orden_id: Number(o.id), autor, autor_rol: autorRol || null,
+      texto: `👷 Orden reasignada: ${o.tecnico || "sin técnico"} → ${nuevo}\nPor: ${autor}`,
+    }]);
+    onOrdenCambiada?.(o.id, { tecnico: nuevo });
+    return true;
+  };
+
   const verLista = !angosto || !sel;
   const verChat = !angosto || !!sel;
+  const mostrarPanel = sel?.tipo === "orden" && verPanel && cabePanel && !!sel.ordenInfo;
+  const atSel = sel ? atiende(sel.key) : null;
+  const estSel = sel?.tipo === "orden" ? estadoOrden(sel.ordenInfo, ahora) : null;
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#f1f5f9", fontFamily: '"Inter", "Segoe UI", sans-serif', overflow: "hidden" }}>
@@ -208,12 +333,14 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
         .cp-item.sel, .cp-item.sel:hover { background: #ede9fe !important; }
         .cp-btn:hover { background: #e2e8f0 !important; }
         .cp-scroll { scrollbar-width: thin; }
+        .cp-tabs { scrollbar-width: none; }
+        .cp-tabs::-webkit-scrollbar { display: none; }
       `}</style>
 
       {/* ── Lista de chats ── */}
       {verLista && (
         <div style={{ width: angosto ? "100%" : 360, flexShrink: 0, display: "flex", flexDirection: "column", background: "#fff", borderRight: "1px solid #e2e8f0" }}>
-          <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid #f1f5f9" }}>
+          <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg, #a855f7, #6d28d9)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <MessagesSquare size={18} color="#fff" />
@@ -242,22 +369,33 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                   style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", fontSize: 13, color: "#0f172a", fontFamily: "inherit" }} />
                 {!!busqueda && <button type="button" onClick={() => setBusqueda("")} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, display: "flex" }}><X size={15} color="#94a3b8" /></button>}
               </div>
-              <button type="button" onClick={() => setSoloNoLeidos((v) => !v)}
-                style={{ height: 36, padding: "0 10px", borderRadius: 9, cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap",
-                  background: soloNoLeidos ? "#7c3aed" : "#f5f3ff", color: soloNoLeidos ? "#fff" : "#7c3aed", border: `1px solid ${soloNoLeidos ? "#7c3aed" : "#ddd6fe"}` }}>
-                No leídos{total > 0 ? ` · ${chats.filter((c) => c.count > 0).length}` : ""}
-              </button>
+              {nombresTecnicos.length > 1 && (
+                <select value={filtroTecnico} onChange={(e) => setFiltroTecnico(e.target.value)} title="Filtrar por técnico"
+                  style={{ maxWidth: 120, height: 36, borderRadius: 9, border: `1px solid ${filtroTecnico ? "#7c3aed" : "#e2e8f0"}`, background: filtroTecnico ? "#f5f3ff" : "#fff", fontSize: 12, fontWeight: 700, color: "#334155", padding: "0 6px", fontFamily: "inherit" }}>
+                  <option value="">👷 Todos</option>
+                  {nombresTecnicos.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              )}
             </div>
-            {esperandoLista.length > 0 && (
-              <button type="button" onClick={() => setSoloEsperando((v) => !v)}
-                style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 800, textAlign: "left",
-                  background: soloEsperando ? "#dc2626" : "#fef2f2", color: soloEsperando ? "#fff" : "#b91c1c", border: "1px solid #fca5a5" }}>
-                ⏰ {esperandoLista.length} cliente{esperandoLista.length === 1 ? "" : "s"} sin respuesta hace +{MIN_ESPERA_CLIENTE} min{soloEsperando ? " · ver todos" : " · ver"}
-              </button>
-            )}
+            <div className="cp-tabs" style={{ display: "flex", gap: 5, overflowX: "auto", marginTop: 8, paddingBottom: 2 }}>
+              {FILTROS.map((f) => {
+                const activo = filtro === f.k;
+                const rojo = f.k === "esperando" && conteo.esperando > 0;
+                const n = f.k === "todos" ? null : conteo[f.k];
+                return (
+                  <button key={f.k} type="button" onClick={() => setFiltro(f.k)}
+                    style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", fontFamily: "inherit",
+                      border: `1px solid ${activo ? (rojo ? "#dc2626" : "#7c3aed") : rojo ? "#fca5a5" : "#e2e8f0"}`,
+                      background: activo ? (rojo ? "#dc2626" : "#7c3aed") : rojo ? "#fef2f2" : "#fff",
+                      color: activo ? "#fff" : rojo ? "#b91c1c" : "#475569" }}>
+                    {f.l}{n ? ` · ${n}` : ""}
+                  </button>
+                );
+              })}
+            </div>
             {directorio.length > 0 && (
               <button type="button" onClick={() => setNuevoChat((v) => !v)} className="cp-btn"
-                style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 8px", border: "none", borderRadius: 8, background: nuevoChat ? "#eff6ff" : "transparent", color: "#2563eb", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>
+                style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 8px", border: "none", borderRadius: 8, background: nuevoChat ? "#eff6ff" : "transparent", color: "#2563eb", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>
                 <Plus size={15} /> Nuevo chat con técnico
               </button>
             )}
@@ -278,33 +416,55 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
             {cargando && !chats.length ? (
               <div style={vacio}>Cargando chats…</div>
             ) : !lista.length ? (
-              <div style={vacio}>{terminos.length ? `Sin resultados para "${busqueda.trim()}"` : soloNoLeidos ? "No tienes chats sin leer 👍" : "Todavía no hay chats."}</div>
+              <div style={vacio}>
+                {terminos.length ? `Sin resultados para "${busqueda.trim()}"`
+                  : filtro === "noleidos" ? "No tienes chats sin leer 👍"
+                  : filtro === "esperando" ? "Ningún cliente esperando respuesta 👍"
+                  : filtro === "archivados" ? "No hay chats archivados. Aquí pasan las órdenes liquidadas después de 24 h."
+                  : "No hay chats aquí."}
+              </div>
             ) : lista.map((c) => {
               const esMio = norm(c.ultimo?.autor) === norm(autor);
               const esTec = c.tipo === "tecnico";
+              const o = c.ordenInfo;
+              const est = esTec ? null : estadoOrden(o, ahora);
+              const at = atiende(c.key);
+              const espera = esperaMin(c);
               return (
                 <button key={c.key} type="button" className={`cp-item${seleccion === c.key ? " sel" : ""}`} onClick={() => abrir(c.key)} style={itemBtn} title={c.titulo}>
-                  <span style={{ ...avatar, background: esTec ? "linear-gradient(135deg, #60a5fa, #2563eb)" : colorPara(c.ordenInfo?.nombre || c.titulo) }}>
-                    {esTec ? iniciales(c.tecnicoNombre) : "📋"}
+                  <span style={{ ...avatar, background: esTec ? "linear-gradient(135deg, #60a5fa, #2563eb)" : colorPara(o?.nombre || c.titulo) }}>
+                    {esTec ? iniciales(c.tecnicoNombre) : iniciales(o?.nombre)}
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: c.count ? 800 : 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {esTec ? `👷 ${c.titulo}` : c.titulo}
+                        {esTec ? `👷 ${c.titulo}` : (o?.nombre || c.titulo)}
                       </span>
                       <span style={{ flexShrink: 0, fontSize: 11, color: c.count ? "#7c3aed" : "#94a3b8", fontWeight: c.count ? 800 : 500 }}>{horaCorta(c.ultimo?.created_at)}</span>
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: c.count ? "#334155" : "#64748b", fontWeight: c.count ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {esMio ? "Tú" : String(c.ultimo?.autor || "").split(" ")[0]}: {resumen(c.ultimo)}
+                        {esMio ? "Tú" : String(c.ultimo?.autor_rol || "").toLowerCase() === "cliente" ? "👤 Cliente" : String(c.ultimo?.autor || "").split(" ")[0]}: {resumen(c.ultimo)}
                       </span>
                       {c.count > 0 && <span style={{ flexShrink: 0, minWidth: 20, height: 20, borderRadius: 10, padding: "0 6px", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{c.count}</span>}
                     </span>
-                    {!!c.sub && !esTec && <span style={{ display: "block", fontSize: 11, color: "#94a3b8", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.sub}</span>}
-                    {esperaMin(c) >= 0 && (
-                      <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 8px",
-                        background: esperaMin(c) >= MIN_ESPERA_CLIENTE ? "#dc2626" : "#dcfce7", color: esperaMin(c) >= MIN_ESPERA_CLIENTE ? "#fff" : "#15803d" }}>
-                        {esperaMin(c) >= MIN_ESPERA_CLIENTE ? `⏰ Cliente espera hace ${esperaMin(c)} min` : "👤 Cliente escribió · responder"}
+                    {!esTec && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+                        {est && <span style={{ ...chip, background: est.bg, color: est.c }}>{est.t}</span>}
+                        {!esCerrada(o) && !o?.porCoordinarDesde && cuandoVisita(o) && <span style={{ ...chip, background: "#f1f5f9", color: "#475569" }}>{cuandoVisita(o)}</span>}
+                        <span style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: 1 }}>{o?.codigo}{o?.tecnico ? ` · ${String(o.tecnico).split(" ")[0]}` : ""}</span>
+                      </span>
+                    )}
+                    {(espera >= 0 || at) && (
+                      <span style={{ display: "flex", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+                        {espera >= 0 && (
+                          <span style={{ ...chip, background: espera >= MIN_ESPERA_CLIENTE ? "#dc2626" : "#dcfce7", color: espera >= MIN_ESPERA_CLIENTE ? "#fff" : "#15803d" }}>
+                            {espera >= MIN_ESPERA_CLIENTE ? `⏰ Cliente espera ${espera} min` : "👤 Cliente escribió · responder"}
+                          </span>
+                        )}
+                        {at && <span style={{ ...chip, background: norm(at.usuario) === norm(autor) ? "#ede9fe" : "#fef3c7", color: norm(at.usuario) === norm(autor) ? "#6d28d9" : "#92400e" }}>
+                          🙋 {norm(at.usuario) === norm(autor) ? "Lo atiendes tú" : `Atiende ${String(at.usuario).split(" ")[0]}`}
+                        </span>}
                       </span>
                     )}
                   </span>
@@ -328,26 +488,61 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                   <button type="button" className="cp-btn" onClick={() => setSeleccion(null)} style={iconBtn} title="Volver"><ArrowLeft size={18} color="#475569" /></button>
                 )}
                 <span style={{ ...avatar, width: 38, height: 38, background: sel.tipo === "tecnico" ? "linear-gradient(135deg, #60a5fa, #2563eb)" : colorPara(sel.ordenInfo?.nombre || sel.titulo) }}>
-                  {sel.tipo === "tecnico" ? iniciales(sel.tecnicoNombre) : "📋"}
+                  {sel.tipo === "tecnico" ? iniciales(sel.tecnicoNombre) : iniciales(sel.ordenInfo?.nombre)}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {sel.tipo === "tecnico" ? `👷 ${sel.titulo}` : sel.titulo}
+                  <div style={{ fontSize: 14.5, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{sel.tipo === "tecnico" ? `👷 ${sel.titulo}` : sel.titulo}</span>
+                    {estSel && <span style={{ ...chip, background: estSel.bg, color: estSel.c, flexShrink: 0 }}>{estSel.t}</span>}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {sel.tipo === "tecnico" ? "Chat con oficina" : [sel.ordenInfo?.tecnico && `Técnico: ${sel.ordenInfo.tecnico}`, sel.ordenInfo?.direccion, sel.ordenInfo?.estado].filter(Boolean).join(" · ")}
+                    {sel.tipo === "tecnico" ? "Chat con oficina" : [sel.ordenInfo?.tecnico && `Técnico: ${sel.ordenInfo.tecnico}`, cuandoVisita(sel.ordenInfo), sel.ordenInfo?.direccion].filter(Boolean).join(" · ")}
                   </div>
                 </div>
+                {/* "Lo atiendo yo" */}
+                {atSel && norm(atSel.usuario) !== norm(autor) ? (
+                  <button type="button" onClick={() => { if (window.confirm(`${atSel.usuario} está atendiendo este chat. ¿Lo tomas tú?`)) void tomarChat(sel.key); }}
+                    title={`Lo está atendiendo ${atSel.usuario} desde las ${new Date(atSel.desde).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}`}
+                    style={{ ...btnTxt, background: "#fef3c7", borderColor: "#fcd34d", color: "#92400e" }}>
+                    🙋 Atiende {String(atSel.usuario).split(" ")[0]}
+                  </button>
+                ) : atSel ? (
+                  <button type="button" onClick={() => void soltarChat(sel.key)} title="Dejar de atender este chat" style={{ ...btnTxt, background: "#ede9fe", borderColor: "#c4b5fd", color: "#6d28d9" }}>
+                    ✋ Soltar
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => void tomarChat(sel.key)} title="Avisar a las demás que tú lo atiendes" style={{ ...btnTxt, background: "#fff", borderColor: "#c4b5fd", color: "#6d28d9" }}>
+                    🙋 Lo atiendo yo
+                  </button>
+                )}
+                {sel.tipo === "orden" && cabePanel && (
+                  <button type="button" className="cp-btn" onClick={() => setVerPanel((v) => !v)} style={iconBtn} title={verPanel ? "Ocultar datos de la orden" : "Ver datos de la orden"}>
+                    {verPanel ? <PanelRightClose size={18} color="#475569" /> : <PanelRightOpen size={18} color="#475569" />}
+                  </button>
+                )}
                 {!angosto && window.name !== "ventana_chats" && (
                   <button type="button" className="cp-btn" onClick={() => abrirVentanaChats(sel.key)} style={iconBtn} title="Abrir en ventana aparte"><ExternalLink size={17} color="#475569" /></button>
                 )}
                 <button type="button" className="cp-btn" onClick={() => setSeleccion(null)} style={iconBtn} title="Cerrar chat (Esc)"><X size={18} color="#475569" /></button>
               </div>
-              <div style={{ flex: 1, minHeight: 0 }}>
-                {sel.tipo === "tecnico" ? (
-                  <OrdenChat key={sel.key} hiloTecnico={sel.tecnicoNombre} autor={autor} autorRol={autorRol} llenar />
-                ) : (
-                  <OrdenChat key={sel.key} ordenId={sel.ordenId} orden={sel.ordenInfo} ordenCodigo={sel.ordenInfo?.codigo} tecnicoAsignado={sel.ordenInfo?.tecnico} autor={autor} autorRol={autorRol} llenar />
+              <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {sel.tipo === "tecnico" ? (
+                    <OrdenChat key={sel.key} hiloTecnico={sel.tecnicoNombre} autor={autor} autorRol={autorRol} llenar />
+                  ) : (
+                    <OrdenChat key={sel.key} ordenId={sel.ordenId} orden={sel.ordenInfo} ordenCodigo={sel.ordenInfo?.codigo} tecnicoAsignado={sel.ordenInfo?.tecnico} autor={autor} autorRol={autorRol} llenar />
+                  )}
+                </div>
+                {mostrarPanel && (
+                  <PanelOrden
+                    key={sel.ordenInfo.id}
+                    o={sel.ordenInfo}
+                    est={estSel}
+                    tecnicosDirectorio={tecnicosDirectorio}
+                    puedeGestionar={norm(autorRol) !== "tecnico"}
+                    onReprogramar={() => setReprog(sel.ordenInfo)}
+                    onCambiarTecnico={cambiarTecnico}
+                  />
                 )}
               </div>
             </>
@@ -364,6 +559,119 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
           )}
         </div>
       )}
+
+      {reprog && (
+        <ReprogramarOrdenModal
+          orden={reprog}
+          autor={autor}
+          autorRol={autorRol}
+          onClose={() => setReprog(null)}
+          onListo={(orden, cambios) => { onOrdenCambiada?.(orden.id, cambios); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Panel derecho: datos de la orden + acciones ──────────────────────────
+function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar, onCambiarTecnico }) {
+  const [verTodo, setVerTodo] = useState(false);
+  const [cambiando, setCambiando] = useState(false);
+  const [nuevoTec, setNuevoTec] = useState(o.tecnico || "");
+  const [copiado, setCopiado] = useState("");
+  const tecnicos = (Array.isArray(tecnicosDirectorio) ? tecnicosDirectorio : []).map((t) => t.nombre).filter(Boolean);
+  const abierta = !esCerrada(o);
+  const copiar = (txt, k) => {
+    try { navigator.clipboard.writeText(String(txt || "")); setCopiado(k); setTimeout(() => setCopiado(""), 1200); } catch { /* nada */ }
+  };
+  const ub = String(o.ubicacion || "").trim();
+  const mapa = ub ? `https://www.google.com/maps?q=${encodeURIComponent(ub)}` : o.direccion ? `https://www.google.com/maps/search/${encodeURIComponent(o.direccion)}` : "";
+  const fila = (l, v, k, copiable) => (!v ? null : (
+    <div key={k || l} style={{ display: "flex", gap: 8, padding: "5px 0", borderBottom: "1px solid #f1f5f9", alignItems: "flex-start" }}>
+      <span style={{ width: 82, flexShrink: 0, fontSize: 11.5, color: "#94a3b8", fontWeight: 600 }}>{l}</span>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#0f172a", fontWeight: 600, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{v}</span>
+      {copiable && (
+        <button type="button" onClick={() => copiar(v, k || l)} style={{ border: "none", background: "#f1f5f9", borderRadius: 6, padding: "2px 6px", fontSize: 10.5, cursor: "pointer", color: "#475569", flexShrink: 0 }}>
+          {copiado === (k || l) ? "✓" : "Copiar"}
+        </button>
+      )}
+    </div>
+  ));
+  const wifi = String(o.wifiNombre || "").trim();
+  return (
+    <div className="cp-scroll" style={{ width: 300, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e2e8f0", overflowY: "auto", padding: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", letterSpacing: 0.4, marginBottom: 6 }}>DATOS DE LA ORDEN</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>{o.nombre || "Cliente"}</div>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", margin: "6px 0 10px" }}>
+        <span style={{ ...chip, background: "#f1f5f9", color: "#334155" }}>{o.codigo}</span>
+        {est && <span style={{ ...chip, background: est.bg, color: est.c }}>{est.t}</span>}
+        {Number(o.reprogramaciones) > 0 && <span style={{ ...chip, background: "#faf5ff", color: "#7c3aed" }}>🔁 Reprog. ×{o.reprogramaciones}</span>}
+      </div>
+
+      {puedeGestionar && abierta && (
+        <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+          <button type="button" onClick={onReprogramar} style={{ ...accion, background: "#faf5ff", borderColor: "#d8b4fe", color: "#6b21a8" }}>
+            📅 {o.porCoordinarDesde ? "Poner fecha" : "Reprogramar"}
+          </button>
+          {!cambiando ? (
+            <button type="button" onClick={() => { setNuevoTec(o.tecnico || ""); setCambiando(true); }} style={{ ...accion, background: "#eff6ff", borderColor: "#bfdbfe", color: "#1d4ed8" }}>
+              👷 Cambiar técnico
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: 6 }}>
+              <select value={nuevoTec} onChange={(e) => setNuevoTec(e.target.value)} style={{ flex: 1, minWidth: 0, padding: "7px 6px", borderRadius: 8, border: "1px solid #bfdbfe", fontSize: 12.5, fontFamily: "inherit" }}>
+                <option value="">— Elegir técnico —</option>
+                {tecnicos.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button type="button" disabled={!nuevoTec || nuevoTec === o.tecnico}
+                onClick={async () => { if (await onCambiarTecnico(o, nuevoTec)) setCambiando(false); }}
+                style={{ border: "none", background: "#2563eb", color: "#fff", borderRadius: 8, padding: "0 10px", fontWeight: 800, cursor: "pointer", opacity: !nuevoTec || nuevoTec === o.tecnico ? 0.5 : 1 }}>OK</button>
+              <button type="button" onClick={() => setCambiando(false)} style={{ border: "1px solid #e2e8f0", background: "#fff", borderRadius: 8, padding: "0 8px", cursor: "pointer" }}>✕</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {fila("Técnico", o.tecnico || "Sin técnico")}
+      {fila("Visita", o.porCoordinarDesde ? "⏸ Por coordinar (el cliente avisará)" : [String(o.fechaActuacion || "").slice(0, 10), String(o.hora || "").slice(0, 5)].filter(Boolean).join(" · "))}
+      {fila("Tipo", o.tipoActuacion || o.orden)}
+      {fila("Celular", o.celular, "cel", true)}
+      {fila("Contacto", o.contacto, "contacto", true)}
+      {fila("Dirección", o.direccion, "dir", true)}
+      {fila("Nodo", o.nodo)}
+      {fila("Plan", o.velocidad)}
+      {mapa && (
+        <a href={mapa} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}>📍 Ver en el mapa</a>
+      )}
+
+      {/instal/i.test(String(o.tipoActuacion || o.orden || "")) && (
+        <div style={{ marginTop: 12, borderRadius: 10, border: `1px solid ${wifi ? "#bbf7d0" : "#fde68a"}`, background: wifi ? "#f0fdf4" : "#fffbeb", padding: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: wifi ? "#166534" : "#92400e", marginBottom: 4 }}>{wifi ? "📡 WiFi del cliente" : "⚠️ El cliente aún no eligió su WiFi"}</div>
+          {wifi && (
+            <>
+              {fila("2.4 GHz", `${wifi} 2.4G`, "w24", true)}
+              {!o.wifiSolo24 && fila("5 GHz", `${wifi} 5G`, "w5", true)}
+              {fila("Clave", o.wifiClave, "wclave", true)}
+            </>
+          )}
+        </div>
+      )}
+
+      <button type="button" onClick={() => setVerTodo((v) => !v)} style={{ marginTop: 12, border: "none", background: "none", color: "#475569", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+        {verTodo ? "▲ Ver menos" : "▼ Ver orden completa"}
+      </button>
+      {verTodo && (
+        <div style={{ marginTop: 6 }}>
+          {fila("DNI", o.dni, "dni", true)}
+          {fila("Usuario", o.usuarioNodo, "usr", true)}
+          {fila("SN ONU", o.snOnu, "sn", true)}
+          {fila("Caja NAP", o.cajaNap)}
+          {fila("Cobrar", o.montoCobrar ? `S/ ${o.montoCobrar}` : "")}
+          {fila("Autor", o.autorOrden)}
+          {fila("Creada", o.fechaCreacion)}
+          {fila("Descripción", o.descripcion)}
+        </div>
+      )}
     </div>
   );
 }
@@ -372,3 +680,6 @@ const iconBtn = { width: 34, height: 34, borderRadius: 9, border: "none", backgr
 const itemBtn = { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 14px", border: "none", borderBottom: "1px solid #f8fafc", background: "#fff", cursor: "pointer", textAlign: "left", font: "inherit" };
 const avatar = { width: 42, height: 42, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 14, fontWeight: 800 };
 const vacio = { padding: "24px 16px", textAlign: "center", fontSize: 12.5, color: "#94a3b8" };
+const chip = { display: "inline-block", fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" };
+const btnTxt = { flexShrink: 0, height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };
+const accion = { width: "100%", padding: "8px 10px", borderRadius: 9, border: "1px solid", fontSize: 13, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", textAlign: "left" };
