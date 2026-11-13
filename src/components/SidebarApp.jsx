@@ -16,6 +16,7 @@ async function cargarLeaflet() {
   return L;
 }
 import { supabase } from "../supabaseClient";
+import { esInstalacion as esInstalacionConWifi, linkWifi } from "../services/mensajesCliente";
 import logoAmericanet from "../assets/americanet-logo-new-trimmed.png";
 import { CreditCard, Trash2, XCircle, RefreshCw, Zap, MapPin, Send, FileText, Rocket, Wifi, Gift, MessageSquare, Tv, ClipboardList, ListChecks, ChevronRight, CheckCircle2, AlertTriangle, Lock, Ban } from "lucide-react";
 import { generarContratoPdf, empresaInfoContrato } from "../utils/contratoPdf.js";
@@ -4009,8 +4010,19 @@ export default function SidebarApp() {
     const nombreFmt = nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase() : "cliente";
     const fecha = payload.fecha_actuacion ? new Date(payload.fecha_actuacion + "T00:00:00").toLocaleDateString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric"}) : "";
     const esInstalacion = /instal/i.test(payload.tipo_actuacion || "");
+    // Instalacion con internet: link para que el cliente elija su WiFi (13-nov).
+    let lineaWifi = "";
+    if (esInstalacionConWifi(payload.tipo_actuacion) && payload.codigo) {
+      try {
+        const { data: w } = await supabase.from("ordenes").select("wifi_token").eq("codigo", String(payload.codigo)).order("id", { ascending: false }).limit(1).maybeSingle();
+        if (w?.wifi_token) {
+          const { data: cfgW } = await supabase.from("whatsapp_config").select("wifi_link_base").eq("empresa", String(payload.empresa || "")).maybeSingle();
+          lineaWifi = `\n\n📶 Elige el nombre y la clave de tu WiFi aquí: ${linkWifi(cfgW, w.wifi_token)}`;
+        }
+      } catch { /* sin link */ }
+    }
     const texto = esInstalacion
-      ? `📋 *NUEVA ORDEN DE SERVICIO*\n\nHola ${nombreFmt}, se ha generado una orden para la instalación de tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}\n\nGracias por confiar en nosotros. 💙`
+      ? `📋 *NUEVA ORDEN DE SERVICIO*\n\nHola ${nombreFmt}, se ha generado una orden para la instalación de tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}${lineaWifi}\n\nGracias por confiar en nosotros. 💙`
       : `🔧 *ORDEN DE INCIDENCIA*\n\nHola ${nombreFmt}, hemos registrado una orden de atención para tu servicio.\n\n*Código:* ${payload.codigo}\n*Tipo:* ${payload.tipo_actuacion}\n*Técnico:* ${payload.tecnico}\n*Fecha:* ${fecha}\n\nNos comunicaremos contigo a la brevedad. 💙`;
     await fetch(PROXY_URL, {
       method: "POST",
