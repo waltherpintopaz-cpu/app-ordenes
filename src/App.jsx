@@ -9,6 +9,7 @@ import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import ChatTecnico from "./components/ChatTecnico";
 import OrdenChat from "./components/OrdenChat";
 import ChatsPage from "./components/ChatsPage";
+import ReglasTecnicosPanel from "./components/ReglasTecnicosPanel";
 import { TPL_BIENVENIDA, LINEA_LINK_WIFI, esInstalacion, linkWifi, bloqueWifi } from "./services/mensajesCliente";
 import ReprogramarOrdenModal, { diasPorCoordinar } from "./components/ReprogramarOrdenModal";
 import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
@@ -23947,6 +23948,15 @@ export default function App() {
                       App móvil
                     </button>
                   ) : null}
+                  {esAdminSesion ? (
+                    <button
+                      type="button"
+                      onClick={() => setUsuariosPanelTab("reglas")}
+                      style={usuariosPanelTab === "reglas" ? primaryButton : secondaryButton}
+                    >
+                      Reglas técnicos
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -25002,6 +25012,7 @@ export default function App() {
               </div>
             ) : null}
 
+            {esAdminSesion && usuariosPanelTab === "reglas" ? <ReglasTecnicosPanel ordenes={ordenes} /> : null}
             {esAdminSesion && usuariosPanelTab === "app" ? (
               <div style={cardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "center", marginBottom: "16px" }}>
