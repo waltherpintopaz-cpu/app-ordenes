@@ -74,6 +74,37 @@ export default function SigueTecnicoPage() {
   const posAnt = useRef(null);
   const rumboRef = useRef(0);
   const anim = useRef(null);
+  // Ruta por calles (OSRM, gratis y sin clave). Se recalcula si el tecnico se
+  // movio mas de 60 m o paso 1.5 min; si falla, queda la linea recta.
+  const [ruta, setRuta] = useState(null);
+  const rutaDesde = useRef(null);
+  const rutaEn = useRef(0);
+  const latT = info?.lat != null ? Number(info.lat) : null;
+  const lngT = info?.lat != null ? Number(info.lng) : null;
+  const latC = info?.destino_lat != null ? Number(info.destino_lat) : null;
+  const lngC = info?.destino_lat != null ? Number(info.destino_lng) : null;
+  useEffect(() => {
+    if (latT == null || latC == null) return;
+    const desde = { lat: latT, lng: lngT };
+    if (rutaDesde.current && kmEntre(rutaDesde.current, desde) < 0.06 && Date.now() - rutaEn.current < 90000) return;
+    rutaDesde.current = desde;
+    rutaEn.current = Date.now();
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12000);
+    fetch(`https://router.project-osrm.org/route/v1/driving/${lngT},${latT};${lngC},${latC}?overview=full&geometries=geojson`, { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((j) => {
+        const r = j?.routes?.[0];
+        if (!r?.geometry?.coordinates?.length) return;
+        setRuta({
+          pts: r.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+          km: r.distance / 1000,
+          min: Math.max(1, Math.round((r.duration * 1.25) / 60)),
+        });
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(t));
+  }, [latT, lngT, latC, lngC]);
 
   useEffect(() => {
     document.title = "Sigue a tu técnico";
@@ -138,9 +169,18 @@ export default function SigueTecnicoPage() {
 
     if (casa && !marcCasa.current) marcCasa.current = L.marker([casa.lat, casa.lng], { icon: iconoCasa(m.acento) }).addTo(mapa.current);
     if (casa) {
-      const pts = [[tec.lat, tec.lng], [casa.lat, casa.lng]];
-      if (!linea.current) linea.current = L.polyline(pts, { color: m.az, weight: 4, opacity: 0.75, dashArray: "2 10", lineCap: "round" }).addTo(mapa.current);
-      else linea.current.setLatLngs(pts);
+      // Ruta por calles (OSRM) si la hay; si no, linea punteada recta.
+      if (linea.current) { linea.current.forEach((l) => l.remove()); linea.current = null; }
+      if (ruta?.pts?.length > 1) {
+        const pts = [[tec.lat, tec.lng], ...ruta.pts];
+        linea.current = [
+          L.polyline(pts, { color: "#ffffff", weight: 9, opacity: 0.9, lineCap: "round", lineJoin: "round" }).addTo(mapa.current),
+          L.polyline(pts, { color: m.az, weight: 5, opacity: 0.9, lineCap: "round", lineJoin: "round" }).addTo(mapa.current),
+        ];
+      } else {
+        linea.current = [L.polyline([[tec.lat, tec.lng], [casa.lat, casa.lng]], { color: m.az, weight: 4, opacity: 0.75, dashArray: "2 10", lineCap: "round" }).addTo(mapa.current)];
+      }
+      if (marcTec.current) marcTec.current.setZIndexOffset(1000);
     }
     if (!encuadrado.current) {
       encuadrado.current = true;
@@ -148,7 +188,7 @@ export default function SigueTecnicoPage() {
     } else if (siguiendo) {
       mapa.current.panTo([tec.lat, tec.lng], { animate: true, duration: 1.2 });
     }
-  }, [tec?.lat, tec?.lng, casa?.lat, veh, m.acento]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tec?.lat, tec?.lng, casa?.lat, veh, m.acento, ruta]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const centrar = () => {
     setSiguiendo(true);
@@ -157,11 +197,13 @@ export default function SigueTecnicoPage() {
     else mapa.current.setView([tec.lat, tec.lng], 16);
   };
 
-  const km = tec && casa ? kmEntre(tec, casa) : null;
+  const kmRecto = tec && casa ? kmEntre(tec, casa) : null;
+  // Con ruta: distancia y tiempo reales por calle (+25% por trafico). Sin ruta:
   // ~25 km/h promedio en ciudad + 3 min de margen.
-  const minutos = km != null ? Math.max(1, Math.round((km / 25) * 60) + 3) : null;
+  const km = ruta ? ruta.km : kmRecto;
+  const minutos = ruta ? ruta.min : kmRecto != null ? Math.max(1, Math.round((kmRecto / 25) * 60) + 3) : null;
   const hace = info?.actualizado ? Math.max(0, Math.round((Date.now() - new Date(info.actualizado).getTime()) / 60000)) : null;
-  const llegando = km != null && km < 0.15;
+  const llegando = kmRecto != null && kmRecto < 0.15;
   const nombreTec = String(info?.tecnico || "Tu técnico").trim();
   const primerNombre = nombreTec.split(/\s+/)[0] || "Tu técnico";
   const llegadaHora = minutos != null ? new Date(Date.now() + minutos * 60000).toLocaleTimeString("es-PE", { hour: "numeric", minute: "2-digit" }) : null;
