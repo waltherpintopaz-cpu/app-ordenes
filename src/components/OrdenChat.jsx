@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import {
   MessagesSquare, Phone, Navigation, Camera, MapPin, Send, Check, CheckCheck, Clock, CircleAlert,
   ArrowDown, Copy, Trash2, X, ChevronLeft, ChevronRight, LocateFixed, Map as MapIcon, EllipsisVertical, ExternalLink,
+  Reply, Pencil,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { marcarChatOrdenVisto } from "../services/chatOrdenesUnread";
@@ -42,6 +43,35 @@ function extraerUbicacionDeTexto(texto) {
   const titulo = String(texto).split("\n")[0].replace("📍", "").trim();
   return { lat: Number(m[1]), lng: Number(m[2]), url: m[0], titulo: titulo && !titulo.startsWith("http") ? titulo : "Ubicación" };
 }
+
+// Texto corto de un mensaje para la cita / barra "Respondiendo a".
+function resumenMensaje(m) {
+  if (!m) return "";
+  if (m.texto && extraerUbicacionDeTexto(m.texto)) return "📍 Ubicación";
+  if (m.texto) return String(m.texto).split("\n")[0];
+  if (m.foto_url) return "📷 Foto";
+  return "";
+}
+// Enlaces y celulares clicables dentro del texto (igual que la app).
+const RE_TOKENS = /(https?:\/\/[^\s]+)|((?:\+?51[\s-]?)?9\d{2}[\s-]?\d{3}[\s-]?\d{3})(?!\d)/g;
+function TextoConEnlaces({ texto, colorEnlace }) {
+  const s = String(texto || "");
+  const partes = [];
+  let ultimo = 0;
+  let m;
+  RE_TOKENS.lastIndex = 0;
+  while ((m = RE_TOKENS.exec(s))) {
+    if (m.index > ultimo) partes.push({ t: s.slice(ultimo, m.index) });
+    if (m[1]) partes.push({ t: m[1], href: m[1].replace(/[),.;]+$/, "") });
+    else { const tel = m[2].replace(/[\s-]/g, ""); partes.push({ t: m[2], href: `tel:${/^9\d{8}$/.test(tel) ? `+51${tel}` : tel}`, tel: true }); }
+    ultimo = m.index + m[0].length;
+  }
+  if (ultimo < s.length) partes.push({ t: s.slice(ultimo) });
+  return partes.map((p, i) => (p.href
+    ? <a key={i} href={p.href} target={p.tel ? undefined : "_blank"} rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: colorEnlace, textDecoration: "underline", fontWeight: 600 }}>{p.tel ? "📞 " : ""}{p.t}</a>
+    : <span key={i}>{p.t}</span>));
+}
+const REACCIONES = ["👍", "✅", "❤️", "😂", "😮", "🙏"];
 
 const RAPIDAS_TECNICO = ["Ya llegué 👍", "El cliente no está", "Falta material", "¿Me pasan la ubicación exacta?", "Terminé, voy a liquidar"];
 const RAPIDAS_OFICINA = ["¿Cómo vas?", "El cliente confirmó", "Llama al cliente, por favor", "Te paso la ubicación", "Ok, gracias 👍"];
@@ -88,6 +118,10 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const [copiado, setCopiado] = useState("");
   const [obteniendoUbicacion, setObteniendoUbicacion] = useState(false);
   const [selectorMapaAbierto, setSelectorMapaAbierto] = useState(false);
+  const [respondiendo, setRespondiendo] = useState(null);
+  const [editando, setEditando] = useState(null);
+  const [resaltado, setResaltado] = useState(null);
+  const sinRespondeARef = useRef(false);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -143,6 +177,11 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         if (norm(payload.new.autor) !== norm(autorRef.current) && !cercaRef.current) setNuevos((n) => n + 1);
         registrarLectura();
       })
+      // Editados y reacciones.
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "chat_ordenes_mensajes", filter: `orden_id=eq.${ordenId}` }, (payload) => {
+        const nuevo = payload.new;
+        if (nuevo?.id) setMensajes((prev) => prev.map((m) => (m.id === nuevo.id ? { ...m, ...nuevo } : m)));
+      })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "chat_ordenes_mensajes", filter: `orden_id=eq.${ordenId}` }, (payload) => {
         setMensajes((prev) => prev.filter((m) => m.id !== payload.old.id));
       })
@@ -161,8 +200,9 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
 
   const items = useMemo(() => [
     ...mensajes,
-    ...pendientes.map((p) => ({ id: p.tempId, texto: p.texto, foto_url: p.fotoUrl || p.fotoPreview, autor, autor_rol: autorRol, urgente: p.urgente, created_at: p.created_at, pend: p })),
+    ...pendientes.map((p) => ({ id: p.tempId, texto: p.texto, foto_url: p.fotoUrl || p.fotoPreview, autor, autor_rol: autorRol, urgente: p.urgente, responde_a: p.respondeA, created_at: p.created_at, pend: p })),
   ], [mensajes, pendientes, autor, autorRol]);
+  const porId = useMemo(() => { const m = new Map(); mensajes.forEach((x) => m.set(String(x.id), x)); return m; }, [mensajes]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -222,11 +262,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     let fotoUrl = p.fotoUrl || "";
     try {
       if (p.archivo && !fotoUrl) fotoUrl = await subirArchivo(p.archivo);
-      const { data, error } = await supabase
-        .from("chat_ordenes_mensajes")
-        .insert([{ orden_id: ordenId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}) }])
-        .select("*")
-        .single();
+      const fila = { orden_id: ordenId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}) };
+      const conCita = p.respondeA && !sinRespondeARef.current;
+      let { data, error } = await supabase.from("chat_ordenes_mensajes").insert([conCita ? { ...fila, responde_a: p.respondeA } : fila]).select("*").single();
+      // Base sin la columna responde_a (SQL aun no corrido): se manda sin cita.
+      if (error && conCita && /responde_a/i.test(String(error.message || ""))) {
+        sinRespondeARef.current = true;
+        ({ data, error } = await supabase.from("chat_ordenes_mensajes").insert([fila]).select("*").single());
+      }
       if (error || !data) throw error || new Error("Sin respuesta");
       setPendientes((prev) => prev.filter((x) => x.tempId !== p.tempId));
       setMensajes((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
@@ -238,10 +281,12 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       actualizarPend(p.tempId, { estado: "error", fotoUrl });
     }
   };
-  const encolar = ({ texto: t = "", archivo = null, urgente = false }) => {
+  const encolar = ({ texto: t = "", archivo = null, urgente = false, sinCita = false }) => {
+    const respondeA = !sinCita && respondiendo?.id && !String(respondiendo.id).startsWith("t") ? respondiendo.id : null;
+    if (!sinCita) setRespondiendo(null);
     const p = {
       tempId: `t${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente,
+      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente, respondeA,
       estado: "enviando", created_at: new Date().toISOString(),
     };
     cercaRef.current = true;
@@ -250,6 +295,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     void procesarPendiente(p);
   };
   const enviarTexto = () => {
+    if (editando) { void guardarEdicion(); return; }
     const t = texto.trim();
     if (!t) return;
     setTexto("");
@@ -269,7 +315,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     encolar({ texto: t, urgente: true });
   };
   const encolarArchivos = (files) => {
-    Array.from(files || []).filter((f) => String(f.type || "").startsWith("image/")).forEach((f) => encolar({ archivo: f }));
+    Array.from(files || []).filter((f) => String(f.type || "").startsWith("image/")).forEach((f, i) => encolar({ archivo: f, sinCita: i > 0 }));
   };
 
   const borrarMensaje = async (id) => {
@@ -281,6 +327,67 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const copiar = async (valor, etiqueta) => {
     setMenuMsgId(null);
     try { await navigator.clipboard.writeText(valor); setCopiado(etiqueta); setTimeout(() => setCopiado(""), 1500); } catch { /* sin permiso */ }
+  };
+
+  const responderA = (m) => {
+    setMenuMsgId(null);
+    if (!m || m.pend) return;
+    setEditando(null);
+    setRespondiendo(m);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  };
+  // Tocar una cita lleva al mensaje original y lo resalta un momento.
+  const irAMensaje = (id) => {
+    const el = scrollRef.current?.querySelector(`[data-msg="${id}"]`);
+    if (!el) return;
+    cercaRef.current = false;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setResaltado(String(id));
+    setTimeout(() => setResaltado((r) => (r === String(id) ? null : r)), 1600);
+  };
+  // Una reaccion por persona; la misma otra vez la quita (como WhatsApp).
+  const reaccionar = async (m, emoji) => {
+    setMenuMsgId(null);
+    if (!m || m.pend) return;
+    const yo = autorRef.current;
+    const antes = m.reacciones || {};
+    const tenia = Object.keys(antes).find((k) => (antes[k] || []).includes(yo));
+    const optimista = {};
+    Object.entries(antes).forEach(([k, v]) => { const r = (v || []).filter((u) => u !== yo); if (r.length) optimista[k] = r; });
+    if (tenia !== emoji) optimista[emoji] = [...(optimista[emoji] || []), yo];
+    setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, reacciones: optimista } : x)));
+    const { data, error } = await supabase.rpc("chat_reaccionar", { p_tabla: "chat_ordenes_mensajes", p_id: m.id, p_emoji: emoji, p_usuario: yo });
+    if (error) {
+      setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, reacciones: antes } : x)));
+      setCopiado("No se pudo reaccionar"); setTimeout(() => setCopiado(""), 1800);
+    } else if (data) {
+      setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, reacciones: data } : x)));
+    }
+  };
+  const puedeEditar = (m) => !!m && !m.pend && norm(m.autor) === norm(autor) && !!m.texto && !extraerUbicacionDeTexto(m.texto)
+    && Date.now() - new Date(m.created_at).getTime() < 5 * 60 * 1000;
+  const empezarEdicion = (m) => {
+    setMenuMsgId(null);
+    setRespondiendo(null);
+    setEditando(m);
+    setTexto(m.texto || "");
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  };
+  const cancelarEdicion = () => { setEditando(null); setTexto(""); };
+  const guardarEdicion = async () => {
+    const m = editando;
+    const t = texto.trim();
+    if (!m || !t) return;
+    setEditando(null);
+    setTexto("");
+    if (t === String(m.texto || "").trim()) return;
+    const anterior = { texto: m.texto, editado_at: m.editado_at };
+    setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, texto: t, editado_at: new Date().toISOString() } : x)));
+    const { data, error } = await supabase.rpc("chat_editar", { p_tabla: "chat_ordenes_mensajes", p_id: m.id, p_texto: t, p_autor: autorRef.current });
+    if (error || data === false) {
+      setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, ...anterior } : x)));
+      setCopiado(error ? "No se pudo editar" : "Ya pasaron 5 minutos: no se puede editar"); setTimeout(() => setCopiado(""), 2200);
+    }
   };
 
   const enviarUbicacionActual = () => {
@@ -353,12 +460,15 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             ? { position: "absolute", right: 10, bottom: ubicacion ? 40 : 10, background: "rgba(15,23,42,0.55)", color: "#fff", borderRadius: 999, padding: "3px 6px" }
             : { float: "right", margin: "6px 0 -2px 10px", color: colorHora }),
         }}>
-        {pend ? "" : horaDe(m.created_at)}
+        {pend ? "" : `${m.editado_at ? "editado · " : ""}${horaDe(m.created_at)}`}
         {esMio && <IconoEstado size={13} color={pend?.estado === "error" ? "#fca5a5" : vistos.length ? "#67e8f9" : soloMedia ? "#fff" : colorHora} />}
       </span>
     );
+    const citado = m.responde_a != null ? porId.get(String(m.responde_a)) : null;
+    const reacs = Object.entries(m.reacciones || {});
     return (
-      <div key={m.id}>
+      <div key={m.id} data-msg={m.id} style={{ borderRadius: 12, transition: "background .3s", background: resaltado === String(m.id) ? "rgba(37,99,235,0.14)" : "transparent" }}
+        onDoubleClick={() => responderA(m)}>
         {mostrarDivisorFecha && (
           <div style={{ textAlign: "center", margin: "8px 0 6px" }}>
             <span style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", background: "#e2e8f0", borderRadius: 999, padding: "2px 10px" }}>
@@ -399,6 +509,20 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                 🚨 URGENTE · aviso por WhatsApp
               </div>
             )}
+            {m.responde_a != null && (
+              <div onClick={() => citado && irAMensaje(citado.id)}
+                style={{ display: "flex", alignItems: "center", gap: 8, borderLeft: `3.5px solid ${citado ? colorParaAutor(citado.autor) : "#94a3b8"}`, borderRadius: 8, padding: "5px 8px", margin: soloMedia ? "2px 2px 4px" : "0 0 5px", minWidth: 150, cursor: citado ? "pointer" : "default", background: esMio ? "rgba(255,255,255,0.16)" : "#f1f5f9" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: esMio ? "#fff" : citado ? colorParaAutor(citado.autor) : "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {citado ? (norm(citado.autor) === norm(autor) ? "Tú" : citado.autor) : "Mensaje"}
+                  </div>
+                  <div style={{ fontSize: 12, color: esMio ? "rgba(255,255,255,0.85)" : "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {citado ? resumenMensaje(citado) : "Mensaje eliminado"}
+                  </div>
+                </div>
+                {citado?.foto_url && <img src={citado.foto_url} alt="" style={{ width: 38, height: 38, borderRadius: 6, objectFit: "cover" }} />}
+              </div>
+            )}
             {ubicacion ? (
               <a href={ubicacion.url} target="_blank" rel="noreferrer" style={{ display: "block", borderRadius: 12, overflow: "hidden", textDecoration: "none" }}>
                 <MiniMapa lat={ubicacion.lat} lng={ubicacion.lng} ancho={230} alto={110} />
@@ -408,11 +532,9 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                   <span style={{ fontSize: 12, fontWeight: 800, color: esMio ? "#bfdbfe" : "#2563eb" }}>Abrir</span>
                 </div>
               </a>
-            ) : (
-              m.texto && <span style={{ fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{m.texto}</span>
-            )}
+            ) : null}
             {m.foto_url && (
-              <div style={{ position: "relative", marginTop: m.texto ? 6 : 0 }}>
+              <div style={{ position: "relative", marginBottom: m.texto ? 5 : 0 }}>
                 <img src={m.foto_url} alt="Foto" onClick={() => { if (pend) return; const k = fotos.findIndex((f) => f.id === m.id); if (k >= 0) setVisor(k); }}
                   style={{ width: 230, height: 184, objectFit: "cover", borderRadius: 12, display: "block", cursor: pend ? "default" : "zoom-in", background: "#cbd5e1" }} />
                 {pend?.estado === "enviando" && (
@@ -421,6 +543,12 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                   </div>
                 )}
               </div>
+            )}
+            {/* Texto (o comentario de la foto, debajo de ella como en WhatsApp) */}
+            {!ubicacion && m.texto && (
+              <span style={{ fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>
+                <TextoConEnlaces texto={m.texto} colorEnlace={esMio ? "#fff" : "#1d4ed8"} />
+              </span>
             )}
             {pie}
           </div>
@@ -434,6 +562,16 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             <>
               <div onClick={() => setMenuMsgId(null)} style={{ position: "fixed", inset: 0, zIndex: 9997 }} />
               <div style={{ ...menuCaja, bottom: "100%", [esMio ? "right" : "left"]: esMio ? 0 : 30 }}>
+                <div style={{ display: "flex", gap: 2, padding: "6px 8px", borderBottom: "1px solid #f1f5f9" }}>
+                  {REACCIONES.map((emo) => (
+                    <button key={emo} type="button" onClick={() => void reaccionar(m, emo)} className="oc-reac"
+                      style={{ fontSize: 19, background: (m.reacciones?.[emo] || []).includes(autor) ? "#dbeafe" : "none", border: "none", borderRadius: 8, cursor: "pointer", padding: "2px 4px" }}>
+                      {emo}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" style={menuItem} onClick={() => responderA(m)}><Reply size={14} /> Responder</button>
+                {puedeEditar(m) && <button type="button" style={menuItem} onClick={() => empezarEdicion(m)}><Pencil size={14} /> Editar</button>}
                 {esMio && (
                   <div style={{ padding: "7px 12px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>
                     {vistos.length ? <>Visto por <b>{vistos.join(", ")}</b></> : "Aún no lo ve nadie"}
@@ -448,6 +586,18 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </>
           )}
         </div>
+        {reacs.length > 0 && (
+          <div title={reacs.map(([emo, q]) => `${emo} ${(q || []).join(", ")}`).join("\n")}
+            style={{ display: "flex", justifyContent: esMio ? "flex-end" : "flex-start", margin: esMio ? "-3px 30px 0 0" : "-3px 0 0 38px" }}>
+            <div style={{ display: "inline-flex", gap: 4, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 999, padding: "1px 7px", fontSize: 12.5, boxShadow: "0 1px 2px rgba(15,23,42,0.08)" }}>
+              {reacs.map(([emo, q]) => (
+                <span key={emo} onClick={() => void reaccionar(m, emo)} style={{ cursor: "pointer", fontWeight: 700, color: (q || []).includes(autor) ? "#2563eb" : "#475569" }}>
+                  {emo}{(q || []).length > 1 ? ` ${(q || []).length}` : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         {pend?.estado === "error" && (
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 3, fontSize: 11.5 }}>
             <span style={{ color: "#dc2626", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3 }}><CircleAlert size={13} /> No se envió</span>
@@ -528,8 +678,25 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         </div>
       )}
 
-      {!cargando && items.length > 0 && !texto && (
+      {!cargando && items.length > 0 && !texto && !respondiendo && !editando && (
         <div style={{ padding: "6px 10px", borderTop: "1px solid #e2e8f0" }}>{chipsRapidas(false)}</div>
+      )}
+
+      {(editando || respondiendo) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px 2px", background: "#fff", borderTop: "1px solid #e2e8f0" }}>
+          <div style={{ flex: 1, minWidth: 0, borderLeft: `3.5px solid ${editando ? "#f59e0b" : colorParaAutor(respondiendo.autor)}`, borderRadius: 8, background: "#f1f5f9", padding: "5px 8px" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, color: editando ? "#b45309" : colorParaAutor(respondiendo.autor) }}>
+              {editando ? "✏️ Editando mensaje" : `Respondiendo a ${norm(respondiendo.autor) === norm(autor) ? "ti" : respondiendo.autor}`}
+            </div>
+            <div style={{ fontSize: 12, color: "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {editando ? editando.texto : resumenMensaje(respondiendo)}
+            </div>
+          </div>
+          {!editando && respondiendo?.foto_url && <img src={respondiendo.foto_url} alt="" style={{ width: 38, height: 38, borderRadius: 6, objectFit: "cover" }} />}
+          <button type="button" onClick={() => (editando ? cancelarEdicion() : setRespondiendo(null))} title="Cancelar (Esc)" style={{ ...icBtn, width: 30, height: 30, background: "#f1f5f9" }}>
+            <X size={16} color="#64748b" />
+          </button>
+        </div>
       )}
 
       <style>{`
@@ -539,6 +706,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         @keyframes ocIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         .oc-in { animation: ocIn .18s ease-out; }
         .oc-chip:hover { background: #eff6ff !important; }
+        .oc-reac:hover { transform: scale(1.2); }
         .oc-ic:hover { background: #e2e8f0 !important; }
         .oc-noscroll { scrollbar-width: none; }
         .oc-noscroll::-webkit-scrollbar { display: none; }
@@ -570,7 +738,10 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           ref={textareaRef}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarTexto(); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarTexto(); }
+            if (e.key === "Escape") { if (editando) cancelarEdicion(); else setRespondiendo(null); }
+          }}
           onPaste={(e) => {
             const fs = Array.from(e.clipboardData?.files || []).filter((f) => String(f.type || "").startsWith("image/"));
             if (fs.length) { e.preventDefault(); encolarArchivos(fs); }
