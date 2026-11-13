@@ -28708,8 +28708,13 @@ export default function App() {
             {/* Resultado final — pills */}
             <div style={cardStyle}>
               <label style={{ ...labelStyle, marginBottom: "10px", display: "block" }}>Resultado final</label>
+              {/* Liquidar = trabajo hecho (Completada). Si no se termino, la orden se
+                  reprograma (boton Reprogramar) y sigue abierta. */}
+              <div style={{ fontSize: 12.5, color: "#6b21a8", background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: "8px 12px", marginBottom: 10 }}>
+                ¿No se pudo terminar? No liquides: usa <b>📅 Reprogramar</b> en la orden (otra hora, otro día o sin fecha). La orden sigue abierta.
+              </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {["Completada","Reprogramada","No se encontró al cliente","No viable","Pendiente por material"].map(v => (
+                {["Completada", ...(liquidacion.resultadoFinal && liquidacion.resultadoFinal !== "Completada" ? [liquidacion.resultadoFinal] : [])].map(v => (
                   <button
                     key={v}
                     type="button"
