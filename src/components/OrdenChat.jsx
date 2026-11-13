@@ -186,6 +186,22 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const primeraCargaRef = useRef(true);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
+  // @menciones: personas activas (tecnicos y oficina) para sugerir al escribir "@".
+  const [participantes, setParticipantes] = useState([]);
+  const [mencionQ, setMencionQ] = useState(null);
+  useEffect(() => {
+    supabase.from("usuarios").select("nombre,rol").eq("activo", true).order("nombre")
+      .then(({ data, error }) => { if (!error) setParticipantes((data || []).map((u) => String(u.nombre || "").trim()).filter(Boolean)); }, () => {});
+  }, []);
+  const mencionesDe = (t) => participantes.filter((n) => String(t || "").includes(`@${n}`));
+  const sugerenciasMencion = mencionQ == null ? [] : participantes
+    .filter((n) => norm(n) !== norm(autor) && sinTildes(n).includes(sinTildes(mencionQ)))
+    .slice(0, 6);
+  const elegirMencion = (nombre) => {
+    setTexto((prev) => prev.replace(/@([^\s@]*)$/, `@${nombre} `));
+    setMencionQ(null);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
   const fileInputRef = useRef(null);
   const cercaRef = useRef(true);
   const autorRef = useRef(autor);
@@ -421,7 +437,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     let fotoUrl = p.fotoUrl || "";
     try {
       if (p.archivo && !fotoUrl) fotoUrl = await subirArchivo(p.archivo);
-      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}), ...(p.paraCliente ? { para_cliente: true } : {}) };
+      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}), ...(p.paraCliente ? { para_cliente: true } : {}), ...(mencionesDe(p.texto).length ? { menciones: mencionesDe(p.texto) } : {}) };
       const conCita = p.respondeA && !sinRespondeARef.current;
       let { data, error } = await supabase.from(TABLA).insert([conCita ? { ...fila, responde_a: p.respondeA } : fila]).select("*").single();
       // Base sin la columna responde_a (SQL aun no corrido): se manda sin cita.
@@ -519,6 +535,15 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
   // Tocar una cita lleva al mensaje original y lo resalta un momento.
+  // 📌 Un mensaje fijado arriba del chat (el ultimo que se fijo).
+  const fijado = useMemo(() => mensajes.filter((x) => x.fijado_en).sort((a, b) => new Date(b.fijado_en) - new Date(a.fijado_en))[0] || null, [mensajes]);
+  const fijar = async (m, si) => {
+    setMenuMsgId(null);
+    const antes = mensajes;
+    setMensajes((prev) => prev.map((x) => (x.id === m.id ? { ...x, fijado_en: si ? new Date().toISOString() : null } : si ? { ...x, fijado_en: null } : x)));
+    const { error } = await supabase.rpc("chat_fijar", { p_tabla: TABLA, p_id: m.id, p_fijar: si });
+    if (error) { setMensajes(antes); alert("No se pudo fijar: " + error.message); }
+  };
   const irAMensaje = (id) => {
     const el = scrollRef.current?.querySelector(`[data-msg="${id}"]`);
     if (!el) return;
@@ -785,6 +810,19 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                 )}
               </div>
             )}
+            {(m.menciones || []).some((n) => norm(n) === norm(autor)) && !esMio && (
+              <div style={{ fontSize: 10.5, fontWeight: 800, color: "#b45309", marginBottom: 2 }}>📣 Te mencionaron</div>
+            )}
+            {!!m.audio_url && (
+              <audio controls preload="none" src={m.audio_url} style={{ display: "block", width: 250, height: 36, marginBottom: m.texto ? 4 : 0 }} />
+            )}
+            {!!m.archivo_url && (
+              <a href={m.archivo_url} target="_blank" rel="noreferrer"
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", marginBottom: 4, borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 700,
+                  background: esMio ? "rgba(255,255,255,0.18)" : "#f1f5f9", color: esMio ? "#fff" : "#1d4ed8" }}>
+                {m.archivo_tipo === "video" ? "🎬 Ver video" : "📎 Abrir archivo"}
+              </a>
+            )}
             {/* Texto (o comentario de la foto, debajo de ella como en WhatsApp) */}
             {!ubicacion && m.texto && (
               <span style={{ fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>
@@ -817,6 +855,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                   ))}
                 </div>
                 <button type="button" style={menuItem} onClick={() => responderA(m)}><Reply size={14} /> Responder</button>
+                <button type="button" style={menuItem} onClick={() => void fijar(m, !m.fijado_en)}>📌 {m.fijado_en ? "Desfijar" : "Fijar arriba"}</button>
                 {puedeEditar(m) && <button type="button" style={menuItem} onClick={() => empezarEdicion(m)}><Pencil size={14} /> Editar</button>}
                 {esMio && (
                   <div style={{ padding: "7px 12px", fontSize: 11, color: "#64748b", borderBottom: "1px solid #f1f5f9" }}>
@@ -937,6 +976,17 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         </div>
       )}
 
+      {!!fijado && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: "#fffbeb", borderBottom: "1px solid #fde68a", cursor: "pointer" }}
+          onClick={() => irAMensaje(fijado.id)} title="Ir al mensaje fijado">
+          <span style={{ fontSize: 14 }}>📌</span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "#713f12", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <b>{String(fijado.autor || "").split(" ")[0]}:</b> {String(fijado.texto || (fijado.foto_url ? "📷 Foto" : "")).split("\n")[0]}
+          </span>
+          <button type="button" onClick={(e) => { e.stopPropagation(); void fijar(fijado, false); }} title="Desfijar"
+            style={{ border: "none", background: "none", cursor: "pointer", color: "#a16207", fontSize: 14 }}>✕</button>
+        </div>
+      )}
       {cargando ? (
         <div style={{ textAlign: "center", padding: "18px 0", fontSize: 12, color: "#94a3b8", ...(llenar ? { flex: 1 } : {}) }}>Cargando…</div>
       ) : items.length === 0 ? (
@@ -1055,10 +1105,24 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </>
           )}
         </div>
+        {sugerenciasMencion.length > 0 && (
+          <div style={{ ...menuCaja, bottom: "100%", left: 8, marginBottom: 6, minWidth: 240 }}>
+            <div style={{ padding: "6px 12px", fontSize: 11, color: "#64748b", fontWeight: 700 }}>Mencionar a…</div>
+            {sugerenciasMencion.map((n) => (
+              <button key={n} type="button" style={menuItem} onMouseDown={(e) => { e.preventDefault(); elegirMencion(n); }}>@ {n}</button>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           value={texto}
-          onChange={(e) => { setTexto(e.target.value); if (e.target.value.trim()) avisarEscribiendo(); }}
+          onChange={(e) => {
+            const v = e.target.value;
+            setTexto(v);
+            if (v.trim()) avisarEscribiendo();
+            const mm = v.slice(0, e.target.selectionStart ?? v.length).match(/(?:^|\s)@([^\s@]*)$/);
+            setMencionQ(mm ? mm[1] : null);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarTexto(); }
             if (e.key === "Escape") { if (editando) cancelarEdicion(); else setRespondiendo(null); }

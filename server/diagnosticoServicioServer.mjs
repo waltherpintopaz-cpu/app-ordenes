@@ -3315,6 +3315,31 @@ const proxySmartOltRequest = async (req) => {
 // Gestoras, Instalaciones, Ordenes) -- solo reenvia model/messages/max_tokens,
 // la Authorization real con la key de OpenAI se agrega aca, nunca en el
 // navegador.
+// Audio -> texto (notas de voz de clientes que se copian al chat de la orden,
+// las manda bot-pagos-comprobante). Recibe la URL publica del audio (Chatwoot).
+const proxyOpenAiTranscribir = async (req) => {
+  if (!OPENAI_API_KEY) return { status: 500, json: { error: 'OPENAI_API_KEY no configurado en el servidor.' } };
+  const body = await readJsonBody(req);
+  const url = String(body?.url || '').trim();
+  if (!/^https?:\/\//i.test(url)) return { status: 400, json: { error: 'url requerida' } };
+  const aud = await fetchConTimeout(url, {}, 30000);
+  if (!aud.ok) return { status: 400, json: { error: 'No se pudo descargar el audio: HTTP ' + aud.status } };
+  const buf = Buffer.from(await aud.arrayBuffer());
+  if (buf.length > 24 * 1024 * 1024) return { status: 400, json: { error: 'Audio muy grande' } };
+  const tipo = aud.headers.get('content-type') || 'audio/ogg';
+  const ext = /mpeg|mp3/.test(tipo) ? 'mp3' : /mp4|m4a|aac/.test(tipo) ? 'm4a' : /wav/.test(tipo) ? 'wav' : /webm/.test(tipo) ? 'webm' : 'ogg';
+  const fd = new FormData();
+  fd.append('file', new Blob([buf], { type: tipo }), 'audio.' + ext);
+  fd.append('model', 'whisper-1');
+  fd.append('language', 'es');
+  const r = await fetchConTimeout('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + OPENAI_API_KEY }, body: fd,
+  }, 60000);
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) return { status: r.status, json: { error: json?.error?.message || 'Error OpenAI' } };
+  return { status: 200, json: { ok: true, text: String(json?.text || '').trim() } };
+};
+
 const proxyOpenAiChat = async (req) => {
   if (!OPENAI_API_KEY) {
     return { status: 500, json: { error: { message: "OPENAI_API_KEY no configurado en el servidor." } } };
@@ -3962,6 +3987,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/api/mikrowisp-nod04/NewUser") {
       const result = await proxyMikrowispNod04NewUser(req);
+      writeJson(res, result.status, result.json);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/openai/transcribir") {
+      const result = await proxyOpenAiTranscribir(req).catch((e) => ({ status: 500, json: { error: e.message || String(e) } }));
       writeJson(res, result.status, result.json);
       return;
     }

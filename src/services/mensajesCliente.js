@@ -44,3 +44,11 @@ export async function enviarTextoEvolution(cfg, numero, texto) {
   });
   return res.ok;
 }
+
+// Link publico para ver en el mapa donde va el tecnico (mismo token del WiFi).
+export const LINEA_SIGUE_TECNICO = "📍 Mira en el mapa dónde va tu técnico: {link_sigue}";
+export function linkSigue(cfg, token) {
+  if (!token) return "";
+  const base = String(cfg?.wifi_link_base || "").trim().replace(/\/$/, "") || LINK_WIFI_BASE_DEFAULT;
+  return `${base}/sigue/${token}`;
+}

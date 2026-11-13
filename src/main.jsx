@@ -29,6 +29,7 @@ const MapaVolanteoCompartidoPage = lazy(() => import("./components/MapaVolanteoC
 const MapaAveriaCompartidoPage = lazy(() => import("./components/MapaAveriaCompartidoPage.jsx"));
 const AgendarInstalacionPage = lazy(() => import("./components/AgendarInstalacionPage.jsx"));
 const WifiClientePage = lazy(() => import("./components/WifiClientePage.jsx"));
+const SigueTecnicoPage = lazy(() => import("./components/SigueTecnicoPage.jsx"));
 
 const path = window.location.pathname;
 const isSidebar = path === "/sidebar";
@@ -43,6 +44,8 @@ const isMapaAveriaCompartido = path === "/averia-mapa";
 const isAgendarInstalacion = path === "/agendar-instalacion" || path.startsWith("/agendar-instalacion/");
 // Link publico para que el cliente elija nombre/clave de su WiFi.
 const isWifiCliente = path.startsWith("/wifi/");
+// Link publico "sigue a tu tecnico" (mapa en vivo mientras va en camino).
+const isSigueTecnico = path.startsWith("/sigue/");
 
 // Fallback minimo mientras carga el chunk de la ruta (App y las paginas
 // compartidas). El sidebar no pasa por aca -- es estatico, ya esta listo.
@@ -62,6 +65,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           : isMapaAveriaCompartido ? <MapaAveriaCompartidoPage />
           : isAgendarInstalacion ? <AgendarInstalacionPage />
           : isWifiCliente ? <WifiClientePage />
+          : isSigueTecnico ? <SigueTecnicoPage />
           : <App />}
       </Suspense>
     )}

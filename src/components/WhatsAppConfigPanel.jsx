@@ -18,6 +18,7 @@ const VARIABLES = [
   { key: "{wifi}", desc: "Redes 2.4G/5G y clave que eligió el cliente (bienvenida)" },
   { key: "{plan}", desc: "Plan contratado (bienvenida)" },
   { key: "{llegada}", desc: "Hora aprox. de llegada (en camino)" },
+  { key: "{link_sigue}", desc: "Link para ver en el mapa dónde va el técnico (en camino; si no lo pones, se agrega al final)" },
 ];
 
 const TIPOS = [
@@ -93,7 +94,8 @@ function previewMsg(tpl, empresa) {
     .replace(/{link_wifi}/g, "https://…/wifi/abc123")
     .replace(/{wifi}/g, "📶 Maria 2.4G — llega más lejos\n📶 Maria 5G — más rápida\n🔑 Clave: maria2026\n")
     .replace(/{plan}/g, "🚀 Plan: 200 Mbps\n")
-    .replace(/{llegada}/g, " y llega aprox. a las 10:30");
+    .replace(/{llegada}/g, " y llega aprox. a las 10:30")
+    .replace(/{link_sigue}/g, "https://…/sigue/abc123");
 }
 
 export default function WhatsAppConfigPanel() {
