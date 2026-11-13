@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { esperandoClienteDesde } from "../services/chatCliente";
 import { getUltimoVisto, sincronizarVistosOrdenes, guardarLecturaOrdenRemota } from "../services/chatOrdenesUnread";
 import { getUltimoVistoTecnico, sincronizarVistosTecnicos, guardarLecturaTecnicoRemota } from "../services/chatTecnicosUnread";
 
@@ -37,7 +38,7 @@ export default function useChatsRecientes({ ordenes, tecnicos, autor, onNuevo })
         const porId = new Map(listaOrdenes.map((o) => [String(o.id), o]));
         const { data, error } = await supabase
           .from("chat_ordenes_mensajes")
-          .select("id,orden_id,texto,foto_url,autor,created_at")
+          .select("id,orden_id,texto,foto_url,autor,autor_rol,created_at")
           .order("created_at", { ascending: false })
           .limit(500);
         if (!error) {
@@ -54,6 +55,7 @@ export default function useChatsRecientes({ ordenes, tecnicos, autor, onNuevo })
               titulo: `${ordenInfo?.codigo || "Orden"} · ${ordenInfo?.nombre || "Cliente"}`,
               sub: ordenInfo?.tecnico ? `Técnico: ${ordenInfo.tecnico}` : "",
               count: contar(msgs, getUltimoVisto(ordenId)), ultimo: msgs[0],
+              esperandoDesde: esperandoClienteDesde(msgs),
             });
           }
         }

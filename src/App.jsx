@@ -9,6 +9,7 @@ import ConsultaApiPanel from "./components/ConsultaApiPanel";
 import ChatTecnico from "./components/ChatTecnico";
 import OrdenChat from "./components/OrdenChat";
 import ChatsPage from "./components/ChatsPage";
+import { TPL_BIENVENIDA, LINEA_LINK_WIFI, esInstalacion, linkWifi, bloqueWifi } from "./services/mensajesCliente";
 import ReprogramarOrdenModal, { diasPorCoordinar } from "./components/ReprogramarOrdenModal";
 import ChatOrdenesFlotante from "./components/ChatOrdenesFlotante";
 import ClienteChatHistorial from "./components/ClienteChatHistorial";
@@ -11593,9 +11594,22 @@ export default function App() {
         const tipoOrden = tipoOrdenRaw || "INSTALACIÓN";
         const resultadoFinal = String(ordenData._resultadoFinal || "").trim();
         let tpl = waCfg.template_instalacion || "";
+        // Instalacion: datos del WiFi que eligio el cliente (link /wifi/<token>).
+        const esInst = esInstalacion(tipoOrdenRaw || "INSTALACION");
+        let filaWifi = null;
+        if (esInst && (tipo === "nueva_orden" || tipo === "liquidacion")) {
+          try {
+            const q = supabase.from("ordenes").select("wifi_token,wifi_nombre,wifi_clave,wifi_solo_24");
+            const { data } = ordenData.id ? await q.eq("id", Number(ordenData.id)).maybeSingle()
+              : ordenData.codigo ? await q.eq("codigo", String(ordenData.codigo)).maybeSingle() : { data: null };
+            filaWifi = data || null;
+          } catch { filaWifi = null; }
+        }
         if (tipo === "liquidacion") {
           if (resultadoFinal && resultadoFinal !== "Completada") {
             tpl = waCfg.template_sin_completar || "";
+          } else if (esInst) {
+            tpl = String(waCfg.template_bienvenida || "").trim() || TPL_BIENVENIDA;
           } else {
             tpl = waCfg.template_liquidacion || "";
           }
@@ -11603,7 +11617,14 @@ export default function App() {
         else if (tipoOrden.includes("RECUP") || tipoOrden.includes("RECOJ")) tpl = waCfg.template_recuperacion || "";
         if (!tpl.trim()) return;
 
+        if (tipo === "nueva_orden" && esInst && filaWifi?.wifi_token && !tpl.includes("{link_wifi}")) {
+          tpl = `${tpl.trim()}\n\n${LINEA_LINK_WIFI}`;
+        }
+        const velocidadPlan = String(ordenData.velocidad || "").trim();
         const message = tpl
+          .replace(/{link_wifi}/g, linkWifi(waCfg, filaWifi?.wifi_token))
+          .replace(/{wifi}/g, bloqueWifi({ wifiNombre: filaWifi?.wifi_nombre, wifiClave: filaWifi?.wifi_clave, wifiSolo24: filaWifi?.wifi_solo_24 }))
+          .replace(/{plan}/g, velocidadPlan ? `🚀 Plan: ${velocidadPlan}\n` : "")
           .replace(/{nombre}/g, ordenData.nombre || "")
           .replace(/{codigo}/g, ordenData.codigo || "")
           .replace(/{empresa}/g, empresa)

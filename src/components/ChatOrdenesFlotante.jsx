@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, ExternalLink } from "lucide-react";
 import { abrirVentanaChats } from "./ChatsPage";
 import { supabase } from "../supabaseClient";
+import { esperandoClienteDesde, minutosEsperando, MIN_ESPERA_CLIENTE } from "../services/chatCliente";
 import { getUltimoVisto, sincronizarVistosOrdenes, guardarLecturaOrdenRemota } from "../services/chatOrdenesUnread";
 import { getUltimoVistoTecnico, sincronizarVistosTecnicos, guardarLecturaTecnicoRemota } from "../services/chatTecnicosUnread";
 
@@ -45,6 +46,8 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [soloNoLeidos, setSoloNoLeidos] = useState(false);
+  const [ahoraFab, setAhoraFab] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setAhoraFab(Date.now()), 30000); return () => clearInterval(t); }, []);
   const [chats, setChats] = useState([]);
   const [cargando, setCargando] = useState(false);
   const ordenesRef = useRef(ordenes);
@@ -78,7 +81,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
         const idsSet = new Set(listaOrdenes.map((o) => String(o.id)));
         const { data, error } = await supabase
           .from("chat_ordenes_mensajes")
-          .select("id,orden_id,texto,foto_url,autor,created_at")
+          .select("id,orden_id,texto,foto_url,autor,autor_rol,created_at")
           .order("created_at", { ascending: false })
           .limit(300);
         if (error) {
@@ -101,7 +104,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
             resultado.push({
               tipo: "orden", key: `orden-${ordenId}`, ordenId,
               titulo: `${ordenInfo?.codigo || ""} · ${ordenInfo?.nombre || "Cliente"}`,
-              count: noLeidos, ultimo: msgs[0], ordenInfo,
+              count: noLeidos, ultimo: msgs[0], ordenInfo, esperandoDesde: esperandoClienteDesde(msgs),
             });
           }
         }
@@ -195,6 +198,7 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
   }, [autor, recalcular]);
 
   const totalNoLeidos = chats.reduce((s, it) => s + it.count, 0);
+  const clientesEsperando = chats.filter((c) => c.esperandoDesde && minutosEsperando(c.esperandoDesde, ahoraFab) >= MIN_ESPERA_CLIENTE).length;
 
   // Buscador: filtra al instante por codigo de orden, cliente, tecnico,
   // direccion o texto del ultimo mensaje (sin tildes ni mayusculas; varias
@@ -261,6 +265,14 @@ export default function ChatOrdenesFlotante({ ordenes, tecnicos, tecnicosDirecto
             boxShadow: "0 2px 6px rgba(0,0,0,0.25)", animation: "chatFabBadgePop .3s cubic-bezier(.34,1.56,.64,1)",
           }}>
             {totalNoLeidos > 99 ? "99+" : totalNoLeidos}
+          </span>
+        )}
+        {clientesEsperando > 0 && (
+          <span title="Clientes que escribieron hace más de 10 minutos y nadie les contestó" style={{
+            position: "absolute", right: 62, top: 14, whiteSpace: "nowrap", background: "#dc2626", color: "#fff",
+            fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "4px 10px", boxShadow: "0 2px 8px rgba(220,38,38,0.4)",
+          }}>
+            ⏰ {clientesEsperando} cliente{clientesEsperando === 1 ? "" : "s"} sin respuesta
           </span>
         )}
       </button>

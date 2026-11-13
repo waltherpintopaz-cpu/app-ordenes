@@ -28,6 +28,7 @@ const SeguimientoCompartidoPage = lazy(() => import("./components/SeguimientoCom
 const MapaVolanteoCompartidoPage = lazy(() => import("./components/MapaVolanteoCompartidoPage.jsx"));
 const MapaAveriaCompartidoPage = lazy(() => import("./components/MapaAveriaCompartidoPage.jsx"));
 const AgendarInstalacionPage = lazy(() => import("./components/AgendarInstalacionPage.jsx"));
+const WifiClientePage = lazy(() => import("./components/WifiClientePage.jsx"));
 
 const path = window.location.pathname;
 const isSidebar = path === "/sidebar";
@@ -40,6 +41,8 @@ const isMapaAveriaCompartido = path === "/averia-mapa";
 // del usuario, 2026-10-26: el link con "?conv=...&tel=...&tok=..." se veia
 // largo y sospechoso, tipo phishing).
 const isAgendarInstalacion = path === "/agendar-instalacion" || path.startsWith("/agendar-instalacion/");
+// Link publico para que el cliente elija nombre/clave de su WiFi.
+const isWifiCliente = path.startsWith("/wifi/");
 
 // Fallback minimo mientras carga el chunk de la ruta (App y las paginas
 // compartidas). El sidebar no pasa por aca -- es estatico, ya esta listo.
@@ -58,6 +61,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           : isMapaVolanteoCompartido ? <MapaVolanteoCompartidoPage />
           : isMapaAveriaCompartido ? <MapaAveriaCompartidoPage />
           : isAgendarInstalacion ? <AgendarInstalacionPage />
+          : isWifiCliente ? <WifiClientePage />
           : <App />}
       </Suspense>
     )}

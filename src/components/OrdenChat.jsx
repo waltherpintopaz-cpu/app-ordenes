@@ -6,6 +6,7 @@ import {
   ArrowDown, Copy, Trash2, X, ChevronLeft, ChevronRight, LocateFixed, Map as MapIcon, EllipsisVertical, ExternalLink,
   Reply, Pencil, Search, Images, Smile, Download, ChevronUp, ChevronDown, ZoomIn,
 } from "lucide-react";
+import { enviarAlClienteViaBot, RAPIDAS_CLIENTE_TECNICO, RAPIDAS_CLIENTE_OFICINA } from "../services/chatCliente";
 import { supabase } from "../supabaseClient";
 import { marcarChatOrdenVisto, getUltimoVisto } from "../services/chatOrdenesUnread";
 import { marcarChatTecnicoVisto, getUltimoVistoTecnico } from "../services/chatTecnicosUnread";
@@ -23,6 +24,8 @@ const ROLES = {
   administrador: { t: "Admin", c: "#7c3aed", bg: "#f3e8ff" },
   gestora: { t: "Gestora", c: "#be185d", bg: "#fce7f3" },
   tecnico: { t: "Técnico", c: "#0f766e", bg: "#ccfbf1" },
+  cliente: { t: "Cliente · WhatsApp", c: "#15803d", bg: "#dcfce7" },
+  chatwoot: { t: "Gestor · Chatwoot", c: "#1d4ed8", bg: "#dbeafe" },
 };
 const sinTildes = (s) => norm(s).normalize("NFD").replace(/[̀-ͯ]/g, "");
 function rolInfo(r) {
@@ -184,7 +187,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const pinRef = useRef(UBICACION_DEFAULT);
 
   const esTecnico = sinTildes(autorRol) === "tecnico";
-  const rapidas = esHilo ? (esTecnico ? RAPIDAS_HILO_TECNICO : RAPIDAS_HILO_OFICINA) : (esTecnico ? RAPIDAS_TECNICO : RAPIDAS_OFICINA);
+  const rapidasInternas = esHilo ? (esTecnico ? RAPIDAS_HILO_TECNICO : RAPIDAS_HILO_OFICINA) : (esTecnico ? RAPIDAS_TECNICO : RAPIDAS_OFICINA);
+  // "📲 También al cliente": lo escrito sale ademas por WhatsApp al cliente
+  // de la orden (lo manda el bot por Chatwoot, queda en su conversacion).
+  const tel9Cliente = !esHilo ? String(orden?.celular || "").replace(/\D/g, "").slice(-9) : "";
+  const puedeCliente = tel9Cliente.length === 9;
+  const [alCliente, setAlCliente] = useState(false);
+  const nombreClienteCorto = String(orden?.nombre || "").trim().split(/\s+/).slice(0, 2).join(" ") || "Cliente";
+  const rapidas = alCliente && puedeCliente ? (esTecnico ? RAPIDAS_CLIENTE_TECNICO : RAPIDAS_CLIENTE_OFICINA) : rapidasInternas;
 
   // Boton 🚨 Urgente (igual que la app): solo si las alertas estan activas
   // (alertas_whatsapp_config). Oficina -> WhatsApp + alarma al tecnico;
@@ -380,7 +390,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     let fotoUrl = p.fotoUrl || "";
     try {
       if (p.archivo && !fotoUrl) fotoUrl = await subirArchivo(p.archivo);
-      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}) };
+      const fila = { [COL]: claveId, texto: p.texto || null, foto_url: fotoUrl || null, autor: autor || "—", autor_rol: autorRol || null, ...(p.urgente ? { urgente: true } : {}), ...(p.paraCliente ? { para_cliente: true } : {}) };
       const conCita = p.respondeA && !sinRespondeARef.current;
       let { data, error } = await supabase.from(TABLA).insert([conCita ? { ...fila, responde_a: p.respondeA } : fila]).select("*").single();
       // Base sin la columna responde_a (SQL aun no corrido): se manda sin cita.
@@ -391,6 +401,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       if (error || !data) throw error || new Error("Sin respuesta");
       setPendientes((prev) => prev.filter((x) => x.tempId !== p.tempId));
       setMensajes((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
+      if (data.para_cliente) void enviarAlClienteViaBot(data.id);
       void notificarMensajeChat(supabase, {
         hiloTecnico, ordenId, ordenCodigo: ordenCodigo || orden?.codigo, tecnicoOrden: tecnicoAsignado || orden?.tecnico,
         autor, autorRol, texto: data.texto, fotoUrl: data.foto_url, urgente: !!data.urgente,
@@ -399,12 +410,12 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       actualizarPend(p.tempId, { estado: "error", fotoUrl });
     }
   };
-  const encolar = ({ texto: t = "", archivo = null, urgente = false, sinCita = false }) => {
+  const encolar = ({ texto: t = "", archivo = null, urgente = false, sinCita = false, paraCliente = alCliente && puedeCliente }) => {
     const respondeA = !sinCita && respondiendo?.id && !String(respondiendo.id).startsWith("t") ? respondiendo.id : null;
     if (!sinCita) setRespondiendo(null);
     const p = {
       tempId: `t${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente, respondeA,
+      texto: t, archivo, fotoPreview: archivo ? URL.createObjectURL(archivo) : "", fotoUrl: "", urgente, respondeA, paraCliente: !!paraCliente,
       estado: "enviando", created_at: new Date().toISOString(),
     };
     cercaRef.current = true;
@@ -587,6 +598,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     const mostrarDivisorFecha = !prev || !mismoDiaQuePrev;
     const colorAutor = colorParaAutor(m.autor);
     const rol = rolInfo(m.autor_rol);
+    const esCliente = sinTildes(m.autor_rol) === "cliente";
     const ubicacion = m.texto ? extraerUbicacionDeTexto(m.texto) : null;
     const pend = m.pend;
     const vistos = esMio && !pend ? vistoPor(m) : [];
@@ -602,6 +614,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             ? { position: "absolute", right: 10, bottom: ubicacion ? 40 : 10, background: "rgba(15,23,42,0.55)", color: "#fff", borderRadius: 999, padding: "3px 6px" }
             : { float: "right", margin: "6px 0 -2px 10px", color: colorHora }),
         }}>
+        {(!!m.para_cliente || !!pend?.paraCliente) && (
+          <span
+            onClick={m.envio_cliente_error && !pend ? (e) => { e.stopPropagation(); void enviarAlClienteViaBot(m.id); } : undefined}
+            title={m.envio_cliente_error ? `No llegó al cliente: ${m.envio_cliente_error}. Clic para reintentar.` : "También enviado al cliente por WhatsApp"}
+            style={{ fontWeight: 700, cursor: m.envio_cliente_error ? "pointer" : "default", color: m.envio_cliente_error ? (esMio ? "#fecaca" : "#dc2626") : undefined }}>
+            {m.enviado_cliente_en ? "📲 al cliente ·" : m.envio_cliente_error ? "⚠️ no llegó al cliente (reintentar) ·" : "📲 enviando al cliente… ·"}
+          </span>
+        )}
         {pend ? "" : `${m.editado_at ? "editado · " : ""}${horaDe(m.created_at)}`}
         {esMio && <IconoEstado size={13} color={pend?.estado === "error" ? "#fca5a5" : vistos.length ? "#67e8f9" : soloMedia ? "#fff" : colorHora} />}
       </span>
@@ -647,14 +667,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           )}
           <div style={{
             position: "relative", maxWidth: "78%", color: esMio ? "#fff" : "#0f172a",
-            background: m.urgente ? (esMio ? "#dc2626" : "#fef2f2") : esMio ? "#2563eb" : "#fff",
-            border: m.urgente && !esMio ? "1.5px solid #fca5a5" : esMio ? "none" : "1px solid #e2e8f0", borderRadius: 16, padding: soloMedia ? 4 : "7px 10px 6px",
+            background: m.urgente ? (esMio ? "#dc2626" : "#fef2f2") : esMio ? "#2563eb" : esCliente ? "#f0fdf4" : "#fff",
+            border: m.urgente && !esMio ? "1.5px solid #fca5a5" : esMio ? "none" : esCliente ? "1.5px solid #86efac" : "1px solid #e2e8f0", borderRadius: 16, padding: soloMedia ? 4 : "7px 10px 6px",
             borderBottomRightRadius: esMio && inicioDeGrupo ? 4 : 16, borderBottomLeftRadius: !esMio && inicioDeGrupo ? 4 : 16,
             boxShadow: "0 1px 2px rgba(15,23,42,0.06)", opacity: pend?.estado === "error" ? 0.6 : 1,
           }}>
             {!esMio && inicioDeGrupo && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, padding: soloMedia ? "4px 6px 2px" : 0 }}>
-                <span style={{ fontSize: 11.5, fontWeight: 800, color: colorAutor }}>{m.autor}</span>
+                <span style={{ fontSize: 11.5, fontWeight: 800, color: esCliente ? "#15803d" : colorAutor }}>{esCliente ? `👤 ${nombreClienteCorto}` : m.autor}</span>
                 {rol && <span style={{ fontSize: 9.5, fontWeight: 800, color: rol.c, background: rol.bg, borderRadius: 999, padding: "1px 6px" }}>{rol.t}</span>}
               </div>
             )}
@@ -913,7 +933,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         .oc-spin { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.35); border-top-color: #fff; animation: ocSpin .8s linear infinite; }
       `}</style>
 
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: 8, background: "#fff", borderTop: "1px solid #e2e8f0", position: "relative" }}>
+      {puedeCliente && !editando && (
+        <label style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 12px", borderTop: `1px solid ${alCliente ? "#86efac" : "#e2e8f0"}`, background: alCliente ? "#dcfce7" : "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 700, color: alCliente ? "#14532d" : "#475569", userSelect: "none" }}>
+          <input type="checkbox" checked={alCliente} onChange={(e) => setAlCliente(e.target.checked)} />
+          <span style={{ color: "#16a34a" }}>●</span>
+          {alCliente ? `Escribiendo también al CLIENTE por WhatsApp (${nombreClienteCorto})` : "También al cliente por WhatsApp"}
+        </label>
+      )}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: 8, background: alCliente && puedeCliente ? "#f0fdf4" : "#fff", borderTop: "1px solid #e2e8f0", position: "relative" }}>
         <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }}
           onChange={(e) => { const fs = e.target.files; encolarArchivos(fs); e.target.value = ""; }} />
         <button type="button" className="oc-ic" onClick={() => fileInputRef.current?.click()} title="Mandar foto (también puedes pegarla o arrastrarla)" style={icBtn}>
@@ -961,7 +988,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             const fs = Array.from(e.clipboardData?.files || []).filter((f) => String(f.type || "").startsWith("image/"));
             if (fs.length) { e.preventDefault(); encolarArchivos(fs); }
           }}
-          placeholder="Escribe un mensaje…"
+          placeholder={alCliente && puedeCliente ? "Mensaje para el cliente…" : "Escribe un mensaje…"}
           rows={1}
           style={{ flex: 1, padding: "9px 14px", border: "none", background: "#f1f5f9", borderRadius: 20, fontSize: 13.5, fontFamily: "inherit", resize: "none", outline: "none", lineHeight: "18px", minHeight: 36, maxHeight: 96, boxSizing: "border-box" }}
         />

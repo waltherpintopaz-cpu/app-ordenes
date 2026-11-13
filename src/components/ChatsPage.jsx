@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessagesSquare, Search, X, ArrowLeft, Plus, ExternalLink, LayoutDashboard, Bell, BellOff } from "lucide-react";
 import OrdenChat from "./OrdenChat";
 import useChatsRecientes from "../hooks/useChatsRecientes";
+import { MIN_ESPERA_CLIENTE, minutosEsperando } from "../services/chatCliente";
 
 // Pagina "Chats" (ruta /chats), estilo WhatsApp Web: lista de chats a la
 // izquierda, conversacion a la derecha. Pensada para tenerla abierta en una
@@ -76,6 +77,11 @@ export function abrirVentanaChats(chatKey) {
 export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor, autorRol, empresa }) {
   const [busqueda, setBusqueda] = useState("");
   const [soloNoLeidos, setSoloNoLeidos] = useState(false);
+  // Cliente esperando respuesta >10 min: se resalta en rojo y avisa 1 vez.
+  const [ahora, setAhora] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 30000); return () => clearInterval(t); }, []);
+  const [soloEsperando, setSoloEsperando] = useState(false);
+  const avisadosEsperaRef = useRef(new Set());
   const [nuevoChat, setNuevoChat] = useState(false);
   const [seleccion, setSeleccion] = useState(leerChatUrl);
   const [ancho, setAncho] = useState(() => window.innerWidth);
@@ -118,15 +124,35 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
   useEffect(() => { recalcular(); }, [seleccion, recalcular]);
 
   const total = chats.reduce((s, c) => s + c.count, 0);
+  const esperaMin = (c) => (c.esperandoDesde ? minutosEsperando(c.esperandoDesde, ahora) : -1);
+  const esperandoLista = chats.filter((c) => esperaMin(c) >= MIN_ESPERA_CLIENTE);
+  useEffect(() => {
+    for (const c of esperandoLista) {
+      const clave = `${c.key}|${c.esperandoDesde}`;
+      if (avisadosEsperaRef.current.has(clave)) continue;
+      avisadosEsperaRef.current.add(clave);
+      beep();
+      try {
+        if ("Notification" in window && Notification.permission === "granted") {
+          const n = new Notification(`⏰ Cliente sin respuesta · ${c.ordenInfo?.codigo || ""}`, {
+            body: `${c.ordenInfo?.nombre || "El cliente"} escribió hace ${esperaMin(c)} min y nadie le contestó.`,
+            tag: `espera:${c.key}`,
+          });
+          n.onclick = () => { window.focus(); setSeleccion(c.key); n.close(); };
+        }
+      } catch { /* sin notificaciones */ }
+    }
+  }, [esperandoLista.map((c) => c.key).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     document.title = `${total > 0 ? `(${total}) ` : ""}Chats${empresa ? ` · ${empresa}` : ""}`;
   }, [total, empresa]);
 
   const terminos = plano(busqueda).split(/\s+/).filter(Boolean);
   const coincide = (...c) => !terminos.length || terminos.every((w) => plano(c.filter(Boolean).join(" ")).includes(w));
-  const lista = useMemo(() => chats.filter((c) => (!soloNoLeidos || c.count > 0)
+  const lista = useMemo(() => chats.filter((c) => (!soloNoLeidos || c.count > 0) && (!soloEsperando || esperaMin(c) >= MIN_ESPERA_CLIENTE)
     && coincide(c.titulo, c.sub, c.tecnicoNombre, c.ordenInfo?.codigo, c.ordenInfo?.nombre, c.ordenInfo?.tecnico,
-      c.ordenInfo?.direccion, c.ordenInfo?.celular, c.ultimo?.texto, c.ultimo?.autor)), [chats, soloNoLeidos, busqueda]);
+      c.ordenInfo?.direccion, c.ordenInfo?.celular, c.ultimo?.texto, c.ultimo?.autor))
+    .sort((a, b) => (esperaMin(b) >= MIN_ESPERA_CLIENTE) - (esperaMin(a) >= MIN_ESPERA_CLIENTE)), [chats, soloNoLeidos, soloEsperando, busqueda, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
   const directorio = (Array.isArray(tecnicosDirectorio) ? tecnicosDirectorio : []).filter((t) => coincide(t.nombre));
 
   // Chat seleccionado: puede no estar en la lista (sin mensajes aun o
@@ -222,6 +248,13 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                 No leídos{total > 0 ? ` · ${chats.filter((c) => c.count > 0).length}` : ""}
               </button>
             </div>
+            {esperandoLista.length > 0 && (
+              <button type="button" onClick={() => setSoloEsperando((v) => !v)}
+                style={{ marginTop: 8, width: "100%", padding: "7px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 800, textAlign: "left",
+                  background: soloEsperando ? "#dc2626" : "#fef2f2", color: soloEsperando ? "#fff" : "#b91c1c", border: "1px solid #fca5a5" }}>
+                ⏰ {esperandoLista.length} cliente{esperandoLista.length === 1 ? "" : "s"} sin respuesta hace +{MIN_ESPERA_CLIENTE} min{soloEsperando ? " · ver todos" : " · ver"}
+              </button>
+            )}
             {directorio.length > 0 && (
               <button type="button" onClick={() => setNuevoChat((v) => !v)} className="cp-btn"
                 style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 8px", border: "none", borderRadius: 8, background: nuevoChat ? "#eff6ff" : "transparent", color: "#2563eb", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>
@@ -268,6 +301,12 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                       {c.count > 0 && <span style={{ flexShrink: 0, minWidth: 20, height: 20, borderRadius: 10, padding: "0 6px", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{c.count}</span>}
                     </span>
                     {!!c.sub && !esTec && <span style={{ display: "block", fontSize: 11, color: "#94a3b8", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.sub}</span>}
+                    {esperaMin(c) >= 0 && (
+                      <span style={{ display: "inline-block", marginTop: 3, fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 8px",
+                        background: esperaMin(c) >= MIN_ESPERA_CLIENTE ? "#dc2626" : "#dcfce7", color: esperaMin(c) >= MIN_ESPERA_CLIENTE ? "#fff" : "#15803d" }}>
+                        {esperaMin(c) >= MIN_ESPERA_CLIENTE ? `⏰ Cliente espera hace ${esperaMin(c)} min` : "👤 Cliente escribió · responder"}
+                      </span>
+                    )}
                   </span>
                 </button>
               );

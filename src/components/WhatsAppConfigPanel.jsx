@@ -14,6 +14,10 @@ const VARIABLES = [
   { key: "{resultado}", desc: "Resultado de la liquidación (Reprogramada, No se encontró, etc.)" },
   { key: "{hora}", desc: "Hora nueva (al reprogramar)" },
   { key: "{motivo}", desc: "Motivo de la reprogramación" },
+  { key: "{link_wifi}", desc: "Link para que el cliente elija su WiFi (instalación)" },
+  { key: "{wifi}", desc: "Redes 2.4G/5G y clave que eligió el cliente (bienvenida)" },
+  { key: "{plan}", desc: "Plan contratado (bienvenida)" },
+  { key: "{llegada}", desc: "Hora aprox. de llegada (en camino)" },
 ];
 
 const TIPOS = [
@@ -25,6 +29,8 @@ const TIPOS = [
   // Se envian desde el boton "Reprogramar" (app del tecnico y panel).
   { key: "template_reprogramada", label: "Reprogramada", color: "#7c3aed", bg: "#faf5ff", dot: "#d8b4fe" },
   { key: "template_por_coordinar", label: "Por coordinar (sin fecha)", color: "#6b21a8", bg: "#faf5ff", dot: "#e9d5ff" },
+  { key: "template_en_camino", label: "Técnico en camino", color: "#0e7490", bg: "#ecfeff", dot: "#a5f3fc" },
+  { key: "template_bienvenida", label: "Bienvenida (instalación)", color: "#15803d", bg: "#f0fdf4", dot: "#bbf7d0" },
   { key: "template_llegada", label: "Llegada del técnico", color: "#0891b2", bg: "#ecfeff", dot: "#67e8f9" },
   { key: "template_llegada_interno", label: "Llegada — aviso interno", color: "#475569", bg: "#f1f5f9", dot: "#94a3b8" },
   // Estos 2 no se disparan solos al crear/liquidar una orden -- se mandan a
@@ -48,6 +54,8 @@ const defaultConfig = (emp) => ({
   template_sin_completar: "Estimado/a {nombre}, su orden #{codigo} no pudo completarse en esta visita. Motivo: {resultado}. Nos comunicaremos para reagendar. — {empresa}",
   template_reprogramada: "Hola {nombre}, tu visita de {empresa} (orden #{codigo}) quedó reprogramada para el {fecha} a las {hora}. Si necesitas cambiarla, escríbenos a este número. — {empresa}",
   template_por_coordinar: "Hola {nombre}, tu visita de {empresa} (orden #{codigo}) quedó en pausa como nos indicaste. Cuando tengas una fecha, escríbenos a este número y te la agendamos. — {empresa}",
+  template_en_camino: "Hola {nombre} 👋 Tu técnico {tecnico} de {empresa} ya va en camino{llegada} 🛵",
+  template_bienvenida: "¡Listo {nombre}! 🎉 Tu internet de {empresa} ya está instalado.\n{plan}{wifi}\nSi tienes algún problema, escríbenos a este número. ¡Gracias por elegirnos! 💙",
   template_llegada: "Hola {nombre}, su técnico {tecnico} de {empresa} ya llegó para su visita (orden #{codigo}). 🚐",
   template_llegada_interno: "📍 Llegada confirmada — Técnico {tecnico} en orden #{codigo} ({nombre}, {direccion}).",
   template_suspendido: "Hola {nombre}, notamos que tu servicio de internet está suspendido. Si ya realizaste el pago, coméntanos para reactivarlo; si no, puedes regularizarlo cuando gustes. Cualquier consulta estamos a tu disposición. 💙 — {empresa}",
@@ -81,7 +89,11 @@ function previewMsg(tpl, empresa) {
     .replace(/{direccion}/g, "Av. Principal 123")
     .replace(/{resultado}/g, "Reprogramada")
     .replace(/{hora}/g, "10:00")
-    .replace(/{motivo}/g, "Cliente pidió");
+    .replace(/{motivo}/g, "Cliente pidió")
+    .replace(/{link_wifi}/g, "https://…/wifi/abc123")
+    .replace(/{wifi}/g, "📶 Maria 2.4G — llega más lejos\n📶 Maria 5G — más rápida\n🔑 Clave: maria2026\n")
+    .replace(/{plan}/g, "🚀 Plan: 200 Mbps\n")
+    .replace(/{llegada}/g, " y llega aprox. a las 10:30");
 }
 
 export default function WhatsAppConfigPanel() {
