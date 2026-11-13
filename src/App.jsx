@@ -11604,9 +11604,16 @@ export default function App() {
         let filaWifi = null;
         if (esInst && (tipo === "nueva_orden" || tipo === "liquidacion")) {
           try {
-            const q = supabase.from("ordenes").select("wifi_token,wifi_nombre,wifi_clave,wifi_solo_24");
-            const { data } = ordenData.id ? await q.eq("id", Number(ordenData.id)).maybeSingle()
-              : ordenData.codigo ? await q.eq("codigo", String(ordenData.codigo)).maybeSingle() : { data: null };
+            // Por CODIGO primero: al crear, ordenData.id es temporal (Date.now()) y
+            // no existe en la base -> el link del WiFi no salia (bug 13-nov).
+            const sel = "wifi_token,wifi_nombre,wifi_clave,wifi_solo_24";
+            let data = null;
+            if (ordenData.codigo) {
+              ({ data } = await supabase.from("ordenes").select(sel).eq("codigo", String(ordenData.codigo)).order("id", { ascending: false }).limit(1).maybeSingle());
+            }
+            if (!data && ordenData.id && Number(ordenData.id) < 1e12) {
+              ({ data } = await supabase.from("ordenes").select(sel).eq("id", Number(ordenData.id)).maybeSingle());
+            }
             filaWifi = data || null;
           } catch { filaWifi = null; }
         }
