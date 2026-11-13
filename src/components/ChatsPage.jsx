@@ -245,7 +245,20 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
     if (f === "tecnicos") return c.tipo === "tecnico";
     return true;
   };
-  const conteo = Object.fromEntries(FILTROS.map((f) => [f.k, chats.filter((c) => pasaFiltro(c, f.k)).length]));
+  // Ordenes abiertas SIN mensajes (para poder escribir de cualquiera):
+  // en "Hoy" salen todas las del dia + en proceso; buscando, cualquier abierta.
+  const conChat = useMemo(() => new Set(chats.filter((c) => c.tipo === "orden").map((c) => String(c.ordenId))), [chats]);
+  const abierta = (o) => /pendient|proceso|asign|curso/i.test(String(o?.estado || "")) && !/liquidad|cancel/i.test(String(o?.estado || ""));
+  const sinChat = (o) => ({
+    tipo: "orden", key: `orden:${o.id}`, ordenId: o.id, ordenInfo: o, sinMensajes: true,
+    titulo: `${o.codigo || "Orden"} · ${o.nombre || "Cliente"}`, sub: o.tecnico ? `Técnico: ${o.tecnico}` : "", count: 0, ultimo: null,
+  });
+  const extrasHoy = useMemo(() => (ordenes || [])
+    .filter((o) => !conChat.has(String(o.id)) && abierta(o) && !o.porCoordinarDesde
+      && String(o.fechaActuacion || "").slice(0, 10) === hoy)
+    .sort((a, b) => String(a.hora || "99").localeCompare(String(b.hora || "99")))
+    .map(sinChat), [ordenes, conChat, hoy]); // eslint-disable-line react-hooks/exhaustive-deps
+  const conteo = Object.fromEntries(FILTROS.map((f) => [f.k, chats.filter((c) => pasaFiltro(c, f.k)).length + (f.k === "hoy" ? extrasHoy.length : 0)]));
   const nombresTecnicos = useMemo(() => {
     const set = new Set();
     chats.forEach((c) => { const t = c.tipo === "tecnico" ? c.tecnicoNombre : c.ordenInfo?.tecnico; if (t) set.add(String(t)); });
@@ -254,13 +267,20 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
 
   const terminos = plano(busqueda).split(/\s+/).filter(Boolean);
   const coincide = (...c) => !terminos.length || terminos.every((w) => plano(c.filter(Boolean).join(" ")).includes(w));
-  const lista = useMemo(() => chats
-    .filter((c) => pasaFiltro(c, filtro))
+  const lista = useMemo(() => [
+    ...chats.filter((c) => pasaFiltro(c, filtro)),
+    ...(filtro === "hoy" ? extrasHoy : []),
+    // Buscando: tambien ordenes abiertas que aun no tienen chat.
+    ...(terminos.length && (filtro === "todos" || filtro === "hoy")
+      ? (ordenes || []).filter((o) => !conChat.has(String(o.id)) && abierta(o)
+          && !(filtro === "hoy" && extrasHoy.some((x) => String(x.ordenId) === String(o.id)))).slice(0, 400).map(sinChat)
+      : []),
+  ]
     .filter((c) => !filtroTecnico || String(c.tipo === "tecnico" ? c.tecnicoNombre : c.ordenInfo?.tecnico) === filtroTecnico)
     .filter((c) => coincide(c.titulo, c.sub, c.tecnicoNombre, c.ordenInfo?.codigo, c.ordenInfo?.nombre, c.ordenInfo?.tecnico,
       c.ordenInfo?.direccion, c.ordenInfo?.celular, c.ultimo?.texto, c.ultimo?.autor))
     .sort((a, b) => (esperaMin(b) >= MIN_ESPERA_CLIENTE) - (esperaMin(a) >= MIN_ESPERA_CLIENTE)),
-  [chats, filtro, filtroTecnico, busqueda, ahora]); // eslint-disable-line react-hooks/exhaustive-deps
+  [chats, filtro, filtroTecnico, busqueda, ahora, extrasHoy, ordenes]); // eslint-disable-line react-hooks/exhaustive-deps
   const directorio = (Array.isArray(tecnicosDirectorio) ? tecnicosDirectorio : []).filter((t) => coincide(t.nombre));
 
   // Chat seleccionado: puede no estar en la lista (sin mensajes aun o
@@ -444,7 +464,8 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: c.count ? "#334155" : "#64748b", fontWeight: c.count ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {esMio ? "Tú" : String(c.ultimo?.autor_rol || "").toLowerCase() === "cliente" ? "👤 Cliente" : String(c.ultimo?.autor || "").split(" ")[0]}: {resumen(c.ultimo)}
+                        {!c.ultimo ? <i style={{ color: "#94a3b8" }}>Sin mensajes · clic para escribir</i>
+                          : <>{esMio ? "Tú" : String(c.ultimo?.autor_rol || "").toLowerCase() === "cliente" ? "👤 Cliente" : String(c.ultimo?.autor || "").split(" ")[0]}: {resumen(c.ultimo)}</>}
                       </span>
                       {c.count > 0 && <span style={{ flexShrink: 0, minWidth: 20, height: 20, borderRadius: 10, padding: "0 6px", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{c.count}</span>}
                     </span>

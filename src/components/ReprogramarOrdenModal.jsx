@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient";
 
 // Reprogramar orden (web). Misma RPC que la app movil: cambia hora, dia+hora o
 // la deja "Por coordinar" (sin fecha). Deja historial + mensaje en el chat.
-export const MOTIVOS_REPROGRAMAR = ["Cliente pidió", "No estaba", "Lluvia", "Falta material", "Otro"];
+export const MOTIVOS_REPROGRAMAR = ["Cliente pidió", "No contesta", "No estaba", "Lluvia", "Falta material", "Otro"];
 const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
 const hoyYmd = () => {
@@ -23,6 +23,9 @@ export const diasPorCoordinar = (desde) => {
 
 const TPL_REPROGRAMADA = "Hola {nombre}, tu visita de {empresa} (orden #{codigo}) quedó reprogramada para el {fecha} a las {hora}. Si necesitas cambiarla, escríbenos a este número. — {empresa}";
 const TPL_POR_COORDINAR = "Hola {nombre}, tu visita de {empresa} (orden #{codigo}) quedó en pausa como nos indicaste. Cuando tengas una fecha, escríbenos a este número y te la agendamos. — {empresa}";
+// "Sin fecha" cuando el cliente NO pidio la pausa: el mensaje cambia segun el motivo.
+const TPL_NO_CONTESTA = "Hola {nombre}, intentamos comunicarnos contigo para coordinar tu visita de {empresa} (orden #{codigo}) y no tuvimos respuesta. Escríbenos a este número cuando puedas y la agendamos. — {empresa}";
+const TPL_NO_ESTABA = "Hola {nombre}, nuestro técnico fue a tu domicilio para tu visita de {empresa} (orden #{codigo}) y no encontramos a nadie. Escríbenos a este número para coordinar una nueva fecha. — {empresa}";
 
 async function avisarClienteWhatsApp(orden, tipo, fecha, hora, motivo) {
   const cel = String(orden?.celular || "").trim();
@@ -31,7 +34,9 @@ async function avisarClienteWhatsApp(orden, tipo, fecha, hora, motivo) {
   const { data: cfg } = await supabase.from("whatsapp_config").select("*").eq("empresa", empresa).maybeSingle();
   if (!cfg?.habilitado || !cfg.base_url || !cfg.api_key || !cfg.instance_name) return "WhatsApp no configurado";
   const tpl = tipo === "sin_fecha"
-    ? (String(cfg.template_por_coordinar || "").trim() || TPL_POR_COORDINAR)
+    ? (motivo === "No contesta" ? (String(cfg.template_no_contesta || "").trim() || TPL_NO_CONTESTA)
+      : motivo === "No estaba" ? (String(cfg.template_no_estaba || "").trim() || TPL_NO_ESTABA)
+      : (String(cfg.template_por_coordinar || "").trim() || TPL_POR_COORDINAR))
     : (String(cfg.template_reprogramada || "").trim() || TPL_REPROGRAMADA);
   const nombre = String(orden?.nombre || "").trim().split(/\s+/)[0] || "";
   const msg = tpl
