@@ -219,6 +219,27 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
   const [alCliente, setAlCliente] = useState(false);
   // Canal (que Chatwoot) por el que el cliente escribio la ultima vez: la
   // respuesta sale por ahi mismo (mismo numero de WhatsApp).
+  // 🔕 Silenciar este chat (solo para mi): tabla chat_silencios.
+  const [silenciadoHasta, setSilenciadoHasta] = useState(null);
+  const claveSilencio = !hiloTecnico && ordenId ? `orden:${ordenId}` : null;
+  useEffect(() => {
+    if (!claveSilencio || !autor) return;
+    supabase.from("chat_silencios").select("hasta").eq("usuario", autor).eq("clave", claveSilencio).maybeSingle()
+      .then(({ data, error }) => { if (!error && data?.hasta && new Date(data.hasta) > new Date()) setSilenciadoHasta(data.hasta); }, () => {});
+  }, [claveSilencio, autor]);
+  const silenciar = async (horas) => {
+    if (!claveSilencio) return;
+    let hasta;
+    if (horas === "manana") { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(7, 0, 0, 0); hasta = d.toISOString(); }
+    else hasta = new Date(Date.now() + horas * 3600000).toISOString();
+    setSilenciadoHasta(hasta);
+    await supabase.from("chat_silencios").upsert([{ usuario: autor, clave: claveSilencio, hasta }], { onConflict: "usuario,clave" });
+  };
+  const quitarSilencio = async () => {
+    setSilenciadoHasta(null);
+    if (claveSilencio) await supabase.from("chat_silencios").delete().eq("usuario", autor).eq("clave", claveSilencio);
+  };
+  const textoSilencio = silenciadoHasta ? `Silenciado hasta ${new Date(silenciadoHasta).toLocaleString("es-PE", { weekday: "short", hour: "2-digit", minute: "2-digit" })}` : "";
   const canalClienteRef = useRef(null);
   canalClienteRef.current = (() => { for (let i = mensajes.length - 1; i >= 0; i--) { if (mensajes[i]?.canal) return mensajes[i].canal; } return null; })();
   const nombreClienteCorto = String(orden?.nombre || "").trim().split(/\s+/).slice(0, 2).join(" ") || "Cliente";
@@ -950,6 +971,19 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         <span style={{ flex: 1 }} />
         <button type="button" className="oc-ic" onClick={() => { setBuscando((b) => !b); setBusqueda(""); }} title="Buscar en el chat" style={{ ...icBtn, width: 28, height: 28 }}><Search size={15} color="#475569" /></button>
         <button type="button" className="oc-ic" onClick={() => setGaleria(true)} title={`Fotos del chat (${fotos.length})`} style={{ ...icBtn, width: 28, height: 28 }}><Images size={15} color="#475569" /></button>
+        {!esHilo && (
+          <button type="button" className="oc-ic"
+            onClick={() => {
+              if (silenciadoHasta) { if (window.confirm(`${textoSilencio}. ¿Activar los avisos de este chat?`)) void quitarSilencio(); return; }
+              const r = window.prompt("🔕 Silenciar este chat (solo para ti, salvo @menciones y urgentes).\nEscribe 1 = 8 horas · 2 = hasta mañana", "1");
+              if (r === "1") void silenciar(8);
+              else if (r === "2") void silenciar("manana");
+            }}
+            title={silenciadoHasta ? textoSilencio : "Silenciar avisos de este chat"}
+            style={{ ...icBtn, width: 28, height: 28, fontSize: 14 }}>
+            {silenciadoHasta ? "🔕" : "🔔"}
+          </button>
+        )}
         {telCliente && (
           <a href={`tel:${telCliente}`} title={`Llamar al cliente (${telCliente})`} style={{ ...accionCab, color: "#16a34a" }}>
             <Phone size={13} /> Llamar
