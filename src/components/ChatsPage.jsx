@@ -401,8 +401,8 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
   return (
     <div style={{ height: "100vh", display: "flex", background: "#f1f5f9", fontFamily: '"Inter", "Segoe UI", sans-serif', overflow: "hidden" }}>
       <style>{`
-        .cp-item:hover { background: #f8fafc !important; }
-        .cp-item.sel, .cp-item.sel:hover { background: #ede9fe !important; }
+        .cp-item:hover { background: #f5f6f6 !important; }
+        .cp-item.sel, .cp-item.sel:hover { background: #f0f2f5 !important; }
         .cp-btn:hover { background: #e2e8f0 !important; }
         .cp-scroll { scrollbar-width: thin; }
         .cp-tabs { scrollbar-width: none; }
@@ -414,11 +414,11 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
         <div style={{ width: angosto ? "100%" : 360, flexShrink: 0, display: "flex", flexDirection: "column", background: "#fff", borderRight: "1px solid #e2e8f0" }}>
           <div style={{ padding: "12px 14px 8px", borderBottom: "1px solid #f1f5f9" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg, #a855f7, #6d28d9)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#00a884", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <MessagesSquare size={18} color="#fff" />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>Chats</div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: "#111b21" }}>Chats</div>
                 <div style={{ fontSize: 11.5, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{autor}{empresa ? ` · ${empresa}` : ""}</div>
               </div>
               <button type="button" className="cp-btn" title={permisoNotif === "granted" ? "Avisos de escritorio activados" : "Activar avisos de escritorio"}
@@ -475,10 +475,10 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                 const n = f.k === "todos" ? null : conteo[f.k];
                 return (
                   <button key={f.k} type="button" onClick={() => setFiltro(f.k)}
-                    style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", fontFamily: "inherit",
-                      border: `1px solid ${activo ? (rojo ? "#dc2626" : "#7c3aed") : rojo ? "#fca5a5" : "#e2e8f0"}`,
-                      background: activo ? (rojo ? "#dc2626" : "#7c3aed") : rojo ? "#fef2f2" : "#fff",
-                      color: activo ? "#fff" : rojo ? "#b91c1c" : "#475569" }}>
+                    style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 18, cursor: "pointer", fontSize: 13, fontWeight: activo ? 600 : 500, whiteSpace: "nowrap", fontFamily: "inherit",
+                      border: "none",
+                      background: activo ? (rojo ? "#dc2626" : "#00a88422") : rojo ? "#fde8e8" : "#f0f2f5",
+                      color: activo ? (rojo ? "#fff" : "#15603e") : rojo ? "#b91c1c" : "#667781" }}>
                     {f.l}{n ? ` · ${n}` : ""}
                   </button>
                 );
@@ -486,7 +486,7 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
             </div>
             {directorio.length > 0 && (
               <button type="button" onClick={() => setNuevoChat((v) => !v)} className="cp-btn"
-                style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 8px", border: "none", borderRadius: 8, background: nuevoChat ? "#eff6ff" : "transparent", color: "#2563eb", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>
+                style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "6px 8px", border: "none", borderRadius: 8, background: nuevoChat ? "#f0f2f5" : "transparent", color: "#008069", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
                 <Plus size={15} /> Nuevo chat con técnico
               </button>
             )}
@@ -528,17 +528,17 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: c.count ? 800 : 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: c.count ? 700 : 500, color: "#111b21", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {esTec ? `👷 ${c.titulo}` : (o?.nombre || c.titulo)}
                       </span>
-                      <span style={{ flexShrink: 0, fontSize: 11, color: c.count ? "#7c3aed" : "#94a3b8", fontWeight: c.count ? 800 : 500 }}>{horaCorta(c.ultimo?.created_at)}</span>
+                      <span style={{ flexShrink: 0, fontSize: 12, color: c.count ? "#25d366" : "#667781", fontWeight: c.count ? 600 : 400 }}>{horaCorta(c.ultimo?.created_at)}</span>
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: c.count ? "#334155" : "#64748b", fontWeight: c.count ? 600 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: c.count ? "#111b21" : "#667781", fontWeight: 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {!c.ultimo ? <i style={{ color: "#94a3b8" }}>Sin mensajes · clic para escribir</i>
                           : <>{esMio ? "Tú" : String(c.ultimo?.autor_rol || "").toLowerCase() === "cliente" ? "👤 Cliente" : String(c.ultimo?.autor || "").split(" ")[0]}: {resumen(c.ultimo)}</>}
                       </span>
-                      {c.count > 0 && <span style={{ flexShrink: 0, minWidth: 20, height: 20, borderRadius: 10, padding: "0 6px", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{c.count}</span>}
+                      {c.count > 0 && <span style={{ flexShrink: 0, minWidth: 21, height: 21, borderRadius: 11, padding: "0 6px", background: "#25d366", color: "#fff", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{c.count}</span>}
                     </span>
                     {!esTec && (
                       <span style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
@@ -583,7 +583,7 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
                   {sel.tipo === "tecnico" ? iniciales(sel.tecnicoNombre) : iniciales(sel.ordenInfo?.nombre)}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 800, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#111b21", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{sel.tipo === "tecnico" ? `👷 ${sel.titulo}` : sel.titulo}</span>
                     {estSel && <span style={{ ...chip, background: estSel.bg, color: estSel.c, flexShrink: 0 }}>{estSel.t}</span>}
                   </div>
@@ -659,7 +659,7 @@ export default function ChatsPage({ ordenes, tecnicos, tecnicosDirectorio, autor
           ) : (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#64748b", textAlign: "center", padding: 24 }}>
               <div style={{ width: 72, height: 72, borderRadius: 22, background: "#ede9fe", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
-                <MessagesSquare size={34} color="#7c3aed" />
+                <MessagesSquare size={34} color="#00a884" />
               </div>
               <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>Elige un chat</div>
               <div style={{ fontSize: 13, marginTop: 4, maxWidth: 360 }}>
@@ -798,8 +798,8 @@ function PanelOrden({ o, est, tecnicosDirectorio, puedeGestionar, onReprogramar,
 }
 
 const iconBtn = { width: 34, height: 34, borderRadius: 9, border: "none", background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, textDecoration: "none" };
-const itemBtn = { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 14px", border: "none", borderBottom: "1px solid #f8fafc", background: "#fff", cursor: "pointer", textAlign: "left", font: "inherit" };
-const avatar = { width: 42, height: 42, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 14, fontWeight: 800 };
+const itemBtn = { display: "flex", alignItems: "center", gap: 13, width: "100%", padding: "10px 14px", border: "none", borderBottom: "1px solid #f0f2f5", background: "#fff", cursor: "pointer", textAlign: "left", font: "inherit" };
+const avatar = { width: 48, height: 48, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 16, fontWeight: 600 };
 const vacio = { padding: "24px 16px", textAlign: "center", fontSize: 12.5, color: "#94a3b8" };
 const chip = { display: "inline-block", fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 8px", whiteSpace: "nowrap" };
 const btnTxt = { flexShrink: 0, height: 32, padding: "0 10px", borderRadius: 8, border: "1px solid", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" };

@@ -692,13 +692,13 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
     const pend = m.pend;
     const vistos = esMio && !pend ? vistoPor(m) : [];
     const soloMedia = !!(ubicacion || (m.foto_url && !m.texto));
-    const colorHora = esMio ? "rgba(255,255,255,0.8)" : "#94a3b8";
+    const colorHora = "#667781";
     const menuAbierto = menuMsgId === m.id;
     const IconoEstado = pend ? (pend.estado === "error" ? CircleAlert : Clock) : vistos.length ? CheckCheck : Check;
     const pie = (
       <span title={esMio && !pend ? (vistos.length ? `Visto por ${vistos.join(", ")}` : "Enviado") : undefined}
         style={{
-          display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, lineHeight: 1,
+          display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, lineHeight: 1,
           ...(soloMedia
             ? { position: "absolute", right: 10, bottom: ubicacion ? 40 : 10, background: "rgba(15,23,42,0.55)", color: "#fff", borderRadius: 999, padding: "3px 6px" }
             : { float: "right", margin: "6px 0 -2px 10px", color: colorHora }),
@@ -707,12 +707,12 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           <span
             onClick={m.envio_cliente_error && !pend ? (e) => { e.stopPropagation(); void enviarAlClienteViaBot(m.id, canalClienteRef.current); } : undefined}
             title={m.envio_cliente_error ? `No llegó al cliente: ${m.envio_cliente_error}. Clic para reintentar.` : "También enviado al cliente por WhatsApp"}
-            style={{ fontWeight: 700, cursor: m.envio_cliente_error ? "pointer" : "default", color: m.envio_cliente_error ? (esMio ? "#fecaca" : "#dc2626") : undefined }}>
+            style={{ fontWeight: 700, cursor: m.envio_cliente_error ? "pointer" : "default", color: m.envio_cliente_error ? "#dc2626" : undefined }}>
             {m.enviado_cliente_en ? "📲 al cliente ·" : m.envio_cliente_error ? "⚠️ no llegó al cliente (reintentar) ·" : "📲 enviando al cliente… ·"}
           </span>
         )}
         {pend ? "" : `${m.editado_at ? "editado · " : ""}${horaDe(m.created_at)}`}
-        {esMio && <IconoEstado size={13} color={pend?.estado === "error" ? "#fca5a5" : vistos.length ? "#67e8f9" : soloMedia ? "#fff" : colorHora} />}
+        {esMio && <IconoEstado size={13} color={pend?.estado === "error" ? "#dc2626" : vistos.length ? "#53bdeb" : soloMedia ? "#fff" : colorHora} />}
       </span>
     );
     const citado = m.responde_a != null ? porId.get(String(m.responde_a)) : null;
@@ -723,7 +723,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
         <div key={m.id} data-msg={m.id}>
           {mostrarDivisorFecha && (
             <div style={{ textAlign: "center", margin: "8px 0 6px" }}>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", background: "#e2e8f0", borderRadius: 999, padding: "2px 10px" }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: "#54656f", background: "#fff", borderRadius: 8, padding: "4px 10px", boxShadow: "0 1px 0.5px rgba(11,20,26,0.13)" }}>
                 {formatearFechaDivisor(m.created_at)}
               </span>
             </div>
@@ -739,18 +739,18 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       );
     }
     return (
-      <div key={m.id} data-msg={m.id} style={{ borderRadius: 12, transition: "background .3s", background: resaltado === String(m.id) ? "rgba(37,99,235,0.14)" : "transparent" }}
+      <div key={m.id} data-msg={m.id} style={{ borderRadius: 12, transition: "background .3s", background: resaltado === String(m.id) ? "rgba(0,168,132,0.15)" : "transparent" }}
         onDoubleClick={() => responderA(m)}>
         {mostrarDivisorFecha && (
           <div style={{ textAlign: "center", margin: "8px 0 6px" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: "#64748b", background: "#e2e8f0", borderRadius: 999, padding: "2px 10px" }}>
+            <span style={{ fontSize: 12, fontWeight: 500, color: "#54656f", background: "#fff", borderRadius: 8, padding: "4px 10px", boxShadow: "0 1px 0.5px rgba(11,20,26,0.13)" }}>
               {formatearFechaDivisor(m.created_at)}
             </span>
           </div>
         )}
         {idPrimerNoLeido === String(m.id) && cantNoLeidosAlAbrir > 0 && (
-          <div ref={divisorRef} style={{ textAlign: "center", margin: "10px -10px 6px", background: "rgba(124,58,237,0.08)", padding: "4px 0" }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#6d28d9", background: "#fff", borderRadius: 999, padding: "2px 12px", boxShadow: "0 1px 2px rgba(15,23,42,0.08)" }}>
+          <div ref={divisorRef} style={{ textAlign: "center", margin: "10px -12px 6px", background: "rgba(255,255,255,0.55)", padding: "5px 0" }}>
+            <span style={{ fontSize: 12.5, fontWeight: 500, color: "#667781" }}>
               {cantNoLeidosAlAbrir} mensaje{cantNoLeidosAlAbrir === 1 ? "" : "s"} no leído{cantNoLeidosAlAbrir === 1 ? "" : "s"}
             </span>
           </div>
@@ -776,11 +776,11 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             </>
           )}
           <div style={{
-            position: "relative", maxWidth: "78%", color: esMio ? "#fff" : "#0f172a",
-            background: m.urgente ? (esMio ? "#dc2626" : "#fef2f2") : esMio ? (m.para_cliente || pend?.paraCliente ? "linear-gradient(135deg, #16a34a, #15803d)" : "linear-gradient(135deg, #3b82f6, #2563eb)") : esCliente ? "#f0fdf4" : esOficinaOtro ? "#eef2ff" : "#fff",
-            border: m.urgente && !esMio ? "1.5px solid #fca5a5" : esMio ? "none" : esCliente ? "1.5px solid #86efac" : esOficinaOtro ? "1px solid #c7d2fe" : "1px solid #e2e8f0", borderRadius: 18, padding: soloMedia ? 4 : "7px 11px 6px",
-            borderTopRightRadius: esMio && inicioDeGrupo ? 5 : 18, borderTopLeftRadius: !esMio && inicioDeGrupo ? 5 : 18,
-            boxShadow: esMio ? "0 2px 6px rgba(37,99,235,0.18)" : "0 1px 3px rgba(15,23,42,0.08)", opacity: pend?.estado === "error" ? 0.6 : 1,
+            position: "relative", maxWidth: "78%", color: "#111b21",
+            background: m.urgente ? "#fde8e8" : esMio ? "#d9fdd3" : "#fff",
+            border: m.urgente ? "1.5px solid #fca5a5" : "none", borderLeft: !esMio && esCliente && !m.urgente ? "3px solid #25d366" : undefined, borderRadius: 8, padding: soloMedia ? 4 : "6px 9px 6px",
+            borderTopRightRadius: esMio && inicioDeGrupo ? 0 : 8, borderTopLeftRadius: !esMio && inicioDeGrupo ? 0 : 8,
+            boxShadow: "0 1px 0.5px rgba(11,20,26,0.13)", opacity: pend?.estado === "error" ? 0.6 : 1,
           }}>
             {!esMio && inicioDeGrupo && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, padding: soloMedia ? "4px 6px 2px" : 0 }}>
@@ -789,18 +789,18 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
               </div>
             )}
             {m.urgente && (
-              <div style={{ display: "table", fontSize: 10, fontWeight: 900, letterSpacing: "0.03em", color: "#fff", background: esMio ? "rgba(255,255,255,0.22)" : "#dc2626", borderRadius: 999, padding: "2px 8px", marginBottom: 4 }}>
+              <div style={{ display: "table", fontSize: 10, fontWeight: 900, letterSpacing: "0.03em", color: "#fff", background: "#dc2626", borderRadius: 999, padding: "2px 8px", marginBottom: 4 }}>
                 🚨 URGENTE · aviso por WhatsApp
               </div>
             )}
             {m.responde_a != null && (
               <div onClick={() => citado && irAMensaje(citado.id)}
-                style={{ display: "flex", alignItems: "center", gap: 8, borderLeft: `3.5px solid ${citado ? colorParaAutor(citado.autor) : "#94a3b8"}`, borderRadius: 8, padding: "5px 8px", margin: soloMedia ? "2px 2px 4px" : "0 0 5px", minWidth: 150, cursor: citado ? "pointer" : "default", background: esMio ? "rgba(255,255,255,0.16)" : "#f1f5f9" }}>
+                style={{ display: "flex", alignItems: "center", gap: 8, borderLeft: `3.5px solid ${citado ? colorParaAutor(citado.autor) : "#94a3b8"}`, borderRadius: 8, padding: "5px 8px", margin: soloMedia ? "2px 2px 4px" : "0 0 5px", minWidth: 150, cursor: citado ? "pointer" : "default", background: esMio ? "rgba(0,0,0,0.06)" : "rgba(0,0,0,0.05)" }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 800, color: esMio ? "#fff" : citado ? colorParaAutor(citado.autor) : "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: citado ? colorParaAutor(citado.autor) : "#667781", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {citado ? (norm(citado.autor) === norm(autor) ? "Tú" : citado.autor) : "Mensaje"}
                   </div>
-                  <div style={{ fontSize: 12, color: esMio ? "rgba(255,255,255,0.85)" : "#475569", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: 12, color: "#667781", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {citado ? resumenMensaje(citado) : "Mensaje eliminado"}
                   </div>
                 </div>
@@ -810,10 +810,10 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             {ubicacion ? (
               <a href={ubicacion.url} target="_blank" rel="noreferrer" style={{ display: "block", borderRadius: 12, overflow: "hidden", textDecoration: "none" }}>
                 <MiniMapa lat={ubicacion.lat} lng={ubicacion.lng} ancho={230} alto={110} />
-                <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 8px", background: esMio ? "#1d4ed8" : "#f8fafc" }}>
-                  <MapPin size={14} color={esMio ? "#fff" : "#2563eb"} />
-                  <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: esMio ? "#fff" : "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ubicacion.titulo}</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: esMio ? "#bfdbfe" : "#2563eb" }}>Abrir</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 8px", background: esMio ? "rgba(0,0,0,0.05)" : "#f0f2f5" }}>
+                  <MapPin size={14} color="#00a884" />
+                  <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: "#111b21", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ubicacion.titulo}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: "#00a884" }}>Abrir</span>
                 </div>
               </a>
             ) : null}
@@ -852,14 +852,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             {!!m.archivo_url && (
               <a href={m.archivo_url} target="_blank" rel="noreferrer"
                 style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", marginBottom: 4, borderRadius: 10, textDecoration: "none", fontSize: 13, fontWeight: 700,
-                  background: esMio ? "rgba(255,255,255,0.18)" : "#f1f5f9", color: esMio ? "#fff" : "#1d4ed8" }}>
+                  background: esMio ? "rgba(0,0,0,0.05)" : "#f0f2f5", color: "#027eb5" }}>
                 {m.archivo_tipo === "video" ? "🎬 Ver video" : "📎 Abrir archivo"}
               </a>
             )}
             {/* Texto (o comentario de la foto, debajo de ella como en WhatsApp) */}
             {!ubicacion && m.texto && (
-              <span style={{ fontSize: 13.5, whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>
-                <TextoConEnlaces texto={m.texto} colorEnlace={esMio ? "#fff" : "#1d4ed8"} />
+              <span style={{ fontSize: 14.2, whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>
+                <TextoConEnlaces texto={m.texto} colorEnlace="#027eb5" />
               </span>
             )}
             {pie}
@@ -882,7 +882,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
                 <div style={{ display: "flex", gap: 2, padding: "6px 8px", borderBottom: "1px solid #f1f5f9" }}>
                   {REACCIONES.map((emo) => (
                     <button key={emo} type="button" onClick={() => void reaccionar(m, emo)} className="oc-reac"
-                      style={{ fontSize: 19, background: (m.reacciones?.[emo] || []).includes(autor) ? "#dbeafe" : "none", border: "none", borderRadius: 8, cursor: "pointer", padding: "2px 4px" }}>
+                      style={{ fontSize: 19, background: (m.reacciones?.[emo] || []).includes(autor) ? "#f0f2f5" : "none", border: "none", borderRadius: 8, cursor: "pointer", padding: "2px 4px" }}>
                       {emo}
                     </button>
                   ))}
@@ -909,7 +909,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             style={{ display: "flex", justifyContent: esMio ? "flex-end" : "flex-start", margin: esMio ? "-3px 30px 0 0" : "-3px 0 0 38px" }}>
             <div style={{ display: "inline-flex", gap: 4, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 999, padding: "1px 7px", fontSize: 12.5, boxShadow: "0 1px 2px rgba(15,23,42,0.08)" }}>
               {reacs.map(([emo, q]) => (
-                <span key={emo} onClick={() => void reaccionar(m, emo)} style={{ cursor: "pointer", fontWeight: 700, color: (q || []).includes(autor) ? "#2563eb" : "#475569" }}>
+                <span key={emo} onClick={() => void reaccionar(m, emo)} style={{ cursor: "pointer", fontWeight: 700, color: (q || []).includes(autor) ? "#008069" : "#475569" }}>
                   {emo}{(q || []).length > 1 ? ` ${(q || []).length}` : ""}
                 </span>
               ))}
@@ -1054,13 +1054,13 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
               cercaRef.current = cerca;
               if (cerca && nuevos) setNuevos(0);
             }}
-            style={{ ...(llenar ? { height: "100%" } : { maxHeight: 340 }), overflowY: "auto", padding: "8px 12px", background: "#eef2f7", backgroundImage: "radial-gradient(rgba(100,116,139,0.13) 1px, transparent 1.2px)", backgroundSize: "18px 18px" }}
+            style={{ ...(llenar ? { height: "100%" } : { maxHeight: 340 }), overflowY: "auto", padding: "8px 12px", background: "#efeae2" }}
           >
             {items.map(renderMensaje)}
           </div>
           {nuevos > 0 && (
             <button type="button" onClick={() => { cercaRef.current = true; setNuevos(0); const el = scrollRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }}
-              style={{ position: "absolute", right: 10, bottom: 10, display: "inline-flex", alignItems: "center", gap: 4, background: "#2563eb", color: "#fff", border: "none", borderRadius: 999, padding: "6px 11px", fontSize: 12, fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 12px rgba(37,99,235,0.35)" }}>
+              style={{ position: "absolute", right: 10, bottom: 10, display: "inline-flex", alignItems: "center", gap: 4, background: "#00a884", color: "#fff", border: "none", borderRadius: 999, padding: "6px 11px", fontSize: 12, fontWeight: 800, cursor: "pointer", boxShadow: "0 4px 12px rgba(37,99,235,0.35)" }}>
               <ArrowDown size={14} /> {nuevos} nuevo{nuevos === 1 ? "" : "s"}
             </button>
           )}
@@ -1124,7 +1124,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           {alCliente && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#166534", marginLeft: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>📲 le llega a {nombreClienteCorto} por WhatsApp</span>}
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: 8, background: alCliente && puedeCliente ? "#f0fdf4" : "#fff", borderTop: "1px solid #e2e8f0", position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: "6px 8px", background: alCliente && puedeCliente ? "#f0fdf4" : "#f0f2f5", position: "relative" }}>
         <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }}
           onChange={(e) => { const fs = e.target.files; encolarArchivos(fs); e.target.value = ""; }} />
         <button type="button" className="oc-ic" onClick={() => fileInputRef.current?.click()} title="Mandar foto (también puedes pegarla o arrastrarla)" style={icBtn}>
@@ -1188,7 +1188,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           }}
           placeholder={modoCliente ? `Para ${nombreClienteCorto} (cliente)…` : puedeCliente ? "Para la oficina…" : "Escribe un mensaje…"}
           rows={1}
-          style={{ flex: 1, padding: "9px 14px", border: modoCliente ? "1.5px solid #22c55e" : "none", background: modoCliente ? "#fff" : "#f1f5f9", borderRadius: 20, fontSize: 13.5, fontFamily: "inherit", resize: "none", outline: "none", lineHeight: "18px", minHeight: 36, maxHeight: 96, boxSizing: "border-box" }}
+          style={{ flex: 1, padding: "9px 14px", border: modoCliente ? "1.5px solid #22c55e" : "none", background: "#fff", borderRadius: 8, fontSize: 15, fontFamily: "inherit", resize: "none", outline: "none", lineHeight: "20px", minHeight: 40, maxHeight: 120, boxSizing: "border-box" }}
         />
         {menuUrgente && (
           <>
@@ -1210,7 +1210,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
           </button>
         )}
         <button type="button" onClick={enviarTexto} disabled={!texto.trim()} title="Enviar (Enter)"
-          style={{ ...icBtn, background: texto.trim() ? (modoCliente && !editando ? "#16a34a" : "#2563eb") : "#cbd5e1", cursor: texto.trim() ? "pointer" : "default" }}>
+          style={{ ...icBtn, background: texto.trim() ? (modoCliente && !editando ? "#16a34a" : "#00a884") : "#b6c2c9", cursor: texto.trim() ? "pointer" : "default" }}>
           <Send size={16} color="#fff" style={{ marginLeft: -1 }} />
         </button>
       </div>
@@ -1303,7 +1303,7 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
             <input autoFocus value={leyenda} onChange={(e) => setLeyenda(e.target.value)} placeholder="Añade un comentario…"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); mandarPrevia(); } if (e.key === "Escape") cancelarPrevia(); }}
               style={{ flex: 1, padding: "11px 16px", borderRadius: 999, border: "none", outline: "none", fontSize: 14, background: "#1e293b", color: "#fff", fontFamily: "inherit" }} />
-            <button type="button" onClick={mandarPrevia} title="Enviar (Enter)" style={{ width: 46, height: 46, borderRadius: "50%", border: "none", background: "#2563eb", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Send size={18} /></button>
+            <button type="button" onClick={mandarPrevia} title="Enviar (Enter)" style={{ width: 46, height: 46, borderRadius: "50%", border: "none", background: "#00a884", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Send size={18} /></button>
           </div>
         </div>
       )}
