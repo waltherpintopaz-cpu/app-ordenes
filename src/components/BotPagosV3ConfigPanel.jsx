@@ -12,6 +12,7 @@ const PROXY_URL = `${DIAGNO_BASE}/api/mikrowisp-proxy`;
 const DEFAULT = {
   bot_activo: true,
   modo_bot: "ia",
+  funciones: {},
   inboxes_prueba: "",
   inbox_ventas: "",
   telefonos_prueba_prospecto: "",
@@ -53,6 +54,18 @@ const DIAS = [{ val: 1, label: "Lun" }, { val: 2, label: "Mar" }, { val: 3, labe
 const HORAS = Array.from({ length: 24 }, (_, i) => ({ val: i, label: `${String(i).padStart(2, "0")}:00` }));
 
 const inp = { width: "100%", padding: "9px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, color: "#111827", fontFamily: "inherit", boxSizing: "border-box", background: "#fff" };
+// Funciones que se pueden pasar a un asesor (el bot lee bot_pagos_v3_config.funciones)
+const FUNCIONES_BOT = [
+  { key: "pagos", label: "Validar comprobantes de pago", desc: "Lee la foto del Yape/transferencia, registra el pago en Mikrowisp y reactiva." },
+  { key: "metodos_pago", label: "Enviar métodos de pago", desc: "Yape/cuentas según el nodo del cliente." },
+  { key: "deuda", label: "Deuda y boleta", desc: "Cuánto debe, vencimiento y link de la boleta." },
+  { key: "prorroga", label: "Prórrogas", desc: "Da la prórroga de pago según las reglas." },
+  { key: "soporte", label: "Soporte técnico", desc: "Sin internet, lento, TV, equipo: diagnóstico de señal y MikroTik." },
+  { key: "ordenes", label: "Consulta de órdenes", desc: "Fecha y técnico de su orden pendiente." },
+  { key: "ventas", label: "Ventas y planes", desc: "Prospectos, planes, cobertura y formulario de instalación." },
+  { key: "iptv", label: "App de TV (IPTV)", desc: "Entrega o crea las credenciales de la app." },
+];
+
 const lbl = { fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.04em" };
 const hint = { fontSize: 12, color: "#9ca3af", marginTop: 4, lineHeight: 1.5 };
 const card = { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "20px 22px", marginBottom: 14 };
@@ -478,6 +491,42 @@ export default function BotPagosV3ConfigPanel() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Que atiende el bot (funciones) -- bot_pagos_v3_config.funciones */}
+      <div style={card}>
+        <div style={cardTitle()}><ShieldCheck size={16} color="#0d9488" /> Qué atiende el bot</div>
+        <div style={{ ...hint, marginTop: 0, marginBottom: 12 }}>Elige qué resuelve el bot solo y qué pasa a un asesor. Lo que pases a un asesor: el bot avisa al cliente que un asesor lo atenderá, deja la nota y avisa al grupo (como cualquier escalamiento). Se aplica en ~5 min, sin redesplegar.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          {[
+            { t: "Todo el bot", v: {} },
+            { t: "Solo pagos y métodos de pago", v: Object.fromEntries(FUNCIONES_BOT.filter(f => !["pagos", "metodos_pago"].includes(f.key)).map(f => [f.key, "escalar"])) },
+            { t: "Todo a asesor (solo saluda)", v: Object.fromEntries(FUNCIONES_BOT.map(f => [f.key, "escalar"])) },
+          ].map(p => {
+            const activo = FUNCIONES_BOT.every(f => ((cfg.funciones || {})[f.key] === "escalar") === (p.v[f.key] === "escalar"));
+            return (
+              <button key={p.t} onClick={() => set("funciones", p.v)} style={{ padding: "7px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 600, border: activo ? "2px solid #0d9488" : "1px solid #e5e7eb", background: activo ? "#f0fdfa" : "#f9fafb", color: activo ? "#0f766e" : "#4b5563" }}>{p.t}</button>
+            );
+          })}
+        </div>
+        {FUNCIONES_BOT.map(f => {
+          const escalar = (cfg.funciones || {})[f.key] === "escalar";
+          const cambiar = (v) => { const n = { ...(cfg.funciones || {}) }; if (v === "escalar") n[f.key] = "escalar"; else delete n[f.key]; set("funciones", n); };
+          return (
+            <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid #f3f4f6" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: "#111827" }}>{f.label}</div>
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>{f.desc}</div>
+              </div>
+              <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 9, padding: 3, flexShrink: 0 }}>
+                {[{ v: "bot", t: "🤖 Bot" }, { v: "escalar", t: "🙋 Asesor" }].map(o => {
+                  const on = (o.v === "escalar") === escalar;
+                  return <button key={o.v} onClick={() => cambiar(o.v)} style={{ padding: "6px 12px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600, background: on ? (o.v === "escalar" ? "#fef3c7" : "#fff") : "transparent", color: on ? (o.v === "escalar" ? "#b45309" : "#0f766e") : "#6b7280", boxShadow: on ? "0 1px 2px rgba(0,0,0,0.08)" : "none" }}>{o.t}</button>;
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Horario */}
