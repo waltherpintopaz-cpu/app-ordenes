@@ -1074,7 +1074,10 @@ const queryRouter = async ({ nodo, userPppoe }) => {
   }
 };
 
-const suspenderRouter = async ({ nodo, userPppoe }) => {
+// comentario opcional (17-nov-2026, Cobranza): "Corte_Servicio_<id>" igual que Mikrowisp.
+// Sin comentario valido se mantiene el de siempre: "suspendido:<pppoe>".
+const COMENTARIO_CORTE_RE = /^[A-Za-z0-9_:@.\-]{1,64}$/;
+const suspenderRouter = async ({ nodo, userPppoe, comentario = "" }) => {
   let connection = null;
   try {
     connection = await connectRouterByNodo(nodo, userPppoe);
@@ -1094,7 +1097,7 @@ const suspenderRouter = async ({ nodo, userPppoe }) => {
         api.write("/ip/firewall/address-list/add", [
           `=list=${MOROSOS_ADDRESS_LIST}`,
           `=address=${ip}`,
-          `=comment=suspendido:${userPppoe}`,
+          `=comment=${COMENTARIO_CORTE_RE.test(String(comentario || "")) ? comentario : `suspendido:${userPppoe}`}`,
         ]),
         10000,
         `Alta address-list ${MOROSOS_ADDRESS_LIST} en ${router.nombre}`
@@ -4329,7 +4332,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const result = await suspenderRouter({ nodo, userPppoe });
+      const result = await suspenderRouter({ nodo, userPppoe, comentario: String(body?.comentario || "").trim() });
       writeJson(res, 200, { ok: true, action: "suspender", nodo, userPppoe, result });
       return;
     }
