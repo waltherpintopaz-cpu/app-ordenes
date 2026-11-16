@@ -199,6 +199,7 @@ const INTERNAL_API_TOKEN = String(process.env.DIAGNOSTICO_INTERNAL_TOKEN || "").
 const RUTAS_PROTEGIDAS_INTERNAS = new Set([
   "/api/diagnostico-servicio/suspender",
   "/api/diagnostico-servicio/activar",
+  "/api/diagnostico-servicio/habilitar-secret",
   "/api/diagnostico-servicio/crear-secrets-lote",
   "/api/diagnostico-servicio/sync-router",
   "/api/diagnostico-servicio/sync-all",
@@ -1123,6 +1124,38 @@ const suspenderRouter = async ({ nodo, userPppoe }) => {
     if (router) {
       throw new Error(`No se pudo suspender en ${router.nombre} (${router.host}:${router.port}): ${detail}`);
     }
+    throw error;
+  } finally {
+    if (connection?.api) await closeRouterApiSafe(connection.api);
+  }
+};
+
+// Habilitar el PPP Secret del cliente si esta deshabilitado (disabled=yes -> no). Pedido
+// 16-nov-2026 para los nodos sin Mikrowisp (Nod_05/06): boton en el CRM. Solo habilita,
+// nunca deshabilita; si ya estaba habilitado no toca nada.
+const habilitarSecretRouter = async ({ nodo, userPppoe }) => {
+  let connection = null;
+  try {
+    connection = await connectRouterByNodo(nodo, userPppoe);
+    const { api, router } = connection;
+    const secret = await loadSecretOnly({ api, router, userPppoe });
+    if (!secret) throw new Error(`No existe PPP Secret para ${userPppoe} en ${router.nombre}.`);
+    const id = pickFirst(secret[".id"], secret.id);
+    const estabaDeshabilitado = ["true", "yes"].includes(String(pickFirst(secret.disabled) || "").toLowerCase());
+    if (estabaDeshabilitado) {
+      if (!id) throw new Error(`El PPP Secret de ${userPppoe} no trae .id en ${router.nombre}.`);
+      await withTimeout(api.write("/ppp/secret/set", [`=.id=${id}`, "=disabled=no"]), 10000, `Habilitar PPP Secret ${userPppoe} en ${router.nombre}`);
+    }
+    return {
+      router: buildRouterInfo(router),
+      userPppoe,
+      estabaDeshabilitado,
+      message: estabaDeshabilitado ? `Usuario ${userPppoe} habilitado en ${router.nombre}.` : `El usuario ${userPppoe} ya estaba habilitado en ${router.nombre}.`,
+    };
+  } catch (error) {
+    const detail = formatErrorDetail(connection?.getSocketError?.() || error);
+    const router = connection?.router;
+    if (router) throw new Error(`No se pudo habilitar en ${router.nombre} (${router.host}:${router.port}): ${detail}`);
     throw error;
   } finally {
     if (connection?.api) await closeRouterApiSafe(connection.api);
@@ -4298,6 +4331,23 @@ const server = http.createServer(async (req, res) => {
 
       const result = await suspenderRouter({ nodo, userPppoe });
       writeJson(res, 200, { ok: true, action: "suspender", nodo, userPppoe, result });
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/habilitar-secret") {
+      const body = await readJsonBody(req);
+      const nodo = String(body?.nodo || "").trim();
+      const userPppoe = String(body?.userPppoe || "").trim();
+      if (!nodo || !userPppoe) {
+        writeJson(res, 400, { ok: false, error: "Falta nodo o user PPPoE." });
+        return;
+      }
+      try {
+        const result = await habilitarSecretRouter({ nodo, userPppoe });
+        writeJson(res, 200, { ok: true, action: "habilitar-secret", nodo, userPppoe, result });
+      } catch (e) {
+        writeJson(res, 502, { ok: false, error: e?.message || String(e) });
+      }
       return;
     }
 
