@@ -3981,7 +3981,7 @@ const server = http.createServer(async (req, res) => {
       writeJson(res, 200, {
         ok: true,
         service: "diagnostico-servicio",
-        build: "2026-11-17 estado-nodo-reglas",
+        build: "2026-11-17 morosos-estado-por-ip",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
         mikrowisp: {
@@ -4493,9 +4493,25 @@ const server = http.createServer(async (req, res) => {
       try {
         connection = await connectRouterByNodo(nodo, userPppoe);
         const { api, router } = connection;
-        const entries = await findMorosoEntries({ api, userPppoe, ip, mikrowispId });
+        // 17-nov-2026: sin IP en la consulta, se toma la del secret (igual que /activar). Antes solo
+        // buscaba por comentario con el usuario PPPoE, y un corte "Corte_Servicio_<id>" (Mikrowisp /
+        // Cobranza) no lo trae -> decia "no esta en morosos" aunque si estaba.
+        let ipBuscar = ip;
+        if (!ipBuscar) {
+          const secret = await loadSecretOnly({ api, router, userPppoe }).catch(() => null);
+          ipBuscar = secret ? resolveSecretRemoteAddress(secret, null) : "";
+        }
+        // lista vacia: el router contesta "!empty" y la libreria puede colgarse -> contar primero
+        let total = null;
+        try {
+          const c = await withTimeout(api.write("/ip/firewall/address-list/print", ["=count-only=", `?list=${MOROSOS_ADDRESS_LIST}`]), 8000, "conteo morosos");
+          const ret = Array.isArray(c) ? (c[0]?.ret ?? c.ret) : c?.ret;
+          if (ret != null) total = Number(ret);
+        } catch { /* sin conteo: se busca igual */ }
+        const entries = total === 0 ? [] : await findMorosoEntries({ api, userPppoe, ip: ipBuscar, mikrowispId });
         writeJson(res, 200, {
           ok: true,
+          ip: ipBuscar || null,
           enMorosos: entries.length > 0,
           router: buildRouterInfo(router),
           // creado: "creation-time" del Mikrotik (ej. "2026-11-05 18:02:05"),
