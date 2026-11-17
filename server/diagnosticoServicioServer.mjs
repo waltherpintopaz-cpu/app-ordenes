@@ -4250,12 +4250,16 @@ const server = http.createServer(async (req, res) => {
         const secrets = await paso("secrets", "/ppp/secret/print", ["=.proplist=disabled"]);
         // con la lista vacia el router contesta "!empty" y la libreria se queda esperando: plan B = leer todas
         // las listas (solo nombre y comentario) y filtrar aqui
-        let morosos = null;
-        try { morosos = await leer("/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]); }
-        catch {
-          const todas = await paso("morosos", "/ip/firewall/address-list/print", ["=.proplist=list,comment"]);
-          morosos = todas ? todas.filter((x) => String(x.list || "") === MOROSOS_ADDRESS_LIST) : null;
-        }
+        // primero un conteo (el router contesta "=ret=N" aunque no haya nada): si es 0 no se pide la lista,
+        // que con la lista vacia se queda colgada
+        let morosos = null, totalListas = null;
+        try {
+          const c = await withTimeout(api.write("/ip/firewall/address-list/print", ["=count-only=", `?list=${MOROSOS_ADDRESS_LIST}`]), 8000, "conteo morosos");
+          const ret = Array.isArray(c) ? (c[0]?.ret ?? c.ret) : c?.ret;
+          if (ret != null) totalListas = Number(ret);
+        } catch { /* sin conteo: se intenta igual la lista */ }
+        if (totalListas === 0) morosos = [];
+        else morosos = await paso("morosos", "/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]);
         const r0 = recurso[0] || {};
         writeJson(res, 200, {
           ok: true, nodo, ms, router: buildRouterInfo(router),
