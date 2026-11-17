@@ -4248,7 +4248,14 @@ const server = http.createServer(async (req, res) => {
         const recurso = (await paso("recursos", "/system/resource/print")) || [];
         const activos = await paso("pppoe activos", "/ppp/active/print", ["=.proplist=.id"]);
         const secrets = await paso("secrets", "/ppp/secret/print", ["=.proplist=disabled"]);
-        const morosos = await paso("morosos", "/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]);
+        // con la lista vacia el router contesta "!empty" y la libreria se queda esperando: plan B = leer todas
+        // las listas (solo nombre y comentario) y filtrar aqui
+        let morosos = null;
+        try { morosos = await leer("/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]); }
+        catch {
+          const todas = await paso("morosos", "/ip/firewall/address-list/print", ["=.proplist=list,comment"]);
+          morosos = todas ? todas.filter((x) => String(x.list || "") === MOROSOS_ADDRESS_LIST) : null;
+        }
         const r0 = recurso[0] || {};
         writeJson(res, 200, {
           ok: true, nodo, ms, router: buildRouterInfo(router),
