@@ -4258,6 +4258,17 @@ const server = http.createServer(async (req, res) => {
           const ret = Array.isArray(c) ? (c[0]?.ret ?? c.ret) : c?.ret;
           if (ret != null) totalListas = Number(ret);
         } catch { /* sin conteo: se intenta igual la lista */ }
+        // reglas del firewall que usan la lista de morosos: sin ellas, meter una IP en la lista NO corta nada
+        const contarReglas = async (ruta) => {
+          try {
+            const c = await withTimeout(api.write(ruta, ["=count-only=", `?src-address-list=${MOROSOS_ADDRESS_LIST}`]), 8000, ruta);
+            const ret = Array.isArray(c) ? (c[0]?.ret ?? c.ret) : c?.ret;
+            return ret != null ? Number(ret) : null;
+          } catch { return null; }
+        };
+        const reglasFilter = await contarReglas("/ip/firewall/filter/print");
+        const reglasNat = await contarReglas("/ip/firewall/nat/print");
+        var reglasMorosos = reglasFilter == null && reglasNat == null ? null : (reglasFilter || 0) + (reglasNat || 0);
         if (totalListas === 0) morosos = [];
         else morosos = await paso("morosos", "/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]);
         const r0 = recurso[0] || {};
@@ -4272,6 +4283,7 @@ const server = http.createServer(async (req, res) => {
           secrets_deshabilitados: secrets ? secrets.filter((s) => ["true", "yes"].includes(String(s.disabled || "").toLowerCase())).length : null,
           morosos: morosos ? morosos.length : null,
           morosos_mikrowisp: morosos ? morosos.filter((m) => /^corte_servicio_/i.test(String(m.comment || ""))).length : null,
+          reglas_morosos: reglasMorosos,
           fallos,
         });
       } catch (error) {
