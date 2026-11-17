@@ -207,6 +207,8 @@ const RUTAS_PROTEGIDAS_INTERNAS = new Set([
   "/api/cruce-mac-aplicar",
   "/api/clientes/revisar-prorrateos-vencidos",
   "/api/diagnostico-servicio/estado-nodo",
+  "/api/diagnostico-servicio/inventario-nodo",
+  "/api/diagnostico-servicio/crear-secrets-lista",
 ]);
 const requiereAuthInterna = (req) => RUTAS_PROTEGIDAS_INTERNAS.has(String(req.url || "").split("?")[0]);
 const tieneTokenInternoValido = (req) => {
@@ -3981,7 +3983,7 @@ const server = http.createServer(async (req, res) => {
       writeJson(res, 200, {
         ok: true,
         service: "diagnostico-servicio",
-        build: "2026-11-17 morosos-estado-por-ip",
+        build: "2026-11-17 inventario-nodo",
         source: supabaseRouters ? "supabase" : "env",
         addressList: MOROSOS_ADDRESS_LIST,
         mikrowisp: {
@@ -4290,6 +4292,83 @@ const server = http.createServer(async (req, res) => {
         writeJson(res, 200, { ok: false, nodo, ms: Date.now() - t0, error: formatErrorDetail(connection?.getSocketError?.() || error) });
       } finally {
         if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
+    // Inventario de usuarios/red de un nodo (17-nov-2026, panel de Cobranza "Usuarios y red"). SOLO LECTURA.
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/inventario-nodo") {
+      const body = await readJsonBody(req);
+      const nodo = String(body?.nodo || "").trim();
+      if (!nodo) { writeJson(res, 400, { ok: false, error: "Falta nodo." }); return; }
+      let connection = null;
+      try {
+        connection = await connectRouterByNodo(nodo, "");
+        const { api, router } = connection;
+        const leer = async (ruta, args = []) => {
+          try { const r = await withTimeout(api.write(ruta, args), 20000, ruta); return Array.isArray(r) ? r : []; }
+          catch (error) {
+            const reply = String(error?.reply || error?.error?.reply || "").toLowerCase(), detail = formatErrorDetail(error).toLowerCase();
+            if (reply.includes("!empty") || detail.includes("!empty")) return [];
+            throw error;
+          }
+        };
+        const secrets = await leer("/ppp/secret/print", ["=.proplist=name,remote-address,disabled,profile,comment"]);
+        const direcciones = await leer("/ip/address/print", ["=.proplist=address,interface,disabled"]);
+        const perfiles = await leer("/ppp/profile/print", ["=.proplist=name,local-address,remote-address"]);
+        const nat = await leer("/ip/firewall/nat/print", ["=.proplist=chain,action,src-address,src-address-list,out-interface,disabled"]);
+        const si = (v) => ["true", "yes"].includes(String(v || "").toLowerCase());
+        writeJson(res, 200, {
+          ok: true, nodo, router: { id: router.id, nombre: router.nombre },
+          clave_nodo: NODO_PASSWORD_RULES[normalizeNodo(nodo)] ? true : false,
+          secrets: secrets.map((s) => ({ usuario: pickFirst(s.name), ip: resolveSecretRemoteAddress(s, null) || null, deshabilitado: si(s.disabled), perfil: pickFirst(s.profile) || null, comentario: pickFirst(s.comment) || null })),
+          direcciones: direcciones.filter((d) => !si(d.disabled)).map((d) => ({ direccion: pickFirst(d.address), interfaz: pickFirst(d.interface) })),
+          perfiles: perfiles.map((p) => ({ nombre: pickFirst(p.name), local: pickFirst(p["local-address"]) || null, remoto: pickFirst(p["remote-address"]) || null })),
+          nat: nat.filter((n) => pickFirst(n.chain) === "srcnat" && !si(n.disabled)).map((n) => ({ accion: pickFirst(n.action), origen: pickFirst(n["src-address"]) || null, lista: pickFirst(n["src-address-list"]) || null, salida: pickFirst(n["out-interface"]) || null })),
+        });
+      } catch (error) {
+        writeJson(res, 200, { ok: false, nodo, error: formatErrorDetail(connection?.getSocketError?.() || error) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
+    // Crear una lista EXACTA de secrets {usuario, ip} (la arma Cobranza: siguiente numero + IPs libres).
+    // dryRun (por defecto) solo valida contra el router. La clave sale de la regla del nodo; el perfil lo indica Cobranza.
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/crear-secrets-lista") {
+      const body = await readJsonBody(req);
+      const nodo = String(body?.nodo || "").trim();
+      const profile = String(body?.profile || "").trim();
+      const dryRun = body?.dryRun !== false;
+      const lista = Array.isArray(body?.lote) ? body.lote : [];
+      try {
+        if (!nodo || !profile || !lista.length) throw new Error("Faltan nodo, profile o lote.");
+        if (lista.length > 100) throw new Error("Máximo 100 usuarios por vez.");
+        const pass = NODO_PASSWORD_RULES[normalizeNodo(nodo)] || "";
+        if (!pass) throw new Error(`No hay clave por defecto configurada para ${nodo}.`);
+        const lote = lista.map((x) => {
+          const usuario = String(x?.usuario || "").trim(), ip = String(x?.ip || "").trim();
+          if (!/^[A-Za-z0-9_.@-]{2,64}$/.test(usuario)) throw new Error(`Usuario no válido: ${usuario}`);
+          if (ipv4ANumero(ip) == null) throw new Error(`IP no válida: ${ip}`);
+          return { usuario, ip, password: pass, profile, localAddress: "" };
+        });
+        const router = await resolveRouterByNodo(nodo, "");
+        if (dryRun) {
+          let connection = null;
+          try {
+            connection = await connectToRouter(router);
+            const rows = await withTimeout(connection.api.write("/ppp/secret/print", ["=.proplist=name,remote-address"]), 20000, "Listar secrets");
+            const nombres = new Set((rows || []).map((s) => pickFirst(s?.name).toLowerCase()));
+            const ips = new Set((rows || []).map((s) => resolveSecretRemoteAddress(s, null)).filter(Boolean));
+            writeJson(res, 200, { ok: true, dryRun: true, lote: lote.map(({ password, ...x }) => ({ ...x, conflicto: nombres.has(x.usuario.toLowerCase()) ? "usuario ya existe" : ips.has(x.ip) ? "IP ya usada" : null })) });
+          } finally { if (connection?.api) await closeRouterApiSafe(connection.api); }
+          return;
+        }
+        const { resultados } = await crearSecretsLote({ routerKey: router.id, lote });
+        writeJson(res, 200, { ok: true, dryRun: false, creados: resultados.filter((r) => r.ok).length, omitidos: resultados.filter((r) => !r.ok).length, resultados: resultados.map(({ password, ...x }) => x) });
+      } catch (error) {
+        writeJson(res, 400, { ok: false, error: formatErrorDetail(error), resultadosParciales: (error?.resultadosParciales || []).map(({ password, ...x }) => x) });
       }
       return;
     }
