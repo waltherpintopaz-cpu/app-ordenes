@@ -206,6 +206,7 @@ const RUTAS_PROTEGIDAS_INTERNAS = new Set([
   "/api/clientes/sincronizar-estados-mikrowisp",
   "/api/cruce-mac-aplicar",
   "/api/clientes/revisar-prorrateos-vencidos",
+  "/api/diagnostico-servicio/estado-nodo",
 ]);
 const requiereAuthInterna = (req) => RUTAS_PROTEGIDAS_INTERNAS.has(String(req.url || "").split("?")[0]);
 const tieneTokenInternoValido = (req) => {
@@ -4213,6 +4214,54 @@ const server = http.createServer(async (req, res) => {
         });
       } catch (error) {
         writeJson(res, 200, { ok: false, error: formatErrorDetail(connection?.getSocketError?.() || error) });
+      } finally {
+        if (connection?.api) await closeRouterApiSafe(connection.api);
+      }
+      return;
+    }
+
+    // Estado del MikroTik de un nodo (17-nov-2026, panel de Cobranza). SOLO LECTURA:
+    // identidad, recursos, PPPoE conectados, secrets (y deshabilitados) y entradas en morosos.
+    if (req.method === "POST" && req.url === "/api/diagnostico-servicio/estado-nodo") {
+      const body = await readJsonBody(req);
+      const nodo = String(body?.nodo || "").trim();
+      if (!nodo) { writeJson(res, 400, { ok: false, error: "Falta nodo." }); return; }
+      const t0 = Date.now();
+      let connection = null;
+      try {
+        connection = await connectRouterByNodo(nodo, "");
+        const { api, router } = connection;
+        const ms = Date.now() - t0;
+        const leer = async (ruta, args = []) => {
+          try { const r = await withTimeout(api.write(ruta, args), 15000, ruta); return Array.isArray(r) ? r : []; }
+          catch (error) {
+            const reply = String(error?.reply || error?.error?.reply || "").toLowerCase(), detail = formatErrorDetail(error).toLowerCase();
+            if (reply.includes("!empty") || detail.includes("!empty")) return [];
+            throw error;
+          }
+        };
+        const [identity, recurso, activos, secrets, morosos] = await Promise.all([
+          leer("/system/identity/print"),
+          leer("/system/resource/print"),
+          leer("/ppp/active/print", ["=.proplist=.id"]),
+          leer("/ppp/secret/print", ["=.proplist=disabled"]),
+          leer("/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]),
+        ]);
+        const r0 = recurso[0] || {};
+        writeJson(res, 200, {
+          ok: true, nodo, ms, router: buildRouterInfo(router),
+          identidad: identity[0]?.name || null,
+          modelo: r0["board-name"] || null, version: r0.version || null, uptime: r0.uptime || null,
+          cpu: r0["cpu-load"] != null ? Number(r0["cpu-load"]) : null,
+          memoria_libre: r0["free-memory"] != null ? Number(r0["free-memory"]) : null, memoria_total: r0["total-memory"] != null ? Number(r0["total-memory"]) : null,
+          pppoe_conectados: activos.length,
+          secrets: secrets.length,
+          secrets_deshabilitados: secrets.filter((s) => ["true", "yes"].includes(String(s.disabled || "").toLowerCase())).length,
+          morosos: morosos.length,
+          morosos_mikrowisp: morosos.filter((m) => /^corte_servicio_/i.test(String(m.comment || ""))).length,
+        });
+      } catch (error) {
+        writeJson(res, 200, { ok: false, nodo, ms: Date.now() - t0, error: formatErrorDetail(connection?.getSocketError?.() || error) });
       } finally {
         if (connection?.api) await closeRouterApiSafe(connection.api);
       }
