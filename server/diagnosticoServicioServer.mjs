@@ -4240,13 +4240,15 @@ const server = http.createServer(async (req, res) => {
             throw error;
           }
         };
-        const [identity, recurso, activos, secrets, morosos] = await Promise.all([
-          leer("/system/identity/print"),
-          leer("/system/resource/print"),
-          leer("/ppp/active/print", ["=.proplist=.id"]),
-          leer("/ppp/secret/print", ["=.proplist=disabled"]),
-          leer("/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]),
-        ]);
+        // una consulta a la vez (en paralelo algunos routers no contestan y vence el timeout);
+        // si una falla, las demas siguen y se informa cual fallo
+        const fallos = [];
+        const paso = async (nombre, ruta, args) => { try { return await leer(ruta, args); } catch (e) { fallos.push(`${nombre}: ${formatErrorDetail(e)}`); return null; } };
+        const identity = (await paso("identidad", "/system/identity/print")) || [];
+        const recurso = (await paso("recursos", "/system/resource/print")) || [];
+        const activos = await paso("pppoe activos", "/ppp/active/print", ["=.proplist=.id"]);
+        const secrets = await paso("secrets", "/ppp/secret/print", ["=.proplist=disabled"]);
+        const morosos = await paso("morosos", "/ip/firewall/address-list/print", [`?list=${MOROSOS_ADDRESS_LIST}`, "=.proplist=comment"]);
         const r0 = recurso[0] || {};
         writeJson(res, 200, {
           ok: true, nodo, ms, router: buildRouterInfo(router),
@@ -4254,11 +4256,12 @@ const server = http.createServer(async (req, res) => {
           modelo: r0["board-name"] || null, version: r0.version || null, uptime: r0.uptime || null,
           cpu: r0["cpu-load"] != null ? Number(r0["cpu-load"]) : null,
           memoria_libre: r0["free-memory"] != null ? Number(r0["free-memory"]) : null, memoria_total: r0["total-memory"] != null ? Number(r0["total-memory"]) : null,
-          pppoe_conectados: activos.length,
-          secrets: secrets.length,
-          secrets_deshabilitados: secrets.filter((s) => ["true", "yes"].includes(String(s.disabled || "").toLowerCase())).length,
-          morosos: morosos.length,
-          morosos_mikrowisp: morosos.filter((m) => /^corte_servicio_/i.test(String(m.comment || ""))).length,
+          pppoe_conectados: activos ? activos.length : null,
+          secrets: secrets ? secrets.length : null,
+          secrets_deshabilitados: secrets ? secrets.filter((s) => ["true", "yes"].includes(String(s.disabled || "").toLowerCase())).length : null,
+          morosos: morosos ? morosos.length : null,
+          morosos_mikrowisp: morosos ? morosos.filter((m) => /^corte_servicio_/i.test(String(m.comment || ""))).length : null,
+          fallos,
         });
       } catch (error) {
         writeJson(res, 200, { ok: false, nodo, ms: Date.now() - t0, error: formatErrorDetail(connection?.getSocketError?.() || error) });
