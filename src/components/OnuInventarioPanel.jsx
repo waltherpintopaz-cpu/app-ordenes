@@ -668,12 +668,12 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
                     onClick={() => consultarTr069(ficha)}
                     style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: tr069Cargando ? "not-allowed" : "pointer", opacity: tr069Cargando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
                   >{tr069Cargando === "consultar" ? "Consultando…" : "Consultar"}</button>
-                  {tr069 && !tr069.activo && (
+                  {tr069 && (!tr069.activo || !/dhcp/i.test(tr069.gestion?.tipo || "")) && (
                     <button
                       disabled={!!tr069Cargando || !!accionando}
                       onClick={() => accionTr069(ficha, "activar")}
                       style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: tr069Cargando ? "not-allowed" : "pointer", opacity: tr069Cargando ? 0.6 : 1, border: "none", background: "#2563eb", color: "#fff" }}
-                    >{tr069Cargando === "activar" ? "Activando…" : "Activar TR-069"}</button>
+                    >{tr069Cargando === "activar" ? "Activando…" : tr069.activo ? "Pasar al TR-069 propio" : "Activar TR-069"}</button>
                   )}
                   {tr069?.activo && (
                     <>
