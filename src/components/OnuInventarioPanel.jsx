@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 
 const HUAWEI_OLT_SNMP_API = String(import.meta.env.VITE_HUAWEI_OLT_SNMP_API || "https://huawei-olt-snmp.wolgest.com").trim().replace(/\/$/, "");
@@ -113,6 +113,72 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
     } finally {
       setDiagCargando(false);
     }
+  }, [sn]);
+
+  // TR-069 a pedido (GenieACS propio): se consulta solo cuando se pide, para no abrir
+  // una sesion de consola en la OLT cada vez que se mira una ficha.
+  const [tr069, setTr069] = useState(null); // { activo, gestion, vigilancia } | null
+  const [tr069Cargando, setTr069Cargando] = useState("");
+  const [tr069Msg, setTr069Msg] = useState(null);
+  const tr069Timer = useRef(null);
+  useEffect(() => () => clearTimeout(tr069Timer.current), []);
+  useEffect(() => { setTr069(null); setTr069Msg(null); clearTimeout(tr069Timer.current); }, [sn]);
+
+  const llamarTr069 = useCallback(async (ruta, body) => {
+    const r = await fetch(`${DIAGNO_BASE}/api/huawei-onu/${ruta}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    return r.json().catch(() => ({ ok: false, error: "Respuesta inválida del servidor." }));
+  }, []);
+
+  const consultarTr069 = useCallback(async (f, seguirVigilando = false, intento = 0) => {
+    setTr069Cargando((c) => c || "consultar");
+    try {
+      const j = await llamarTr069("tr069-estado", { board: f.board, port: f.port, ontId: f.onuId });
+      if (!j.ok) throw new Error(j.error || "No se pudo consultar.");
+      setTr069(j);
+      if (seguirVigilando && j.vigilancia?.estado === "verificando" && intento < 8) {
+        tr069Timer.current = setTimeout(() => consultarTr069(f, true, intento + 1), 30000);
+      } else if (j.vigilancia?.estado === "revertido") {
+        setTr069Msg({ ok: false, texto: j.vigilancia.detalle });
+      } else if (seguirVigilando && j.vigilancia?.estado === "ok") {
+        setTr069Msg({ ok: true, texto: "TR-069 activo y el internet del cliente sigue conectado." });
+      }
+    } catch (e) {
+      setTr069Msg({ ok: false, texto: e.message || "Error de red." });
+    } finally {
+      setTr069Cargando("");
+    }
+  }, [llamarTr069]);
+
+  const accionTr069 = useCallback(async (f, accion) => {
+    const esHuawei = /^HWTC/i.test(String(sn || ""));
+    const msg = accion === "activar"
+      ? `¿Activar TR-069 en esta ONU?\n\nSe le abre el canal de gestión (VLAN 99, IP por DHCP) y queda administrable desde GenieACS (WiFi, reinicio). El internet del cliente no se toca.${esHuawei ? "" : "\n\n⚠ No es Huawei: en algunas ZTE el internet se cae con TR-069. Si pasa, se quita solo en ~3 min."}`
+      : "¿Quitar TR-069 de esta ONU?\n\nSe borra su canal de gestión y deja de verse en GenieACS (y en SmartOLT si estaba ahí). El internet del cliente no se toca.";
+    if (!window.confirm(msg)) return;
+    setTr069Cargando(accion);
+    setTr069Msg(null);
+    clearTimeout(tr069Timer.current);
+    try {
+      const j = await llamarTr069("tr069", { board: f.board, port: f.port, ontId: f.onuId, accion });
+      if (!j.ok) throw new Error(j.error || "La OLT no aceptó el cambio.");
+      setTr069Msg({ ok: true, texto: accion === "activar"
+        ? (j.vigilando ? "Activado. Verificando que el internet siga bien (~3 min)… En unos minutos aparece en GenieACS." : "Activado. En unos minutos aparece en GenieACS.")
+        : "TR-069 quitado. La ONU queda sin gestión." });
+      setTr069Cargando("");
+      await consultarTr069(f, accion === "activar" && j.vigilando);
+    } catch (e) {
+      setTr069Msg({ ok: false, texto: e.message || "Error de red." });
+      setTr069Cargando("");
+    }
+  }, [sn, llamarTr069, consultarTr069]);
+
+  // Serie como la muestra GenieACS: los 4 primeros caracteres (vendor) en hex.
+  const serieGenie = useMemo(() => {
+    const s = String(sn || "").toUpperCase();
+    if (!/^[A-Z]{4}[0-9A-F]{8}$/.test(s)) return s;
+    return s.slice(0, 4).split("").map((ch) => ch.charCodeAt(0).toString(16).toUpperCase()).join("") + s.slice(4);
   }, [sn]);
 
   const ejecutarAccion = useCallback(async (accion, ruta, body, confirmMsg) => {
@@ -583,6 +649,52 @@ export function FichaOnuDrawer({ sn, onClose, isDark }) {
                   style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: (accionando || !accesoRemotoEdit) ? "not-allowed" : "pointer", opacity: (accionando || !accesoRemotoEdit) ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
                 >{accionando === "acceso-remoto" ? "Aplicando…" : "Aplicar"}</button>
               </div>
+              </div>
+
+              {/* TR-069 a pedido (GenieACS propio, reemplazo de SmartOLT) */}
+              <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${col.border}` }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: col.sub, textTransform: "uppercase", marginBottom: 4 }}>TR-069 (WiFi remoto)</div>
+                <div style={{ fontSize: 11.5, color: col.sub, marginBottom: 8 }}>
+                  {!tr069
+                    ? "Sin consultar. Actívalo solo si el cliente lo necesita (cambiar nombre o clave del WiFi, reinicio remoto)."
+                    : tr069.activo
+                      ? `Activo · IP de gestión ${tr069.gestion?.ip && tr069.gestion.ip !== "-" ? tr069.gestion.ip : "(pidiendo por DHCP…)"} · ${/dhcp/i.test(tr069.gestion?.tipo || "") ? "DHCP" : "fija (SmartOLT)"}`
+                      : "Sin TR-069 (la ONU no tiene canal de gestión)."}
+                  {tr069?.vigilancia?.estado === "verificando" && " · verificando internet…"}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    disabled={!!tr069Cargando || !!accionando}
+                    onClick={() => consultarTr069(ficha)}
+                    style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: tr069Cargando ? "not-allowed" : "pointer", opacity: tr069Cargando ? 0.6 : 1, border: `1.5px solid ${col.border}`, background: "transparent", color: col.text }}
+                  >{tr069Cargando === "consultar" ? "Consultando…" : "Consultar"}</button>
+                  {tr069 && !tr069.activo && (
+                    <button
+                      disabled={!!tr069Cargando || !!accionando}
+                      onClick={() => accionTr069(ficha, "activar")}
+                      style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: tr069Cargando ? "not-allowed" : "pointer", opacity: tr069Cargando ? 0.6 : 1, border: "none", background: "#2563eb", color: "#fff" }}
+                    >{tr069Cargando === "activar" ? "Activando…" : "Activar TR-069"}</button>
+                  )}
+                  {tr069?.activo && (
+                    <>
+                      <a
+                        href={`https://acs-panel.wolgest.com/#!/devices?filter=${encodeURIComponent(`DeviceID.SerialNumber = "${serieGenie}"`)}`}
+                        target="_blank" rel="noreferrer"
+                        style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", textDecoration: "none" }}
+                      >Abrir en GenieACS ↗</a>
+                      <button
+                        disabled={!!tr069Cargando || !!accionando}
+                        onClick={() => accionTr069(ficha, "quitar")}
+                        style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, cursor: tr069Cargando ? "not-allowed" : "pointer", opacity: tr069Cargando ? 0.6 : 1, border: "1.5px solid #dc2626", background: "transparent", color: "#991b1b" }}
+                      >{tr069Cargando === "quitar" ? "Quitando…" : "Quitar TR-069"}</button>
+                    </>
+                  )}
+                </div>
+                {tr069Msg && (
+                  <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: tr069Msg.ok ? "#166534" : "#991b1b" }}>
+                    {tr069Msg.ok ? "✓ " : "✗ "}{tr069Msg.texto}
+                  </div>
+                )}
               </div>
 
               {/* 3. Acciones de riesgo, separadas visualmente al final */}
