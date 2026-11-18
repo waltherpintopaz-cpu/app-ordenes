@@ -974,6 +974,8 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
   const [vlan, setVlan] = useState(100);
   const [plan, setPlan] = useState(1000);
   const [configurarWan, setConfigurarWan] = useState(true);
+  // TR-069 al instalar: la ONU queda administrable y el CRM le pone el WiFi que el cliente eligio en su orden
+  const [activarTr069, setActivarTr069] = useState(true);
   const [pppoeUser, setPppoeUser] = useState("");
   const [pppoePass, setPppoePass] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -1008,7 +1010,15 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         }).then(r => r.json());
         if (!rWan.ok) { setMensaje({ ok: false, texto: `ONU autorizada, pero falló la config de WAN/PPPoE: ${rWan.error || "error desconocido"}` }); setEnviando(false); return; }
       }
-      setMensaje({ ok: true, texto: (esMover ? "ONU movida" : "ONU autorizada") + (configurarWan ? " y configurada con Routing/PPPoE." : ".") });
+      let extraTr069 = "";
+      if (activarTr069 && !esMover) {
+        const rTr = await fetch(`${DIAGNO_BASE}/api/huawei-onu/tr069`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ board: onu.board, port: onu.port, ontId, accion: "activar" }),
+        }).then(r => r.json()).catch((e) => ({ ok: false, error: e.message }));
+        extraTr069 = rTr.ok ? " TR-069 activado: el WiFi de la orden se aplica solo en unos minutos." : ` (TR-069 no se pudo activar: ${rTr.error || "error"}; se puede activar luego desde la ficha.)`;
+      }
+      setMensaje({ ok: true, texto: (esMover ? "ONU movida" : "ONU autorizada") + (configurarWan ? " y configurada con Routing/PPPoE." : ".") + extraTr069 });
       setTimeout(() => onAutorizada(), 1200);
     } catch (e) {
       setMensaje({ ok: false, texto: e.message || "Error de red." });
@@ -1055,6 +1065,13 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
             {campo("Usuario PPPoE", <input value={pppoeUser} onChange={e => setPppoeUser(e.target.value)} style={inputStyle} />)}
             {campo("Contraseña PPPoE", <input value={pppoePass} onChange={e => setPppoePass(e.target.value)} style={inputStyle} />)}
           </div>
+        )}
+
+        {!esMover && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, cursor: "pointer" }}>
+            <input type="checkbox" checked={activarTr069} onChange={e => setActivarTr069(e.target.checked)} />
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: col.text }}>Activar TR-069 (WiFi automático): le pone el nombre y la clave que el cliente eligió en su orden</span>
+          </label>
         )}
 
         {mensaje && <div style={{ fontSize: 12.5, fontWeight: 600, color: mensaje.ok ? "#166534" : "#991b1b", marginBottom: 10 }}>{mensaje.ok ? "✓ " : "✗ "}{mensaje.texto}</div>}
