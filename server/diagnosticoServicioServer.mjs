@@ -2598,7 +2598,16 @@ const handleBotPagosV3EstadoConv = async (payload) => {
     if (!res.ok) throw new Error(`Supabase delete bot_pagos_v3_estado: HTTP ${res.status}`);
     return { fase: null };
   }
-  throw new Error(`accion invalida: "${accionEstado}" (esperado "pausar" o "liberar")`);
+  if (accionEstado === "consultar") {
+    // El CRM lo usa para mostrar el interruptor "Bot pausado" de las lineas puente (crm:<id>)
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/bot_pagos_v3_estado?conv_id=eq.${encodeURIComponent(convId)}&select=fase,actualizado_en`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    });
+    if (!res.ok) throw new Error(`Supabase select bot_pagos_v3_estado: HTTP ${res.status}`);
+    const fila = (await res.json())?.[0] || null;
+    return { fase: fila?.fase || null, actualizado_en: fila?.actualizado_en || null };
+  }
+  throw new Error(`accion invalida: "${accionEstado}" (esperado "pausar", "liberar" o "consultar")`);
 };
 
 // Lista los agentes (usuarios) de la cuenta de Chatwoot -- para poblar el
