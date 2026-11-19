@@ -470,6 +470,40 @@ export default function SeguimientoTecnicosPanel({
   // SeguimientoVolanteadoresPanel.jsx, pero por tecnico en vez de una sola
   // fila compartida (tecnico_seguimiento_config tiene una fila por tecnico).
   const [ajustesTecnico, setAjustesTecnico] = useState(null);
+  // 19-nov: link publico de seguimiento por un tiempo elegido (GPS del celular del tecnico)
+  const [linkTec, setLinkTec] = useState(null);
+  const [linkMin, setLinkMin] = useState(60);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkError, setLinkError] = useState("");
+  const [linkGenerando, setLinkGenerando] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
+  const [linkExpira, setLinkExpira] = useState(null);
+  const abrirLinkTec = (tecnico) => { setLinkTec(tecnico); setLinkUrl(""); setLinkError(""); setLinkCopiado(false); };
+  const generarLinkTec = async () => {
+    if (!linkTec || !isSupabaseConfigured) return;
+    setLinkGenerando(true); setLinkError(""); setLinkUrl(""); setLinkCopiado(false);
+    try {
+      const min = Number(linkMin) > 0 ? Number(linkMin) : 60;
+      // si tiene vehiculo asignado se usa para el icono; la posicion sale del GPS mas reciente (vehiculo o celular)
+      const { data: veh } = await supabase.from("vehiculos").select("id").eq("tecnico_asignado", linkTec.nombre).eq("activo", true).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("enlaces_seguimiento")
+        .insert({ tecnico_id: String(linkTec.id), tecnico_nombre: linkTec.nombre, vehiculo_id: veh?.id ?? null, expira_en: new Date(Date.now() + min * 60000).toISOString() })
+        .select("id, expira_en")
+        .single();
+      if (error) throw error;
+      setLinkExpira(data.expira_en);
+      setLinkUrl(`${window.location.origin}/seguimiento?t=${data.id}`);
+    } catch (e) {
+      setLinkError(String(e?.message || "No se pudo generar el link."));
+    } finally {
+      setLinkGenerando(false);
+    }
+  };
+  const copiarLinkTec = async () => {
+    try { await navigator.clipboard.writeText(linkUrl); setLinkCopiado(true); setTimeout(() => setLinkCopiado(false), 2000); } catch { /* sin portapapeles */ }
+  };
+  const textoDuracion = (m) => (m >= 60 ? `${m / 60} h` : `${m} min`);
   const [ajustesCargando, setAjustesCargando] = useState(false);
   const [ajustesGuardando, setAjustesGuardando] = useState(false);
   const [ajustesError, setAjustesError] = useState("");
@@ -2106,6 +2140,14 @@ export default function SeguimientoTecnicosPanel({
                             ⚙️ Ajustes
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="secondary-btn small"
+                          onClick={(e) => { e.stopPropagation(); abrirLinkTec(tecnico); }}
+                          title="Link para que otra persona vea en vivo dónde está, por el tiempo que elijas"
+                        >
+                          🔗 Link por tiempo
+                        </button>
                         {tecnico.celular ? (
                           <>
                             <button
@@ -2263,6 +2305,69 @@ export default function SeguimientoTecnicosPanel({
           </>
         )}
       </section>
+
+      {linkTec ? (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}
+          onClick={() => setLinkTec(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420 }}>
+            <h3 style={{ marginTop: 0, marginBottom: 4, color: "#1e293b" }}>🔗 Link de seguimiento</h3>
+            <p style={{ fontSize: 13, color: "#64748b", marginTop: 0, marginBottom: 14 }}>
+              {linkTec.nombre} -- quien abra el link lo ve en el mapa en vivo hasta que venza.
+            </p>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>¿Por cuánto tiempo?</label>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0 14px" }}>
+              {[15, 30, 60, 120, 240, 480].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setLinkMin(m); setLinkUrl(""); }}
+                  style={{ padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontWeight: 600, fontSize: 13,
+                    border: `1.5px solid ${linkMin === m ? "#4338ca" : "#e2e8f0"}`, background: linkMin === m ? "#eef2ff" : "#fff", color: linkMin === m ? "#4338ca" : "#334155" }}
+                >
+                  {textoDuracion(m)}
+                </button>
+              ))}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#475569" }}>
+                <input
+                  type="number" min={5} max={1440} step={5}
+                  value={linkMin}
+                  onChange={(e) => { setLinkMin(Math.min(1440, Math.max(5, Number(e.target.value) || 5))); setLinkUrl(""); }}
+                  style={{ width: 70, padding: "6px 8px", borderRadius: 8, border: "1.5px solid #e2e8f0" }}
+                />
+                min
+              </span>
+            </div>
+            {linkUrl ? (
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, wordBreak: "break-all", color: "#1e293b", marginBottom: 8 }}>{linkUrl}</div>
+                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8 }}>
+                  Vence a las {linkExpira ? new Date(linkExpira).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }) : "--"} ({textoDuracion(linkMin)})
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" className="secondary-btn small" onClick={copiarLinkTec}>{linkCopiado ? "✓ Copiado" : "📋 Copiar"}</button>
+                  <button
+                    type="button"
+                    className="secondary-btn small"
+                    onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(`Sigue en vivo a ${linkTec.nombre} (válido ${textoDuracion(linkMin)}): ${linkUrl}`)}`, "_blank", "noopener,noreferrer")}
+                  >
+                    💬 WhatsApp
+                  </button>
+                  <button type="button" className="secondary-btn small" onClick={() => window.open(linkUrl, "_blank", "noopener,noreferrer")}>↗ Abrir</button>
+                </div>
+              </div>
+            ) : null}
+            {linkError ? <p style={{ fontSize: 12, color: "#b91c1c", marginTop: 0 }}>{linkError}</p> : null}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="secondary-btn small" onClick={() => setLinkTec(null)}>Cerrar</button>
+              <button type="button" className="primary-btn small" onClick={() => void generarLinkTec()} disabled={linkGenerando}>
+                {linkGenerando ? "Generando..." : linkUrl ? "Generar otro" : "Generar link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {ajustesTecnico ? (
         <div

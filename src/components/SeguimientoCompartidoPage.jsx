@@ -161,12 +161,27 @@ export default function SeguimientoCompartidoPage() {
   }, []);
 
   const refrescarPosicion = useCallback(async (enlaceActual) => {
-    if (!enlaceActual?.vehiculo_id) return;
-    const { data: actual } = await supabase
-      .from("vehiculo_ubicacion_actual")
-      .select("lat,lng,updated_at,battery_pct,speed_mps")
-      .eq("vehiculo_id", enlaceActual.vehiculo_id)
-      .maybeSingle();
+    if (!enlaceActual?.vehiculo_id && !enlaceActual?.tecnico_id) return;
+    // 19-nov: links por tiempo desde "Seguimiento de tecnicos" (sin vehiculo) y vehiculos con GPS
+    // parado (V3T-061 sin posicion desde el 06-oct): se usa el GPS del celular del tecnico.
+    let actual = null;
+    if (enlaceActual.vehiculo_id) {
+      const { data } = await supabase
+        .from("vehiculo_ubicacion_actual")
+        .select("lat,lng,updated_at,battery_pct,speed_mps")
+        .eq("vehiculo_id", enlaceActual.vehiculo_id)
+        .maybeSingle();
+      actual = data || null;
+    }
+    const reciente = (p) => p?.updated_at && Date.now() - new Date(p.updated_at).getTime() < 20 * 60000;
+    if (!reciente(actual) && enlaceActual.tecnico_id) {
+      const { data: tec } = await supabase
+        .from("tecnico_ubicacion_actual")
+        .select("lat,lng,updated_at,battery_pct,speed_mps")
+        .eq("tecnico_id", String(enlaceActual.tecnico_id))
+        .maybeSingle();
+      if (tec && (!actual || new Date(tec.updated_at) > new Date(actual.updated_at))) actual = tec;
+    }
 
     // La ubicacion de quien mira el enlace manda sobre la direccion guardada
     // (si la hay) — es la referencia real de "a que distancia estoy yo".
@@ -182,7 +197,8 @@ export default function SeguimientoCompartidoPage() {
       if (referencia) {
         const dist = haversineKm({ lat: Number(actual.lat), lng: Number(actual.lng) }, referencia);
         setDistanciaKm(dist);
-        if (dist <= ARRIVAL_KM) {
+        // links por tiempo (sin vehiculo ni orden): no se "completan" por cercania, vencen a su hora
+        if (dist <= ARRIVAL_KM && (enlaceActual.vehiculo_id || enlaceActual.orden_id)) {
           arrivalStreakRef.current += 1;
           if (arrivalStreakRef.current >= ARRIVAL_CONFIRMATIONS) {
             void marcarCompletado(enlaceActual.id);
@@ -351,6 +367,11 @@ export default function SeguimientoCompartidoPage() {
     ? `El tecnico esta a ~${distanciaKm < 1 ? Math.round(distanciaKm * 1000) + " m" : distanciaKm.toFixed(1) + " km"} de tu ubicacion.`
     : "Siguiendo la ubicacion del tecnico en vivo.";
 
+  const minRestantes = enlace?.expira_en ? Math.max(0, Math.round((new Date(enlace.expira_en).getTime() - Date.now()) / 60000)) : null;
+  const vigenciaTexto = minRestantes == null ? "" : minRestantes >= 60
+    ? `Link activo por ${Math.floor(minRestantes / 60)} h ${minRestantes % 60} min más`
+    : `Link activo por ${minRestantes} min más`;
+
   const mapaNode = (
     <div ref={mapCanvasRef} style={{ width: "100%", height: "100%" }} />
   );
@@ -423,6 +444,9 @@ export default function SeguimientoCompartidoPage() {
               <p style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", marginTop: 4 }}>
                 Ultima actualizacion: {new Date(ultimaPosicion.updated_at).toLocaleTimeString("es-PE")}
               </p>
+            ) : null}
+            {vigenciaTexto ? (
+              <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", marginTop: 2 }}>⏱️ {vigenciaTexto}</p>
             ) : null}
           </div>
         )}
