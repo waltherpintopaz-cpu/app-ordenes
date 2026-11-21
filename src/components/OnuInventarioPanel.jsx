@@ -980,6 +980,49 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
   const [pppoePass, setPppoePass] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
+  // Buscar la orden de instalacion y llenar todo solo (nombre, PPPoE, clave, plan, VLAN del nodo)
+  const [qOrden, setQOrden] = useState("");
+  const [ordenes, setOrdenes] = useState([]);
+  const [buscandoOrden, setBuscandoOrden] = useState(false);
+  const [ordenSel, setOrdenSel] = useState(null);
+  const buscarOrden = async () => {
+    const q = qOrden.trim();
+    if (q.length < 3) return;
+    setBuscandoOrden(true);
+    try {
+      const qq = q.replace(/[%,()]/g, " ");
+      const { data } = await supabase.from("ordenes")
+        .select("id,codigo,nombre,dni,direccion,nodo,velocidad,usuario_nodo,password_usuario,sn_onu,estado,fecha_creacion")
+        .or(`codigo.ilike.%${qq}%,dni.ilike.%${qq}%,nombre.ilike.%${qq}%,usuario_nodo.ilike.%${qq}%`)
+        .order("fecha_creacion", { ascending: false }).limit(8);
+      setOrdenes(data || []);
+      if (!data?.length) setMensaje({ ok: false, texto: "No se encontró ninguna orden con ese dato." });
+      else setMensaje(null);
+    } catch (e) {
+      setMensaje({ ok: false, texto: "No se pudo buscar la orden: " + (e.message || e) });
+    } finally {
+      setBuscandoOrden(false);
+    }
+  };
+  const elegirOrden = async (o) => {
+    setOrdenSel(o);
+    setOrdenes([]);
+    setNombre(String(o.nombre || "").trim());
+    setZona(String(o.nodo || "").trim());
+    setComentario(`${o.codigo || ""} ${String(o.direccion || "").trim()}`.trim().slice(0, 60));
+    if (o.usuario_nodo) { setPppoeUser(String(o.usuario_nodo).trim()); setConfigurarWan(true); }
+    if (o.password_usuario) setPppoePass(String(o.password_usuario).trim());
+    const mbps = parseInt(String(o.velocidad || "").replace(/\D+/g, " ").trim().split(" ")[0], 10);
+    if (mbps) {
+      const cercano = PLANES_VELOCIDAD.reduce((a, p) => (Math.abs(p.mbps - mbps) < Math.abs(a.mbps - mbps) ? p : a), PLANES_VELOCIDAD[0]);
+      setPlan(cercano.mbps);
+    }
+    if (o.nodo) {
+      const { data } = await supabase.from("nodos_config").select("vlan").eq("nodo", o.nodo).maybeSingle();
+      const v = parseInt(data?.vlan, 10);
+      if (v) setVlan(v);
+    }
+  };
 
   const inputStyle = { border: isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", background: isDark ? "#0d172a" : "#fff", color: col.text, fontSize: 13, width: "100%", boxSizing: "border-box" };
   const labelStyle = { fontSize: 11, fontWeight: 700, color: col.sub, textTransform: "uppercase", marginBottom: 4, display: "block" };
@@ -1010,8 +1053,12 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         }).then(r => r.json());
         if (!rWan.ok) { setMensaje({ ok: false, texto: `ONU autorizada, pero falló la config de WAN/PPPoE: ${rWan.error || "error desconocido"}` }); setEnviando(false); return; }
       }
+      // Guardar el SN en la orden (si estaba vacio) para que quede vinculada
+      if (ordenSel?.id && !String(ordenSel.sn_onu || "").trim()) {
+        await supabase.from("ordenes").update({ sn_onu: onu.sn }).eq("id", ordenSel.id).then(() => {}, () => {});
+      }
       let extraTr069 = "";
-      if (activarTr069 && !esMover) {
+      if (activarTr069) {
         const rTr = await fetch(`${DIAGNO_BASE}/api/huawei-onu/tr069`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ board: onu.board, port: onu.port, ontId, accion: "activar" }),
@@ -1038,6 +1085,24 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
             Ya estaba autorizada en <strong>board {onu.previa.board} / puerto {onu.previa.port}</strong> como "{onu.previa.nombre || "sin nombre"}". Al confirmar se borra ese registro viejo y se crea uno nuevo acá.
           </div>
         )}
+
+        <div style={{ marginBottom: 12, padding: 10, borderRadius: 10, background: isDark ? "#0f1e36" : "#eff6ff", border: `1px solid ${isDark ? "#1e3a8a" : "#bfdbfe"}` }}>
+          <span style={labelStyle}>Buscar orden (llena todo solo)</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input value={qOrden} onChange={e => setQOrden(e.target.value)} onKeyDown={e => { if (e.key === "Enter") buscarOrden(); }} style={inputStyle} placeholder="Código ORD, DNI, nombre o usuario PPPoE" />
+            <button onClick={buscarOrden} disabled={buscandoOrden} style={{ padding: "8px 14px", fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: "none", background: "#1d4ed8", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>{buscandoOrden ? "…" : "Buscar"}</button>
+          </div>
+          {ordenes.length > 0 && (
+            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+              {ordenes.map((o) => (
+                <button key={o.id} onClick={() => elegirOrden(o)} style={{ textAlign: "left", padding: "7px 9px", borderRadius: 8, border: `1px solid ${isDark ? "#2c3c58" : "#cbd5e1"}`, background: isDark ? "#0d172a" : "#fff", color: col.text, cursor: "pointer", fontSize: 12 }}>
+                  <strong>{o.codigo}</strong> · {o.nombre} · {o.nodo || "sin nodo"} · {o.velocidad || "—"} · {o.usuario_nodo || "sin usuario"} <span style={{ color: col.sub }}>({o.estado})</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {ordenSel && <div style={{ marginTop: 6, fontSize: 12, color: isDark ? "#93c5fd" : "#1d4ed8", fontWeight: 600 }}>✓ Orden {ordenSel.codigo} cargada — revisá los datos y autorizá.</div>}
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           {campo(buscandoOntId ? "ONT-ID (buscando uno libre…)" : "ONT-ID (sugerido automáticamente, se puede cambiar)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder={buscandoOntId ? "…" : "ej. 50"} />)}
@@ -1067,12 +1132,10 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
           </div>
         )}
 
-        {!esMover && (
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, cursor: "pointer" }}>
-            <input type="checkbox" checked={activarTr069} onChange={e => setActivarTr069(e.target.checked)} />
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: col.text }}>Activar TR-069 (WiFi automático): le pone el nombre y la clave que el cliente eligió en su orden</span>
-          </label>
-        )}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, cursor: "pointer" }}>
+          <input type="checkbox" checked={activarTr069} onChange={e => setActivarTr069(e.target.checked)} />
+          <span style={{ fontSize: 12.5, fontWeight: 600, color: col.text }}>Activar TR-069 (WiFi automático): le pone el nombre y la clave que el cliente eligió en su orden</span>
+        </label>
 
         {mensaje && <div style={{ fontSize: 12.5, fontWeight: 600, color: mensaje.ok ? "#166534" : "#991b1b", marginBottom: 10 }}>{mensaje.ok ? "✓ " : "✗ "}{mensaje.texto}</div>}
 
