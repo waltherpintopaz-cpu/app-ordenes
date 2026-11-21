@@ -868,7 +868,7 @@ function OnusSinConfigurar({ isDark, col }) {
   // apriete el boton.
   useEffect(() => {
     buscar(false);
-    const id = setInterval(() => buscar(false), 20000);
+    const id = setInterval(() => buscar(false), 10000);
     return () => clearInterval(id);
   }, [buscar]);
 
@@ -878,7 +878,7 @@ function OnusSinConfigurar({ isDark, col }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 800, color: col.text }}>ONUs detectadas sin autorizar</div>
-            <div style={{ fontSize: 12.5, color: col.sub, marginTop: 2 }}>Se actualiza solo cada 20s (consulta directa por SNMP, instantánea).</div>
+            <div style={{ fontSize: 12.5, color: col.sub, marginTop: 2 }}>Se actualiza solo cada 10 s (consulta directa por SNMP).</div>
           </div>
           <button onClick={buscar} disabled={cargando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 10, cursor: cargando ? "not-allowed" : "pointer", border: "none", background: "#ea580c", color: "#fff", opacity: cargando ? 0.6 : 1 }}>
             {cargando ? "Buscando…" : "Buscar ONUs nuevas"}
@@ -1170,9 +1170,15 @@ export default function OnuInventarioPanel({ theme }) {
   const [snSeleccionado, setSnSeleccionado] = useState(null);
   const [tab, setTab] = useState("configuradas");
 
-  const cargar = useCallback(async ({ refresh = false } = {}) => {
-    setCargando(true);
-    setError("");
+  // Tiempo real: estado previo por SN para resaltar las filas que cambian
+  const estadosPrevRef = useRef(new Map());
+  const [cambiadas, setCambiadas] = useState({});
+  const [estadosEn, setEstadosEn] = useState(null);
+  const [ahora, setAhora] = useState(Date.now());
+  useEffect(() => { const id = setInterval(() => setAhora(Date.now()), 1000); return () => clearInterval(id); }, []);
+
+  const cargar = useCallback(async ({ refresh = false, silencioso = false } = {}) => {
+    if (!silencioso) { setCargando(true); setError(""); }
     try {
       const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
       if (estadoFiltro) params.set("estado", estadoFiltro);
@@ -1190,30 +1196,59 @@ export default function OnuInventarioPanel({ theme }) {
         return;
       }
       if (!json.ok) throw new Error(json.error || "Error consultando el listado de ONUs.");
-      setOnus(Array.isArray(json.onus) ? json.onus : []);
+      const lista = Array.isArray(json.onus) ? json.onus : [];
+      // Resaltar las que cambiaron de estado desde la ultima consulta
+      const prev = estadosPrevRef.current;
+      const nuevas = {};
+      for (const o of lista) {
+        if (prev.has(o.sn) && prev.get(o.sn) !== o.estado) nuevas[o.sn] = Date.now();
+        prev.set(o.sn, o.estado);
+      }
+      if (Object.keys(nuevas).length) setCambiadas((c) => ({ ...c, ...nuevas }));
+      setOnus(lista);
       setTotal(Number(json.total) || 0);
       setGeneradoEn(json.generadoEn || null);
+      setEstadosEn(json.estadosEn || json.generadoEn || null);
       if (json.conteoEstados) setConteoEstados(json.conteoEstados);
       if (json.facetas) setFacetas(json.facetas);
+      if (silencioso) setError("");
     } catch (e) {
-      setError(String(e?.message || "Error consultando el servicio SNMP."));
-      setOnus([]);
+      // En el refresco automatico un fallo puntual no borra la lista que ya se ve
+      if (!silencioso) { setError(String(e?.message || "Error consultando el servicio SNMP.")); setOnus([]); }
     } finally {
-      setCargando(false);
+      if (!silencioso) setCargando(false);
     }
   }, [page, estadoFiltro, boardFiltro, portFiltro, zonaFiltro, busqueda]);
+
+  // En vivo: refresca solo cada 10 s mientras la pestaña esta visible
+  useEffect(() => {
+    if (tab !== "configuradas") return undefined;
+    const id = setInterval(() => { if (document.visibilityState === "visible") cargar({ silencioso: true }); }, 10000);
+    const alVolver = () => { if (document.visibilityState === "visible") cargar({ silencioso: true }); };
+    document.addEventListener("visibilitychange", alVolver);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", alVolver); };
+  }, [cargar, tab]);
+
+  // El resaltado dura 15 s
+  useEffect(() => {
+    const vivos = Object.entries(cambiadas).filter(([, t]) => ahora - t < 15000);
+    if (vivos.length !== Object.keys(cambiadas).length) setCambiadas(Object.fromEntries(vivos));
+  }, [ahora, cambiadas]);
+
+  const hace = (iso) => {
+    if (!iso) return "";
+    const s = Math.max(0, Math.round((ahora - new Date(iso).getTime()) / 1000));
+    if (s < 60) return `hace ${s} s`;
+    if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
+    if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
+    return `hace ${Math.floor(s / 86400)} d`;
+  };
 
   // Si el board cambia, el puerto elegido puede ya no existir en esa
   // tarjeta -- se resetea para no quedar en un filtro imposible.
   useEffect(() => { setPortFiltro(""); }, [boardFiltro]);
 
   useEffect(() => { cargar(); }, [cargar]);
-
-  useEffect(() => {
-    if (total > 0 || cargando) return undefined;
-    const id = setInterval(() => cargar(), 10000);
-    return () => clearInterval(id);
-  }, [total, cargando, cargar]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const fmtGenerado = generadoEn ? new Date(generadoEn).toLocaleString("es-PE") : "—";
@@ -1232,8 +1267,18 @@ export default function OnuInventarioPanel({ theme }) {
       <div style={s.card}>
         <h2 style={{ margin: 0, fontSize: 22, color: isDark ? "#7fa1d4" : "#183b62" }}>Central OLT — Inventario de ONUs</h2>
         <p style={{ margin: "6px 0 0", color: isDark ? "#93a2bd" : "#64748b", fontSize: 13 }}>
-          Listado completo directo de la OLT Huawei (SNMP propio, sin SmartOLT) · {total} ONUs registradas · Generado {fmtGenerado}
+          Listado completo directo de la OLT Huawei (SNMP propio, sin SmartOLT) · {total} ONUs registradas · Inventario {fmtGenerado}
         </p>
+        {(() => {
+          const atraso = estadosEn ? (ahora - new Date(estadosEn).getTime()) / 1000 : Infinity;
+          const vivo = atraso < 120;
+          return (
+            <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 99, background: vivo ? (isDark ? "#0f2e1c" : "#dcfce7") : (isDark ? "#3a2a0c" : "#fef3c7"), color: vivo ? (isDark ? "#86efac" : "#166534") : (isDark ? "#fcd34d" : "#92400e") }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: vivo ? "#22c55e" : "#f59e0b", boxShadow: vivo ? "0 0 0 3px rgba(34,197,94,.25)" : "none" }} />
+              {vivo ? `En vivo · estados y señal ${hace(estadosEn)}` : `Sin actualizar ${estadosEn ? hace(estadosEn) : ""} — revisando la OLT`}
+            </div>
+          );
+        })()}
       </div>
 
       <div style={{ display: "flex", gap: 6 }}>
@@ -1351,11 +1396,14 @@ export default function OnuInventarioPanel({ theme }) {
               ) : onus.map((o, i) => {
                 const cfg = ESTADO[o.estado] || ESTADO_DESCONOCIDO;
                 const IconoFila = ESTADO_ICONO[o.estado] || Ico.signal;
+                const recien = Boolean(cambiadas[o.sn]);
+                const fondoFila = recien ? (o.estado === "online" ? (isDark ? "#0f2e1c" : "#ecfdf5") : (isDark ? "#3a1414" : "#fef2f2")) : "transparent";
+                const cambioReciente = o.estadoDesde && (ahora - new Date(o.estadoDesde).getTime()) < 24 * 3600 * 1000;
                 return (
                   <tr key={`${o.sn}-${i}`} onClick={() => setSnSeleccionado(o.sn)}
-                    style={{ borderTop: isDark ? "1px solid #24324c" : "1px solid #f3f4f6", cursor: "pointer" }}
+                    style={{ borderTop: isDark ? "1px solid #24324c" : "1px solid #f3f4f6", cursor: "pointer", background: fondoFila, transition: "background .6s" }}
                     onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    onMouseLeave={e => e.currentTarget.style.background = fondoFila}>
                     <td style={{ ...s.td, width: 28 }}>
                       {o.estado === "online" ? (
                         <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25 }}>
@@ -1367,7 +1415,14 @@ export default function OnuInventarioPanel({ theme }) {
                         </span>
                       )}
                     </td>
-                    <td style={s.td}>{o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}</td>
+                    <td style={s.td}>
+                      {o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}
+                      {cambioReciente && (
+                        <div style={{ fontSize: 11, marginTop: 2, fontWeight: 600, color: cfg.text || (isDark ? "#93a2bd" : "#6b7280") }}>
+                          {cfg.label} {hace(o.estadoDesde)}{o.estadoAnterior && ESTADO[o.estadoAnterior] ? ` · antes ${ESTADO[o.estadoAnterior].label}` : ""}
+                        </div>
+                      )}
+                    </td>
                     <td style={s.td}>{o.zona || "—"}</td>
                     <td style={{ ...s.td, fontFamily: "monospace", fontSize: 12 }}>{o.sn}</td>
                     <td style={{ ...s.td, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
