@@ -1300,209 +1300,233 @@ export default function OnuInventarioPanel({ theme }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const fmtGenerado = generadoEn ? new Date(generadoEn).toLocaleString("es-PE") : "—";
+  const fmtGenerado = generadoEn ? new Date(generadoEn).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }) : "—";
 
+  // Paleta (claro / oscuro)
+  const c = isDark
+    ? { card: "#16233b", borde: "#25344f", bordeSuave: "#1e2c45", texto: "#e6ecf7", sub: "#93a2bd", tenue: "#5b6b8a", hover: "#1b2a45", head: "#132038", input: "#0d172a", acento: "#60a5fa" }
+    : { card: "#ffffff", borde: "#e3e8f0", bordeSuave: "#eef2f7", texto: "#0f172a", sub: "#64748b", tenue: "#cbd5e1", hover: "#f8fafc", head: "#f8fafc", input: "#ffffff", acento: "#1d4ed8" };
   const s = {
-    card: { border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", borderRadius: 14, background: isDark ? "#1a2740" : "#fff", padding: 16 },
-    input: { border: isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1", borderRadius: 10, padding: "9px 12px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a", fontSize: 13 },
-    select: { border: isDark ? "1px solid #2c3c58" : "1px solid #cbd5e1", borderRadius: 10, padding: "9px 10px", background: isDark ? "#0d172a" : "#fff", color: isDark ? "#e6ecf7" : "#0f172a", fontSize: 12.5, cursor: "pointer" },
-    th: { padding: "9px 12px", textAlign: "left", fontSize: 10, fontWeight: 700, color: isDark ? "#93a2bd" : "#9ca3af", textTransform: "uppercase", letterSpacing: "0.06em", background: isDark ? "#16213a" : "#fafafa", whiteSpace: "nowrap" },
-    td: { padding: "9px 12px", fontSize: 13, color: isDark ? "#e6ecf7" : "#111827" },
-    label: { display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 700, color: isDark ? "#93a2bd" : "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" },
+    card: { border: `1px solid ${c.borde}`, borderRadius: 16, background: c.card, boxShadow: isDark ? "none" : "0 1px 2px rgba(15,23,42,.04)" },
+    input: { border: `1px solid ${c.borde}`, borderRadius: 10, padding: "9px 12px", background: c.input, color: c.texto, fontSize: 13, outline: "none" },
+    select: { border: `1px solid ${c.borde}`, borderRadius: 10, padding: "9px 10px", background: c.input, color: c.texto, fontSize: 12.5, cursor: "pointer", minWidth: 110 },
+    th: { padding: "11px 14px", textAlign: "left", fontSize: 10.5, fontWeight: 700, color: c.sub, textTransform: "uppercase", letterSpacing: "0.06em", background: c.head, whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 1, borderBottom: `1px solid ${c.borde}` },
+    td: { padding: "11px 14px", fontSize: 13, color: c.texto, verticalAlign: "middle" },
+  };
+  // Colores de estado legibles tambien en oscuro
+  const tonoEstado = (k) => {
+    const e = ESTADO[k] || ESTADO_DESCONOCIDO;
+    if (!isDark) return e;
+    const oscuro = { online: ["#0f2e1c", "#86efac"], power_fail: ["#3a2a0c", "#fcd34d"], los: ["#3a1414", "#fca5a5"], admin_disabled: ["#26303f", "#cbd5e1"] }[k] || ["#26303f", "#cbd5e1"];
+    return { ...e, bg: oscuro[0], text: oscuro[1] };
+  };
+  const ETIQUETA_CORTA = { online: "Online", power_fail: "Sin luz", los: "LOS", admin_disabled: "Deshabilitada" };
+  const totalEstados = Object.values(conteoEstados).reduce((a, b) => a + (Number(b) || 0), 0) || 1;
+  const atraso = estadosEn ? (ahora - new Date(estadosEn).getTime()) / 1000 : Infinity;
+  const enVivo = atraso < 180;
+
+  const barrasSenal = (rx) => {
+    const nivel = rx == null ? 0 : rx >= -22 ? 4 : rx >= -25 ? 3 : rx >= -27 ? 2 : 1;
+    const col = colorSenalRx(rx);
+    return (
+      <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 2, height: 14 }}>
+        {[1, 2, 3, 4].map((n) => (
+          <span key={n} style={{ width: 3, height: 3 + n * 2.6, borderRadius: 1, background: n <= nivel ? col : c.tenue, opacity: n <= nivel ? 1 : 0.6 }} />
+        ))}
+      </span>
+    );
   };
 
+  const kpis = [
+    { key: "online", Icon: Ico.globe },
+    { key: "power_fail", Icon: Ico.plug },
+    { key: "los", Icon: Ico.linkOff },
+    { key: "admin_disabled", Icon: Ico.slash },
+  ];
+  const hayFiltros = Boolean(estadoFiltro || boardFiltro || portFiltro || zonaFiltro || busqueda);
+
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={s.card}>
-        <h2 style={{ margin: 0, fontSize: 22, color: isDark ? "#7fa1d4" : "#183b62" }}>Central OLT — Inventario de ONUs</h2>
-        <p style={{ margin: "6px 0 0", color: isDark ? "#93a2bd" : "#64748b", fontSize: 13 }}>
-          Listado completo directo de la OLT Huawei (SNMP propio, sin SmartOLT) · {total} ONUs registradas · Inventario {fmtGenerado}
-        </p>
-        {(() => {
-          const atraso = estadosEn ? (ahora - new Date(estadosEn).getTime()) / 1000 : Infinity;
-          const vivo = atraso < 120;
-          return (
-            <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, padding: "4px 10px", borderRadius: 99, background: vivo ? (isDark ? "#0f2e1c" : "#dcfce7") : (isDark ? "#3a2a0c" : "#fef3c7"), color: vivo ? (isDark ? "#86efac" : "#166534") : (isDark ? "#fcd34d" : "#92400e") }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: vivo ? "#22c55e" : "#f59e0b", boxShadow: vivo ? "0 0 0 3px rgba(34,197,94,.25)" : "none" }} />
-              {vivo ? `En vivo · estados y señal ${hace(estadosEn)}` : `Sin actualizar ${estadosEn ? hace(estadosEn) : ""} — revisando la OLT`}
-            </div>
-          );
-        })()}
+    <div style={{ display: "grid", gap: 14 }}>
+      {/* Encabezado */}
+      <div style={{ ...s.card, padding: "18px 20px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ width: 44, height: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: isDark ? "#1e3a8a" : "#e0e7ff", color: isDark ? "#bfdbfe" : "#1d4ed8", flexShrink: 0 }}>
+          <Ico.server width={22} height={22} />
+        </div>
+        <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: c.texto, letterSpacing: "-0.01em" }}>Central OLT</h2>
+          <div style={{ marginTop: 3, color: c.sub, fontSize: 12.5 }}>
+            Huawei MA5800 · <strong style={{ color: c.texto }}>{total.toLocaleString("es-PE")}</strong> ONUs · inventario {fmtGenerado}
+          </div>
+        </div>
+        <div title={estadosEn ? `Estados leídos ${new Date(estadosEn).toLocaleTimeString("es-PE")}` : ""}
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 99, background: enVivo ? (isDark ? "#0f2e1c" : "#dcfce7") : (isDark ? "#3a2a0c" : "#fef3c7"), color: enVivo ? (isDark ? "#86efac" : "#166534") : (isDark ? "#fcd34d" : "#92400e") }}>
+          <span style={{ position: "relative", width: 8, height: 8 }}>
+            <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: enVivo ? "#22c55e" : "#f59e0b" }} />
+            {enVivo && <span style={{ position: "absolute", inset: -3, borderRadius: "50%", border: "2px solid #22c55e", opacity: 0.35 }} />}
+          </span>
+          {enVivo ? `En vivo · ${hace(estadosEn)}` : (estadosEn ? `Sin actualizar · ${hace(estadosEn)}` : "Conectando…")}
+        </div>
+        <button type="button" onClick={() => cargar({ refresh: true })} disabled={cargando} title="Vuelve a leer toda la OLT (nombres, puertos, señal). Tarda unos minutos."
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "transparent", color: c.sub, border: `1px solid ${c.borde}`, borderRadius: 10, fontWeight: 600, fontSize: 12, cursor: cargando ? "wait" : "pointer" }}>
+          <Ico.refresh width={13} height={13} />{cargando ? "Actualizando…" : "Releer OLT"}
+        </button>
       </div>
 
-      <div style={{ display: "flex", gap: 6 }}>
-        {[["configuradas", "ONUs configuradas"], ["sinconfigurar", "ONUs sin configurar"]].map(([key, label]) => (
+      {/* Pestañas */}
+      <div style={{ display: "inline-flex", gap: 4, padding: 4, borderRadius: 12, background: isDark ? "#132038" : "#eef2f7", width: "fit-content", maxWidth: "100%" }}>
+        {[["configuradas", "ONUs configuradas"], ["sinconfigurar", "Sin configurar (nuevas)"]].map(([key, label]) => (
           <button key={key} type="button" onClick={() => setTab(key)}
             style={{
-              padding: "9px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-              border: tab === key ? "none" : (isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb"),
-              background: tab === key ? "#1d4ed8" : (isDark ? "#16213a" : "#f9fafb"),
-              color: tab === key ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
+              padding: "8px 16px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none",
+              background: tab === key ? c.card : "transparent",
+              color: tab === key ? c.texto : c.sub,
+              boxShadow: tab === key && !isDark ? "0 1px 3px rgba(15,23,42,.12)" : "none",
             }}>{label}</button>
         ))}
       </div>
 
-      {tab === "sinconfigurar" && <OnusSinConfigurar isDark={isDark} col={{ card: isDark ? "#1a2740" : "#fff", border: isDark ? "1px solid #2c3c58" : "1px solid #dbe4ef", text: isDark ? "#e6ecf7" : "#111827", sub: isDark ? "#93a2bd" : "#6b7280", bg: isDark ? "#111c33" : "#fff" }} />}
+      {tab === "sinconfigurar" && <OnusSinConfigurar isDark={isDark} col={{ card: c.card, border: `1px solid ${c.borde}`, text: c.texto, sub: c.sub, bg: isDark ? "#111c33" : "#fff" }} />}
 
       {tab === "configuradas" && (<>
-      {/* Filtros */}
-      <div style={{ ...s.card, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {[
-            { key: "", label: "Todos", Icon: Ico.filter },
-            { key: "online", label: "Online", Icon: Ico.globe },
-            { key: "power_fail", label: "Power Fail", Icon: Ico.plug },
-            { key: "los", label: "LOS", Icon: Ico.linkOff },
-            { key: "admin_disabled", label: "Deshabilitado", Icon: Ico.slash },
-          ].map(t => (
-            <button key={t.key} type="button" onClick={() => { setPage(1); setEstadoFiltro(t.key); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "7px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                border: estadoFiltro === t.key ? "none" : (isDark ? "1px solid #2c3c58" : "1px solid #e5e7eb"),
-                background: estadoFiltro === t.key ? "#1d4ed8" : (isDark ? "#16213a" : "#f9fafb"),
-                color: estadoFiltro === t.key ? "#fff" : (isDark ? "#c3d3ee" : "#374151"),
-              }}>
-              <t.Icon width={14} height={14} />{t.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "2 1 220px" }}>
-            <span style={s.label}><Ico.search width={12} height={12} />Buscar</span>
-            <form onSubmit={e => { e.preventDefault(); setPage(1); setBusqueda(busquedaInput.trim()); }} style={{ display: "flex", gap: 6 }}>
-              <input value={busquedaInput} onChange={e => setBusquedaInput(e.target.value)} placeholder="SN, nombre o zona…" style={{ ...s.input, flex: 1 }} />
-              <button type="submit" style={{ ...s.input, cursor: "pointer", fontWeight: 700, background: "#1d4ed8", color: "#fff", border: "none" }}>Buscar</button>
-            </form>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={s.label}><Ico.server width={12} height={12} />Board</span>
-            <select value={boardFiltro} onChange={e => { setPage(1); setBoardFiltro(e.target.value); }} style={s.select}>
-              <option value="">Todos</option>
-              {facetas.boards.map(b => <option key={b} value={b}>Board {b}</option>)}
-            </select>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={s.label}><Ico.plug width={12} height={12} />Puerto</span>
-            <select value={portFiltro} onChange={e => { setPage(1); setPortFiltro(e.target.value); }} style={s.select}>
-              <option value="">Todos</option>
-              {facetas.ports.map(p => <option key={p} value={p}>Puerto {p}</option>)}
-            </select>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={s.label}><Ico.pin width={12} height={12} />Zona</span>
-            <select value={zonaFiltro} onChange={e => { setPage(1); setZonaFiltro(e.target.value); }} style={s.select}>
-              <option value="">Todas</option>
-              {facetas.zonas.map(z => <option key={z} value={z}>{z}</option>)}
-            </select>
-          </div>
-
-          <button type="button" onClick={() => cargar({ refresh: true })} disabled={cargando}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", background: "#ea580c", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 12, cursor: cargando ? "wait" : "pointer" }}>
-            <Ico.refresh width={12} height={12} />{cargando ? "Actualizando…" : "Forzar recorrido nuevo"}
-          </button>
-        </div>
-      </div>
-
-      {error ? <div style={{ ...s.card, color: "#b91c1c", fontWeight: 600 }}>{error}</div> : null}
-
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {Object.entries(conteoEstados).map(([k, v]) => {
-          const IconoEstado = ESTADO_ICONO[k] || Ico.signal;
+      {/* Tarjetas de estado (tocar = filtrar) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        {kpis.map(({ key, Icon }) => {
+          const t = tonoEstado(key);
+          const activo = estadoFiltro === key;
+          const v = Number(conteoEstados[key]) || 0;
           return (
-            <div key={k} style={{ ...s.card, padding: "10px 16px", display: "flex", alignItems: "center", gap: 9, flex: "1 1 140px" }}>
-              <IconoEstado width={19} height={19} style={{ color: ESTADO[k]?.dot, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>{ESTADO[k]?.label}</span>
-              <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 14, color: isDark ? "#e6ecf7" : "#111827" }}>{v}</span>
-            </div>
+            <button key={key} type="button" onClick={() => { setPage(1); setEstadoFiltro(activo ? "" : key); }}
+              title={activo ? "Quitar filtro" : `Ver solo ${t.label}`}
+              style={{ ...s.card, padding: activo ? "13px 15px" : "14px 16px", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", textAlign: "left",
+                border: activo ? `2px solid ${t.dot}` : `1px solid ${c.borde}` }}>
+              <span style={{ width: 38, height: 38, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: t.bg, color: isDark ? t.text : t.dot, flexShrink: 0 }}>
+                <Icon width={18} height={18} />
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 22, fontWeight: 800, color: c.texto, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" }}>{v.toLocaleString("es-PE")}</span>
+                <span style={{ display: "block", fontSize: 12, color: c.sub, marginTop: 2 }}>{t.label} · {Math.round((v / totalEstados) * 100)}%</span>
+              </span>
+            </button>
           );
         })}
       </div>
 
+      {/* Filtros */}
+      <div style={{ ...s.card, padding: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <form onSubmit={e => { e.preventDefault(); setPage(1); setBusqueda(busquedaInput.trim()); }} style={{ flex: "2 1 260px", position: "relative", display: "flex" }}>
+          <Ico.search width={15} height={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: c.sub }} />
+          <input value={busquedaInput} onChange={e => setBusquedaInput(e.target.value)} placeholder="Buscar por nombre, SN o zona y Enter…" style={{ ...s.input, flex: 1, paddingLeft: 34, paddingRight: 32 }} />
+          {busqueda && (
+            <button type="button" onClick={() => { setBusquedaInput(""); setBusqueda(""); setPage(1); }} title="Limpiar búsqueda"
+              style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", color: c.sub, cursor: "pointer", display: "flex" }}>
+              <Ico.x width={15} height={15} />
+            </button>
+          )}
+        </form>
+        <select value={boardFiltro} onChange={e => { setPage(1); setBoardFiltro(e.target.value); }} style={s.select} title="Tarjeta">
+          <option value="">Todas las tarjetas</option>
+          {facetas.boards.map(b => <option key={b} value={b}>Tarjeta {b}</option>)}
+        </select>
+        <select value={portFiltro} onChange={e => { setPage(1); setPortFiltro(e.target.value); }} style={s.select} title="Puerto PON">
+          <option value="">Todos los puertos</option>
+          {facetas.ports.map(p => <option key={p} value={p}>Puerto {p}</option>)}
+        </select>
+        <select value={zonaFiltro} onChange={e => { setPage(1); setZonaFiltro(e.target.value); }} style={{ ...s.select, maxWidth: 220 }} title="Zona">
+          <option value="">Todas las zonas</option>
+          {facetas.zonas.map(z => <option key={z} value={z}>{z}</option>)}
+        </select>
+        {hayFiltros && (
+          <button type="button" onClick={() => { setEstadoFiltro(""); setBoardFiltro(""); setPortFiltro(""); setZonaFiltro(""); setBusqueda(""); setBusquedaInput(""); setPage(1); }}
+            style={{ border: "none", background: "transparent", color: c.acento, fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Limpiar filtros</button>
+        )}
+      </div>
+
+      {error ? <div style={{ ...s.card, padding: 14, color: "#b91c1c", fontWeight: 600 }}>{error}</div> : null}
+
+      {/* Tabla */}
       <div style={{ ...s.card, padding: 0, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ overflow: "auto", maxHeight: "calc(100vh - 330px)", minHeight: 240 }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
-                {["", "Nombre", "Zona", "SN", "Board/Port", "RX (dBm)", "TX (dBm)", "Fecha alta", ""].map((h, i) => (
-                  <th key={i} style={s.th}>{h}</th>
+                {["Estado", "Cliente", "SN", "PON", "Señal RX", "TX", "Alta", ""].map((h, i) => (
+                  <th key={i} style={{ ...s.th, textAlign: i === 4 || i === 5 ? "right" : "left" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {cargando && onus.length === 0 ? (
-                <tr><td colSpan={9} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Cargando…</td></tr>
+                <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", padding: 48, color: c.sub }}>Cargando…</td></tr>
               ) : total === 0 && !error ? (
-                <tr><td colSpan={9} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>
-                  Generando el primer inventario completo desde la OLT — puede tardar unos minutos. Se actualiza solo, no hace falta recargar la página.
+                <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", padding: 48, color: c.sub }}>
+                  Leyendo la OLT por primera vez (unos minutos). Se llena solo, no hace falta recargar.
                 </td></tr>
               ) : onus.length === 0 ? (
-                <tr><td colSpan={9} style={{ ...s.td, textAlign: "center", padding: 40, color: isDark ? "#93a2bd" : "#9ca3af" }}>Sin resultados.</td></tr>
+                <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", padding: 48, color: c.sub }}>Sin resultados con estos filtros.</td></tr>
               ) : onus.map((o, i) => {
-                const cfg = ESTADO[o.estado] || ESTADO_DESCONOCIDO;
+                const t = tonoEstado(o.estado);
                 const IconoFila = ESTADO_ICONO[o.estado] || Ico.signal;
                 const recien = Boolean(cambiadas[o.sn]);
                 const fondoFila = recien ? (o.estado === "online" ? (isDark ? "#0f2e1c" : "#ecfdf5") : (isDark ? "#3a1414" : "#fef2f2")) : "transparent";
                 const cambioReciente = o.estadoDesde && (ahora - new Date(o.estadoDesde).getTime()) < 24 * 3600 * 1000;
+                const celda = { ...s.td, borderBottom: `1px solid ${c.bordeSuave}` };
                 return (
                   <tr key={`${o.sn}-${i}`} onClick={() => setSnSeleccionado(o.sn)}
-                    style={{ borderTop: isDark ? "1px solid #24324c" : "1px solid #f3f4f6", cursor: "pointer", background: fondoFila, transition: "background .6s" }}
-                    onMouseEnter={e => e.currentTarget.style.background = isDark ? "#16213a" : "#f8fafc"}
-                    onMouseLeave={e => e.currentTarget.style.background = fondoFila}>
-                    <td style={{ ...s.td, width: 28 }}>
-                      {o.estado === "online" ? (
-                        <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25 }}>
-                          <IconoFila width={25} height={25} style={{ color: cfg.dot }} />
-                        </span>
-                      ) : (
-                        <span title={cfg.label} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 25, height: 25, borderRadius: "50%", background: cfg.dot }}>
-                          <IconoFila width={15} height={15} style={{ color: "#fff" }} strokeWidth={2.5} />
-                        </span>
-                      )}
+                    style={{ cursor: "pointer", background: fondoFila, transition: "background .6s" }}
+                    onMouseEnter={e => { e.currentTarget.style.background = c.hover; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = fondoFila; }}>
+                    <td style={{ ...celda, width: 1, whiteSpace: "nowrap" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px 4px 8px", borderRadius: 99, background: t.bg, color: t.text, fontSize: 12, fontWeight: 700 }}>
+                        <IconoFila width={13} height={13} style={{ color: isDark ? t.text : t.dot }} />
+                        {ETIQUETA_CORTA[o.estado] || t.label}
+                      </span>
                     </td>
-                    <td style={s.td}>
-                      {o.nombre || <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}
-                      {cambioReciente && (
-                        <div style={{ fontSize: 11, marginTop: 2, fontWeight: 600, color: cfg.text || (isDark ? "#93a2bd" : "#6b7280") }}>
-                          {cfg.label} {hace(o.estadoDesde)}{o.estadoAnterior && ESTADO[o.estadoAnterior] ? ` · antes ${ESTADO[o.estadoAnterior].label}` : ""}
-                        </div>
-                      )}
+                    <td style={{ ...celda, minWidth: 220 }}>
+                      <div style={{ fontWeight: 600, lineHeight: 1.3 }}>{o.nombre || <span style={{ color: c.tenue }}>Sin nombre</span>}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3, flexWrap: "wrap" }}>
+                        {o.zona && <span style={{ fontSize: 11, fontWeight: 600, color: c.sub, background: isDark ? "#1e2c45" : "#f1f5f9", padding: "1px 7px", borderRadius: 6 }}>{o.zona}</span>}
+                        {cambioReciente && (
+                          <span style={{ fontSize: 11, fontWeight: 600, color: t.text }}>
+                            {ETIQUETA_CORTA[o.estado] || t.label} {hace(o.estadoDesde)}{o.estadoAnterior && ETIQUETA_CORTA[o.estadoAnterior] ? ` · antes ${ETIQUETA_CORTA[o.estadoAnterior]}` : ""}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td style={s.td}>{o.zona || "—"}</td>
-                    <td style={{ ...s.td, fontFamily: "monospace", fontSize: 12 }}>{o.sn}</td>
-                    <td style={{ ...s.td, fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
-                      {o.board != null ? `0/${o.board}/${o.port}` : <span style={{ color: isDark ? "#5b6b8a" : "#d1d5db" }}>—</span>}
+                    <td style={{ ...celda, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: c.sub, whiteSpace: "nowrap" }}>{o.sn}</td>
+                    <td style={{ ...celda, whiteSpace: "nowrap" }}>
+                      {o.board != null ? (
+                        <span style={{ fontSize: 12, color: c.texto, fontWeight: 600 }}>0/{o.board}/{o.port}<span style={{ color: c.sub, fontWeight: 500 }}> · #{o.onuId}</span></span>
+                      ) : <span style={{ color: c.tenue }}>—</span>}
                     </td>
-                    <td style={s.td}>
+                    <td style={{ ...celda, textAlign: "right", whiteSpace: "nowrap" }}>
                       {o.rxPower != null ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                          <Ico.signal width={13} height={13} style={{ color: colorSenalRx(o.rxPower) }} />
-                          {o.rxPower.toFixed(2)}
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600, color: colorSenalRx(o.rxPower) }}>{o.rxPower.toFixed(2)}</span>
+                          {barrasSenal(o.rxPower)}
                         </span>
-                      ) : "—"}
+                      ) : <span style={{ color: c.tenue }}>—</span>}
                     </td>
-                    <td style={s.td}>{o.txPower != null ? `${o.txPower.toFixed(2)}` : "—"}</td>
-                    <td style={{ ...s.td, fontSize: 12, whiteSpace: "nowrap" }}>{o.fechaAutorizacion || "—"}</td>
-                    <td style={{ ...s.td, width: 24, color: isDark ? "#5b6b8a" : "#d1d5db" }}><Ico.chevronRight width={14} height={14} /></td>
+                    <td style={{ ...celda, textAlign: "right", fontVariantNumeric: "tabular-nums", color: c.sub, whiteSpace: "nowrap" }}>{o.txPower != null ? o.txPower.toFixed(2) : "—"}</td>
+                    <td style={{ ...celda, fontSize: 12, color: c.sub, whiteSpace: "nowrap" }}>{o.fechaAutorizacion || "—"}</td>
+                    <td style={{ ...celda, width: 24, color: c.tenue }}><Ico.chevronRight width={15} height={15} /></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: isDark ? "#93a2bd" : "#6b7280" }}>
-        <span>Página {page} de {totalPages} · {total} ONUs</span>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}
-            style={{ ...s.input, cursor: page <= 1 ? "default" : "pointer", opacity: page <= 1 ? 0.5 : 1 }}>← Anterior</button>
-          <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            style={{ ...s.input, cursor: page >= totalPages ? "default" : "pointer", opacity: page >= totalPages ? 0.5 : 1 }}>Siguiente →</button>
+        {/* Paginación */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 14px", borderTop: `1px solid ${c.borde}`, fontSize: 12.5, color: c.sub }}>
+          <span>
+            {total ? <>Mostrando <strong style={{ color: c.texto }}>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}</strong> de <strong style={{ color: c.texto }}>{total.toLocaleString("es-PE")}</strong></> : "—"}
+          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button type="button" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}
+              style={{ ...s.input, padding: "6px 12px", cursor: page <= 1 ? "default" : "pointer", opacity: page <= 1 ? 0.45 : 1 }}>‹ Anterior</button>
+            <span style={{ minWidth: 70, textAlign: "center" }}>{page} / {totalPages}</span>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              style={{ ...s.input, padding: "6px 12px", cursor: page >= totalPages ? "default" : "pointer", opacity: page >= totalPages ? 0.45 : 1 }}>Siguiente ›</button>
+          </div>
         </div>
       </div>
       </>)}
