@@ -972,6 +972,38 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
   const [zona, setZona] = useState(esMover ? (onu.previa.zona || "") : "");
   const [comentario, setComentario] = useState("");
   const [vlan, setVlan] = useState(100);
+  // Desplegable de VLAN: las que ya usa este puerto PON (mas usada primero) + las de los nodos
+  const [vlansPuerto, setVlansPuerto] = useState([]);
+  const [vlansNodos, setVlansNodos] = useState([]);
+  const [vlanManual, setVlanManual] = useState(false);
+  const vlanTocadaRef = useRef(false);
+  useEffect(() => {
+    let cancelado = false;
+    supabase.from("nodos_config").select("nodo,vlan,activo").then(({ data }) => {
+      if (cancelado) return;
+      setVlansNodos((data || []).filter((n) => n.activo !== false && parseInt(n.vlan, 10)).map((n) => ({ nodo: n.nodo, vlan: parseInt(n.vlan, 10) })));
+    }, () => {});
+    fetch(`${HUAWEI_OLT_SNMP_API}/onu-vlans-puerto?board=${onu.board}&port=${onu.port}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelado || !j.ok) return;
+        setVlansPuerto(j.vlans || []);
+        if (!vlanTocadaRef.current && j.vlans?.length) setVlan(j.vlans[0].vlan);
+      })
+      .catch(() => {});
+    return () => { cancelado = true; };
+  }, [onu.board, onu.port]);
+  const opcionesVlan = useMemo(() => {
+    const m = new Map();
+    for (const v of vlansPuerto) m.set(v.vlan, { vlan: v.vlan, cantidad: v.cantidad, nodos: [] });
+    for (const n of vlansNodos) {
+      const e = m.get(n.vlan) || { vlan: n.vlan, cantidad: 0, nodos: [] };
+      e.nodos.push(n.nodo);
+      m.set(n.vlan, e);
+    }
+    if (vlan && !m.has(vlan)) m.set(vlan, { vlan, cantidad: 0, nodos: [] });
+    return [...m.values()].sort((a, b) => b.cantidad - a.cantidad || a.vlan - b.vlan);
+  }, [vlansPuerto, vlansNodos, vlan]);
   const [plan, setPlan] = useState(1000);
   const [configurarWan, setConfigurarWan] = useState(true);
   // TR-069 al instalar: la ONU queda administrable y el CRM le pone el WiFi que el cliente eligio en su orden
@@ -1020,7 +1052,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
     if (o.nodo) {
       const { data } = await supabase.from("nodos_config").select("vlan").eq("nodo", o.nodo).maybeSingle();
       const v = parseInt(data?.vlan, 10);
-      if (v) setVlan(v);
+      if (v) { vlanTocadaRef.current = true; setVlan(v); }
     }
   };
 
@@ -1106,12 +1138,29 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           {campo(buscandoOntId ? "ONT-ID (buscando uno libre…)" : "ONT-ID (sugerido automáticamente, se puede cambiar)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder={buscandoOntId ? "…" : "ej. 50"} />)}
-          {campo("VLAN", <input type="number" value={vlan} onChange={e => setVlan(Number(e.target.value))} style={inputStyle} />)}
+          {campo("VLAN", vlanManual ? (
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="number" value={vlan} onChange={e => { vlanTocadaRef.current = true; setVlan(Number(e.target.value)); }} style={inputStyle} autoFocus />
+              <button type="button" onClick={() => setVlanManual(false)} style={{ ...inputStyle, width: "auto", cursor: "pointer" }} title="Volver a la lista">☰</button>
+            </div>
+          ) : (
+            <select value={vlan} onChange={e => { vlanTocadaRef.current = true; if (e.target.value === "otra") setVlanManual(true); else setVlan(Number(e.target.value)); }} style={inputStyle}>
+              {opcionesVlan.map((o) => (
+                <option key={o.vlan} value={o.vlan}>
+                  VLAN {o.vlan}{o.nodos.length ? ` · ${o.nodos.join("/")}` : ""}{o.cantidad ? ` · ${o.cantidad} ONUs en este puerto` : ""}
+                </option>
+              ))}
+              <option value="otra">Otra…</option>
+            </select>
+          ))}
         </div>
 
         <div style={{ marginBottom: 10 }}>{campo("Nombre del cliente", <input value={nombre} onChange={e => setNombre(e.target.value)} style={inputStyle} placeholder="Juan Pérez" />)}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          {campo("Zona", <input value={zona} onChange={e => setZona(e.target.value)} style={inputStyle} placeholder="Cural" />)}
+          {campo("Zona", <>
+            <input value={zona} onChange={e => setZona(e.target.value)} style={inputStyle} placeholder="Nod_01, Cural…" list="zonas-autorizar" />
+            <datalist id="zonas-autorizar">{vlansNodos.map((n) => <option key={n.nodo} value={n.nodo} />)}</datalist>
+          </>)}
           {campo("Plan de velocidad", (
             <select value={plan} onChange={e => setPlan(Number(e.target.value))} style={inputStyle}>
               {PLANES_VELOCIDAD.map(p => <option key={p.mbps} value={p.mbps}>{p.nombre} ({p.mbps} Mbps)</option>)}
