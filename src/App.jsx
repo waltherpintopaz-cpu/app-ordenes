@@ -31432,7 +31432,7 @@ export default function App() {
         {chatFlotanteOrden && (
           <div className="chat-popup-in" style={{
             position: "fixed", right: 20, bottom: 20, zIndex: 9999,
-            width: 360, maxWidth: "calc(100vw - 32px)", maxHeight: "72vh", display: "flex", flexDirection: "column",
+            width: 440, maxWidth: "calc(100vw - 24px)", height: "min(680px, calc(100vh - 110px))", display: "flex", flexDirection: "column",
             background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
             boxShadow: "0 16px 44px rgba(15,23,42,0.28)", overflow: "hidden",
           }}>
@@ -31443,7 +31443,7 @@ export default function App() {
               </div>
               <button onClick={() => setChatFlotanteOrden(null)} title="Cerrar" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "#94a3b8" }}>✕</button>
             </div>
-            <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
               <OrdenChat
                 ordenId={chatFlotanteOrden.id}
                 orden={chatFlotanteOrden}
@@ -31451,6 +31451,8 @@ export default function App() {
                 tecnicoAsignado={chatFlotanteOrden.tecnico}
                 autor={usuarioSesion?.nombre}
                 autorRol={rolSesion}
+                llenar
+                sinTitulo
               />
             </div>
           </div>
@@ -31461,7 +31463,7 @@ export default function App() {
         {chatTecnicoAbierto && (
           <div className="chat-popup-in" style={{
             position: "fixed", right: 20, bottom: 20, zIndex: 9999,
-            width: 360, maxWidth: "calc(100vw - 32px)", maxHeight: "72vh", display: "flex", flexDirection: "column",
+            width: 440, maxWidth: "calc(100vw - 24px)", height: "min(680px, calc(100vh - 110px))", display: "flex", flexDirection: "column",
             background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0",
             boxShadow: "0 16px 44px rgba(15,23,42,0.28)", overflow: "hidden",
           }}>
@@ -31472,11 +31474,13 @@ export default function App() {
               </div>
               <button onClick={() => setChatTecnicoAbierto(null)} title="Cerrar" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "#94a3b8" }}>✕</button>
             </div>
-            <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
               <ChatTecnico
                 tecnicoNombre={chatTecnicoAbierto}
                 autor={usuarioSesion?.nombre}
                 autorRol={rolSesion}
+                llenar
+                sinTitulo
               />
             </div>
           </div>

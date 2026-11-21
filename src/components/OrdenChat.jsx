@@ -145,7 +145,7 @@ function MiniMapa({ lat, lng, ancho, alto }) {
 // Con "hiloTecnico" (nombre del tecnico) el mismo componente sirve para el
 // chat directo tecnico <-> oficina (tabla chat_tecnicos_mensajes), igual que
 // en la app. Con "llenar" ocupa todo el alto de su contenedor (pagina Chats).
-export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor, autorRol, orden, hiloTecnico, llenar = false }) {
+export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor, autorRol, orden, hiloTecnico, llenar = false, sinTitulo = false }) {
   const esHilo = !!hiloTecnico;
   const TABLA = esHilo ? "chat_tecnicos_mensajes" : "chat_ordenes_mensajes";
   const COL = esHilo ? "tecnico_nombre" : "orden_id";
@@ -974,8 +974,8 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
       onDrop={(e) => { e.preventDefault(); setArrastrando(false); encolarArchivos(e.dataTransfer?.files); }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
-        <MessagesSquare size={14} color="#64748b" />
-        <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>{esHilo ? hiloTecnico : nombreChat}</span>
+        {!sinTitulo && <MessagesSquare size={14} color="#64748b" />}
+        {!sinTitulo && <span style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap" }}>{esHilo ? hiloTecnico : nombreChat}</span>}
         <span style={{ flex: 1 }} />
         <button type="button" className="oc-ic" onClick={() => { setBuscando((b) => !b); setBusqueda(""); }} title="Buscar en el chat" style={{ ...icBtn, width: 28, height: 28 }}><Search size={15} color="#475569" /></button>
         <button type="button" className="oc-ic" onClick={() => setGaleria(true)} title={`Fotos del chat (${fotos.length})`} style={{ ...icBtn, width: 28, height: 28 }}><Images size={15} color="#475569" /></button>
@@ -1110,14 +1110,14 @@ export default function OrdenChat({ ordenId, ordenCodigo, tecnicoAsignado, autor
 
       {puedeCliente && !editando && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px 6px", borderTop: `1px solid ${alCliente ? "#86efac" : "#e2e8f0"}`, background: alCliente ? "#f0fdf4" : "#fff" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", marginRight: 2 }}>Escribir a:</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", marginRight: 2, whiteSpace: "nowrap" }}>Para:</span>
           <button type="button" onClick={() => setAlCliente(false)} title="Solo lo ve la oficina y el técnico"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
               border: `1.5px solid ${!alCliente ? "#7c3aed" : "#e2e8f0"}`, background: !alCliente ? "#7c3aed" : "#fff", color: !alCliente ? "#fff" : "#6d28d9" }}>
             🏢 Solo oficina
           </button>
           <button type="button" onClick={() => setAlCliente(true)} title="También le llega al cliente por WhatsApp"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 12px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit",
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 999, cursor: "pointer", fontSize: 12.5, fontWeight: 800, fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
               border: `1.5px solid ${alCliente ? "#16a34a" : "#e2e8f0"}`, background: alCliente ? "#16a34a" : "#fff", color: alCliente ? "#fff" : "#15803d" }}>
             🟢 Cliente · {nombreClienteCorto}
           </button>
