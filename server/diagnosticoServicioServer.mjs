@@ -984,6 +984,7 @@ const queryRouterOnRouter = async (router, userPppoe) => {
         disabled: false,
         profile: pickFirst(active.profile),
         callerId: pickFirst(active["caller-id"], active.callerid),
+        lastCallerId: pickFirst(secret?.["last-caller-id"], active["caller-id"]),
       };
     }
 
@@ -1013,6 +1014,8 @@ const queryRouterOnRouter = async (router, userPppoe) => {
       disabled: pickFirst(secret.disabled),
       profile: pickFirst(secret.profile),
       callerId: pickFirst(secret["caller-id"], secret.callerid),
+      // MAC del router con la que se conecto por ultima vez ("Buscar SN por MAC" con el cliente desconectado)
+      lastCallerId: pickFirst(secret["last-caller-id"]),
     };
   } catch (error) {
     const detail = formatErrorDetail(connection?.getSocketError?.() || error);
