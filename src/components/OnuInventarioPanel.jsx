@@ -1073,6 +1073,9 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
       const ruta = esMover ? "mover" : "autorizar";
       // sin ontId ni plan: el servidor asigna el primer ONT-ID libre y plan 1G
       const cuerpo = { board: onu.board, port: onu.port, snHex: onu.snHex, vlan, descripcion };
+      // 25-nov: WAN/PPPoE y TR-069 van en la misma llamada (una sola entrada a la OLT)
+      if (configurarWan) Object.assign(cuerpo, { pppoeUser: pppoeUser.trim(), pppoePass: pppoePass.trim() });
+      if (activarTr069) cuerpo.tr069 = true;
       if (esMover) Object.assign(cuerpo, { previaBoard: onu.previa.board, previaPort: onu.previa.port, previaOnuId: onu.previa.onuId });
       const rAuth = await fetch(`${DIAGNO_BASE}/api/huawei-onu/${ruta}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1082,7 +1085,8 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
       const ontId = rAuth.ontId;
       if (ontId == null) { setMensaje({ ok: false, texto: "La OLT no devolvió el ONT-ID asignado; revisá la ONU en el listado." }); setEnviando(false); return; }
 
-      if (configurarWan) {
+      // Si el servicio ya lo hizo junto (wanOk true) no se repite; si fallo o es un servicio viejo, se intenta aparte.
+      if (configurarWan && rAuth.wanOk !== true) {
         const rWan = await fetch(`${DIAGNO_BASE}/api/huawei-onu/wan`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ board: onu.board, port: onu.port, ontId, vlan, pppoeUser: pppoeUser.trim(), pppoePass: pppoePass.trim() }),
@@ -1094,7 +1098,9 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         await supabase.from("ordenes").update({ sn_onu: onu.sn }).eq("id", ordenSel.id).then(() => {}, () => {});
       }
       let extraTr069 = "";
-      if (activarTr069) {
+      if (activarTr069 && rAuth.tr069Ok === true) {
+        extraTr069 = " TR-069 activado: el WiFi de la orden se aplica solo en unos minutos.";
+      } else if (activarTr069) {
         const rTr = await fetch(`${DIAGNO_BASE}/api/huawei-onu/tr069`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ board: onu.board, port: onu.port, ontId, accion: "activar" }),
