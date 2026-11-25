@@ -913,10 +913,17 @@ function OnusSinConfigurar({ isDark, col }) {
                   <td style={{ padding: "9px 12px", fontSize: 12, color: col.sub }}>{o.detectadoEn || "—"}</td>
                   <td style={{ padding: "9px 12px" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button onClick={() => setSeleccionada({ ...o, modoForzado: "autorizar" })}
-                        style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>
-                        Autorizar
-                      </button>
+                      {o.accion === "registrada" ? (
+                        <span title="La OLT la ve sin autorizar pero ya tiene registro en este mismo puerto: no termina de conectar (ONU prendiendo/apagando, fibra o conector malo, o SN duplicado). Autorizarla otra vez la duplicaría."
+                          style={{ padding: "6px 10px", fontSize: 11.5, fontWeight: 700, borderRadius: 8, border: "1.5px solid #dc2626", background: "#fee2e2", color: "#991b1b" }}>
+                          Ya registrada (ONT {o.previa?.onuId ?? "?"}{o.previa?.nombre ? ` · ${o.previa.nombre}` : ""}) · no conecta, revisar en campo
+                        </span>
+                      ) : o.accion !== "mover" && (
+                        <button onClick={() => setSeleccionada({ ...o, modoForzado: "autorizar" })}
+                          style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #16a34a", background: "#dcfce7", color: "#166534" }}>
+                          Autorizar
+                        </button>
+                      )}
                       {o.accion === "mover" && (
                         <button onClick={() => setSeleccionada({ ...o, modoForzado: "mover" })} title={`Ya estaba autorizada en board ${o.previa.board}/puerto ${o.previa.port} como "${o.previa.nombre || "sin nombre"}"`}
                           style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, cursor: "pointer", border: "1.5px solid #d97706", background: "#fef3c7", color: "#92400e" }}>
@@ -955,16 +962,17 @@ function OnusSinConfigurar({ isDark, col }) {
 function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
   const hoy = new Date();
   const yyyymmdd = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, "0")}${String(hoy.getDate()).padStart(2, "0")}`;
-  const [ontId, setOntId] = useState("");
-  const [buscandoOntId, setBuscandoOntId] = useState(true);
+  // 25-nov-2026: el ONT-ID ya no se elige ni se edita -- lo asigna el servidor
+  // (primer libre del puerto). Aca solo se muestra cual sera, o "puerto lleno".
+  // null = buscando, numero = siguiente libre, -1 = puerto lleno, -2 = no se pudo consultar
+  const [ontLibre, setOntLibre] = useState(null);
   useEffect(() => {
     let cancelado = false;
-    setBuscandoOntId(true);
+    setOntLibre(null);
     fetch(`${HUAWEI_OLT_SNMP_API}/onu-siguiente-id?board=${onu.board}&port=${onu.port}`)
       .then(r => r.json())
-      .then(json => { if (!cancelado && json.ok && json.ontId != null) setOntId(String(json.ontId)); })
-      .catch(() => {})
-      .finally(() => { if (!cancelado) setBuscandoOntId(false); });
+      .then(json => { if (!cancelado) setOntLibre(json.ok ? (json.ontId != null ? Number(json.ontId) : -1) : -2); })
+      .catch(() => { if (!cancelado) setOntLibre(-2); });
     return () => { cancelado = true; };
   }, [onu.board, onu.port]);
   const esMover = onu.modoForzado === "mover";
@@ -1004,7 +1012,6 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
     if (vlan && !m.has(vlan)) m.set(vlan, { vlan, cantidad: 0, nodos: [] });
     return [...m.values()].sort((a, b) => b.cantidad - a.cantidad || a.vlan - b.vlan);
   }, [vlansPuerto, vlansNodos, vlan]);
-  const [plan, setPlan] = useState(1000);
   const [configurarWan, setConfigurarWan] = useState(true);
   // TR-069 al instalar: la ONU queda administrable y el CRM le pone el WiFi que el cliente eligio en su orden
   const [activarTr069, setActivarTr069] = useState(true);
@@ -1044,11 +1051,6 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
     setComentario(`${o.codigo || ""} ${String(o.direccion || "").trim()}`.trim().slice(0, 60));
     if (o.usuario_nodo) { setPppoeUser(String(o.usuario_nodo).trim()); setConfigurarWan(true); }
     if (o.password_usuario) setPppoePass(String(o.password_usuario).trim());
-    const mbps = parseInt(String(o.velocidad || "").replace(/\D+/g, " ").trim().split(" ")[0], 10);
-    if (mbps) {
-      const cercano = PLANES_VELOCIDAD.reduce((a, p) => (Math.abs(p.mbps - mbps) < Math.abs(a.mbps - mbps) ? p : a), PLANES_VELOCIDAD[0]);
-      setPlan(cercano.mbps);
-    }
     if (o.nodo) {
       const { data } = await supabase.from("nodos_config").select("vlan").eq("nodo", o.nodo).maybeSingle();
       const v = parseInt(data?.vlan, 10);
@@ -1061,22 +1063,24 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
   const campo = (label, children) => <div><span style={labelStyle}>{label}</span>{children}</div>;
 
   const enviar = async () => {
-    if (!ontId || Number(ontId) < 0 || Number(ontId) > 127) { setMensaje({ ok: false, texto: "ONT-ID inválido (0-127)." }); return; }
+    if (ontLibre === -1) { setMensaje({ ok: false, texto: `Puerto 0/${onu.board}/${onu.port} lleno (128 de 128): hay que liberar un ONT-ID antes de autorizar.` }); return; }
     if (!nombre.trim()) { setMensaje({ ok: false, texto: "Falta el nombre del cliente." }); return; }
     if (configurarWan && (!pppoeUser.trim() || !pppoePass.trim())) { setMensaje({ ok: false, texto: "Falta usuario o contraseña PPPoE." }); return; }
     setEnviando(true);
     setMensaje(null);
-    const planObj = PLANES_VELOCIDAD.find((p) => p.mbps === plan);
     const descripcion = `${nombre.trim()}_zone_${zona.trim() || "Sin zona"}_descr_${comentario.trim()}_authd_${yyyymmdd}`;
     try {
       const ruta = esMover ? "mover" : "autorizar";
-      const cuerpo = { board: onu.board, port: onu.port, ontId, snHex: onu.snHex, vlan, descripcion, planNombre: planObj.nombre, cirKbps: planObj.cirKbps };
+      // sin ontId ni plan: el servidor asigna el primer ONT-ID libre y plan 1G
+      const cuerpo = { board: onu.board, port: onu.port, snHex: onu.snHex, vlan, descripcion };
       if (esMover) Object.assign(cuerpo, { previaBoard: onu.previa.board, previaPort: onu.previa.port, previaOnuId: onu.previa.onuId });
       const rAuth = await fetch(`${DIAGNO_BASE}/api/huawei-onu/${ruta}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cuerpo),
       }).then(r => r.json());
       if (!rAuth.ok) { setMensaje({ ok: false, texto: rAuth.error || `No se pudo ${esMover ? "mover" : "autorizar"} la ONU.` }); setEnviando(false); return; }
+      const ontId = rAuth.ontId;
+      if (ontId == null) { setMensaje({ ok: false, texto: "La OLT no devolvió el ONT-ID asignado; revisá la ONU en el listado." }); setEnviando(false); return; }
 
       if (configurarWan) {
         const rWan = await fetch(`${DIAGNO_BASE}/api/huawei-onu/wan`, {
@@ -1097,7 +1101,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         }).then(r => r.json()).catch((e) => ({ ok: false, error: e.message }));
         extraTr069 = rTr.ok ? " TR-069 activado: el WiFi de la orden se aplica solo en unos minutos." : ` (TR-069 no se pudo activar: ${rTr.error || "error"}; se puede activar luego desde la ficha.)`;
       }
-      setMensaje({ ok: true, texto: (esMover ? "ONU movida" : "ONU autorizada") + (configurarWan ? " y configurada con Routing/PPPoE." : ".") + extraTr069 });
+      setMensaje({ ok: true, texto: (esMover ? "ONU movida" : "ONU autorizada") + ` (ONT-ID ${ontId})` + (configurarWan ? " y configurada con Routing/PPPoE." : ".") + extraTr069 });
       setTimeout(() => onAutorizada(), 1200);
     } catch (e) {
       setMensaje({ ok: false, texto: e.message || "Error de red." });
@@ -1137,7 +1141,11 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          {campo(buscandoOntId ? "ONT-ID (buscando uno libre…)" : "ONT-ID (sugerido automáticamente, se puede cambiar)", <input type="number" min={0} max={127} value={ontId} onChange={e => setOntId(e.target.value)} style={inputStyle} placeholder={buscandoOntId ? "…" : "ej. 50"} />)}
+          {campo("ONT-ID (automático)", (
+            <div style={{ ...inputStyle, background: "transparent", fontWeight: 700, color: ontLibre === -1 ? "#b91c1c" : col.text }}>
+              {ontLibre === null ? "buscando…" : ontLibre === -1 ? "Puerto lleno (128/128)" : ontLibre === -2 ? "se asigna al autorizar" : `${ontLibre} (se asigna solo)`}
+            </div>
+          ))}
           {campo("VLAN", vlanManual ? (
             <div style={{ display: "flex", gap: 6 }}>
               <input type="number" value={vlan} onChange={e => { vlanTocadaRef.current = true; setVlan(Number(e.target.value)); }} style={inputStyle} autoFocus />
@@ -1161,11 +1169,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
             <input value={zona} onChange={e => setZona(e.target.value)} style={inputStyle} placeholder="Nod_01, Cural…" list="zonas-autorizar" />
             <datalist id="zonas-autorizar">{vlansNodos.map((n) => <option key={n.nodo} value={n.nodo} />)}</datalist>
           </>)}
-          {campo("Plan de velocidad", (
-            <select value={plan} onChange={e => setPlan(Number(e.target.value))} style={inputStyle}>
-              {PLANES_VELOCIDAD.map(p => <option key={p.mbps} value={p.mbps}>{p.nombre} ({p.mbps} Mbps)</option>)}
-            </select>
-          ))}
+          {campo("Plan en la OLT", <div style={{ ...inputStyle, background: "transparent", color: col.sub }}>1G (fijo; la velocidad la limita el MikroTik)</div>)}
         </div>
         <div style={{ marginBottom: 14 }}>{campo("Dirección / comentario", <input value={comentario} onChange={e => setComentario(e.target.value)} style={inputStyle} placeholder="Dirección, DNI, celular…" />)}</div>
 
@@ -1190,7 +1194,7 @@ function AutorizarOnuModal({ onu, isDark, col, onClose, onAutorizada }) {
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <button onClick={onClose} disabled={enviando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: "pointer", border: `1px solid ${isDark ? "#2c3c58" : "#cbd5e1"}`, background: "transparent", color: col.text }}>Cancelar</button>
-          <button onClick={enviar} disabled={enviando} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: enviando ? "not-allowed" : "pointer", border: "none", background: "#16a34a", color: "#fff", opacity: enviando ? 0.6 : 1 }}>
+          <button onClick={enviar} disabled={enviando || ontLibre === -1} style={{ padding: "9px 16px", fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: enviando || ontLibre === -1 ? "not-allowed" : "pointer", border: "none", background: "#16a34a", color: "#fff", opacity: enviando || ontLibre === -1 ? 0.6 : 1 }}>
             {enviando ? (esMover ? "Moviendo…" : "Autorizando…") : (esMover ? "Mover" : "Autorizar")}
           </button>
         </div>
