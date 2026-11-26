@@ -1083,6 +1083,76 @@ const queryRouter = async ({ nodo, userPppoe }) => {
 // comentario opcional (17-nov-2026, Cobranza): "Corte_Servicio_<id>" igual que Mikrowisp.
 // Sin comentario valido se mantiene el de siempre: "suspendido:<pppoe>".
 const COMENTARIO_CORTE_RE = /^[A-Za-z0-9_:@.\-]{1,64}$/;
+// ── Corte por PERFIL (26-nov-2026) ──────────────────────────────────────
+// Para routers cuyos PPP Secrets NO tienen IP fija (Nod_07: todos toman IP de
+// un pool). Ahi meter la IP en "morosos" no sirve: el cliente reconecta, le
+// toca otra IP y queda libre. Cortar = pasar el secret al perfil de corte y
+// reconectar su sesion: ese perfil da IP del pool de cortes y mete la IP SOLA
+// en "morosos" (campo address-list del perfil), asi siguen sirviendo las
+// reglas del firewall y los conteos de siempre. Reconectar = volver al perfil
+// anterior (guardado en el comentario del secret como [antes:<perfil>]).
+// Solo aplica a los router_key de CORTE_POR_PERFIL, ej.
+// CORTE_POR_PERFIL="router_4:CLIENTES EN CORTE" (coma para varios). Sin la
+// variable (Americanet y el resto) no cambia nada.
+const perfilCorteDe = (router) => {
+  for (const par of String(process.env.CORTE_POR_PERFIL || "").split(",")) {
+    const i = par.indexOf(":");
+    if (i > 0 && normalizeRouterKey(par.slice(0, i)) === router?.id) return par.slice(i + 1).trim() || null;
+  }
+  return null;
+};
+const PERFIL_ANTES_RE = /\s*\[antes:([^\]]+)\]/;
+const perfilAntesDe = (comentario) => (String(comentario || "").match(PERFIL_ANTES_RE)?.[1] || "").trim() || null;
+
+// corta la sesion PPPoE activa para que reconecte con el perfil nuevo (segundos sin servicio)
+const reconectarSesionPppoe = async ({ api, router, userPppoe }) => {
+  let activos = [];
+  try {
+    activos = await withTimeout(api.write("/ppp/active/print", [`?name=${userPppoe}`]), 8000, `Sesion PPPoE ${userPppoe} en ${router.nombre}`);
+  } catch { activos = []; } // sin sesion: el router puede contestar !empty
+  let n = 0;
+  for (const a of Array.isArray(activos) ? activos : []) {
+    const id = pickFirst(a?.[".id"], a?.id);
+    if (!id || String(pickFirst(a?.name) || "") !== userPppoe) continue;
+    await withTimeout(api.write("/ppp/active/remove", [`=.id=${id}`]), 10000, `Reconectar ${userPppoe} en ${router.nombre}`);
+    n += 1;
+  }
+  return n;
+};
+
+const suspenderPorPerfil = async ({ api, router, secret, userPppoe, perfilCorte }) => {
+  const id = pickFirst(secret[".id"], secret.id);
+  const perfilActual = String(pickFirst(secret.profile) || "default");
+  const comentario = String(pickFirst(secret.comment) || "");
+  if (perfilActual === perfilCorte) {
+    return { router: buildRouterInfo(router), userPppoe, perfil: perfilCorte, perfilAnterior: perfilAntesDe(comentario), sesionesReconectadas: 0,
+      secretDisabled: pickFirst(secret.disabled), estado: "suspendido", origen: "perfil", message: `Ya estaba cortado (perfil ${perfilCorte}).` };
+  }
+  if (!id) throw new Error(`El PPP Secret de ${userPppoe} no trae .id en ${router.nombre}.`);
+  const nuevoComentario = `${comentario.replace(PERFIL_ANTES_RE, "")} [antes:${perfilActual}]`.trim();
+  await withTimeout(api.write("/ppp/secret/set", [`=.id=${id}`, `=profile=${perfilCorte}`, `=comment=${nuevoComentario}`]), 10000, `Perfil de corte ${userPppoe} en ${router.nombre}`);
+  const sesiones = await reconectarSesionPppoe({ api, router, userPppoe });
+  return { router: buildRouterInfo(router), userPppoe, perfil: perfilCorte, perfilAnterior: perfilActual, sesionesReconectadas: sesiones,
+    secretDisabled: pickFirst(secret.disabled), estado: "suspendido", origen: "perfil", message: `Servicio suspendido: perfil ${perfilActual} -> ${perfilCorte}.` };
+};
+
+const activarPorPerfil = async ({ api, router, secret, userPppoe, perfilCorte }) => {
+  const id = pickFirst(secret[".id"], secret.id);
+  const perfilActual = String(pickFirst(secret.profile) || "default");
+  const comentario = String(pickFirst(secret.comment) || "");
+  if (perfilActual !== perfilCorte) {
+    return { router: buildRouterInfo(router), userPppoe, perfil: perfilActual, removedEntries: 0, secretDisabled: pickFirst(secret.disabled),
+      estado: "activo", origen: "perfil", message: `Servicio activo. No estaba cortado (perfil ${perfilActual}).` };
+  }
+  const antes = perfilAntesDe(comentario);
+  if (!antes) throw new Error(`${userPppoe} esta en el perfil de corte pero no se sabe su perfil anterior (falta [antes:...] en el comentario). Ponerle su plan a mano en ${router.nombre}.`);
+  if (!id) throw new Error(`El PPP Secret de ${userPppoe} no trae .id en ${router.nombre}.`);
+  await withTimeout(api.write("/ppp/secret/set", [`=.id=${id}`, `=profile=${antes}`, `=comment=${comentario.replace(PERFIL_ANTES_RE, "").trim()}`]), 10000, `Volver perfil ${userPppoe} en ${router.nombre}`);
+  const sesiones = await reconectarSesionPppoe({ api, router, userPppoe });
+  return { router: buildRouterInfo(router), userPppoe, perfil: antes, removedEntries: 1, sesionesReconectadas: sesiones, secretDisabled: pickFirst(secret.disabled),
+    estado: "activo", origen: "perfil", message: `Servicio activado: perfil ${perfilCorte} -> ${antes}.` };
+};
+
 const suspenderRouter = async ({ nodo, userPppoe, comentario = "" }) => {
   let connection = null;
   try {
@@ -1092,6 +1162,8 @@ const suspenderRouter = async ({ nodo, userPppoe, comentario = "" }) => {
     if (!secret) {
       throw new Error(`No existe PPP Secret para ${userPppoe} en ${router.nombre}.`);
     }
+    const perfilCorte = perfilCorteDe(router);
+    if (perfilCorte) return await suspenderPorPerfil({ api, router, secret, userPppoe, perfilCorte });
 
     const ip = resolveSecretRemoteAddress(secret, null);
     if (!ip) {
@@ -1180,6 +1252,8 @@ const activarRouter = async ({ nodo, userPppoe, ip = "", mikrowispId = "" }) => 
     if (!secret) {
       throw new Error(`No existe PPP Secret para ${userPppoe} en ${router.nombre}.`);
     }
+    const perfilCorte = perfilCorteDe(router);
+    if (perfilCorte) return await activarPorPerfil({ api, router, secret, userPppoe, perfilCorte });
 
     const targetIp = pickFirst(ip, resolveSecretRemoteAddress(secret, null));
     if (!targetIp) {
@@ -4584,6 +4658,16 @@ const server = http.createServer(async (req, res) => {
       try {
         connection = await connectRouterByNodo(nodo, userPppoe);
         const { api, router } = connection;
+        // corte por perfil (Nod_07): cortado = el secret esta en el perfil de corte
+        const perfilCorte = perfilCorteDe(router);
+        if (perfilCorte) {
+          const secret = await loadSecretOnly({ api, router, userPppoe });
+          if (!secret) throw new Error(`No existe PPP Secret para ${userPppoe} en ${router.nombre}.`);
+          const cortado = String(pickFirst(secret.profile) || "") === perfilCorte;
+          writeJson(res, 200, { ok: true, ip: null, enMorosos: cortado, router: buildRouterInfo(router), origen: "perfil",
+            entradas: cortado ? [{ ip: null, comment: `perfil ${perfilCorte} (antes ${perfilAntesDe(secret.comment) || "?"})`, creado: null }] : [] });
+          return;
+        }
         // 17-nov-2026: sin IP en la consulta, se toma la del secret (igual que /activar). Antes solo
         // buscaba por comentario con el usuario PPPoE, y un corte "Corte_Servicio_<id>" (Mikrowisp /
         // Cobranza) no lo trae -> decia "no esta en morosos" aunque si estaba.
